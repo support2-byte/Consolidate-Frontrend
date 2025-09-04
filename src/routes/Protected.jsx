@@ -1,14 +1,12 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { api } from "../api";
+import { Navigate, useLocation } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
-export default function Protected({ children }) {
-  const nav = useNavigate();
-  const [ok, setOk] = useState(false);
+export default function ProtectedRoute({ children }) {
+  const { user, loading } = useAuth();
+  const location = useLocation();
 
-  useEffect(() => {
-    api.get("/auth/me").then(() => setOk(true)).catch(() => nav("/login"));
-  }, [nav]);
+  if (loading) return <div>Loading...</div>; // ⏳ optional spinner
+  if (!user) return <Navigate to="/login" state={{ from: location }} replace />;
 
-  return ok ? children : null;
+  return children;
 }

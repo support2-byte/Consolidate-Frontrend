@@ -64,18 +64,40 @@ export default function CrudPage({ title, endpoint, columns, formFields, idKey="
       headerName: c.label,
       flex: 1,
     })),
-    {
-      field: "actions",
-      headerName: "Actions",
-      sortable: true,
-      filterable: true,
-      renderCell: (params) => (
-        <Stack direction="row" spacing={1}>
-          <Button size="small" onClick={() => startEdit(params.row)}>Edit</Button>
-          <Button size="small" color="error" onClick={() => remove(params.row[idKey])}>Delete</Button>
-        </Stack>
-      ),
-    }
+{
+  field: "actions",
+  headerName: "Actions",
+  sortable: false,
+  filterable: false,
+  flex: 1,
+  renderCell: (params) => (
+    <Stack
+      direction="row"
+      spacing={1}
+      alignItems="center"
+      justifyContent="center"
+      sx={{ width: "100%" }}
+      mt={1}
+    >
+      <Button
+        variant="text"
+        size="small"
+        onClick={() => startEdit(params.row)}
+      >
+        Edit
+      </Button>
+      <Button
+        variant="text"
+        size="small"
+        color="error"
+        onClick={() => remove(params.row[idKey])}
+      >
+        Delete
+      </Button>
+    </Stack>
+  ),
+}
+
   ];
 
   return (

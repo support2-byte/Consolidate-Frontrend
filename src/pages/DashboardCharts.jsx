@@ -9,6 +9,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer
 } from "recharts";
+import { useThemeContext } from "../context/ThemeContext";
 
 // === DATASETS ===
 const shipmentsData = [
@@ -49,20 +50,29 @@ const vendorData = [
 ];
 
 export default function Dashboard() {
+  const { mode } = useThemeContext(); // ✅ Light/Dark mode
+
+  // Dynamic colors based on theme
+  const bg = mode === "dark" ? "#0d1117" : "#f9fafb";
+  const cardBg = mode === "dark" ? "#161b22" : "#ffffff";
+  const textColor = mode === "dark" ? "#ffffff" : "#111827";
+  const gridColor = mode === "dark" ? "#444" : "#ddd";
+  const axisColor = mode === "dark" ? "#ccc" : "#333";
+
   return (
-    <div style={{ padding: "20px", background: "#0d1117", minHeight: "100vh", color: "#fff" }}>
+    <div style={{ padding: "20px", background: bg, minHeight: "100vh", color: textColor }}>
       <h1 style={{ marginBottom: "20px" }}>📊 Logistics Dashboard</h1>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "20px" }}>
 
         {/* 1️⃣ Monthly Shipments */}
-        <div style={{ background: "#161b22", borderRadius: "10px", padding: "15px" }}>
-          <h3>Monthly Shipments</h3>
+        <div style={{ background: cardBg, borderRadius: "10px", padding: "15px" }}>
+          <h3 style={{ color: textColor }}>Monthly Shipments</h3>
           <ResponsiveContainer width="100%" height={250}>
             <LineChart data={shipmentsData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#444" />
-              <XAxis dataKey="month" stroke="#ccc" />
-              <YAxis stroke="#ccc" />
-              <Tooltip />
+              <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
+              <XAxis dataKey="month" stroke={axisColor} />
+              <YAxis stroke={axisColor} />
+              <Tooltip contentStyle={{ background: cardBg, color: textColor }} />
               <Legend />
               <Line type="monotone" dataKey="shipments" stroke="#4dabf7" strokeWidth={3} />
             </LineChart>
@@ -70,14 +80,14 @@ export default function Dashboard() {
         </div>
 
         {/* 2️⃣ Revenue vs Cost */}
-        <div style={{ background: "#161b22", borderRadius: "10px", padding: "15px" }}>
-          <h3>Revenue vs Cost</h3>
+        <div style={{ background: cardBg, borderRadius: "10px", padding: "15px" }}>
+          <h3 style={{ color: textColor }}>Revenue vs Cost</h3>
           <ResponsiveContainer width="100%" height={250}>
             <AreaChart data={revenueCostData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#444" />
-              <XAxis dataKey="month" stroke="#ccc" />
-              <YAxis stroke="#ccc" />
-              <Tooltip />
+              <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
+              <XAxis dataKey="month" stroke={axisColor} />
+              <YAxis stroke={axisColor} />
+              <Tooltip contentStyle={{ background: cardBg, color: textColor }} />
               <Area type="monotone" dataKey="revenue" stackId="1" stroke="#0dcaf0" fill="#0dcaf0" />
               <Area type="monotone" dataKey="cost" stackId="1" stroke="#d32f2f" fill="rgb(42, 245, 152)" />
             </AreaChart>
@@ -85,8 +95,8 @@ export default function Dashboard() {
         </div>
 
         {/* 3️⃣ Shipment Status */}
-        <div style={{ background: "#161b22", borderRadius: "10px", padding: "15px" }}>
-          <h3>Shipment Status</h3>
+        <div style={{ background: cardBg, borderRadius: "10px", padding: "15px" }}>
+          <h3 style={{ color: textColor }}>Shipment Status</h3>
           <ResponsiveContainer width="100%" height={300}>
             <PieChart>
               <Pie data={shipmentStatusData} cx="50%" cy="50%" outerRadius={90} fill="#8884d8" dataKey="value" label>
@@ -94,21 +104,21 @@ export default function Dashboard() {
                   <Cell key={`cell-${index}`} fill={STATUS_COLORS[index]} />
                 ))}
               </Pie>
-              <Tooltip />
+              <Tooltip contentStyle={{ background: cardBg, color: textColor }} />
               <Legend />
             </PieChart>
           </ResponsiveContainer>
         </div>
 
         {/* 4️⃣ Container Utilization */}
-        <div style={{ background: "#161b22", borderRadius: "10px", padding: "15px" }}>
-          <h3>Container Utilization</h3>
+        <div style={{ background: cardBg, borderRadius: "10px", padding: "15px" }}>
+          <h3 style={{ color: textColor }}>Container Utilization</h3>
           <ResponsiveContainer width="100%" height={250}>
             <BarChart data={containerData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#444" />
-              <XAxis dataKey="month" stroke="#ccc" />
-              <YAxis stroke="#ccc" />
-              <Tooltip />
+              <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
+              <XAxis dataKey="month" stroke={axisColor} />
+              <YAxis stroke={axisColor} />
+              <Tooltip contentStyle={{ background: cardBg, color: textColor }} />
               <Legend />
               <Bar dataKey="full" fill="#42a5f5" />
               <Bar dataKey="empty" fill="#9e9e9e" />
@@ -117,13 +127,13 @@ export default function Dashboard() {
         </div>
 
         {/* 5️⃣ Vendor Performance */}
-        <div style={{ gridColumn: "span 2", background: "#161b22", borderRadius: "10px", padding: "15px" }}>
-          <h3>Vendor Performance</h3>
+        <div style={{ gridColumn: "span 2", background: cardBg, borderRadius: "10px", padding: "15px" }}>
+          <h3 style={{ color: textColor }}>Vendor Performance</h3>
           <ResponsiveContainer width="100%" height={300}>
             <RadarChart outerRadius={100} data={vendorData}>
-              <PolarGrid stroke="#444" />
-              <PolarAngleAxis dataKey="metric" stroke="#ccc" />
-              <PolarRadiusAxis stroke="#ccc" />
+              <PolarGrid stroke={gridColor} />
+              <PolarAngleAxis dataKey="metric" stroke={axisColor} />
+              <PolarRadiusAxis stroke={axisColor} />
               <Radar name="Vendor A" dataKey="VendorA" stroke="#2e7d32" fill="#66bb6a" fillOpacity={0.6} />
               <Radar name="Vendor B" dataKey="VendorB" stroke="#0288d1" fill="#4fc3f7" fillOpacity={0.6} />
               <Legend />
