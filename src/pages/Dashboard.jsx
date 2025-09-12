@@ -31,10 +31,10 @@ export default function DashboardLayout() {
   const tabs = [
     { label: "Dashboard", path: "/", icon: <StoreIcon /> },
     { label: "Customers", path: "/customers", icon: <PeopleIcon /> },
-    { label: "Vendors", path: "/vendors", icon: <StoreIcon /> },
-    { label: "Containers", path: "/containers", icon: <InventoryIcon /> },
-    { label: "Orders", path: "/orders", icon: <ShoppingCartIcon /> },
-    { label: "Consignments", path: "/consignments", icon: <LocalShippingIcon /> },
+    // { label: "Vendors", path: "/vendors", icon: <StoreIcon /> },
+    // { label: "Containers", path: "/containers", icon: <InventoryIcon /> },
+    // { label: "Orders", path: "/orders", icon: <ShoppingCartIcon /> },
+    // { label: "Consignments", path: "/consignments", icon: <LocalShippingIcon /> },
   ];
 
   const drawerContent = (
@@ -129,7 +129,7 @@ export default function DashboardLayout() {
           </IconButton>
 
           <Typography variant="h6" noWrap sx={{ flexGrow: 1 }}>
-            Admin Dashboard
+            Consolidate Dashboard
           </Typography>
 
           <IconButton onClick={toggleTheme} color="inherit">

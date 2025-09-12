@@ -8,7 +8,7 @@ export default function Navbar() {
   return (
     <nav className="flex items-center justify-between px-6 py-3 bg-white dark:bg-gray-900 shadow-md">
       <h1 className="text-xl font-bold text-gray-800 dark:text-gray-200">
-        Admin Dashboard
+        Consolidate Dashboard
       </h1>
 
       <IconButton onClick={toggleTheme} color="inherit">

@@ -17,13 +17,14 @@ import { ThemeProvider as CustomThemeProvider, useThemeContext } from "./context
 import { ThemeProvider as MuiThemeProvider, createTheme } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
 import { AuthProvider } from "./context/AuthContext";
+import CustomerAdd from "./pages/AddCustomer";
 // ✅ Theming wrapper
 function ThemedApp({ children }) {
   const { mode } = useThemeContext();
   const theme = createTheme({
     palette: {
       mode,
-      primary: { main: "#6366f1" },
+      primary: { main: "#f58220" },
       secondary: { main: "#06b6d4" },
     },
   });
@@ -54,10 +55,12 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <DashboardCharts /> },
       { path: "customers", element: <Customers /> },
-      { path: "vendors", element: <Vendors /> },
-      { path: "containers", element: <Containers /> },
-      { path: "orders", element: <Orders /> },
-      { path: "consignments", element: <Consignments /> },
+      // { path: "vendors", element: <Vendors /> },
+      // { path: "containers", element: <Containers /> },
+      // { path: "orders", element: <Orders /> },
+      // { path: "consignments", element: <Consignments /> },
+     { path: "/customers/add", element: <CustomerAdd  mode="add" /> },
+          { path: "/customers/:id/edit", element:<CustomerAdd mode="edit" /> },
     ],
   },
 ]);

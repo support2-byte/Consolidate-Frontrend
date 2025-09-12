@@ -19,7 +19,7 @@ export default function Consignments() {
       title="Consignments"
       endpoint="/api/consignments"
       columns={[
-        { key: "id", label: "ID" },
+        { key: "zoho_id", label: "ID" },
         { key: "order_id", label: "Order ID" },
         { key: "container_id", label: "Container ID" },
         { key: "shipment_date", label: "Shipment Date" },

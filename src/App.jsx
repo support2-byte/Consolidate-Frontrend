@@ -8,7 +8,7 @@ import Vendors from "./pages/Vendors";
 import Containers from "./pages/Containers";
 import Orders from "./pages/Orders";
 import Consignments from "./pages/Consignments";
-
+import AddCustomer from "./pages/AddCustomer";
 function ProtectedRoute() {
   const { user, loading } = useAuth();
   if (loading) return <div>Loading...</div>; // while checking session
@@ -28,10 +28,13 @@ export default function App() {
           <Route path="/" element={<DashboardLayout />}>
             <Route index element={<DashboardCharts />} />
             <Route path="customers" element={<Customers />} />
-            <Route path="vendors" element={<Vendors />} />
+            {/* <Route path="vendors" element={<Vendors />} />
             <Route path="containers" element={<Containers />} />
             <Route path="orders" element={<Orders />} />
-            <Route path="consignments" element={<Consignments />} />
+            <Route path="consignments" element={<Consignments />} /> */}
+            <Route path="/customers/add" element={<AddCustomer mode="add" />} />
+            <Route path="/customers/:id/edit" element={<AddCustomer mode="edit" />} />
+
           </Route>
         </Route>
       </Routes>
