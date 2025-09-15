@@ -15,14 +15,14 @@ import {
   CardContent
 } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
-import { api } from "../api";
+import { api } from "../../api";
 import { useParams, useNavigate } from "react-router-dom";
 import { Snackbar, Alert } from "@mui/material";
 import { v4 as uuidv4 } from "uuid";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import { Add, Delete } from "@mui/icons-material";
-export default function CustomerForm({ mode = "add", }) {
+export default function VendorsForm({ mode = "add", }) {
   const navigate = useNavigate();
   const { id } = useParams();
   const [form, setForm] = useState({
@@ -484,8 +484,8 @@ const docColumns = [
       {/* Documents */}
       <Grid container flexDirection={"row"} mb={0} justifyContent={"space-between"} alignItems={"center"} spacing={2}>
         <h2 className="text-xl font-bold mb-4">Documents</h2>
-        <Button variant="outlined" component="label" sx={{ mb: 0 }}>
-          + Add
+        <Button startIcon={<Add />} className="m-2" variant="outlined" component="label" sx={{ mb: 0 }}>
+         Add
           <input type="file" hidden onChange={handleAddDocument} />
         </Button>
       </Grid>

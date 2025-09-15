@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import {
   Paper, Typography, Button, Dialog, DialogTitle, DialogContent, DialogActions,
-  TextField, Stack, Box, IconButton, Tooltip
+  TextField, Stack, Box, IconButton, Tooltip, Snackbar, Alert
 } from "@mui/material";
 import { DataGrid, GridToolbar } from "@mui/x-data-grid";
 import EditIcon from "@mui/icons-material/Edit";
@@ -17,6 +17,18 @@ export default function CrudPage({ title, endpoint, columns, formFields, idKey =
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({});
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [deleteId, setDeleteId] = useState(null);
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: "",
+    severity: "success",
+  });
+
+  const showToast = (message, severity = "success") => {
+    setSnackbar({ open: true, message, severity });
+  };
+
   const navigate = useNavigate();
   const load = async () => {
     const { data } = await api.get(endpoint);
@@ -56,10 +68,21 @@ export default function CrudPage({ title, endpoint, columns, formFields, idKey =
     await load();
   };
 
-  const remove = async (id) => {
-    if (!window.confirm("Delete this record?")) return;
-    await api.delete(`${endpoint}/${id}`);
-    await load();
+const handleDeleteClick = (id) => {
+    setDeleteId(id);
+    setConfirmOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    try {
+      await api.delete(`${endpoint}/${deleteId}`);
+      await load();
+      showToast("Record deleted successfully!", "success");
+    } catch (err) {
+      showToast("Failed to delete record", "error");
+    }
+    setConfirmOpen(false);
+    setDeleteId(null);
   };
 
   // 🔹 Build DataGrid columns with improved actions
@@ -110,18 +133,18 @@ const gridColumns = [
     filterable: false,
     width: 100,
     renderCell: (params) => (
-      <Stack direction="row" spacing={1} mt={2}>
-        <Tooltip title="Edit">
-          <IconButton color="primary" size="small" onClick={() => startEdit(params.row)}>
-            <EditIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title="Delete">
-          <IconButton color="error" size="small" onClick={() => remove(params.row[idKey])}>
-            <DeleteIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-      </Stack>
+         <Stack direction="row" spacing={1} mt={2}>
+          <Tooltip title="Edit">
+            <IconButton color="primary" size="small" onClick={() => startEdit(params.row)}>
+              <EditIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Delete">
+            <IconButton color="error" size="small" onClick={() => handleDeleteClick(params.row[idKey])}>
+              <DeleteIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Stack>
     ),
   },
 ];
@@ -164,39 +187,34 @@ const gridColumns = [
         />
       </Box>
 
-      {/* Add/Edit dialog */}
-      <Dialog open={open} onClose={() => setOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>{editingId ? "Edit Record" : "Add Record"}</DialogTitle>
+<Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)}>
+        <DialogTitle>Confirm Delete</DialogTitle>
         <DialogContent>
-          <Stack spacing={2} mt={1}>
-            {formFields.map(f => (
-              <TextField
-                key={f.key}
-                label={f.label}
-                type={f.type || "text"}
-                value={form[f.key] ?? ""}
-                onChange={e => setForm({ ...form, [f.key]: e.target.value })}
-                select={f.select}
-                fullWidth
-                SelectProps={f.select ? { native: true } : undefined}
-              >
-                {f.select && (
-                  <>
-                    <option value=""></option>
-                    {f.options?.map(o => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </>
-                )}
-              </TextField>
-            ))}
-          </Stack>
+          Are you sure you want to delete this record?
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={save}>Save</Button>
+          <Button onClick={() => setConfirmOpen(false)}>Cancel</Button>
+          <Button color="error" variant="contained" onClick={handleConfirmDelete}>
+            Delete
+          </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Snackbar for toast notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={3000}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+        anchorOrigin={{ vertical: "top", horizontal: "center" }}
+      >
+        <Alert
+          onClose={() => setSnackbar({ ...snackbar, open: false })}
+          severity={snackbar.severity}
+          sx={{ width: "100%" }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Paper>
   );
 }

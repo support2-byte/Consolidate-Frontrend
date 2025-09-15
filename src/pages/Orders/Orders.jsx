@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { api } from "../api";
-import CrudPage from "../components/CrudPage";
+import { api } from "../../api";
+import CrudPage from "../../components/CrudPage";
 
 export default function Orders() {
   const [customers, setCustomers] = useState([]);
