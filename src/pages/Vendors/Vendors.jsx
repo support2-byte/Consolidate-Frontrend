@@ -3,8 +3,8 @@ import CrudPage from "../../components/CrudPage";
 export default function Vendors() {
   return (
   <CrudPage
-  title="Customers"
-  endpoint="/api/customers"
+  title="Vendors"
+  endpoint="/api/vendors"
   columns={[
     { key: "zoho_id", label: "Zoho ID" },
     // { key: "name", label: "Name" },
@@ -14,7 +14,7 @@ export default function Vendors() {
     // { key: "title", label: "Title" },
     // { key: "department", label: "Department" },
     // { key: "lead_source", label: "Lead Source" },
-    { key: "account_name", label: "Company" },
+    { key: "contact_name", label: "Company" },
     // { key: "mailing_city", label: "City" },
     // { key: "mailing_country", label: "Country" },
     { key: "created_by", label: "Created By" },

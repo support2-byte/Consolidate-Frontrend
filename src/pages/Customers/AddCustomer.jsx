@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   TextField,
-  Select, MenuItem,
-  FormControl, InputLabel,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
   RadioGroup,
   FormControlLabel,
   Radio,
@@ -10,23 +12,23 @@ import {
   Grid,
   Paper,
   Typography,
-  Card,
+  CardContent,
   IconButton,
-  CardContent
+  Box
 } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
-import { api } from "../../api";
+import { api } from "../../api"; // Adjust path
 import { useParams, useNavigate } from "react-router-dom";
 import { Snackbar, Alert } from "@mui/material";
 import { v4 as uuidv4 } from "uuid";
-import EditIcon from "@mui/icons-material/Edit";
+import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
-import { Add, Delete } from "@mui/icons-material";
-export default function CustomerForm({ mode = "add", }) {
+
+export default function CustomerForm({ mode = "add" }) {
   const navigate = useNavigate();
   const { id } = useParams();
   const [form, setForm] = useState({
-    name: "",
+    contact_name: "",
     email: "",
     associated_by: "",
     zoho_notes: "",
@@ -41,89 +43,226 @@ export default function CustomerForm({ mode = "add", }) {
   });
   const [contacts, setContacts] = useState([]);
   const [documents, setDocuments] = useState([]);
-const [users, setUsers] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [file, setFile] = useState(null);
+  const fileInputRef = useRef(null);
+  useEffect(() => {
+    setUsers([{ id: "1", name: "Admin" }, { id: "2", name: "Manager" }, { id: "3", name: "Staff" },]);
+  }, [id, mode]);
+
+  // Other useEffect for fetchCustomer (unchanged, omitting documents)
+  useEffect(() => {
+    if (mode === 'edit' && id) {
+      const fetchCustomer = async () => {
+        try {
+          const res = await api.get(`/api/customers/${id}`);
+          console.log('Customer data:', res.data);
+          const c = res.data;
+          setForm({
+            contact_name: c.contact_name || '',
+            email: c.email || '',
+            associated_by: c.associated_by || '',
+            zoho_notes: c.zoho_notes || '',
+            address: c.address || '',
+            system_notes: c.system_notes || '',
+            type: c.type || 'sender',
+          });
+          setContacts(
+            (c.contact_persons || []).map((cp) => ({
+              id: cp.id || cp.contact_person_id,
+              name: cp.name || `${cp.first_name || ''} ${cp.last_name || ''}`.trim(),
+              phone: cp.phone || '',
+              email: cp.email || '',
+              isNew: false,
+            }))
+          );
+          setDocuments(
+            (c.documents || []).filter(doc => doc.document_id && typeof doc.document_id === 'string')
+          );
+        } catch (err) {
+          console.error('Failed to fetch customer:', err);
+          showToast('Failed to fetch customer data', 'error');
+        }
+      };
+      fetchCustomer();
+    }
+  }, [id, mode]);
   const showToast = (message, severity = "success") => {
     setSnackbar({ open: true, message, severity });
   };
-  // Load customer if edit mode
-  useEffect(() => {
-    setUsers([ { id: "1", name: "Admin" }, { id: "2", name: "Manager" }, { id: "3", name: "Staff" }, ]);
-    console.log("Mode:", mode, "Customer ID:", id);
-    if (mode === "edit" && id) {
-      console.log("Loading customer:", id);
-      api.get(`/api/customers/${id}`).then((res) => {
-        console.log("Customer data:", res.data);
-
-        const c = res.data;
-        setForm({
-          name: c.account_name || "",
-          email: c.email || "",
-          associated_by: c.associated_by || "",
-          zoho_notes: c.zoho_notes || "",
-          address: c.address || "",
-          system_notes: c.system_notes || "",
-          type: c.type || "sender",
-        });
-        setContacts(c.contacts || []);
-        setDocuments(c.documents || []);
-      });
-    }
-  }, [mode, id]);
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
-
   const handleAddContact = () => {
     setContacts((prev) => [
       ...prev,
       {
-        id: uuidv4(), // temporary ID
+        id: uuidv4(),
         name: "",
         phone: "",
         email: "",
-        designation: "",
-        isNew: true
-      }
+        isNew: true,
+      },
     ]);
-  };
-
-
-  // 📝 Update a field
-  const handleChangeContact = (id, field, value) => {
-    console.log("Update contact:", id, field, value);
-    setContacts((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, [field]: value } : c))
-    );
   };
 
   const handleSaveContacts = async () => {
     try {
-      const res = await api.post(`/api/customers/${id}/contacts`, contacts);
-      const saved = Array.isArray(res.data) ? res.data : [res.data];
-
-      // Important: refresh local state with DB rows (have proper UUID ids now)
-      setContacts(saved);
+      if (!id) {
+        showToast("Cannot save contacts: Customer ID is missing", "error");
+        return;
+      }
+      if (contacts.length === 0) {
+        showToast("No contacts to save", "warning");
+        return;
+      }
+      if (contacts.some((c) => !c.name)) {
+        showToast("All contacts must have a name", "error");
+        return;
+      }
+      console.log("Saving contacts:", { zoho_id: id, contacts });
+      const res = await api.post(`/api/customers/${id}/contacts`, { zoho_id: id, contacts });
+      setContacts(
+        res.data.map((cp) => ({
+          id: cp.id || cp.contact_person_id,
+          name: cp.name || `${cp.first_name || ''} ${cp.last_name || ''}`.trim(),
+          phone: cp.phone || "",
+          email: cp.email || "",
+          isNew: false,
+        }))
+      );
       showToast("Contacts saved successfully!", "success");
     } catch (err) {
-      console.error("Failed to save contacts:", err);
-      showToast("Failed to save contacts", "error");
+      console.error("Failed to save contacts:", {
+        message: err.message,
+        response: err.response?.data,
+        status: err.response?.status,
+      });
+      if (err.response?.data?.error.includes("trial account restrictions")) {
+        showToast(
+          "Contact person creation is disabled due to Zoho Books trial restrictions. Please create contacts manually in Zoho Books.",
+          "error"
+        );
+      } else {
+        showToast(
+          err.response?.data?.error || "Failed to save contacts",
+          "error"
+        );
+      }
+    }
+  };
+  const handleFileChange = (e) => {
+    const selectedFile = e.target.files[0];
+    if (selectedFile) {
+      if (selectedFile.size > 5 * 1024 * 1024) {
+        showToast("File size must be less than 5MB", "error");
+        setFile(null);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        return;
+      }
+      // Create a new File object to avoid mutations
+      const fileCopy = new File([selectedFile], selectedFile.name, { type: selectedFile.type });
+      console.log("File selected:", {
+        name: fileCopy.name,
+        size: fileCopy.size,
+        type: fileCopy.type,
+        isFile: fileCopy instanceof File,
+      });
+      setFile(fileCopy);
+    } else {
+      setFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      showToast("No file selected", "warning");
     }
   };
 
+  const handleAddDocument = async () => {
+    if (!id) {
+      showToast('Cannot upload document: Customer ID is missing', 'error');
+      return;
+    }
+    if (!file || !(file instanceof File)) {
+      console.error('Invalid file state:', file);
+      showToast('Please select a valid file to upload', 'error');
+      return;
+    }
 
+    console.log('File before FormData append:', {
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      isFile: file instanceof File,
+    });
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('zoho_id', id);
+
+      console.log('FormData fields:', [...formData.entries()].map(([key, value]) => ({ key, value: value.name || value })));
+      console.log('Current documents state:', documents);
+
+      const res = await api.post(`/api/customers/${id}/documents`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      console.log('Document upload response:', res.data);
+
+      if (!res.data.document_id) {
+        console.error('Response missing document_id:', res.data);
+        showToast('Invalid document response from server', 'error');
+        return;
+      }
+
+      setDocuments((prev) => {
+        const validDocs = prev.filter((doc) => doc.document_id && typeof doc.document_id === 'string');
+        const existingIds = new Set(validDocs.map((doc) => doc.document_id));
+        if (existingIds.has(res.data.document_id)) {
+          console.error('Duplicate document ID:', res.data.document_id);
+          showToast('Document with this ID already exists', 'error');
+          return validDocs;
+        }
+        const updatedDocs = [...validDocs, res.data];
+        console.log('Updated documents state:', updatedDocs);
+        return updatedDocs;
+      });
+
+      setFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      showToast('Document uploaded successfully!', 'success');
+    } catch (err) {
+      console.error('Upload error:', err.response?.data || err.message);
+      showToast(
+        err.response?.data?.error || 'Failed to upload document',
+        'error'
+      );
+    }
+  };
+
+  const handleDeleteDocument = async (document_id) => {
+    try {
+      await api.delete(`/api/customers/${id}/documents/${document_id}`);
+      setDocuments((prev) => prev.filter((doc) => doc.document_id !== document_id));
+      showToast('Document deleted successfully!', 'success');
+    } catch (err) {
+      console.error('Delete document error:', err.response?.data || err.message);
+      showToast(
+        err.response?.data?.error || 'Failed to delete document',
+        'error'
+      );
+    }
+  };
   const handleDeleteContact = async (contactId, isNew) => {
     if (!contactId) {
       console.warn("Contact has no ID, skipping delete");
       return;
     }
-
     if (isNew) {
       setContacts((prev) => prev.filter((c) => c.id !== contactId));
+      showToast("Contact removed", "success");
       return;
     }
-
     try {
       await api.delete(`/api/customers/${id}/contacts/${contactId}`);
       setContacts((prev) => prev.filter((c) => c.id !== contactId));
@@ -135,8 +274,11 @@ const [users, setUsers] = useState([]);
   };
 
 
-  // Save or update customer
   const handleSaveCustomer = async () => {
+    if (!form.contact_name || !form.email) {
+      showToast("Customer name and email are required", "error");
+      return;
+    }
     try {
       if (mode === "edit") {
         await api.put(`/api/customers/${id}`, form);
@@ -144,6 +286,7 @@ const [users, setUsers] = useState([]);
       } else {
         const res = await api.post("/api/customers", form);
         console.log("New customer created:", res.data);
+        navigate(`/customers/${res.data.zoho_id}/edit`);
         showToast("Customer created successfully!", "success");
       }
     } catch (err) {
@@ -152,131 +295,41 @@ const [users, setUsers] = useState([]);
     }
   };
 
-
-
-
-  // Add document (file upload)
-  const handleAddDocument = async (e) => {
-    console.log("File selected:", e?.target?.files);
-    const file = e?.target?.files[0];
-    if (file) {
-      const formData = new FormData();
-      formData.append("file", file);
-
-      try {
-        const res = await api.post(
-          `/api/customers/${id}/documents`,
-          formData,
-          { headers: { "Content-Type": "multipart/form-data" } }
-        );
-        console.log("Upload response:", res.data);
-        setDocuments([...documents, res.data]);
-        showToast("Document uploaded!", "success");
-      } catch (err) {
-        console.error("Failed to upload document:", err);
-        showToast("File upload failed", "error");
-      }
-    }
-  };
-
-  // const contactColumns = [
-  //   {
-  //     field: "name",
-  //     headerName: "Name",
-  //     flex: 1,
-  //     renderCell: (params) => (
-  //       <TextField
-  //         variant="standard"
-  //         value={params.row.name}
-  //         onChange={(e) =>
-  //           handleUpdateContact(params.row.id, "name", e.target.value)
-  //         }
-  //       />
-  //     ),
-  //   },
-  //   {
-  //     field: "phone",
-  //     headerName: "Phone",
-  //     flex: 1,
-  //     renderCell: (params) => (
-  //       <TextField
-  //         variant="standard"
-  //         value={params.row.phone}
-  //         onChange={(e) =>
-  //           handleUpdateContact(params.row.id, "phone", e.target.value)
-  //         }
-  //       />
-  //     ),
-  //   },
-  //   {
-  //     field: "email",
-  //     headerName: "Email",
-  //     flex: 1,
-  //     renderCell: (params) => (
-  //       <TextField
-  //         variant="standard"
-  //         value={params.row.email}
-  //         onChange={(e) =>
-  //           handleUpdateContact(params.row.id, "email", e.target.value)
-  //         }
-  //       />
-  //     ),
-  //   },
-  //   {
-  //     field: "actions",
-  //     headerName: "Actions",
-  //     renderCell: (params) => (
-  //       <Button
-  //         color="error"
-  //         onClick={() => handleDeleteContact(params.row.id)}
-  //       >
-  //         Delete
-  //       </Button>
-  //     ),
-  //   },
-  // ];
-const docColumns = [
-  {
-    field: "filename",
-    headerName: "Filename",
-    flex: 1,
-    renderCell: (params) => (
-      <a
-        href={params.row.filepath}
-        download={params.value} // suggest filename for download
-        style={{
-          color: "#1976d2",
-          textDecoration: "underline",
-          cursor: "pointer",
-        }}
-      >
-        {params.value}
-      </a>
-    ),
-  },
-  { field: "filepath", headerName: "Path", flex: 1 },
-  {
-    field: "actions",
-    headerName: "Actions",
-    renderCell: (params) => (
-      <IconButton
-        color="error"
-        onClick={() =>
-          setDocuments((prev) => prev.filter((d) => d.id !== params.row.id))
-        }
-      >
-        <DeleteIcon />
-      </IconButton>
-    ),
-  },
-];
-
-
-
-
+  const docColumns = [
+    {
+      field: 'file_name',
+      headerName: 'File Name',
+      flex: 1,
+      renderCell: (params) => (
+        <a
+          href={`/api/customers/${id}/documents/${params.row.document_id}/download`}
+          download={params.value}
+          style={{ color: '#1976d2', textDecoration: 'underline', cursor: 'pointer' }}
+        >
+          {params.value}
+        </a>
+      ),
+    },
+    { field: 'file_type', headerName: 'File Type', flex: 1 },
+    { field: 'file_size_formatted', headerName: 'Size', flex: 1 },
+    { field: 'uploaded_on_date_formatted', headerName: 'Uploaded On', flex: 1 },
+    { field: 'uploaded_by', headerName: 'Uploaded By', flex: 1 },
+    {
+      field: 'actions',
+      headerName: 'Actions',
+      flex: 1,
+      renderCell: (params) => (
+        <IconButton
+          color="error"
+          onClick={() => handleDeleteDocument(params.row.document_id)}
+        >
+          <DeleteIcon />
+        </IconButton>
+      ),
+    },
+  ];
   return (
     <Paper sx={{ p: 3 }}>
-      {/* Snackbar for toast notifications */}
       <Snackbar
         open={snackbar.open}
         autoHideDuration={3000}
@@ -291,214 +344,255 @@ const docColumns = [
           {snackbar.message}
         </Alert>
       </Snackbar>
-      <Grid container flexDirection={"row"} mb={5} justifyContent={"space-between"} alignItems={"center"} spacing={2}>
-        <Typography variant="h4" fontWeight={"bold"} mt={0}>
-          Customer Info
-        </Typography>
-
-      </Grid>
-      <Grid container spacing={2} mb={2}>
-
-        <Grid item xs={12} spacing={2} mb={2}>
-          <TextField
-            fullWidth
-            required
-            label="Customer Name"
-            name="name"
-            value={form.name}
-            onChange={handleChange}
-          />
-        </Grid>
-
-        <Grid item mb={2} xs={12}>
-          <TextField
-            fullWidth
-            required
-            label="Email"
-            name="email"
-            value={form.email}
-            onChange={handleChange}
-          />
-        </Grid>
-        <Grid item style={{width:"25%"}} xs={12} md={6}>
-       <FormControl fullWidth>
-        <InputLabel id="associated_by-label">Associated By</InputLabel>
-         <Select labelId="associated_by-label" value={form.associated_by} onChange={(e) => setForm({ ...form, associated_by: e.target.value })} >
-              {users.map((u) => (
-                <MenuItem key={u.id} value={u.id}>
-                  {u.name}
-                </MenuItem>
-              ))}
-            </Select>
- </FormControl> 
-        </Grid>
-      </Grid>
-      <Grid container spacing={2} p={0} mb={2}>
-
-
-        <Grid item xs={4}>
-          <TextField
-            fullWidth
-            label="Zoho Notes"
-            name="zoho_notes"
-            value={form.zoho_notes}
-            onChange={handleChange}
-          />
-        </Grid>
-
-        <Grid item xs={4}>
-          <TextField
-            fullWidth
-            label="Address"
-            name="address"
-            value={form.address}
-            onChange={handleChange}
-          />
-        </Grid>
-
-        <Grid item xs={4}>
-          <TextField
-            fullWidth
-            label="System Notes"
-            name="system_notes"
-            value={form.system_notes}
-            onChange={handleChange}
-          
-          />
-        </Grid>
-      </Grid>
-      <Grid item xs={12}>
-        <RadioGroup
-          row
-          name="type"
-          value={form.type}
-          onChange={handleChange}
+      <Paper elevation={3} sx={{ p: 3, mt: 3 }}>
+        <Grid
+          container
+          flexDirection="row"
+          mb={5}
+          justifyContent="space-between"
+          alignItems="center"
+          spacing={2}
         >
-          <FormControlLabel value="sender" control={<Radio />} label="Only Sender" />
-          <FormControlLabel value="receiver" control={<Radio />} label="Only Receiver" />
-          <FormControlLabel value="both" control={<Radio />} label="Sender or Receiver" />
-        </RadioGroup>
-      </Grid>
-      <Button variant="contained"  style={{ backgroundColor: "#f58220", color: "#fff" }} onClick={handleSaveCustomer}>
-        {mode === "edit" ? "Update" : "Add"} Customer
-      </Button>
+          <Typography variant="h4" fontWeight="bold" mt={0}>
+            Customer Info
+          </Typography>
+        </Grid>
+            <Box sx={{ display: "flex", gap: 2 }}>
+
+            <TextField
+              fullWidth
+              required
+              label="Customer Name"
+              name="contact_name"
+              value={form.contact_name}
+              onChange={handleChange}
+              error={!form.contact_name}
+              helperText={!form.contact_name ? "Customer name is required" : ""}
+            />
+
+            <TextField
+              fullWidth
+              required
+              label="Email"
+              name="email"
+              type="email"
+              value={form.email}
+              onChange={handleChange}
+              error={!form.email}
+              helperText={!form.email ? "Email is required" : ""}
+            />
+
+</Box>
+            <Box sx={{ display: "flex", gap: 2, mt: 2 }}> 
+            <FormControl fullWidth>
+              <InputLabel id="associated_by-label">Associated By</InputLabel>
+              <Select
+label="Associated By"
+                labelId="associated_by-label"
+                name="associated_by"
+                value={form.associated_by}
+                onChange={handleChange}
+              >
+                {users.map((u) => (
+                  <MenuItem key={u.id} value={u.id}>
+                    {u.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+  
+ 
 
 
-      {/* Contacts */}
-
-      <CardContent sx={{ mt: 3, p: 0 }}>
-        <h2 className="text-xl font-bold mb-4">Contacts</h2>
-        {contacts.map((contact, index) => (
-          <Paper
-            key={contact.id}
-            sx={{ pb: 2, mb: 2, display: "flex", alignItems: "center" }}
-            elevation={2}
-          >
-            <Grid container spacing={2} alignItems="center">
-              <Grid item xs={12} sm={3}>
-                <TextField
-                  fullWidth
-                  label="Name"
-                  value={contact.name || ""}
-                  onChange={(e) =>
-                    setContacts((prev) =>
-                      prev.map((c, i) =>
-                        i === index ? { ...c, name: e.target.value } : c
-                      )
-                    )
-                  }
-                />
-              </Grid>
-
-              <Grid item xs={12} sm={3}>
-                <TextField
-                  fullWidth
-                  label="Phone"
-                  value={contact.phone || ""}
-                  onChange={(e) =>
-                    setContacts((prev) =>
-                      prev.map((c, i) =>
-                        i === index ? { ...c, phone: e.target.value } : c
-                      )
-                    )
-                  }
-                />
-              </Grid>
-
-              <Grid item xs={12} sm={3}>
-                <TextField
-                  fullWidth
-                  label="Email"
-                  type="email"
-                  value={contact.email || ""}
-                  onChange={(e) =>
-                    setContacts((prev) =>
-                      prev.map((c, i) =>
-                        i === index ? { ...c, email: e.target.value } : c
-                      )
-                    )
-                  }
-                />
-              </Grid>
-
-
-
-              <Grid item xs={12} sm={1}>
-                <IconButton
-                  color="error"
-                  onClick={() => handleDeleteContact(contact.id, contact.isNew)}
-                >
-                  <DeleteIcon />
-                </IconButton>
-              </Grid>
-            </Grid>
-          </Paper>
-        ))}
-
-
-
-
-        <Grid container flexDirection={"row"} mb={5} justifyContent={"space-between"} alignItems={"center"} spacing={2}>
-       
-          <Button
-           style={{ backgroundColor: "#f58220", color: "#fff" }}
-            variant="contained"
-            color="primary"
-            className="m-2"
-            onClick={handleSaveContacts}
-          >
-            Save Contacts
-          </Button>
-             <Button
+            <TextField
+              fullWidth
+              label="Zoho Notes"
+              name="zoho_notes"
+              value={form.zoho_notes}
+              onChange={handleChange}
+            />
+ 
       
-            startIcon={<Add />}
-            onClick={handleAddContact}
-            variant="outlined"
-            color="primary"
-            className="m-2"
-          >
-            Add 
-          </Button>
-</Grid>
-      </CardContent>
-      {/* </Card> */}
-      {/* Documents */}
-      <Grid container flexDirection={"row"} mb={0} justifyContent={"space-between"} alignItems={"center"} spacing={2}>
-        <h2 className="text-xl font-bold mb-4">Documents</h2>
-        <Button startIcon={<Add />} className="m-2" variant="outlined" component="label" sx={{ mb: 0 }}>
-         Add
-          <input type="file" hidden onChange={handleAddDocument} />
-        </Button>
-      </Grid>
-      <div style={{ height: 250, width: "100%" }}>
-        <DataGrid
-          rows={documents}
-          getRowId={(row) => row.id}
-          columns={docColumns}
-          hideFooter
-        />
-      </div>
+</Box>
+            <Box sx={{ display: "flex", gap: 2, mt: 2 }}> 
 
+            <TextField
+              fullWidth
+              label="Address"
+              name="address"
+              value={form.address}
+              onChange={handleChange}
+            />
+
+            <TextField
+              fullWidth
+              label="System Notes"
+              name="system_notes"
+              value={form.system_notes}
+              onChange={handleChange}
+            />
+      
+</Box>
+        <Grid item xs={12}>
+          <RadioGroup row name="type" value={form.type} onChange={handleChange}>
+            <FormControlLabel value="sender" control={<Radio />} label="Only Sender" />
+            <FormControlLabel value="receiver" control={<Radio />} label="Only Receiver" />
+            <FormControlLabel value="both" control={<Radio />} label="Sender or Receiver" />
+          </RadioGroup>
+        </Grid>
+        <Button
+          variant="contained"
+          sx={{ bgcolor: "#f58220", color: "#fff", mt: 2 }}
+          onClick={handleSaveCustomer}
+        >
+          {mode === "edit" ? "Update" : "Add"} Customer
+        </Button>
+      </Paper>
+      {mode === "edit" && (
+        <Paper elevation={3} sx={{ p: 3, mt: 3 }}>
+          <CardContent sx={{ mt: 0, p: 0 }}>
+            <Typography variant="h5" fontWeight="bold" mb={2}>
+              Contacts
+            </Typography>
+            {contacts.map((contact, index) => (
+              <Paper
+                key={contact.id}
+                sx={{ p: 2, mb: 2, display: "flex", alignItems: "center" }}
+                elevation={2}
+              >
+                <Grid container spacing={2} alignItems="center">
+                  <Grid item xs={12} sm={3}>
+                    <TextField
+                      fullWidth
+                      label="Name"
+                      value={contact.name || ""}
+                      onChange={(e) =>
+                        setContacts((prev) =>
+                          prev.map((c, i) =>
+                            i === index ? { ...c, name: e.target.value } : c
+                          )
+                        )
+                      }
+                      error={!contact.name}
+                      helperText={!contact.name ? "Name is required" : ""}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={3}>
+                    <TextField
+                      fullWidth
+                      label="Phone"
+                      value={contact.phone || ""}
+                      onChange={(e) =>
+                        setContacts((prev) =>
+                          prev.map((c, i) =>
+                            i === index ? { ...c, phone: e.target.value } : c
+                          )
+                        )
+                      }
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={3}>
+                    <TextField
+                      fullWidth
+                      label="Email"
+                      type="email"
+                      value={contact.email || ""}
+                      onChange={(e) =>
+                        setContacts((prev) =>
+                          prev.map((c, i) =>
+                            i === index ? { ...c, email: e.target.value } : c
+                          )
+                        )
+                      }
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={1}>
+                    <IconButton
+                      color="error"
+                      onClick={() => handleDeleteContact(contact.id, contact.isNew)}
+                    >
+                      <DeleteIcon />
+                    </IconButton>
+                  </Grid>
+                </Grid>
+              </Paper>
+            ))}
+            <Grid
+              container
+              flexDirection="row"
+              mb={2}
+              justifyContent="space-between"
+              alignItems="center"
+              spacing={2}
+            >
+              <Button
+                variant="contained"
+                sx={{ bgcolor: "#f58220", color: "#fff" }}
+                onClick={handleSaveContacts}
+              >
+                Save Contacts
+              </Button>
+              <Button
+                startIcon={<AddIcon />}
+                onClick={handleAddContact}
+                variant="outlined"
+                color="primary"
+              >
+                Add Contact
+              </Button>
+            </Grid>
+          </CardContent>
+
+
+          <div style={{ height: 250, width: "100%" }}>
+            <DataGrid
+              rows={documents}
+              getRowId={(row) => row.document_id}
+              columns={docColumns}
+              hideFooter
+            />
+          </div>
+          <Grid
+            container
+            flexDirection="row"
+            mt={2}
+            justifyContent="space-between"
+            alignItems="center"
+            spacing={2}
+          >
+            {/* <Typography variant="h5" fontWeight="bold">
+              Documents
+            </Typography> */}
+            <Button
+              variant="contained"
+              sx={{ bgcolor: "#f58220", color: "#fff" }}
+              onClick={handleAddDocument}
+              disabled={!file || !(file instanceof File)}
+            >
+              Upload Document
+            </Button>
+            <Button
+              startIcon={<AddIcon />}
+              variant="outlined"
+              component="label"
+              color="primary"
+            >
+              Select File
+              <input
+                type="file"
+                name="file"
+                hidden
+                accept=".pdf,.doc,.docx,.jpg,.png"
+                onChange={handleFileChange}
+                ref={fileInputRef}
+              />
+            </Button>
+
+          </Grid>
+          
+        </Paper>
+      )}
     </Paper>
   );
 }

@@ -32,6 +32,7 @@ export default function CrudPage({ title, endpoint, columns, formFields, idKey =
   const navigate = useNavigate();
   const load = async () => {
     const { data } = await api.get(endpoint);
+    console.log("Data loaded from", endpoint, data);
     setRows(data);
   };
 
@@ -45,16 +46,17 @@ export default function CrudPage({ title, endpoint, columns, formFields, idKey =
 
 
   const startAdd = () => {
-    console.log("CustomerAdd", `/${title.toLowerCase()}/new`);
+    console.log("CustomerAdd", `/${title.toLowerCase()}/addadd`);
 
     // lowercase the title and make it plural route
-    const route = `/${title.toLowerCase()}/new`;
+    const route = `/${title.toLowerCase()}/add`;
     console.log("routeroute", route);
 
     navigate(route);
   }
   const startEdit = (row) => {
-    const route = `/${title.toLowerCase()}/${row[idKey]}/edit`;
+    console.log("CustomerEdit", row);
+    const route = `/${title.toLowerCase()}/${row.zoho_id}/edit`;
     console.log("Navigate to edit:", route);
     navigate(route);
   };
@@ -140,7 +142,7 @@ const gridColumns = [
             </IconButton>
           </Tooltip>
           <Tooltip title="Delete">
-            <IconButton color="error" size="small" onClick={() => handleDeleteClick(params.row[idKey])}>
+            <IconButton color="error" size="small" onClick={() => handleDeleteClick(params.row.zoho_id)}>
               <DeleteIcon fontSize="small" />
             </IconButton>
           </Tooltip>
@@ -159,7 +161,7 @@ const gridColumns = [
           style={{ backgroundColor: "#f58220", color: "#fff" }}
           variant="contained"
           startIcon={<AddIcon />}
-          onClick={() => navigate("/customers/add")}   // ✅ fix here
+          onClick={() => startAdd()}   // ✅ fix here
           sx={{ borderRadius: 2 }}
         >
           Add {title}
@@ -176,7 +178,7 @@ const gridColumns = [
 
         <DataGrid
           rows={rows}
-            getRowId={(row) => row.id} 
+            getRowId={(row) => row.zoho_id} 
           // getRowId={(row) => row[idKey]} // now this works
           columns={gridColumns}
           pageSize={10}

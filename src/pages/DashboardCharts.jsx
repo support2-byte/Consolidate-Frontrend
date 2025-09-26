@@ -3,142 +3,317 @@ import React from "react";
 import {
   LineChart, Line,
   AreaChart, Area,
-  PieChart, Pie, Cell,
   BarChart, Bar,
-  RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-  ResponsiveContainer
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from "recharts";
 import { useThemeContext } from "../context/ThemeContext";
 
 // === DATASETS ===
-const shipmentsData = [
-  { month: "Jan", shipments: 120 },
-  { month: "Feb", shipments: 150 },
-  { month: "Mar", shipments: 180 },
-  { month: "Apr", shipments: 140 },
-  { month: "May", shipments: 200 },
-  { month: "Jun", shipments: 250 },
+const salesSummary = [
+  { title: "$1K", subtitle: "Customers", change: "+15%", color: "#ff69b4" },
+  { title: "300", subtitle: "Vendors", change: "+10%", color: "#ffa500" },
+  { title: "5", subtitle: "Containers", change: "-2%", color: "#90ee90" },
+  { title: "8", subtitle: "Orders", change: "+6%", color: "#dda0dd" },
 ];
 
-const revenueCostData = [
-  { month: "Jan", revenue: 50000, cost: 30000 },
-  { month: "Feb", revenue: 60000, cost: 35000 },
-  { month: "Mar", revenue: 80000, cost: 45000 },
-  { month: "Apr", revenue: 70000, cost: 40000 },
+const visitorInsightsData = [
+  { month: "Jan", legal: 4000, new: 2400, unique: 2400 },
+  { month: "Feb", legal: 3000, new: 1398, unique: 2210 },
+  { month: "Mar", legal: 2000, new: 9800, unique: 2290 },
+  { month: "Apr", legal: 2780, new: 3908, unique: 2000 },
+  { month: "May", legal: 1890, new: 4800, unique: 2181 },
+  { month: "Jun", legal: 2390, new: 3800, unique: 2500 },
+  { month: "Jul", legal: 3490, new: 4300, unique: 2100 },
 ];
 
-const shipmentStatusData = [
-  { name: "Delivered", value: 400 },
-  { name: "In Transit", value: 250 },
-  { name: "Delayed", value: 50 },
-];
-const STATUS_COLORS = ["#42a5f5", "#0dcaf0", "rgb(42, 245, 152)"];
-
-const containerData = [
-  { month: "Jan", full: 300, empty: 50 },
-  { month: "Feb", full: 280, empty: 70 },
-  { month: "Mar", full: 320, empty: 40 },
-  { month: "Apr", full: 310, empty: 60 },
+const revenueData = [
+  { day: "Mon", online: 300, offline: 200 },
+  { day: "Tue", online: 400, offline: 250 },
+  { day: "Wed", online: 350, offline: 220 },
+  { day: "Thu", online: 450, offline: 300 },
+  { day: "Fri", online: 500, offline: 350 },
+  { day: "Sat", online: 600, offline: 400 },
+  { day: "Sun", online: 550, offline: 380 },
 ];
 
-const vendorData = [
-  { metric: "On-time Delivery", VendorA: 90, VendorB: 70 },
-  { metric: "Customer Satisfaction", VendorA: 85, VendorB: 65 },
-  { metric: "Cost Efficiency", VendorA: 75, VendorB: 80 },
-  { metric: "Coverage", VendorA: 95, VendorB: 60 },
+const satisfactionData = [
+  { month: "Jan", satisfaction: 80 },
+  { month: "Feb", satisfaction: 85 },
+  { month: "Mar", satisfaction: 90 },
+  { month: "Apr", satisfaction: 88 },
+  { month: "May", satisfaction: 92 },
+  { month: "Jun", satisfaction: 95 },
+];
+
+const targetRealityData = [
+  { month: "Jan", actual: 8500, target: 10000 },
+  { month: "Feb", actual: 11000, target: 12000 },
+  { month: "Mar", actual: 14500, target: 15000 },
+  { month: "Apr", actual: 12500, target: 13000 },
+  { month: "May", actual: 17500, target: 18000 },
+  { month: "Jun", actual: 15500, target: 16000 },
 ];
 
 export default function Dashboard() {
-  const { mode } = useThemeContext(); // ✅ Light/Dark mode
+  const { mode } = useThemeContext();
 
-  // Dynamic colors based on theme
-  const bg = mode === "dark" ? "#0d1117" : "#f9fafb";
-  const cardBg = mode === "dark" ? "#161b22" : "#ffffff";
-  const textColor = mode === "dark" ? "#ffffff" : "#111827";
-  const gridColor = mode === "dark" ? "#444" : "#ddd";
-  const axisColor = mode === "dark" ? "#ccc" : "#333";
+  const bg = mode === "dark" ? "#1a202c" : "#f7fafc";
+  const cardBg = mode === "dark" ? "rgba(26, 32, 44, 0.95)" : "rgba(255, 255, 255, 0.98)";
+  const textColor = mode === "dark" ? "#e2e8f0" : "#2d3748";
+  const gridColor = mode === "dark" ? "#4a5568" : "#edf2f7";
+  const axisColor = mode === "dark" ? "#a0aec0" : "#718096";
+  const borderColor = mode === "dark" ? "#2d3748" : "#e2e8f0";
+  const titleColor = mode === "dark" ? "#a0aec0" : "#4a5568";
+  const visitorColors = ["#9b59b6", "#e74c3c", "#27ae60"];
 
   return (
-    <div style={{ padding: "20px", background: bg, minHeight: "100vh", color: textColor }}>
-      <h1 style={{ marginBottom: "20px" }}>📊 Logistics Dashboard</h1>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "20px" }}>
+    <div style={{ 
+      padding: "20px", 
+      background: bg, 
+      minHeight: "100vh", 
+      color: textColor,
+      fontFamily: "'Roboto', sans-serif",
+      fontSize: "14px"
+    }}>
+      <h1 style={{ 
+        marginBottom: "20px", 
+        fontSize: "24px", 
+        fontWeight: 700, 
+        color: titleColor,
+        display: "flex", 
+        alignItems: "center",
+        textShadow: mode === "dark" ? "0 1px 2px rgba(0, 0, 0, 0.3)" : "0 1px 2px rgba(0, 0, 0, 0.1)"
+      }}>
+        <span style={{ marginRight: "8px" }}>📊</span> Sales Dashboard
+      </h1>
+      
+      {/* Top Row: Today's Sales & Visitor Insights */}
+      <div style={{ 
+        display: "grid", 
+        gridTemplateColumns: "2fr 1fr", 
+        gap: "20px", 
+        marginBottom: "20px" 
+      }}>
+        {/* Today's Sales Summary */}
+        <div style={{ 
+          background: cardBg, 
+          borderRadius: "8px", 
+          padding: "16px", 
+          border: `1px solid ${borderColor}`,
+          boxShadow: "0 2px 4px rgba(0, 0, 0, 0.05)",
+          backdropFilter: "blur(5px)"
+        }}>
+          <div style={{ 
+            display: "flex", 
+            justifyContent: "space-between", 
+            alignItems: "center", 
+            marginBottom: "12px" 
+          }}>
+            <h3 style={{ 
+              color: textColor, 
+              margin: 0, 
+              fontSize: "16px", 
+              fontWeight: 600 
+            }}>Today's Sales</h3>
+            <button style={{ 
+              background: "transparent", 
+              border: `1px solid ${borderColor}`, 
+              color: textColor, 
+              padding: "6px 12px", 
+              borderRadius: "4px",
+              cursor: "pointer",
+              fontSize: "12px",
+              transition: "background 0.3s"
+            }}
+            onMouseOver={(e) => e.target.style.backgroundColor = mode === "dark" ? "#2d3748" : "#edf2f7"}
+            onMouseOut={(e) => e.target.style.backgroundColor = "transparent"}
+            >Export</button>
+          </div>
+          
+          <div style={{ 
+            display: "grid", 
+            gridTemplateColumns: "repeat(4, 1fr)", 
+            gap: "12px" 
+          }}>
+            {salesSummary.map((item, index) => (
+              <div key={index} style={{ 
+                background: mode === "dark" ? "rgba(255, 255, 255, 0.05)" : item.color + "20",
+                borderRadius: "6px", 
+                padding: "12px", 
+               height:160,
+                border: `1px solid ${item.color}40`,
+                transition: "transform 0.2s"
+              }}
+              onMouseOver={(e) => e.target.style.transform = "scale(1.02)"}
+              onMouseOut={(e) => e.target.style.transform = "scale(1)"}
+              >
+                <div style={{ 
+                  fontSize: "18px", 
+                  fontWeight: 600, 
+                  color: item.color, 
+                  marginBottom: "4px" 
+                }}>
+                  {item.title}
+                </div>
+                <div style={{ 
+           fontSize: "18px", 
+                  fontWeight: 600,
+                  color: axisColor, 
+                  marginBottom: "4px" 
+                }}>
+                  {item.subtitle}
+                </div>
+                <div style={{ 
+                  fontSize: "12px", 
+                  color: item.change.startsWith("+") ? "#27ae60" : "#e74c3c" 
+                }}>
+                  {item.change} from yesterday
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
 
-        {/* 1️⃣ Monthly Shipments */}
-        <div style={{ background: cardBg, borderRadius: "10px", padding: "15px" }}>
-          <h3 style={{ color: textColor }}>Monthly Shipments</h3>
-          <ResponsiveContainer width="100%" height={250}>
-            <LineChart data={shipmentsData}>
+        {/* Visitor Insights */}
+        <div style={{ 
+          background: cardBg, 
+          borderRadius: "8px", 
+          padding: "16px", 
+          border: `1px solid ${borderColor}`,
+          boxShadow: "0 2px 4px rgba(0, 0, 0, 0.05)",
+          backdropFilter: "blur(5px)"
+        }}>
+          <h3 style={{ 
+            color: textColor, 
+            margin: "0 0 12px 0", 
+            fontSize: "16px", 
+            fontWeight: 600 
+          }}>Vis Insights</h3>
+          <ResponsiveContainer width="100%" height={200}>
+            <LineChart data={visitorInsightsData}>
               <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
-              <XAxis dataKey="month" stroke={axisColor} />
-              <YAxis stroke={axisColor} />
-              <Tooltip contentStyle={{ background: cardBg, color: textColor }} />
-              <Legend />
-              <Line type="monotone" dataKey="shipments" stroke="#4dabf7" strokeWidth={3} />
+              <XAxis dataKey="month" stroke={axisColor} fontSize="12px" />
+              <YAxis stroke={axisColor} fontSize="12px" />
+              <Tooltip contentStyle={{ background: cardBg, color: textColor, border: `1px solid ${borderColor}` }} />
+              <Legend wrapperStyle={{ fontSize: "12px", color: textColor, marginTop: "8px" }} />
+              <Line type="monotone" dataKey="legal" stroke={visitorColors[0]} strokeWidth={2} />
+              <Line type="monotone" dataKey="new" stroke={visitorColors[1]} strokeWidth={2} />
+              <Line type="monotone" dataKey="unique" stroke={visitorColors[2]} strokeWidth={2} />
             </LineChart>
           </ResponsiveContainer>
         </div>
+      </div>
 
-        {/* 2️⃣ Revenue vs Cost */}
-        <div style={{ background: cardBg, borderRadius: "10px", padding: "15px" }}>
-          <h3 style={{ color: textColor }}>Revenue vs Cost</h3>
-          <ResponsiveContainer width="100%" height={250}>
-            <AreaChart data={revenueCostData}>
+      {/* Bottom Row: Total Revenue, Customer Satisfaction, Target vs Reality */}
+      <div style={{ 
+        display: "grid", 
+        gridTemplateColumns: "1fr 1fr 1fr", 
+        gap: "20px" 
+      }}>
+        {/* Total Revenue */}
+        <div style={{ 
+          background: cardBg, 
+          borderRadius: "8px", 
+          padding: "16px", 
+          border: `1px solid ${borderColor}`,
+          boxShadow: "0 2px 4px rgba(0, 0, 0, 0.05)",
+          backdropFilter: "blur(5px)"
+        }}>
+          <h3 style={{ 
+            color: textColor, 
+            margin: "0 0 12px 0", 
+            fontSize: "16px", 
+            fontWeight: 600 
+          }}>Total Revenue</h3>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={revenueData}>
               <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
-              <XAxis dataKey="month" stroke={axisColor} />
-              <YAxis stroke={axisColor} />
-              <Tooltip contentStyle={{ background: cardBg, color: textColor }} />
-              <Area type="monotone" dataKey="revenue" stackId="1" stroke="#0dcaf0" fill="#0dcaf0" />
-              <Area type="monotone" dataKey="cost" stackId="1" stroke="#d32f2f" fill="rgb(42, 245, 152)" />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-
-        {/* 3️⃣ Shipment Status */}
-        <div style={{ background: cardBg, borderRadius: "10px", padding: "15px" }}>
-          <h3 style={{ color: textColor }}>Shipment Status</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <PieChart>
-              <Pie data={shipmentStatusData} cx="50%" cy="50%" outerRadius={90} fill="#8884d8" dataKey="value" label>
-                {shipmentStatusData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={STATUS_COLORS[index]} />
-                ))}
-              </Pie>
-              <Tooltip contentStyle={{ background: cardBg, color: textColor }} />
-              <Legend />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
-
-        {/* 4️⃣ Container Utilization */}
-        <div style={{ background: cardBg, borderRadius: "10px", padding: "15px" }}>
-          <h3 style={{ color: textColor }}>Container Utilization</h3>
-          <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={containerData}>
-              <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
-              <XAxis dataKey="month" stroke={axisColor} />
-              <YAxis stroke={axisColor} />
-              <Tooltip contentStyle={{ background: cardBg, color: textColor }} />
-              <Legend />
-              <Bar dataKey="full" fill="#42a5f5" />
-              <Bar dataKey="empty" fill="#9e9e9e" />
+              <XAxis dataKey="day" stroke={axisColor} fontSize="12px" />
+              <YAxis stroke={axisColor} fontSize="12px" />
+              <Tooltip contentStyle={{ background: cardBg, color: textColor, border: `1px solid ${borderColor}` }} />
+              <Legend wrapperStyle={{ fontSize: "12px", color: textColor, marginTop: "8px" }} />
+              <Bar dataKey="online" fill="#3498db" barSize={20} />
+              <Bar dataKey="offline" fill="#2ecc71" barSize={20} />
             </BarChart>
           </ResponsiveContainer>
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: "12px" }}>
+            <div>
+              <div style={{ fontSize: "12px", color: axisColor }}>Online Sales</div>
+              <div style={{ fontSize: "14px", fontWeight: 600, color: "#3498db" }}>$3,204</div>
+            </div>
+            <div>
+              <div style={{ fontSize: "12px", color: axisColor }}>Offline Sales</div>
+              <div style={{ fontSize: "14px", fontWeight: 600, color: "#2ecc71" }}>$4,504</div>
+            </div>
+          </div>
         </div>
 
-        {/* 5️⃣ Vendor Performance */}
-        <div style={{ gridColumn: "span 2", background: cardBg, borderRadius: "10px", padding: "15px" }}>
-          <h3 style={{ color: textColor }}>Vendor Performance</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <RadarChart outerRadius={100} data={vendorData}>
-              <PolarGrid stroke={gridColor} />
-              <PolarAngleAxis dataKey="metric" stroke={axisColor} />
-              <PolarRadiusAxis stroke={axisColor} />
-              <Radar name="Vendor A" dataKey="VendorA" stroke="#2e7d32" fill="#66bb6a" fillOpacity={0.6} />
-              <Radar name="Vendor B" dataKey="VendorB" stroke="#0288d1" fill="#4fc3f7" fillOpacity={0.6} />
-              <Legend />
-            </RadarChart>
+        {/* Customer Satisfaction */}
+        <div style={{ 
+          background: cardBg, 
+          borderRadius: "8px", 
+          padding: "16px", 
+          border: `1px solid ${borderColor}`,
+          boxShadow: "0 2px 4px rgba(0, 0, 0, 0.05)",
+          backdropFilter: "blur(5px)"
+        }}>
+          <h3 style={{ 
+            color: textColor, 
+            margin: "0 0 12px 0", 
+            fontSize: "16px", 
+            fontWeight: 600 
+          }}>Customer Satisfaction</h3>
+          <ResponsiveContainer width="100%" height={200}>
+            <AreaChart data={satisfactionData}>
+              <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
+              <XAxis dataKey="month" stroke={axisColor} fontSize="12px" />
+              <YAxis stroke={axisColor} fontSize="12px" />
+              <Tooltip contentStyle={{ background: cardBg, color: textColor, border: `1px solid ${borderColor}` }} />
+              <Area type="monotone" dataKey="satisfaction" stroke="#3498db" fill="#3498db33" />
+            </AreaChart>
           </ResponsiveContainer>
+          <div style={{ textAlign: "center", marginTop: "12px" }}>
+            <div style={{ fontSize: "12px", color: axisColor }}>Last Month</div>
+            <div style={{ fontSize: "20px", fontWeight: 600, color: "#3498db" }}>93%</div>
+          </div>
+        </div>
+
+        {/* Target vs Reality */}
+        <div style={{ 
+          background: cardBg, 
+          borderRadius: "8px", 
+          padding: "16px", 
+          border: `1px solid ${borderColor}`,
+          boxShadow: "0 2px 4px rgba(0, 0, 0, 0.05)",
+          backdropFilter: "blur(5px)"
+        }}>
+          <h3 style={{ 
+            color: textColor, 
+            margin: "0 0 12px 0", 
+            fontSize: "16px", 
+            fontWeight: 600 
+          }}>Target vs Reality</h3>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={targetRealityData}>
+              <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
+              <XAxis dataKey="month" stroke={axisColor} fontSize="12px" />
+              <YAxis stroke={axisColor} fontSize="12px" />
+              <Tooltip contentStyle={{ background: cardBg, color: textColor, border: `1px solid ${borderColor}` }} />
+              <Legend wrapperStyle={{ fontSize: "12px", color: textColor, marginTop: "8px" }} />
+              <Bar dataKey="actual" fill="#f1c40f" barSize={20} />
+              <Bar dataKey="target" fill="#e67e22" barSize={20} />
+            </BarChart>
+          </ResponsiveContainer>
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: "12px" }}>
+            <div>
+              <div style={{ fontSize: "12px", color: axisColor }}>Actual Sales</div>
+              <div style={{ fontSize: "14px", fontWeight: 600, color: "#f1c40f" }}>$8,823</div>
+            </div>
+            <div>
+              <div style={{ fontSize: "12px", color: axisColor }}>Target Sales</div>
+              <div style={{ fontSize: "14px", fontWeight: 600, color: "#e67e22" }}>$10,222</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

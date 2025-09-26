@@ -3,6 +3,7 @@ import {
   AppBar, Toolbar, Typography, Drawer, List, ListItemButton,
   ListItemIcon, ListItemText, CssBaseline, Box, IconButton, Divider, Container
 } from "@mui/material";
+
 import PeopleIcon from "@mui/icons-material/People";
 import StoreIcon from "@mui/icons-material/Store";
 import InventoryIcon from "@mui/icons-material/Inventory";
@@ -14,6 +15,12 @@ import Brightness7Icon from "@mui/icons-material/Brightness7";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import LogoutIcon from "@mui/icons-material/Logout";
+import DashboardIcon from "@mui/icons-material/Dashboard";
+import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
+import TrackChangesIcon from "@mui/icons-material/TrackChanges";
+import WarehouseIcon from "@mui/icons-material/Warehouse";
+import ReceiptIcon from "@mui/icons-material/Receipt";
+import SettingsIcon from "@mui/icons-material/Settings";
 import { useState } from "react";
 import { useThemeContext } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
@@ -29,10 +36,10 @@ export default function DashboardLayout() {
   const { user, logout } = useAuth();
 
   const tabs = [
-    { label: "Dashboard", path: "/", icon: <StoreIcon /> },
-    { label: "Customers", path: "/customers", icon: <PeopleIcon /> },
-    // { label: "Vendors", path: "/vendors", icon: <StoreIcon /> },
-    // { label: "Containers", path: "/containers", icon: <InventoryIcon /> },
+    { label: "Dashboard", path: "/", icon: <DashboardIcon /> },
+    { label: "Customers", path: "/customers", icon: <TrackChangesIcon /> },
+    { label: "Vendors", path: "/vendors", icon: <PeopleIcon /> },
+    { label: "Containers", path: "/containers", icon: <LocalShippingIcon /> },
     // { label: "Orders", path: "/orders", icon: <ShoppingCartIcon /> },
     // { label: "Consignments", path: "/consignments", icon: <LocalShippingIcon /> },
   ];
@@ -64,11 +71,21 @@ export default function DashboardLayout() {
             component={Link}
             to={tab.path}
             selected={location.pathname === tab.path}
-            sx={{
+          sx={{
               justifyContent: collapsed ? "center" : "flex-start",
               "&.Mui-selected": {
-                backgroundColor:
-                  mode === "dark" ? "rgba(99, 102, 241, 0.2)" : "rgba(99, 102, 241, 0.1)",
+                backgroundColor: "#f58220",
+                color: "#ff4d4d",
+                margin:"3px 10px" ,
+                paddingLeft:8,
+                borderRadius:15
+              },
+              "&:hover": {
+                backgroundColor: "#ffebee",
+                 color: "#ff4d4d",
+                // margin:"0px 10px" ,
+                // paddingLeft:8,
+                // borderRadius:15
               },
             }}
           >
