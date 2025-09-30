@@ -76,8 +76,8 @@ export default function DashboardLayout() {
               "&.Mui-selected": {
                 backgroundColor: "#f58220",
                 color: "#ff4d4d",
-                margin:"3px 10px" ,
-                paddingLeft:8,
+                margin:"3px 5px" ,
+                // paddingLeft:8,
                 borderRadius:15
               },
               "&:hover": {
