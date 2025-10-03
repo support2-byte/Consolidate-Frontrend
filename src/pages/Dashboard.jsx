@@ -40,7 +40,7 @@ export default function DashboardLayout() {
     { label: "Customers", path: "/customers", icon: <TrackChangesIcon /> },
     { label: "Vendors", path: "/vendors", icon: <PeopleIcon /> },
     { label: "Containers", path: "/containers", icon: <LocalShippingIcon /> },
-    // { label: "Orders", path: "/orders", icon: <ShoppingCartIcon /> },
+    { label: "Orders", path: "/orders", icon: <ShoppingCartIcon /> },
     // { label: "Consignments", path: "/consignments", icon: <LocalShippingIcon /> },
   ];
 

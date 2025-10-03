@@ -300,7 +300,8 @@ export default function ContainersTabs() {
     const fetchContainers = async () => {
       try {
         const res = await api.get("/api/containers");
-        setContainers(res.data);
+        console.log('ressss',res)
+        setContainers(res.data.data);
       } catch (err) {
         console.error("❌ Error fetching containers:", err);
       }

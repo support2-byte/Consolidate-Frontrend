@@ -7,12 +7,13 @@ import Customers from "./pages/Customers";
 import Vendors from "./pages/Vendors/Vendors";
 import Containers from "./pages/Containers/Containers";
 import AddContainers from "./pages/Containers/AddContainer";
-import Orders from "./pages/Orders";
+import Orders from "./pages/Orders/Orders";
 import Consignments from "./pages/Consignments";
 import AddCustomer from "./pages/AddCustomer";
 import AddVendor from "./pages/AddVendor";  
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
+import OrderForm from "./pages/Orders/AddOrder";
 function ProtectedRoute() {
   const { user, loading } = useAuth();
   if (loading) return <div>Loading...</div>; // while checking session
@@ -39,12 +40,15 @@ export default function App() {
             <Route index element={<DashboardCharts />} />
             <Route path="customers" element={<Customers />} />
             <Route path="vendors" element={<Vendors />} />
+              <Route path="orders" element={<Orders />} />
+               <Route path="/orders/add" element={<OrderForm mode="add" />} />
             <Route path="/customers/add" element={<AddCustomer mode="add" />} />
             <Route path="/customers/:id/edit" element={<AddCustomer mode="edit" />} />
             <Route path="/vendors/add" element={<AddVendor mode="add" />} />
             <Route path="/vendors/:id/edit" element={<AddVendor mode="edit" />} />
-              <Route path="/containers" element={<Containers mode="edit" />} />
-            <Route path="/containers/add" element={<AddContainers mode="edit" />} />
+              {/* <Route path="/containers" element={<Containers mode="edit" />} /> */}
+            <Route path="/containers" element={<AddContainers />} />
+             {/* <Route path="/containers/add" element={<AddContainers />} /> */}
           </Route>
         </Route>
       </Routes>

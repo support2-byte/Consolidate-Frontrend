@@ -10,6 +10,7 @@ import Customers from "./pages/Customers/Customers";
 import ContainerForm from "./pages/Containers/AddContainer";
 import ProtectedRoute from "./routes/Protected";
 import Vendors from "./pages/Vendors/Vendors";
+import Orders from "./pages/Orders/Orders";
 import { ThemeProvider as CustomThemeProvider, useThemeContext } from "./context/ThemeContext";
 import { ThemeProvider as MuiThemeProvider, createTheme } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
@@ -17,6 +18,7 @@ import { AuthProvider } from "./context/AuthContext";
 import CustomerAdd from "./pages/Customers/AddCustomer";
 import VendorsForm from "./pages/Vendors/AddVendors";
 import Containers from "./pages/Containers/Containers";
+import OrderForm from "./pages/Orders/AddOrder";
 // ✅ Theming wrapper
 function ThemedApp({ children }) {
   const { mode } = useThemeContext();
@@ -55,9 +57,11 @@ const router = createBrowserRouter([
       { index: true, element: <DashboardCharts /> },
       { path: "customers", element: <Customers /> },
       { path: "vendors", element: <Vendors /> },
-      { path: "containers", element: <Containers /> },
-      { path: "/containers/add", element: <ContainerForm /> },
-      // { path: "orders", element: <Orders /> },
+      // { path: "containers", element: <Containers /> },
+      { path: "/containers", element: <ContainerForm /> },
+      { path: "orders", element: <Orders /> },
+      { path: "/orders/add", element: <OrderForm mode='add' /> },
+ { path: "/orders/:id/edit", element: <OrderForm mode='edit' /> },
       // { path: "consignments", element: <Consignments /> },
       { path: "/customers/add", element: <CustomerAdd mode="add" /> },
       { path: "/customers/:id/edit", element: <CustomerAdd mode="edit" /> },
