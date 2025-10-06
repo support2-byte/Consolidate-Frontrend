@@ -23,13 +23,22 @@ import {
     CircularProgress,
     Snackbar,
     Alert,
+    Dialog,
+    DialogTitle,
+    DialogContent,
+    DialogActions,
+    Grid,
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import AddIcon from "@mui/icons-material/Add";
+import DownloadIcon from "@mui/icons-material/Download";
+import CloseIcon from "@mui/icons-material/Close";
 import { useNavigate } from "react-router-dom";
+import OrderModalView from './OrderModalView'
 // import { ordersApi } from "../api"; // Adjust path as needed
 import { api } from "../../api";
+
 const OrdersList = () => {
     const navigate = useNavigate();
     const [orders, setOrders] = useState([]);
@@ -47,6 +56,12 @@ const OrdersList = () => {
         message: "",
         severity: "info",
     });
+    const [openModal, setOpenModal] = useState(false);
+
+    const [selectedOrder, setSelectedOrder] = useState(null);
+    const [modalLoading, setModalLoading] = useState(false);
+    const [modalError, setModalError] = useState(null);
+    const [exporting, setExporting] = useState(false);
 
     const fetchOrders = async () => {
         setLoading(true);
@@ -58,7 +73,7 @@ const OrdersList = () => {
                 includeContainer: true,
                 ...filters,
             };
-            const response = await api.get(`/api/orders`);
+            const response = await api.get(`/api/orders`, { params });
             setOrders(response.data.data || []);
             setTotal(response.data.total || 0);
         } catch (err) {
@@ -71,6 +86,122 @@ const OrdersList = () => {
             });
         } finally {
             setLoading(false);
+        }
+    };
+
+    const fetchOrderDetails = async (orderId) => {
+        setModalLoading(true);
+        setModalError(null);
+        try {
+            const response = await api.get(`/api/orders/${orderId}`);
+            setSelectedOrder(response.data);
+        } catch (err) {
+            console.error("Error fetching order details:", err);
+            setModalError(err.response?.data?.error || err.message || 'Failed to fetch order details');
+            setSnackbar({
+                open: true,
+                message: err.response?.data?.error || err.message || 'Failed to fetch order details',
+                severity: 'error',
+            });
+        } finally {
+            setModalLoading(false);
+        }
+    };
+
+    const exportOrders = async () => {
+        if (total === 0) {
+            setSnackbar({
+                open: true,
+                message: 'No orders to export',
+                severity: 'warning',
+            });
+            return;
+        }
+        setExporting(true);
+        try {
+            let allOrders = [];
+            let currentPage = 1;
+            const pageSize = 100;
+            let hasMore = true;
+            const exportFilters = { ...filters };
+
+            while (hasMore) {
+                const params = {
+                    page: currentPage,
+                    limit: pageSize,
+                    includeContainer: true,
+                    ...exportFilters,
+                };
+                const response = await api.get(`/api/orders`, { params });
+                const pageOrders = response.data.data || [];
+                allOrders = [...allOrders, ...pageOrders];
+                if (pageOrders.length < pageSize) {
+                    hasMore = false;
+                } else {
+                    currentPage++;
+                }
+            }
+
+            if (allOrders.length === 0) {
+                setSnackbar({
+                    open: true,
+                    message: 'No orders found to export',
+                    severity: 'warning',
+                });
+                return;
+            }
+
+            const headers = [
+                'Booking Ref',
+                'Status',
+                'Place of Loading',
+                'Final Destination',
+                'Sender',
+                'Receiver',
+                'Associated Container',
+                'Created At'
+            ];
+
+            const rows = allOrders.map((order) => [
+                order.booking_ref || '',
+                order.status || '',
+                order.place_of_loading || '',
+                order.final_destination || '',
+                order.sender_name || '',
+                order.receiver_name || '',
+                order.associated_container || '',
+                new Date(order.created_at).toLocaleDateString()
+            ]);
+
+            const csvContent = [headers, ...rows]
+                .map((row) => row.map((cell) => `"${cell}"`).join(','))
+                .join('\n');
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', `orders-${new Date().toISOString().split('T')[0]}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+
+            setSnackbar({
+                open: true,
+                message: `Successfully exported ${allOrders.length} orders`,
+                severity: 'success',
+            });
+        } catch (err) {
+            console.error('Error exporting orders:', err);
+            setSnackbar({
+                open: true,
+                message: err.response?.data?.error || err.message || 'Failed to export orders',
+                severity: 'error',
+            });
+        } finally {
+            setExporting(false);
         }
     };
 
@@ -94,13 +225,18 @@ const OrdersList = () => {
     };
 
     const handleEdit = (orderId) => {
-        navigate(`/orders/${orderId}/edit/`,{
-            orderId:orderId
-        });
+        navigate(`/orders/${orderId}/edit/`, { state: { orderId } });
     };
 
     const handleView = (orderId) => {
-        navigate(`/orders/view/${orderId}`);
+        fetchOrderDetails(orderId);
+        setOpenModal(true);
+    };
+
+    const handleCloseModal = () => {
+        setOpenModal(false);
+        setSelectedOrder(null);
+        setModalError(null);
     };
 
     const handleSnackbarClose = () => {
@@ -138,19 +274,36 @@ const OrdersList = () => {
                     <Typography variant="h4" fontWeight="bold" color="#f58220">
                         Orders List
                     </Typography>
-                    <Button
-                        variant="contained"
-                        startIcon={<AddIcon />}
-                        onClick={() => navigate("/orders/add")}
-                        sx={{
-                            borderRadius: 2,
-                            backgroundColor: "#0d6c6a",
-                            color: "#fff",
-                            "&:hover": { backgroundColor: "#0d6c6a" },
-                        }}
-                    >
-                        New Order
-                    </Button>
+                    <Stack direction="row" spacing={2}>
+                        <Button
+                            variant="outlined"
+                            startIcon={<DownloadIcon />}
+                            onClick={exportOrders}
+                            disabled={loading || exporting || total === 0}
+                            sx={{
+                                borderRadius: 2,
+                                borderColor: "#0d6c6a",
+                                color: "#0d6c6a",
+                                "&:hover": { borderColor: "#0d6c6a", backgroundColor: "#0d6c6a", color: "#fff" },
+                            }}
+                        >
+                            {exporting ? <CircularProgress size={20} color="inherit" /> : null}
+                            Export Orders
+                        </Button>
+                        <Button
+                            variant="contained"
+                            startIcon={<AddIcon />}
+                            onClick={() => navigate("/orders/add")}
+                            sx={{
+                                borderRadius: 2,
+                                backgroundColor: "#0d6c6a",
+                                color: "#fff",
+                                "&:hover": { backgroundColor: "#0d6c6a" },
+                            }}
+                        >
+                            New Order
+                        </Button>
+                    </Stack>
                 </Stack>
 
                 {/* Filters */}
@@ -219,10 +372,10 @@ const OrdersList = () => {
                                     <TableCell>{new Date(order.created_at).toLocaleDateString()}</TableCell>
                                     <TableCell>
                                         <Stack direction="row" spacing={1}>
-                                            <IconButton size="small">
+                                            <IconButton size="small" onClick={() => handleView(order.id)} title="View Details">
                                                 <VisibilityIcon />
                                             </IconButton>
-                                            <IconButton  size="small">
+                                            <IconButton size="small" onClick={() => handleEdit(order.id)} title="Edit">
                                                 <EditIcon />
                                             </IconButton>
                                         </Stack>
@@ -243,6 +396,14 @@ const OrdersList = () => {
                     onRowsPerPageChange={handleChangeRowsPerPage}
                 />
             </Paper>
+
+         <OrderModalView 
+    openModal={openModal} 
+    handleCloseModal={handleCloseModal} 
+    selectedOrder={selectedOrder} 
+    modalLoading={modalLoading} 
+    modalError={modalError} 
+/>
 
             {/* Snackbar for notifications */}
             <Snackbar

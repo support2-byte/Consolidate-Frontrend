@@ -10,7 +10,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import HistoryIcon from '@mui/icons-material/History';
 import CloseIcon from '@mui/icons-material/Close';
 import { api } from '../../api'; // Assuming api is configured with baseURL
-
+import SaveIcon from '@mui/icons-material/Save'
 const modalStyle = {
   position: 'absolute',
   top: '50%',
@@ -545,9 +545,9 @@ const ContainerModule = () => {
 
   console.log('Containers state:', containers);
   return (
-    <Box sx={{ p: { xs: 2, md: 2 }, bgcolor: '#f5f5f5', minHeight: '100vh' }}>
+    <Box sx={{ p: { xs: 2, md: 3 }, bgcolor: '#f5f5f5', height: '100vh', display: 'flex', flexDirection: 'column' }}>
       {/* Container Master Screen */}
-      <Box sx={{ maxWidth: 1200, mx: 'auto' }}>
+      <Box sx={{ maxWidth: 1200, mx: 'auto', flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
           <Typography
             variant="h4"
@@ -762,39 +762,57 @@ const ContainerModule = () => {
           </Box>
         </Box>
 
-        {/* Container Table */}
-        <TableContainer component={Paper} sx={{ boxShadow: 3, borderRadius: 2 }}>
-          <Table stickyHeader>
-            <TableHead>
-              <TableRow><TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>Container No.</TableCell><TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>Size</TableCell><TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>Type</TableCell><TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>Ownership</TableCell><TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>Current Job</TableCell><TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>Status</TableCell><TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>Location</TableCell><TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>Last Used</TableCell><TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>Actions</TableCell></TableRow>
-            </TableHead>
-            <TableBody>
-              {loadingContainers ? (<TableRow><TableCell colSpan={9} align="center" sx={{ py: 4 }}><CircularProgress size={24} /><Typography variant="body2" sx={{ ml: 1 }}>Loading containers...</Typography></TableCell></TableRow>) : error ? 
-              (<TableRow><TableCell colSpan={9} align="center" sx={{ py: 4, color: 'error.main' }}><Typography variant="body2">{error}</Typography><Button onClick={fetchContainers} sx={{ mt: 1 }}>Retry</Button></TableCell></TableRow>) 
-              : containers.length === 0 ? (<TableRow><TableCell colSpan={9} align="center" sx={{ py: 4 }}><Typography variant="body2">No containers found</Typography></TableCell></TableRow>) : (containers.map((container, index) => { const isEditing = editingId === container.cid; const currentStatus = isEditing ? tempData.status
-               : (container.derived_status || 'N/A'); const currentLocation = isEditing ? tempData.location : (container.location || 'N/A'); const statusColor = statuses.find(s => s.value === currentStatus)?.color || 'default'; return (<TableRow key={container.cid || index} sx={{ bgcolor: index % 2 === 0 ? '#f9f9f9' : 'white', '&:hover': { bgcolor: '#e3f2fd' } }}><TableCell sx={{ cursor: 'pointer', color: '#0d6c6a', '&:hover': { textDecoration: 'underline' } }} onClick={() => openHistory(container.cid)}>{container.container_number || 'N/A'}</TableCell><TableCell>{container.container_size || 'N/A'}</TableCell><TableCell>{container.container_type || 'N/A'}</TableCell>
-               <TableCell><Chip label={container.owner_type === 'soc' ? 'Own' : 'Hired'} color={container.owner_type === 'soc' ? 'success' : 'info'} size="small" sx={{ fontWeight: 'bold' }} /></TableCell><TableCell>{container.associated_booking_ref || '–'}</TableCell><TableCell>{isEditing ? (<FormControl size="small" sx={{ minWidth: 120 }}><Select value={currentStatus} onChange={(e) => setTempData({ ...tempData, status: e.target.value })} displayEmpty>{statuses.map((status) => (<MenuItem key={status.value} value={status.value}>{status.label}</MenuItem>))}</Select></FormControl>) : (<Chip label={currentStatus} color={statusColor} size="small" sx={{ fontWeight: 'bold' }} />)}</TableCell><TableCell>{isEditing ? (<FormControl size="small" sx={{ minWidth: 120 }}><Select value={currentLocation} onChange={(e) => setTempData({ ...tempData, location: e.target.value })} displayEmpty><MenuItem value="">Select Location</MenuItem>{locations.map((loc) => (<MenuItem key={loc.value} value={loc.value}>{loc.label}</MenuItem>))}</Select></FormControl>) : (currentLocation)}</TableCell><TableCell>{container.created_time ? new Date(container.created_time).toLocaleDateString() : '–'}</TableCell><TableCell>{isEditing ? (<Box sx={{ display: 'flex', gap: 1 }}><Tooltip title="Save"><IconButton onClick={() => handleQuickSave(container.cid)} disabled={loadingUpdate} size="small">{loadingUpdate ? <CircularProgress size={16} /> : <EditIcon />}</IconButton></Tooltip><Tooltip title="Cancel"><IconButton onClick={handleQuickCancel} size="small"><CloseIcon /></IconButton></Tooltip></Box>) : (<><Tooltip title="Quick Update Status & Location"><IconButton onClick={() => handleQuickEdit(container)} sx={{ color: '#0d6c6a' }} size="small"><EditIcon fontSize="small" /></IconButton></Tooltip><Tooltip title="View History"><IconButton onClick={() => openHistory(container.cid)} sx={{ color: '#0d6c6a' }} disabled={loadingHistory}>{loadingHistory ? <CircularProgress size={16} /> : <HistoryIcon />}</IconButton></Tooltip>
-               <Tooltip title={container.availability !== 'Cleared' ? 'Container must be Cleared to mark Returned' : 'Mark as Returned'}><span><Button disabled={container.availability !== 'Cleared' || loadingReturned[container.cid]} onClick={() => markReturned(container.cid)} size="small" startIcon={loadingReturned[container.cid] ? <CircularProgress size={16} /> : null} sx={{ textTransform: 'none', color: '#0d6c6a' }}>Mark Returned</Button></span></Tooltip></>)}</TableCell></TableRow>); }))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+        {/* Scrollable Table Area */}
+        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <TableContainer component={Paper} sx={{ flex: 1, overflow: 'auto', boxShadow: 3, borderRadius: 2 }}>
+            <Table stickyHeader>
+              <TableHead>
+                <TableRow><TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>Container No.</TableCell><TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>Size</TableCell><TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>Type</TableCell><TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>Ownership</TableCell><TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>Current Job</TableCell><TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>Status</TableCell><TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>Location</TableCell><TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>Last Used</TableCell><TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>Actions</TableCell></TableRow>
+              </TableHead>
+              <TableBody>
+                {loadingContainers ? (<TableRow><TableCell colSpan={9} align="center" sx={{ py: 4 }}><CircularProgress size={24} /><Typography variant="body2" sx={{ ml: 1 }}>Loading containers...</Typography></TableCell></TableRow>) : error ? 
+                (<TableRow><TableCell colSpan={9} align="center" sx={{ py: 4, color: 'error.main' }}><Typography variant="body2">{error}</Typography><Button onClick={fetchContainers} sx={{ mt: 1 }}>Retry</Button></TableCell></TableRow>) 
+                : containers.length === 0 ? (<TableRow><TableCell colSpan={9} align="center" sx={{ py: 4 }}><Typography variant="body2">No containers found</Typography></TableCell></TableRow>) : (containers.map((container, index) => { const isEditing = editingId === container.cid; const currentStatus = isEditing ? tempData.status
+                 : (container.derived_status || 'N/A'); const currentLocation = isEditing ? tempData.location : (container.location || 'N/A'); const statusColor = statuses.find(s => s.value === currentStatus)?.color || 'default'; return (<TableRow key={container.cid || index} sx={{ bgcolor: index % 2 === 0 ? '#f9f9f9' : 'white', '&:hover': { bgcolor: '#e3f2fd' } }}><TableCell sx={{ cursor: 'pointer', color: '#0d6c6a', '&:hover': { textDecoration: 'underline' } }} onClick={() => openHistory(container.cid)}>{container.container_number || 'N/A'}</TableCell>
+                 <TableCell>{container.container_size || 'N/A'}</TableCell>
+                 <TableCell>{container.container_type || 'N/A'}</TableCell>
+                 <TableCell><Chip label={container.owner_type === 'soc' ? 'Own' : 'Hired'} 
+                 color={container.owner_type === 'soc' ? 'success' : 'info'} size="small" sx={{ fontWeight: 'bold' }} /></TableCell>
+                 <TableCell>{container.associated_booking_ref || '–'}</TableCell><TableCell>{isEditing ? 
+                 (<FormControl size="small" sx={{ minWidth: 120 }}><Select value={currentStatus} onChange={(e) => setTempData({ ...tempData, status: e.target.value })} displayEmpty>{statuses.map((status) => (<MenuItem key={status.value} value={status.value}>{status.label}</MenuItem>))}</Select></FormControl>) : 
+                 (<Chip label={currentStatus} color={statusColor} size="small" sx={{ fontWeight: 'bold' }} />)}</TableCell><TableCell>{isEditing ? (<FormControl size="small" sx={{ minWidth: 120 }}><Select value={currentLocation} onChange={(e) => setTempData({ ...tempData, location: e.target.value })} displayEmpty>
+                  <MenuItem value="">Select Location</MenuItem>{locations.map((loc) => (<MenuItem key={loc.value} value={loc.value}>{loc.label}</MenuItem>))}</Select></FormControl>) : (currentLocation)}</TableCell><TableCell>{container.created_time ? new Date(container.created_time).toLocaleDateString() : '–'}</TableCell><TableCell>{isEditing ? (<Box sx={{ display: 'flex', gap: 1 }}><Tooltip title="Save"><IconButton onClick={() => handleQuickSave(container.cid)} disabled={loadingUpdate} size="small">{loadingUpdate ? <CircularProgress size={16} /> :
+                   <SaveIcon />}
+                 </IconButton></Tooltip><Tooltip title="Cancel">
+                  <IconButton onClick={handleQuickCancel} size="small"><CloseIcon /></IconButton></Tooltip></Box>) :
+                   (<><Tooltip title="Quick Update Status & Location">
+                  <IconButton onClick={() => handleQuickEdit(container)} sx={{ color: '#0d6c6a' }} size="small">
+                    <EditIcon fontSize="small" /></IconButton></Tooltip><Tooltip title="View History">
+                      <IconButton onClick={() => openHistory(container.cid)} sx={{ color: '#0d6c6a' }} disabled={loadingHistory}>{loadingHistory ?
+                       <CircularProgress size={16} /> : <HistoryIcon />}</IconButton></Tooltip>
+                 <Tooltip title={container.availability !== 'Cleared' ? 'Container must be Cleared to mark Returned' : 'Mark as Returned'}><span><Button disabled={container.availability !== 'Cleared' || loadingReturned[container.cid]} onClick={() => markReturned(container.cid)} size="small" startIcon={loadingReturned[container.cid] ? <CircularProgress size={16} /> : null} sx={{ textTransform: 'none', color: '#0d6c6a' }}>Mark Returned</Button></span></Tooltip></>)}</TableCell></TableRow>); }))}
+              </TableBody>
+            </Table>
+          </TableContainer>
 
-        {!loadingContainers && totalCount > 0 && (
-          <TablePagination
-            rowsPerPageOptions={[10, 25, 50]}
-            component="div"
-            count={totalCount}
-            rowsPerPage={rowsPerPage}
-            page={currentPage - 1}
-            onPageChange={(event, newPage) => {
-              setCurrentPage(newPage + 1);
-            }}
-            onRowsPerPageChange={(event) => {
-              setRowsPerPage(parseInt(event.target.value, 10));
-              setCurrentPage(1);
-            }}
-          />
-        )}
+          {!loadingContainers && totalCount > 0 && (
+            <TablePagination
+              rowsPerPageOptions={[10, 25, 50]}
+              component="div"
+              count={totalCount}
+              rowsPerPage={rowsPerPage}
+              page={currentPage - 1}
+              onPageChange={(event, newPage) => {
+                setCurrentPage(newPage + 1);
+              }}
+              onRowsPerPageChange={(event) => {
+                setRowsPerPage(parseInt(event.target.value, 10));
+                setCurrentPage(1);
+              }}
+              sx={{ flexShrink: 0, mt: 1 }}
+            />
+          )}
+        </Box>
 
         {/* Add Container Modal with Dynamic Options */}
         <Modal open={openAddModal} onClose={() => {
@@ -813,20 +831,20 @@ const ContainerModule = () => {
             <Divider sx={{ mb: 1 }} />
             <FormControl component="fieldset" sx={{ mb: 1 }}>
               <RadioGroup
-                row
-                name="ownership"
-                value={formData.ownership || 'soc'}
-                onChange={handleFormChange}
-              >
-                {ownershipTypes.map((own) => (
-                  <FormControlLabel
-                    key={own.value}
-                    value={own.value}
-                    control={<Radio disabled={isEditing} />}
-                    label={own.label}
-                  />
-                ))}
-              </RadioGroup>
+  row
+  name="ownership"
+  value={formData.ownership || 'soc'}
+  onChange={handleFormChange}
+>
+  {ownershipTypes.slice().reverse().map((own) => (
+    <FormControlLabel
+      key={own.value}
+      value={own.value}
+      control={<Radio disabled={isEditing} />}
+      label={own.label}
+    />
+  ))}
+</RadioGroup>
             </FormControl>
             <Box sx={{ display: 'flex', }}>
               <Box sx={{ flex: 1, mx: 0.5 }}>
@@ -877,15 +895,15 @@ const ContainerModule = () => {
               </Box>
             </Box>
             <Box sx={{ mb: 1 }}>
-              {/* <FormControl fullWidth variant="outlined" sx={{ bgcolor: 'white' }}>
+              <FormControl fullWidth variant="outlined" sx={{ bgcolor: 'white' }}>
                 <InputLabel>Available At</InputLabel>
                 <Select name="availableAt" label="Available At" value={formData.availableAt || ''} onChange={handleFormChange}>
                   {locations.map((loc) => (
                     <MenuItem key={loc.value} value={loc.value}>{loc.label}</MenuItem>
                   ))}
                 </Select>
-              </FormControl> */}
-               <TextField
+              </FormControl>
+               {/* <TextField
                     label="Available At"
                     name="availableAt"
                     type="text"
@@ -896,7 +914,7 @@ const ContainerModule = () => {
                     variant="outlined"
                     // disabled={isEditing}
                     sx={{ bgcolor: 'white' }}
-                  />
+                  /> */}
             </Box>
             {formData.ownership === 'soc' && (
               <>
@@ -955,12 +973,25 @@ const ContainerModule = () => {
                 <Box sx={{ display: 'flex', mb: 1 }}>
                   <Box sx={{ flex: 1, mx: 0.5 }}>
                     <FormControl fullWidth variant="outlined" sx={{ bgcolor: 'white' }}>
-                      <InputLabel>Purchase From</InputLabel>
+<TextField
+                    label="Purchase From"
+                    name="purchaseFrom"
+                    type="text"
+                    value={formData.purchaseFrom || ''}
+                    onChange={handleFormChange}
+                    fullWidth
+                    required
+                    variant="outlined"
+                    disabled={isEditing}
+                    sx={{ bgcolor: 'white' }}
+                  />
+
+                      {/* <InputLabel>Purchase From</InputLabel>
                       <Select name="purchaseFrom" label="Purchase From" value={formData.purchaseFrom || ''} onChange={handleFormChange} disabled={isEditing}>
                         {locations.map((loc) => (
                           <MenuItem key={loc.value} value={loc.value}>{loc.label}</MenuItem>
                         ))}
-                      </Select>
+                      </Select> */}
                     </FormControl>
                   </Box>
                   <Box sx={{ flex: 1, mx: 0.5 }}>
@@ -1116,7 +1147,7 @@ const ContainerModule = () => {
 
         {/* Usage History Modal with Loading */}
         <Modal open={openHistoryModal} onClose={() => setOpenHistoryModal(false)}>
-          <Box sx={{ ...modalStyle, width: { xs: '90%', sm: 900 } }}>
+          <Box sx={{ ...modalStyle, width: { xs: '90%', sm: 1100 } }}>
             <Typography
               variant="h5"
               gutterBottom

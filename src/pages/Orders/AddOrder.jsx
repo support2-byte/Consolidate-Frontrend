@@ -1,4 +1,3 @@
-// Updated OrderForm.jsx - with container integration, error handling, and validations
 import { useState, useEffect } from "react";
 import {
     Box,
@@ -19,16 +18,20 @@ import {
     IconButton,
     Snackbar,
     Alert,
+    RadioGroup,
+    Radio,
+    FormControlLabel,
 } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import DownloadIcon from "@mui/icons-material/Download";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { api } from "../../api";
 
 // Custom TextField with error support
-const CustomTextField = (props) => (
+const CustomTextField = ({ disabled, ...props }) => (
     <TextField
         {...props}
+        disabled={disabled}
         size="medium"
         error={props.error}
         helperText={props.helperText}
@@ -46,25 +49,28 @@ const CustomTextField = (props) => (
                     boxShadow: "0 0 8px rgba(245, 130, 32, 0.3)",
                 },
                 ...(props.error && { "& fieldset": { borderColor: "#d32f2f" } }),
+                ...(disabled && { backgroundColor: "#f5f5f5", color: "#999" }),
             },
             "& .MuiInputLabel-root": {
                 letterSpacing: 0.5,
                 textTransform: "capitalize",
                 color: "rgba(180, 174, 174, 1)",
                 ...(props.error && { color: "#d32f2f" }),
+                ...(disabled && { color: "#999" }),
             },
         }}
     />
 );
 
-const CustomSelect = ({ label, name, value, onChange, children, sx: selectSx, error }) => (
+const CustomSelect = ({ label, name, value, onChange, children, sx: selectSx, error, disabled }) => (
     <FormControl size="small" sx={{ flex: 1, minWidth: 0, ...selectSx, background: "#fff" }} error={error}>
-        <InputLabel sx={{ color: "rgba(180, 174, 174, 1)" }}>{label}</InputLabel>
+        <InputLabel sx={{ color: "rgba(180, 174, 174, 1)", ...(disabled && { color: "#999" })}}>{label}</InputLabel>
         <Select
             label={label}
             name={name}
             value={value}
             onChange={onChange}
+            disabled={disabled}
             size="medium"
             sx={{
                 flex: 1,
@@ -80,12 +86,14 @@ const CustomSelect = ({ label, name, value, onChange, children, sx: selectSx, er
                         boxShadow: "0 0 8px rgba(245, 130, 32, 0.3)",
                     },
                     ...(error && { "& fieldset": { borderColor: "#d32f2f" } }),
+                    ...(disabled && { backgroundColor: "#f5f5f5", color: "#999" }),
                 },
                 "& .MuiInputLabel-root": {
                     letterSpacing: 0.5,
                     textTransform: "capitalize",
                     color: "rgba(180, 174, 174, 1)",
                     ...(error && { color: "#d32f2f" }),
+                    ...(disabled && { color: "#999" }),
                 },
             }}>
             {children}
@@ -93,14 +101,22 @@ const CustomSelect = ({ label, name, value, onChange, children, sx: selectSx, er
     </FormControl>
 );
 
-const OrderForm = ({ orderId,params }) => { // Accept orderId for edit mode
+const OrderForm = () => {
+    const location = useLocation();
     const navigate = useNavigate();
-    const [expanded, setExpanded] = useState("panel1");
+    const [expanded, setExpanded] = useState(new Set(["panel1"]));
     const [containers, setContainers] = useState([]); // For associatedContainer select
     const [loading, setLoading] = useState(false);
     const [loadingContainers, setLoadingContainers] = useState(false);
+    const [categories, setCategories] = useState([]);
+    const [subcategories, setSubcategories] = useState([]);
+    const orderId = location.state?.orderId;
     const [isEditMode, setIsEditMode] = useState(!!orderId);
-console.log('sbcjhasb',params)
+    const [showInbound, setShowInbound] = useState(false);
+    const [showOutbound, setShowOutbound] = useState(false);
+
+    console.log('Order ID from state:', orderId);
+
     // Snackbar state for error/success messages
     const [snackbar, setSnackbar] = useState({
         open: false,
@@ -143,7 +159,32 @@ console.log('sbcjhasb',params)
         truckNumber: "",
         thirdPartyTransport: "",
         attachments: [],
+        // New fields
+        category: "",
+        subcategory: "",
+        type: "",
+        deliveryAddress: "",
+        pickupLocation: "",
+        weight: "",
+        // Karachi Drop-Off fields
+        dropMethod: "",
+        dropOffCnic: "",
+        dropOffMobile: "",
+        plateNo: "",
+        dropDate: "",
+        // Dubai Collection fields
+        collectionMethod: "",
+        fullPartial: "",
+        qtyDelivered: "",
+        clientReceiverName: "",
+        clientReceiverId: "",
+        clientReceiverMobile: "",
+        deliveryDate: "",
+        gatepass: [],
     });
+
+    // Non-editable fields in edit mode for shipping orders
+    const nonEditableInEdit = ['bookingRef', 'rglBookingNumber'];
 
     // Required fields validation
     const requiredFields = [
@@ -152,8 +193,16 @@ console.log('sbcjhasb',params)
         'senderName',
         'receiverName',
         'placeOfLoading',
-        'finalDestination'
+        'finalDestination',
+        // New required
+        'category',
+        'subcategory',
+        'type',
+        'weight'
     ];
+
+    // Helper to convert snake_case to camelCase
+    const snakeToCamel = (str) => str.replace(/(_[a-z])/g, g => g[1].toUpperCase());
 
     const validateForm = () => {
         const newErrors = {};
@@ -162,6 +211,38 @@ console.log('sbcjhasb',params)
                 newErrors[field] = `${field.replace(/([A-Z])/g, ' $1').trim()} is required`;
             }
         });
+
+        // Karachi Drop-Off validations
+        if (formData.dropMethod === 'Drop-Off') {
+            if (!formData.dropOffCnic?.trim()) {
+                newErrors.dropOffCnic = 'Drop-Off CNIC/ID is required';
+            }
+            if (!formData.dropOffMobile?.trim()) {
+                newErrors.dropOffMobile = 'Drop-Off Mobile is required';
+            }
+        }
+        if (!formData.dropDate?.trim()) {
+            newErrors.dropDate = 'Drop Date is required';
+        }
+
+        // Dubai Collection validations
+        if (!formData.deliveryDate?.trim()) {
+            newErrors.deliveryDate = 'Delivery Date is required';
+        }
+        if (formData.fullPartial === 'Partial' && !formData.qtyDelivered?.trim()) {
+            newErrors.qtyDelivered = 'Qty Delivered is required for Partial';
+        }
+        if (formData.collectionMethod === 'Collected by Client') {
+            if (!formData.clientReceiverName?.trim()) {
+                newErrors.clientReceiverName = 'Receiver Name is required';
+            }
+            if (!formData.clientReceiverId?.trim()) {
+                newErrors.clientReceiverId = 'Receiver ID is required';
+            }
+            if (!formData.clientReceiverMobile?.trim()) {
+                newErrors.clientReceiverMobile = 'Receiver Mobile is required';
+            }
+        }
 
         // Email validation for sender and receiver
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -173,12 +254,26 @@ console.log('sbcjhasb',params)
         }
 
         // Date validation (if provided)
-        const dateFields = ['eta', 'etd'];
+        const dateFields = ['eta', 'etd', 'dropDate', 'deliveryDate'];
         dateFields.forEach(field => {
             if (formData[field] && !/^\d{4}-\d{2}-\d{2}$/.test(formData[field])) {
                 newErrors[field] = 'Invalid date format (YYYY-MM-DD)';
             }
         });
+
+        // Weight validation (if provided)
+        if (formData.weight && isNaN(formData.weight) || parseFloat(formData.weight) <= 0) {
+            newErrors.weight = 'Weight must be a positive number';
+        }
+
+        // Mobile validation (simple phone check)
+        const mobileRegex = /^\d{10,15}$/;
+        if (formData.dropOffMobile && !mobileRegex.test(formData.dropOffMobile.replace(/\D/g, ''))) {
+            newErrors.dropOffMobile = 'Invalid mobile number';
+        }
+        if (formData.clientReceiverMobile && !mobileRegex.test(formData.clientReceiverMobile.replace(/\D/g, ''))) {
+            newErrors.clientReceiverMobile = 'Invalid mobile number';
+        }
 
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
@@ -187,10 +282,60 @@ console.log('sbcjhasb',params)
     // Fetch containers on mount
     useEffect(() => {
         fetchContainers();
+        fetchCategories();
         if (orderId) {
             fetchOrder(orderId);
         }
+        // Set auto timestamp for dropDate if empty
+        if (!formData.dropDate) {
+            const today = new Date().toISOString().split('T')[0];
+            setFormData(prev => ({ ...prev, dropDate: today }));
+        }
     }, [orderId]);
+
+    useEffect(() => {
+        setShowInbound(formData.finalDestination?.includes('Karachi')); // Or exact match
+        setShowOutbound(formData.placeOfLoading?.includes('Dubai'));
+    }, [formData.placeOfLoading, formData.finalDestination]);
+
+    // Auto-expand accordions with errors
+    useEffect(() => {
+        if (Object.keys(errors).length > 0) {
+            const panelsToExpand = new Set();
+            Object.keys(errors).forEach(key => {
+                if (['senderName', 'senderContact', 'senderAddress', 'senderEmail'].includes(key)) panelsToExpand.add('panel1');
+                if (['receiverName', 'receiverContact', 'receiverAddress', 'receiverEmail'].includes(key)) panelsToExpand.add('panel2');
+                if (['category', 'subcategory', 'type', 'weight', 'pickupLocation', 'deliveryAddress', 'eta', 'etd', 'shippingLine'].includes(key)) panelsToExpand.add('panel3');
+                if (['dropMethod', 'dropOffCnic', 'dropOffMobile', 'plateNo', 'dropDate', 'collectionMethod', 'fullPartial', 'qtyDelivered', 'clientReceiverName', 'clientReceiverId', 'clientReceiverMobile', 'deliveryDate'].includes(key)) panelsToExpand.add('panel4');
+            });
+            setExpanded(prev => new Set([...prev, ...panelsToExpand]));
+        }
+    }, [errors]);
+
+    // Fetch subcategories when category changes
+    useEffect(() => {
+        if (formData.category) {
+            fetchSubcategories(formData.category);
+        } else {
+            setSubcategories([]);
+        }
+    }, [formData.category]);
+
+    // Dummy data for categories and subcategories
+    const dummyCategories = ["Electronics", "Clothing", "Books"];
+    const categorySubMap = {
+        "Electronics": ["Smartphones", "Laptops", "Accessories"],
+        "Clothing": ["Men's Wear", "Women's Wear", "Kids Wear"],
+        "Books": ["Fiction", "Non-Fiction", "Technical"],
+    };
+
+    const fetchCategories = () => {
+        setCategories(dummyCategories);
+    };
+
+    const fetchSubcategories = (category) => {
+        setSubcategories(categorySubMap[category] || []);
+    };
 
     // Fetch all containers
     const fetchContainers = async () => {
@@ -214,26 +359,78 @@ console.log('sbcjhasb',params)
         }
     };
 
-    const fetchOrder = async (id) => {
-        try {
-            const response = await api.get(`/api/orders/${id}`, { params: { includeContainer: true } });
-            setFormData(response.data);
-        } catch (err) {
-            console.error("Error fetching order:", err);
-            setSnackbar({
-                open: true,
-                message: err.response?.data?.error || err.message || 'Failed to fetch order',
-                severity: 'error',
-            });
-            if (err.response?.status === 404) {
-                navigate('/orders'); // Redirect if not found
+// In fetchOrder function, update to handle dates properly
+const fetchOrder = async (id) => {
+    try {
+        const response = await api.get(`/api/orders/${id}`, { params: { includeContainer: true } });
+        // Map snake_case to camelCase
+        const camelData = {};
+        Object.keys(response.data).forEach(apiKey => {
+            let value = response.data[apiKey];
+            // Handle dates: convert to YYYY-MM-DD format if it's a full ISO string or timestamp
+            if (['eta', 'etd', 'drop_date', 'delivery_date'].includes(apiKey)) {
+                if (value) {
+                    // If it's a full ISO string or Date object, format to YYYY-MM-DD
+                    const date = new Date(value);
+                    if (!isNaN(date.getTime())) {  // Valid date
+                        value = date.toISOString().split('T')[0];  // Extract YYYY-MM-DD
+                    }
+                } else {
+                    value = '';  // Empty if null/undefined
+                }
+            }
+            const camelKey = apiKey.replace(/(_[a-z])/g, g => g[1].toUpperCase());
+            camelData[camelKey] = value;
+        });
+        // Ensure attachments and gatepass are arrays if they are JSON strings
+        if (typeof camelData.attachments === 'string') {
+            try {
+                camelData.attachments = JSON.parse(camelData.attachments) || [];
+            } catch {
+                camelData.attachments = [];
             }
         }
-    };
-
+        if (typeof camelData.gatepass === 'string') {
+            try {
+                camelData.gatepass = JSON.parse(camelData.gatepass) || [];
+            } catch {
+                camelData.gatepass = [];
+            }
+        }
+        setFormData(camelData);
+    } catch (err) {
+        console.error("Error fetching order:", err);
+        setSnackbar({
+            open: true,
+            message: err.response?.data?.error || err.message || 'Failed to fetch order',
+            severity: 'error',
+        });
+        if (err.response?.status === 404) {
+            navigate('/orders'); // Redirect if not found
+        }
+    }
+};
     const handleChange = (e) => {
         const { name, value } = e.target;
-        setFormData((prev) => ({ ...prev, [name]: value }));
+        setFormData((prev) => {
+            const updated = { ...prev, [name]: value };
+            if (name === 'category') {
+                updated.subcategory = '';
+            }
+            if (name === 'dropMethod' && value === 'RGSL Pickup') {
+                updated.dropOffCnic = '';
+                updated.dropOffMobile = '';
+            }
+            if (name === 'collectionMethod' && value === 'Delivered by RGSL') {
+                updated.clientReceiverName = '';
+                updated.clientReceiverId = '';
+                updated.clientReceiverMobile = '';
+            }
+            if (name === 'fullPartial' && value === 'Full') {
+                updated.qtyDelivered = '';
+            }
+            return updated;
+        });
         // Clear error on change
         if (errors[name]) {
             setErrors((prev) => ({ ...prev, [name]: '' }));
@@ -241,12 +438,25 @@ console.log('sbcjhasb',params)
     };
 
     const handleAccordionChange = (panel) => (event, isExpanded) => {
-        setExpanded(isExpanded ? panel : false);
+        setExpanded(prev => {
+            const newSet = new Set(prev);
+            if (isExpanded) {
+                newSet.add(panel);
+            } else {
+                newSet.delete(panel);
+            }
+            return newSet;
+        });
     };
 
     const handleFileUpload = (e) => {
         const files = Array.from(e.target.files);
-        setFormData((prev) => ({ ...prev, attachments: [...prev.attachments, ...files] }));
+        setFormData((prev) => ({ ...prev, attachments: [...(Array.isArray(prev.attachments) ? prev.attachments : []), ...files] }));
+    };
+
+    const handleGatepassUpload = (e) => {
+        const files = Array.from(e.target.files);
+        setFormData((prev) => ({ ...prev, gatepass: [...(Array.isArray(prev.gatepass) ? prev.gatepass : []), ...files] }));
     };
 
     const handleSave = async () => {
@@ -262,24 +472,30 @@ console.log('sbcjhasb',params)
 
         setLoading(true);
         const formDataToSend = new FormData();
-        const dateFields = ['eta', 'etd'];
+        const dateFields = ['eta', 'etd', 'dropDate', 'deliveryDate'];
 
         Object.keys(formData).forEach(key => {
             const value = formData[key];
-            if (key === 'attachments') {
+            if (key === 'attachments' || key === 'gatepass') {
                 if (Array.isArray(value) && value.length > 0) {
-                    if (value[0] instanceof File) {
-                        // New files
-                        value.forEach(file => formDataToSend.append('attachments', file));
-                    } else {
-                        // Existing attachments (array of paths), append as JSON string
-                        formDataToSend.append('attachments', JSON.stringify(value));
+                    // Separate existing paths (strings) and new files
+                    const existing = value.filter(item => typeof item === 'string');
+                    const newFiles = value.filter(item => item instanceof File);
+                    if (newFiles.length > 0) {
+                        newFiles.forEach(file => formDataToSend.append(key, file));
+                    }
+                    if (existing.length > 0) {
+                        // Append existing as separate text field
+                        const apiKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
+                        formDataToSend.append(`${apiKey}_existing`, JSON.stringify(existing));
                     }
                 }
             } else if (dateFields.includes(key) && value === '') {
                 // Skip empty dates to send as undefined (becomes NULL in backend)
             } else if (value !== undefined && value !== null && value !== '') {
-                formDataToSend.append(key, value);
+                // Map to snake_case if needed
+                const apiKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
+                formDataToSend.append(apiKey, value);
             }
         });
 
@@ -301,6 +517,33 @@ console.log('sbcjhasb',params)
             // No navigation - stay on page to review or continue
         } catch (err) {
             console.error("Error saving order:", err);
+            // Handle backend validation errors by parsing details and setting field errors
+            if (err.response?.data?.details) {
+                const detailStr = err.response.data.details;
+                const errorsList = detailStr.split('; ').map(detail => {
+                    const match = detail.match(/^(\w+) (.+)$/);
+                    if (match) {
+                        const fieldSnake = match[1];
+                        const msg = match[2];
+                        const fieldCamel = snakeToCamel(fieldSnake);
+                        return { field: fieldCamel, msg };
+                    }
+                    return null;
+                }).filter(Boolean);
+
+                const newErrors = {};
+                errorsList.forEach(({field, msg}) => {
+                    newErrors[field] = msg;
+                });
+                setErrors(prev => ({ ...prev, ...newErrors }));
+
+                setSnackbar({
+                    open: true,
+                    message: 'Please fix the errors in the form',
+                    severity: 'error',
+                });
+                return;
+            }
             setSnackbar({
                 open: true,
                 message: err.response?.data?.error || err.response?.data?.details || err.message || 'Failed to save order',
@@ -326,6 +569,9 @@ console.log('sbcjhasb',params)
     const places = ["Select Place", "Singapore", "Dubai", "Rotterdam", "Hamburg", "Karachi", "Dubai-Emirates"];
     const companies = ["Select 3rd party company", "Company A", "Company B"];
     const statuses = ["Created", "In Transit", "Delivered", "Cancelled"];
+    const types = ["Select Type", "Type 1", "Type 2"];
+
+    const isFieldDisabled = (name) => isEditMode && nonEditableInEdit.includes(name);
 
     return (
         <>
@@ -346,8 +592,7 @@ console.log('sbcjhasb',params)
                             </Button>
                             <Button
                                 variant="contained"
-                                // onClick={}
-                                onClick={handleSave }
+                                onClick={handleSave}
                                 sx={{
                                     borderRadius: 2,
                                     backgroundColor: "#0d6c6a",
@@ -374,6 +619,7 @@ console.log('sbcjhasb',params)
                                 error={!!errors.bookingRef}
                                 helperText={errors.bookingRef}
                                 required
+                                disabled={isFieldDisabled('bookingRef')}
                             />
                             <CustomTextField
                                 label="Consignment Remarks"
@@ -393,6 +639,7 @@ console.log('sbcjhasb',params)
                                 error={!!errors.rglBookingNumber}
                                 helperText={errors.rglBookingNumber}
                                 required
+                                disabled={isFieldDisabled('rglBookingNumber')}
                             />
                             <CustomSelect
                                 label="Final Destination"
@@ -400,6 +647,7 @@ console.log('sbcjhasb',params)
                                 value={formData.finalDestination}
                                 onChange={handleChange}
                                 error={!!errors.finalDestination}
+                                disabled={isFieldDisabled('finalDestination')}
                             >
                                 {places.map((p) => (
                                     <MenuItem key={p} value={p}>
@@ -417,6 +665,7 @@ console.log('sbcjhasb',params)
                                 value={formData.placeOfLoading}
                                 onChange={handleChange}
                                 error={!!errors.placeOfLoading}
+                                disabled={isFieldDisabled('placeOfLoading')}
                             >
                                 {places.map((p) => (
                                     <MenuItem key={p} value={p}>
@@ -429,6 +678,7 @@ console.log('sbcjhasb',params)
                                 name="consignmentVessel"
                                 value={formData.consignmentVessel}
                                 onChange={handleChange}
+                                disabled={isFieldDisabled('consignmentVessel')}
                             />
                         </Box>
 
@@ -439,6 +689,7 @@ console.log('sbcjhasb',params)
                                 name="placeOfDelivery"
                                 value={formData.placeOfDelivery}
                                 onChange={handleChange}
+                                disabled={isFieldDisabled('placeOfDelivery')}
                             >
                                 {places.map((p) => (
                                     <MenuItem key={p} value={p}>
@@ -451,6 +702,7 @@ console.log('sbcjhasb',params)
                                 name="consignmentNumber"
                                 value={formData.consignmentNumber}
                                 onChange={handleChange}
+                                disabled={isFieldDisabled('consignmentNumber')}
                             />
                         </Box>
 
@@ -461,7 +713,7 @@ console.log('sbcjhasb',params)
                                 name="associatedContainer"
                                 value={formData.associatedContainer}
                                 onChange={handleChange}
-                                disabled={loadingContainers}
+                                disabled={loadingContainers || isFieldDisabled('associatedContainer')}
                             >
                                 <MenuItem value="">Select Container</MenuItem>
                                 {containers.map((container) => (
@@ -475,6 +727,7 @@ console.log('sbcjhasb',params)
                                 name="consignmentVoyage"
                                 value={formData.consignmentVoyage}
                                 onChange={handleChange}
+                                disabled={isFieldDisabled('consignmentVoyage')}
                             />
                         </Box>
 
@@ -487,12 +740,14 @@ console.log('sbcjhasb',params)
                                 onChange={handleChange}
                                 multiline
                                 rows={3}
+                                disabled={isFieldDisabled('orderRemarks')}
                             />
                             <CustomSelect
                                 label="Status"
                                 name="status"
                                 value={formData.status}
                                 onChange={handleChange}
+                                disabled={isFieldDisabled('status')}
                             >
                                 {statuses.map((s) => (
                                     <MenuItem key={s} value={s}>
@@ -508,7 +763,7 @@ console.log('sbcjhasb',params)
                     {/* Accordion Sections - with validation for sender/receiver */}
                     <Stack spacing={2}>
                         <Accordion
-                            expanded={expanded === "panel1"}
+                            expanded={expanded.has("panel1")}
                             onChange={handleAccordionChange("panel1")}
                             sx={{
                                 borderRadius: 2,
@@ -520,9 +775,9 @@ console.log('sbcjhasb',params)
                             <AccordionSummary
                                 expandIcon={<ExpandMoreIcon />}
                                 sx={{
-                                    bgcolor: expanded === "panel1" ? "#0d6c6a" : "#fff3e0",
+                                    bgcolor: expanded.has("panel1") ? "#0d6c6a" : "#fff3e0",
                                     borderRadius: 2,
-                                    "& .MuiAccordionSummary-content": { fontWeight: "bold", color: expanded === "panel1" ? "#fff" : "#f58220" },
+                                    "& .MuiAccordionSummary-content": { fontWeight: "bold", color: expanded.has("panel1") ? "#fff" : "#f58220" },
                                 }}
                             >
                                 1. Sender Details
@@ -538,12 +793,16 @@ console.log('sbcjhasb',params)
                                             error={!!errors.senderName}
                                             helperText={errors.senderName}
                                             required
+                                            disabled={isFieldDisabled('senderName')}
                                         />
                                         <CustomTextField
                                             label="Sender Contact"
                                             name="senderContact"
                                             value={formData.senderContact}
                                             onChange={handleChange}
+                                            error={!!errors.senderContact}
+                                            helperText={errors.senderContact}
+                                            disabled={isFieldDisabled('senderContact')}
                                         />
                                     </Box>
                                     <CustomTextField
@@ -551,8 +810,11 @@ console.log('sbcjhasb',params)
                                         name="senderAddress"
                                         value={formData.senderAddress}
                                         onChange={handleChange}
+                                        error={!!errors.senderAddress}
+                                        helperText={errors.senderAddress}
                                         multiline
                                         rows={2}
+                                        disabled={isFieldDisabled('senderAddress')}
                                     />
                                     <CustomTextField
                                         label="Sender Email"
@@ -561,13 +823,14 @@ console.log('sbcjhasb',params)
                                         onChange={handleChange}
                                         error={!!errors.senderEmail}
                                         helperText={errors.senderEmail}
+                                        disabled={isFieldDisabled('senderEmail')}
                                     />
                                 </Stack>
                             </AccordionDetails>
                         </Accordion>
 
                         <Accordion
-                            expanded={expanded === "panel2"}
+                            expanded={expanded.has("panel2")}
                             onChange={handleAccordionChange("panel2")}
                             sx={{
                                 borderRadius: 2,
@@ -579,9 +842,9 @@ console.log('sbcjhasb',params)
                             <AccordionSummary
                                 expandIcon={<ExpandMoreIcon />}
                                 sx={{
-                                    bgcolor: expanded === "panel2" ? "#0d6c6a" : "#fff3e0",
+                                    bgcolor: expanded.has("panel2") ? "#0d6c6a" : "#fff3e0",
                                     borderRadius: 2,
-                                    "& .MuiAccordionSummary-content": { fontWeight: "bold", color: expanded === "panel2" ? "#fff" : "#f58220" },
+                                    "& .MuiAccordionSummary-content": { fontWeight: "bold", color: expanded.has("panel2") ? "#fff" : "#f58220" },
                                 }}
                             >
                                 2. Receiver Details
@@ -597,12 +860,16 @@ console.log('sbcjhasb',params)
                                             error={!!errors.receiverName}
                                             helperText={errors.receiverName}
                                             required
+                                            disabled={isFieldDisabled('receiverName')}
                                         />
                                         <CustomTextField
                                             label="Receiver Contact"
                                             name="receiverContact"
                                             value={formData.receiverContact}
                                             onChange={handleChange}
+                                            error={!!errors.receiverContact}
+                                            helperText={errors.receiverContact}
+                                            disabled={isFieldDisabled('receiverContact')}
                                         />
                                     </Box>
                                     <CustomTextField
@@ -610,8 +877,11 @@ console.log('sbcjhasb',params)
                                         name="receiverAddress"
                                         value={formData.receiverAddress}
                                         onChange={handleChange}
+                                        error={!!errors.receiverAddress}
+                                        helperText={errors.receiverAddress}
                                         multiline
                                         rows={2}
+                                        disabled={isFieldDisabled('receiverAddress')}
                                     />
                                     <CustomTextField
                                         label="Receiver Email"
@@ -620,13 +890,14 @@ console.log('sbcjhasb',params)
                                         onChange={handleChange}
                                         error={!!errors.receiverEmail}
                                         helperText={errors.receiverEmail}
+                                        disabled={isFieldDisabled('receiverEmail')}
                                     />
                                 </Stack>
                             </AccordionDetails>
                         </Accordion>
 
                         <Accordion
-                            expanded={expanded === "panel3"}
+                            expanded={expanded.has("panel3")}
                             onChange={handleAccordionChange("panel3")}
                             sx={{
                                 borderRadius: 2,
@@ -638,15 +909,97 @@ console.log('sbcjhasb',params)
                             <AccordionSummary
                                 expandIcon={<ExpandMoreIcon />}
                                 sx={{
-                                    bgcolor: expanded === "panel3" ? "#0d6c6a" : "#fff3e0",
+                                    bgcolor: expanded.has("panel3") ? "#0d6c6a" : "#fff3e0",
                                     borderRadius: 2,
-                                    "& .MuiAccordionSummary-content": { fontWeight: "bold", color: expanded === "panel3" ? "#fff" : "#f58220" },
+                                    "& .MuiAccordionSummary-content": { fontWeight: "bold", color: expanded.has("panel3") ? "#fff" : "#f58220" },
                                 }}
                             >
                                 3. Shipping Details
                             </AccordionSummary>
                             <AccordionDetails sx={{ p: 3, bgcolor: "#fff" }}>
                                 <Stack spacing={2}>
+                                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                        <CustomTextField
+                                            label="Pickup Location"
+                                            name="pickupLocation"
+                                            value={formData.pickupLocation}
+                                            onChange={handleChange}
+                                            error={!!errors.pickupLocation}
+                                            helperText={errors.pickupLocation}
+                                        />
+                                        <CustomSelect
+                                            label="Category*"
+                                            name="category"
+                                            value={formData.category}
+                                            onChange={handleChange}
+                                            error={!!errors.category}
+                                            helperText={errors.category}
+                                            required
+                                        >
+                                            <MenuItem value="">Select Category</MenuItem>
+                                            {categories.map((c) => (
+                                                <MenuItem key={c} value={c}>
+                                                    {c}
+                                                </MenuItem>
+                                            ))}
+                                        </CustomSelect>
+                                    </Box>
+                                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                        <CustomSelect
+                                            label="Subcategory*"
+                                            name="subcategory"
+                                            value={formData.subcategory}
+                                            onChange={handleChange}
+                                            error={!!errors.subcategory}
+                                            helperText={errors.subcategory}
+                                            required
+                                        >
+                                            <MenuItem value="">Select Subcategory</MenuItem>
+                                            {subcategories.map((sc) => (
+                                                <MenuItem key={sc} value={sc}>
+                                                    {sc}
+                                                </MenuItem>
+                                            ))}
+                                        </CustomSelect>
+                                        <CustomSelect
+                                            label="Type*"
+                                            name="type"
+                                            value={formData.type}
+                                            onChange={handleChange}
+                                            error={!!errors.type}
+                                            helperText={errors.type}
+                                            required
+                                        >
+                                            <MenuItem value="">Select Type</MenuItem>
+                                            {types.map((t) => (
+                                                <MenuItem key={t} value={t}>
+                                                    {t}
+                                                </MenuItem>
+                                            ))}
+                                        </CustomSelect>
+                                    </Box>
+                                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                        <CustomTextField
+                                            label="Delivery Address"
+                                            name="deliveryAddress"
+                                            value={formData.deliveryAddress}
+                                            onChange={handleChange}
+                                            error={!!errors.deliveryAddress}
+                                            helperText={errors.deliveryAddress}
+                                            multiline
+                                            rows={2}
+                                        />
+                                        <CustomTextField
+                                            label="Weight*"
+                                            name="weight"
+                                            value={formData.weight}
+                                            onChange={handleChange}
+                                            error={!!errors.weight}
+                                            helperText={errors.weight}
+                                            required
+                                        />
+                                    </Box>
+                                    {/* Existing fields */}
                                     <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
                                         <CustomTextField
                                             label="ETA"
@@ -657,6 +1010,7 @@ console.log('sbcjhasb',params)
                                             InputLabelProps={{ shrink: true }}
                                             error={!!errors.eta}
                                             helperText={errors.eta}
+                                            disabled={isFieldDisabled('eta')}
                                         />
                                         <CustomTextField
                                             label="ETD"
@@ -667,6 +1021,7 @@ console.log('sbcjhasb',params)
                                             InputLabelProps={{ shrink: true }}
                                             error={!!errors.etd}
                                             helperText={errors.etd}
+                                            disabled={isFieldDisabled('etd')}
                                         />
                                     </Box>
                                     <CustomTextField
@@ -674,13 +1029,16 @@ console.log('sbcjhasb',params)
                                         name="shippingLine"
                                         value={formData.shippingLine}
                                         onChange={handleChange}
+                                        error={!!errors.shippingLine}
+                                        helperText={errors.shippingLine}
+                                        disabled={isFieldDisabled('shippingLine')}
                                     />
                                 </Stack>
                             </AccordionDetails>
                         </Accordion>
 
                         <Accordion
-                            expanded={expanded === "panel4"}
+                            expanded={expanded.has("panel4")}
                             onChange={handleAccordionChange("panel4")}
                             sx={{
                                 borderRadius: 2,
@@ -692,69 +1050,255 @@ console.log('sbcjhasb',params)
                             <AccordionSummary
                                 expandIcon={<ExpandMoreIcon />}
                                 sx={{
-                                    bgcolor: expanded === "panel4" ? "#0d6c6a" : "#fff3e0",
+                                    bgcolor: expanded.has("panel4") ? "#0d6c6a" : "#fff3e0",
                                     borderRadius: 2,
-                                    "& .MuiAccordionSummary-content": { fontWeight: "bold", color: expanded === "panel4" ? "#fff" : "#f58220" },
+                                    "& .MuiAccordionSummary-content": { fontWeight: "bold", color: expanded.has("panel4") ? "#fff" : "#f58220" },
                                 }}
                             >
                                 4. Transport
                             </AccordionSummary>
                             <AccordionDetails sx={{ p: 3, bgcolor: "#fff" }}>
-                                <Stack spacing={2}>
-                                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                        <CustomTextField
-                                            label="Driver Name"
-                                            name="driverName"
-                                            value={formData.driverName}
-                                            onChange={handleChange}
-                                        />
-                                        <CustomSelect
-                                            label="3rd party Transport Company"
-                                            name="thirdPartyTransport"
-                                            value={formData.thirdPartyTransport}
-                                            onChange={handleChange}
-                                        >
-                                            {companies.map((c) => (
-                                                <MenuItem key={c} value={c}>
-                                                    {c}
-                                                </MenuItem>
-                                            ))}
-                                        </CustomSelect>
-                                    </Box>
-                                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                        <CustomTextField
-                                            label="Driver Contact number"
-                                            name="driverContact"
-                                            value={formData.driverContact}
-                                            onChange={handleChange}
-                                        />
-                                        <CustomTextField
-                                            label="Driver NIC Number"
-                                            name="driverNic"
-                                            value={formData.driverNic}
-                                            onChange={handleChange}
-                                        />
-                                    </Box>
-                                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                        <CustomTextField
-                                            label="Driver Pickup Location"
-                                            name="driverPickupLocation"
-                                            value={formData.driverPickupLocation}
-                                            onChange={handleChange}
-                                        />
-                                        <CustomTextField
-                                            label="Truck number"
-                                            name="truckNumber"
-                                            value={formData.truckNumber}
-                                            onChange={handleChange}
-                                        />
-                                    </Box>
+                                <Stack spacing={3}>
+                                    {/* Existing fields */}
+                                    <Stack spacing={2}>
+                                        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                            <CustomTextField
+                                                label="Driver Name"
+                                                name="driverName"
+                                                value={formData.driverName}
+                                                onChange={handleChange}
+                                                error={!!errors.driverName}
+                                                helperText={errors.driverName}
+                                                disabled={isFieldDisabled('driverName')}
+                                            />
+                                            <CustomSelect
+                                                label="3rd party Transport Company"
+                                                name="thirdPartyTransport"
+                                                value={formData.thirdPartyTransport}
+                                                onChange={handleChange}
+                                                error={!!errors.thirdPartyTransport}
+                                                helperText={errors.thirdPartyTransport}
+                                                disabled={isFieldDisabled('thirdPartyTransport')}
+                                            >
+                                                {companies.map((c) => (
+                                                    <MenuItem key={c} value={c}>
+                                                        {c}
+                                                    </MenuItem>
+                                                ))}
+                                            </CustomSelect>
+                                        </Box>
+                                        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                            <CustomTextField
+                                                label="Driver Contact number"
+                                                name="driverContact"
+                                                value={formData.driverContact}
+                                                onChange={handleChange}
+                                                error={!!errors.driverContact}
+                                                helperText={errors.driverContact}
+                                                disabled={isFieldDisabled('driverContact')}
+                                            />
+                                            <CustomTextField
+                                                label="Driver NIC Number"
+                                                name="driverNic"
+                                                value={formData.driverNic}
+                                                onChange={handleChange}
+                                                error={!!errors.driverNic}
+                                                helperText={errors.driverNic}
+                                                disabled={isFieldDisabled('driverNic')}
+                                            />
+                                        </Box>
+                                        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                            <CustomTextField
+                                                label="Driver Pickup Location"
+                                                name="driverPickupLocation"
+                                                value={formData.driverPickupLocation}
+                                                onChange={handleChange}
+                                                error={!!errors.driverPickupLocation}
+                                                helperText={errors.driverPickupLocation}
+                                                disabled={isFieldDisabled('driverPickupLocation')}
+                                            />
+                                            <CustomTextField
+                                                label="Truck number"
+                                                name="truckNumber"
+                                                value={formData.truckNumber}
+                                                onChange={handleChange}
+                                                error={!!errors.truckNumber}
+                                                helperText={errors.truckNumber}
+                                                disabled={isFieldDisabled('truckNumber')}
+                                            />
+                                        </Box>
+                                    </Stack>
+
+                                    <Divider sx={{ my: 2 }} />
+
+                                    {showInbound && (
+                                        <>
+                                            <Typography variant="h6" color="#f58220" gutterBottom>
+                                                🧭 Drop-Off (Inbound)
+                                            </Typography>
+                                            <Stack spacing={2}>
+                                                <FormControl component="fieldset" error={!!errors.dropMethod}>
+                                                    <RadioGroup
+                                                        name="dropMethod"
+                                                        value={formData.dropMethod}
+                                                        onChange={handleChange}
+                                                    >
+                                                        <FormControlLabel value="Drop-Off" control={<Radio />} label="Drop-Off" />
+                                                        <FormControlLabel value="RGSL Pickup" control={<Radio />} label="RGSL Pickup" />
+                                                    </RadioGroup>
+                                                </FormControl>
+                                                {formData.dropMethod === 'Drop-Off' && (
+                                                    <Stack spacing={2}>
+                                                        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                            <CustomTextField
+                                                                label="Drop-Off CNIC/ID"
+                                                                name="dropOffCnic"
+                                                                value={formData.dropOffCnic}
+                                                                onChange={handleChange}
+                                                                error={!!errors.dropOffCnic}
+                                                                helperText={errors.dropOffCnic}
+                                                                required
+                                                            />
+                                                            <CustomTextField
+                                                                label="Drop-Off Mobile"
+                                                                name="dropOffMobile"
+                                                                value={formData.dropOffMobile}
+                                                                onChange={handleChange}
+                                                                error={!!errors.dropOffMobile}
+                                                                helperText={errors.dropOffMobile}
+                                                                required
+                                                            />
+                                                        </Box>
+                                                    </Stack>
+                                                )}
+                                                <CustomTextField
+                                                    label="Plate No (optional)"
+                                                    name="plateNo"
+                                                    value={formData.plateNo}
+                                                    onChange={handleChange}
+                                                    error={!!errors.plateNo}
+                                                    helperText={errors.plateNo}
+                                                />
+                                                <CustomTextField
+                                                    label="Drop Date"
+                                                    name="dropDate"
+                                                    type="date"
+                                                    value={formData.dropDate}
+                                                    onChange={handleChange}
+                                                    InputLabelProps={{ shrink: true }}
+                                                    error={!!errors.dropDate}
+                                                    helperText={errors.dropDate}
+                                                    required
+                                                />
+                                            </Stack>
+                                        </>
+                                    )}
+                                    {showOutbound && (
+                                        <>
+                                            <Typography variant="h6" color="#f58220" gutterBottom>
+                                                🚛 Collection (Outbound)
+                                            </Typography>
+                                            <Stack spacing={2}>
+                                                <FormControl component="fieldset" error={!!errors.collectionMethod}>
+                                                    <RadioGroup
+                                                        name="collectionMethod"
+                                                        value={formData.collectionMethod}
+                                                        onChange={handleChange}
+                                                    >
+                                                        <FormControlLabel value="Delivered by RGSL" control={<Radio />} label="Delivered by RGSL" />
+                                                        <FormControlLabel value="Collected by Client" control={<Radio />} label="Collected by Client" />
+                                                    </RadioGroup>
+                                                </FormControl>
+                                                <FormControl component="fieldset" error={!!errors.fullPartial}>
+                                                    <RadioGroup
+                                                        name="fullPartial"
+                                                        value={formData.fullPartial}
+                                                        onChange={handleChange}
+                                                    >
+                                                        <FormControlLabel value="Full" control={<Radio />} label="Full" />
+                                                        <FormControlLabel value="Partial" control={<Radio />} label="Partial" />
+                                                    </RadioGroup>
+                                                </FormControl>
+                                                {formData.fullPartial === 'Partial' && (
+                                                    <CustomTextField
+                                                        label="Qty Delivered"
+                                                        name="qtyDelivered"
+                                                        value={formData.qtyDelivered}
+                                                        onChange={handleChange}
+                                                        error={!!errors.qtyDelivered}
+                                                        helperText={errors.qtyDelivered}
+                                                        required
+                                                        type="number"
+                                                    />
+                                                )}
+                                                {formData.collectionMethod === 'Collected by Client' && (
+                                                    <Stack spacing={2}>
+                                                        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                            <CustomTextField
+                                                                label="Receiver Name"
+                                                                name="clientReceiverName"
+                                                                value={formData.clientReceiverName}
+                                                                onChange={handleChange}
+                                                                error={!!errors.clientReceiverName}
+                                                                helperText={errors.clientReceiverName}
+                                                                required
+                                                            />
+                                                            <CustomTextField
+                                                                label="Receiver ID"
+                                                                name="clientReceiverId"
+                                                                value={formData.clientReceiverId}
+                                                                onChange={handleChange}
+                                                                error={!!errors.clientReceiverId}
+                                                                helperText={errors.clientReceiverId}
+                                                                required
+                                                            />
+                                                        </Box>
+                                                        <CustomTextField
+                                                            label="Receiver Mobile"
+                                                            name="clientReceiverMobile"
+                                                            value={formData.clientReceiverMobile}
+                                                            onChange={handleChange}
+                                                            error={!!errors.clientReceiverMobile}
+                                                            helperText={errors.clientReceiverMobile}
+                                                            required
+                                                        />
+                                                    </Stack>
+                                                )}
+                                                <CustomTextField
+                                                    label="Delivery Date"
+                                                    name="deliveryDate"
+                                                    type="date"
+                                                    value={formData.deliveryDate}
+                                                    onChange={handleChange}
+                                                    InputLabelProps={{ shrink: true }}
+                                                    error={!!errors.deliveryDate}
+                                                    helperText={errors.deliveryDate}
+                                                    required
+                                                />
+                                                <Button
+                                                    variant="outlined"
+                                                    component="label"
+                                                    sx={{ borderRadius: 2, borderColor: "#f58220", color: "#f58220", px: 3 }}
+                                                >
+                                                    Gatepass Upload (Optional)
+                                                    <input type="file" hidden multiple onChange={handleGatepassUpload} />
+                                                </Button>
+                                                {Array.isArray(formData.gatepass) && formData.gatepass.length > 0 && (
+                                                    <Stack spacing={1} direction="row" flexWrap="wrap" gap={1}>
+                                                        {formData.gatepass.map((file, i) => (
+                                                            <Chip key={i} label={file.name || file} color="secondary" size="small" variant="outlined" />
+                                                        ))}
+                                                    </Stack>
+                                                )}
+                                            </Stack>
+                                        </>
+                                    )}
                                 </Stack>
                             </AccordionDetails>
                         </Accordion>
 
                         <Accordion
-                            expanded={expanded === "panel5"}
+                            expanded={expanded.has("panel5")}
                             onChange={handleAccordionChange("panel5")}
                             sx={{
                                 borderRadius: 2,
@@ -766,9 +1310,9 @@ console.log('sbcjhasb',params)
                             <AccordionSummary
                                 expandIcon={<ExpandMoreIcon />}
                                 sx={{
-                                    bgcolor: expanded === "panel5" ? "#0d6c6a" : "#fff3e0",
+                                    bgcolor: expanded.has("panel5") ? "#0d6c6a" : "#fff3e0",
                                     borderRadius: 2,
-                                    "& .MuiAccordionSummary-content": { fontWeight: "bold", color: expanded === "panel5" ? "#fff" : "#f58220" },
+                                    "& .MuiAccordionSummary-content": { fontWeight: "bold", color: expanded.has("panel5") ? "#fff" : "#f58220" },
                                 }}
                             >
                                 5. Order Summary
@@ -810,7 +1354,7 @@ console.log('sbcjhasb',params)
                         </Accordion>
 
                         <Accordion
-                            expanded={expanded === "panel6"}
+                            expanded={expanded.has("panel6")}
                             onChange={handleAccordionChange("panel6")}
                             sx={{
                                 borderRadius: 2,
@@ -822,9 +1366,9 @@ console.log('sbcjhasb',params)
                             <AccordionSummary
                                 expandIcon={<ExpandMoreIcon />}
                                 sx={{
-                                    bgcolor: expanded === "panel6" ? "#0d6c6a" : "#fff3e0",
+                                    bgcolor: expanded.has("panel6") ? "#0d6c6a" : "#fff3e0",
                                     borderRadius: 2,
-                                    "& .MuiAccordionSummary-content": { fontWeight: "bold", color: expanded === "panel6" ? "#fff" : "#f58220" },
+                                    "& .MuiAccordionSummary-content": { fontWeight: "bold", color: expanded.has("panel6") ? "#fff" : "#f58220" },
                                 }}
                             >
                                 6. Attachments
@@ -835,11 +1379,12 @@ console.log('sbcjhasb',params)
                                         variant="outlined"
                                         component="label"
                                         sx={{ borderRadius: 2, borderColor: "#f58220", color: "#f58220", px: 3 }}
+                                        disabled={isFieldDisabled('attachments')}
                                     >
                                         Upload File
-                                        <input type="file" hidden multiple onChange={handleFileUpload} />
+                                        <input type="file" hidden multiple onChange={handleFileUpload} disabled={isFieldDisabled('attachments')} />
                                     </Button>
-                                    {formData.attachments.length > 0 && (
+                                    {Array.isArray(formData.attachments) && formData.attachments.length > 0 && (
                                         <Stack spacing={1} direction="row" flexWrap="wrap" gap={1}>
                                             {formData.attachments.map((file, i) => (
                                                 <Chip key={i} label={file.name || file} color="secondary" size="small" variant="outlined" />
