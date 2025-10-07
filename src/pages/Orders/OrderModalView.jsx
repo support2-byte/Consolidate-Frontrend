@@ -1,4 +1,5 @@
 import { useState } from "react";
+import jsPDF from 'jspdf'; // Add this import for PDF generation (npm install jspdf)
 import {
     Box,
     Typography,
@@ -32,11 +33,11 @@ import InventoryIcon from "@mui/icons-material/Inventory";
 import DriveEtaIcon from "@mui/icons-material/DriveEta";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
 import { getOrderStatusColor } from "./Utlis"; // Assuming you have a utility for status colors
-
+import { useNavigate } from "react-router-dom";
 // TabPanel Component
 function TabPanel(props) {
     const { children, value, index, ...other } = props;
-
+   
     return (
         <div
             role="tabpanel"
@@ -66,10 +67,15 @@ function a11yProps(index) {
 // View Order Modal Component
 const OrderModalView = ({ openModal, handleCloseModal, selectedOrder, modalLoading, modalError }) => {
     const [tabValue, setTabValue] = useState(0);
+     const navigate = useNavigate();
     if (!selectedOrder) return null;
 
     const statusColor = getOrderStatusColor(selectedOrder.status);
 
+    const handleEdit = (orderId) => {
+        handleCloseModal(),
+        navigate(`/orders/${orderId}/edit/`, { state: { orderId } });
+    };
     // Helper to format dates
     const formatDate = (dateStr) => {
         if (!dateStr) return 'N/A';
@@ -78,6 +84,117 @@ const OrderModalView = ({ openModal, handleCloseModal, selectedOrder, modalLoadi
             month: 'short', 
             day: 'numeric' 
         });
+    };
+
+    // Helper to format files list for PDF
+    const getFilesText = (files) => {
+        if (!files || files.length === 0) return 'No attachments';
+        return files.map((file, index) => 
+            `${index + 1}. ${typeof file === 'string' ? file.split('/').pop() : file.name || 'File'}`
+        ).join('\n');
+    };
+
+    // Export to PDF function
+    const exportToPDF = (order) => {
+        const doc = new jsPDF();
+        let yPosition = 20;
+
+        // Title
+        doc.setFontSize(20);
+        doc.text('Order Details', 20, yPosition);
+        yPosition += 15;
+
+        // Order Info Section
+        doc.setFontSize(14);
+        doc.text('Order Information', 20, yPosition);
+        yPosition += 10;
+        doc.setFontSize(10);
+        doc.text(`Booking Ref: ${order.booking_ref || 'N/A'}`, 20, yPosition);
+        yPosition += 7;
+        doc.text(`Status: ${order.status || 'N/A'}`, 20, yPosition);
+        yPosition += 7;
+        doc.text(`RGL Booking Number: ${order.rgl_booking_number || 'N/A'}`, 20, yPosition);
+        yPosition += 7;
+        doc.text(`ETA: ${formatDate(order.eta)}`, 20, yPosition);
+        yPosition += 7;
+        doc.text(`ETD: ${formatDate(order.etd)}`, 20, yPosition);
+        yPosition += 7;
+        doc.text(`Shipping Line: ${order.shipping_line || 'N/A'}`, 20, yPosition);
+        yPosition += 10;
+
+        // Sender
+        doc.setFontSize(14);
+        doc.text('Sender Details', 20, yPosition);
+        yPosition += 10;
+        doc.setFontSize(10);
+        doc.text(`Name: ${order.sender_name || 'N/A'}`, 20, yPosition);
+        yPosition += 7;
+        doc.text(`Contact: ${order.sender_contact || 'N/A'}`, 20, yPosition);
+        yPosition += 7;
+        doc.text(`Email: ${order.sender_email || 'N/A'}`, 20, yPosition);
+        yPosition += 10;
+
+        // Receiver
+        doc.setFontSize(14);
+        doc.text('Receiver Details', 20, yPosition);
+        yPosition += 10;
+        doc.setFontSize(10);
+        doc.text(`Name: ${order.receiver_name || 'N/A'}`, 20, yPosition);
+        yPosition += 7;
+        doc.text(`Contact: ${order.receiver_contact || 'N/A'}`, 20, yPosition);
+        yPosition += 7;
+        doc.text(`Email: ${order.receiver_email || 'N/A'}`, 20, yPosition);
+        yPosition += 10;
+
+        // Shipping
+        doc.setFontSize(14);
+        doc.text('Shipping Details', 20, yPosition);
+        yPosition += 10;
+        doc.setFontSize(10);
+        doc.text(`Category: ${order.category || 'N/A'}`, 20, yPosition);
+        yPosition += 7;
+        doc.text(`Weight: ${order.weight ? `${order.weight} kg` : 'N/A' }`, 20, yPosition);
+        yPosition += 10;
+
+        // Transport
+        doc.setFontSize(14);
+        doc.text('Transport Details', 20, yPosition);
+        yPosition += 10;
+        doc.setFontSize(10);
+        doc.text(`Driver Name: ${order.driver_name || 'N/A'}`, 20, yPosition);
+        yPosition += 7;
+        doc.text(`Truck Number: ${order.truck_number || 'N/A'}`, 20, yPosition);
+        yPosition += 10;
+
+        // Inbound/Outbound
+        doc.setFontSize(14);
+        doc.text('Inbound/Outbound Details', 20, yPosition);
+        yPosition += 10;
+        doc.setFontSize(10);
+        doc.text(`Drop Method: ${order.drop_method || 'N/A'}`, 20, yPosition);
+        yPosition += 7;
+        doc.text(`Drop Date: ${formatDate(order.drop_date)}`, 20, yPosition);
+        yPosition += 7;
+        doc.text(`Collection Method: ${order.collection_method || 'N/A'}`, 20, yPosition);
+        yPosition += 7;
+        doc.text(`Delivery Date: ${formatDate(order.delivery_date)}`, 20, yPosition);
+        yPosition += 10;
+
+        // Files
+        doc.setFontSize(14);
+        doc.text('Files', 20, yPosition);
+        yPosition += 10;
+        doc.setFontSize(10);
+        doc.text('Attachments:', 20, yPosition);
+        yPosition += 7;
+        doc.text(getFilesText(order.attachments), 20, yPosition);
+        yPosition += 20; // Approximate lines
+        doc.text('Gatepass:', 20, yPosition);
+        yPosition += 7;
+        doc.text(getFilesText(order.gatepass), 20, yPosition);
+
+        // Save the PDF
+        doc.save(`Order_${order.booking_ref || 'Unknown'}_${Date.now()}.pdf`);
     };
 
     // Helper to format files list
@@ -567,7 +684,30 @@ const OrderModalView = ({ openModal, handleCloseModal, selectedOrder, modalLoadi
                     Close
                 </Button>
                 <Button 
-                    onClick={() => { handleCloseModal(); handleEdit(selectedOrder?.id); }} 
+                    onClick={() => exportToPDF(selectedOrder)} 
+                    variant="outlined" 
+                    sx={{ 
+                        borderRadius: 3, 
+                        borderColor: '#f58220', 
+                        color: '#f58220',
+                        px: 4,
+                        py: 1,
+                        fontWeight: 'bold',
+                        fontSize: '1rem',
+                        transition: 'all 0.3s ease',
+                        '&:hover': { 
+                            borderColor: '#e65100', 
+                            color: '#e65100',
+                            boxShadow: '0 4px 12px rgba(245, 130, 32, 0.2)',
+                            transform: 'translateY(-1px)'
+                        }
+                    }}
+                    disabled={!selectedOrder}
+                >
+                    Export to PDF
+                </Button>
+                <Button 
+                    onClick={() => {handleEdit(selectedOrder?.id); }} 
                     variant="contained" 
                     sx={{ 
                         borderRadius: 3, 

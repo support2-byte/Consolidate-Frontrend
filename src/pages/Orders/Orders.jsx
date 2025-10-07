@@ -94,6 +94,7 @@ const OrdersList = () => {
         setModalError(null);
         try {
             const response = await api.get(`/api/orders/${orderId}`);
+            console.log('orders details',response)
             setSelectedOrder(response.data);
         } catch (err) {
             console.error("Error fetching order details:", err);

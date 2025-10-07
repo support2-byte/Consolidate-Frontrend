@@ -21,7 +21,12 @@ import {
     RadioGroup,
     Radio,
     FormControlLabel,
+    CircularProgress
 } from "@mui/material";
+import Dialog from "@mui/material/Dialog";
+import DialogContent from "@mui/material/DialogContent";
+import DialogTitle from "@mui/material/DialogTitle";
+import CloseIcon from "@mui/icons-material/Close";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import DownloadIcon from "@mui/icons-material/Download";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -62,8 +67,8 @@ const CustomTextField = ({ disabled, ...props }) => (
     />
 );
 
-const CustomSelect = ({ label, name, value, onChange, children, sx: selectSx, error, disabled }) => (
-    <FormControl size="small" sx={{ flex: 1, minWidth: 0, ...selectSx, background: "#fff" }} error={error}>
+const CustomSelect = ({ label, name, value, onChange, children, sx: selectSx, error, disabled, required = false }) => (
+    <FormControl size="small" sx={{ flex: 1, minWidth: 0, ...selectSx, background: "#fff" }} error={error} required={required}>
         <InputLabel sx={{ color: "rgba(180, 174, 174, 1)", ...(disabled && { color: "#999" })}}>{label}</InputLabel>
         <Select
             label={label}
@@ -102,6 +107,8 @@ const CustomSelect = ({ label, name, value, onChange, children, sx: selectSx, er
 );
 
 const OrderForm = () => {
+    const [previewOpen, setPreviewOpen] = useState(false);
+const [previewSrc, setPreviewSrc] = useState('')
     const location = useLocation();
     const navigate = useNavigate();
     const [expanded, setExpanded] = useState(new Set(["panel1"]));
@@ -206,14 +213,18 @@ const OrderForm = () => {
 
     const validateForm = () => {
         const newErrors = {};
+        // Compute conditions inside validation for accuracy
+        const showInbound = formData.finalDestination?.includes('Karachi');
+        const showOutbound = formData.placeOfLoading?.includes('Dubai');
+
         requiredFields.forEach(field => {
             if (!formData[field]?.trim()) {
                 newErrors[field] = `${field.replace(/([A-Z])/g, ' $1').trim()} is required`;
             }
         });
 
-        // Karachi Drop-Off validations
-        if (formData.dropMethod === 'Drop-Off') {
+        // Karachi Drop-Off validations (conditional)
+        if (showInbound && formData.dropMethod === 'Drop-Off') {
             if (!formData.dropOffCnic?.trim()) {
                 newErrors.dropOffCnic = 'Drop-Off CNIC/ID is required';
             }
@@ -221,18 +232,18 @@ const OrderForm = () => {
                 newErrors.dropOffMobile = 'Drop-Off Mobile is required';
             }
         }
-        if (!formData.dropDate?.trim()) {
+        if (showInbound && !formData.dropDate?.trim()) {
             newErrors.dropDate = 'Drop Date is required';
         }
 
-        // Dubai Collection validations
-        if (!formData.deliveryDate?.trim()) {
+        // Dubai Collection validations (conditional)
+        if (showOutbound && !formData.deliveryDate?.trim()) {
             newErrors.deliveryDate = 'Delivery Date is required';
         }
-        if (formData.fullPartial === 'Partial' && !formData.qtyDelivered?.trim()) {
+        if (showOutbound && formData.fullPartial === 'Partial' && !formData.qtyDelivered?.trim()) {
             newErrors.qtyDelivered = 'Qty Delivered is required for Partial';
         }
-        if (formData.collectionMethod === 'Collected by Client') {
+        if (showOutbound && formData.collectionMethod === 'Collected by Client') {
             if (!formData.clientReceiverName?.trim()) {
                 newErrors.clientReceiverName = 'Receiver Name is required';
             }
@@ -262,7 +273,7 @@ const OrderForm = () => {
         });
 
         // Weight validation (if provided)
-        if (formData.weight && isNaN(formData.weight) || parseFloat(formData.weight) <= 0) {
+        if (formData.weight && (isNaN(formData.weight) || parseFloat(formData.weight) <= 0)) {
             newErrors.weight = 'Weight must be a positive number';
         }
 
@@ -286,15 +297,20 @@ const OrderForm = () => {
         if (orderId) {
             fetchOrder(orderId);
         }
-        // Set auto timestamp for dropDate if empty
-        if (!formData.dropDate) {
+    }, [orderId]);
+
+    // Auto-set dropDate only if showInbound is true and field is empty
+    useEffect(() => {
+        const showInbound = formData.finalDestination?.includes('Karachi');
+        if (showInbound && !formData.dropDate) {
             const today = new Date().toISOString().split('T')[0];
             setFormData(prev => ({ ...prev, dropDate: today }));
         }
-    }, [orderId]);
+    }, [formData.finalDestination]);
 
+    // Update visibility states
     useEffect(() => {
-        setShowInbound(formData.finalDestination?.includes('Karachi')); // Or exact match
+        setShowInbound(formData.finalDestination?.includes('Karachi'));
         setShowOutbound(formData.placeOfLoading?.includes('Dubai'));
     }, [formData.placeOfLoading, formData.finalDestination]);
 
@@ -359,57 +375,71 @@ const OrderForm = () => {
         }
     };
 
-// In fetchOrder function, update to handle dates properly
-const fetchOrder = async (id) => {
-    try {
-        const response = await api.get(`/api/orders/${id}`, { params: { includeContainer: true } });
-        // Map snake_case to camelCase
-        const camelData = {};
-        Object.keys(response.data).forEach(apiKey => {
-            let value = response.data[apiKey];
-            // Handle dates: convert to YYYY-MM-DD format if it's a full ISO string or timestamp
-            if (['eta', 'etd', 'drop_date', 'delivery_date'].includes(apiKey)) {
-                if (value) {
-                    // If it's a full ISO string or Date object, format to YYYY-MM-DD
-                    const date = new Date(value);
-                    if (!isNaN(date.getTime())) {  // Valid date
-                        value = date.toISOString().split('T')[0];  // Extract YYYY-MM-DD
+    // In fetchOrder function, update to handle dates properly
+    const fetchOrder = async (id) => {
+        setLoading(true)
+        try {
+            const response = await api.get(`/api/orders/${id}`, { params: { includeContainer: true } });
+            // Map snake_case to camelCase
+            const camelData = {};
+            Object.keys(response.data).forEach(apiKey => {
+                let value = response.data[apiKey];
+                // Handle dates: convert to YYYY-MM-DD format if it's a full ISO string or timestamp
+                if (['eta', 'etd', 'drop_date', 'delivery_date'].includes(apiKey)) {
+                    if (value) {
+                        // If it's a full ISO string or Date object, format to YYYY-MM-DD
+                        const date = new Date(value);
+                        if (!isNaN(date.getTime())) {  // Valid date
+                            value = date.toISOString().split('T')[0];  // Extract YYYY-MM-DD
+                        }
+                    } else {
+                        value = '';  // Empty if null/undefined
                     }
-                } else {
-                    value = '';  // Empty if null/undefined
                 }
+                const camelKey = apiKey.replace(/(_[a-z])/g, g => g[1].toUpperCase());
+                camelData[camelKey] = value;
+            });
+            // Ensure attachments and gatepass are arrays if they are JSON strings
+// Clean malformed paths (remove function wrapper prefix)
+const cleanAttachments = (paths) => (paths || []).map(path => {
+  if (typeof path === 'string' && path.startsWith('function wrap()')) {
+    // Extract after fixed 62-char prefix
+    return path.substring(62);
+  }
+  return path;
+});
+
+camelData.attachments = cleanAttachments(camelData.attachments);
+camelData.gatepass = cleanAttachments(camelData.gatepass);
+
+// Then build full URLs
+const apiBase = import.meta.env.VITE_API_URL;
+camelData.attachments = camelData.attachments.map(path => 
+  path.startsWith('http') ? path : `${apiBase}${path}`
+);
+camelData.gatepass = camelData.gatepass.map(path => 
+  path.startsWith('http') ? path : `${apiBase}${path}`
+);
+console.log('pathn data',camelData.attachments)
+setFormData(camelData);
+
+        } catch (err) {
+            console.error("Error fetching order:", err);
+            setSnackbar({
+                open: true,
+                message: err.response?.data?.error || err.message || 'Failed to fetch order',
+                severity: 'error',
+            });
+            if (err.response?.status === 404) {
+                navigate('/orders'); // Redirect if not found
             }
-            const camelKey = apiKey.replace(/(_[a-z])/g, g => g[1].toUpperCase());
-            camelData[camelKey] = value;
-        });
-        // Ensure attachments and gatepass are arrays if they are JSON strings
-        if (typeof camelData.attachments === 'string') {
-            try {
-                camelData.attachments = JSON.parse(camelData.attachments) || [];
-            } catch {
-                camelData.attachments = [];
+    
+        }
+                finally{
+                setLoading(false)
             }
-        }
-        if (typeof camelData.gatepass === 'string') {
-            try {
-                camelData.gatepass = JSON.parse(camelData.gatepass) || [];
-            } catch {
-                camelData.gatepass = [];
-            }
-        }
-        setFormData(camelData);
-    } catch (err) {
-        console.error("Error fetching order:", err);
-        setSnackbar({
-            open: true,
-            message: err.response?.data?.error || err.message || 'Failed to fetch order',
-            severity: 'error',
-        });
-        if (err.response?.status === 404) {
-            navigate('/orders'); // Redirect if not found
-        }
-    }
-};
+    };
+
     const handleChange = (e) => {
         const { name, value } = e.target;
         setFormData((prev) => {
@@ -474,28 +504,32 @@ const fetchOrder = async (id) => {
         const formDataToSend = new FormData();
         const dateFields = ['eta', 'etd', 'dropDate', 'deliveryDate'];
 
-        Object.keys(formData).forEach(key => {
-            const value = formData[key];
-            if (key === 'attachments' || key === 'gatepass') {
-                if (Array.isArray(value) && value.length > 0) {
-                    // Separate existing paths (strings) and new files
-                    const existing = value.filter(item => typeof item === 'string');
-                    const newFiles = value.filter(item => item instanceof File);
-                    if (newFiles.length > 0) {
-                        newFiles.forEach(file => formDataToSend.append(key, file));
-                    }
-                    if (existing.length > 0) {
-                        // Append existing as separate text field
-                        const apiKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
-                        formDataToSend.append(`${apiKey}_existing`, JSON.stringify(existing));
-                    }
-                }
+   Object.keys(formData).forEach(key => {
+    const value = formData[key];
+    if (key === 'attachments' || key === 'gatepass') {
+        if (Array.isArray(value) && value.length > 0) {
+            // Separate existing paths (strings) and new files
+            const existing = value.filter(item => typeof item === 'string');
+            const newFiles = value.filter(item => item instanceof File);
+            if (newFiles.length > 0) {
+                newFiles.forEach(file => formDataToSend.append(key, file));
+            }
+            if (existing.length > 0) {
+                // Append existing as separate text field
+                const apiKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
+                formDataToSend.append(`${apiKey}_existing`, JSON.stringify(existing));
+            }
+        }
+        return;  // Skip to next key (no need for else)
             } else if (dateFields.includes(key) && value === '') {
-                // Skip empty dates to send as undefined (becomes NULL in backend)
-            } else if (value !== undefined && value !== null && value !== '') {
-                // Map to snake_case if needed
+                if (value !== '') {  // Only append non-empty dates
                 const apiKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
                 formDataToSend.append(apiKey, value);
+            }
+        } else {
+            // Always append strings/numbers, as '' or 0 for backend validation
+            const apiKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
+            formDataToSend.append(apiKey, value || '');
             }
         });
 
@@ -573,6 +607,18 @@ const fetchOrder = async (id) => {
 
     const isFieldDisabled = (name) => isEditMode && nonEditableInEdit.includes(name);
 
+
+    if (loading) {
+            return (
+                <Paper sx={{ p: 3, borderRadius: 3, boxShadow: 3, bgcolor: "#fafafa" }}>
+                    <Stack direction="row" alignItems="center" justifyContent="center" spacing={1}>
+                        <CircularProgress size={24} />
+                        <Typography variant="h6" color="#f58220">Loading orders...</Typography>
+                    </Stack>
+                </Paper>
+            );
+        }
+
     return (
         <>
             <Paper sx={{ p: 3, borderRadius: 3, boxShadow: 3, bgcolor: "#fafafa" }}>
@@ -632,7 +678,7 @@ const fetchOrder = async (id) => {
                         {/* Row 2: RGL Booking Number | Final Destination */}
                         <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
                             <CustomTextField
-                                label="RGL Booking Number*"
+                                label="RGL Booking Number"
                                 name="rglBookingNumber"
                                 value={formData.rglBookingNumber}
                                 onChange={handleChange}
@@ -647,6 +693,7 @@ const fetchOrder = async (id) => {
                                 value={formData.finalDestination}
                                 onChange={handleChange}
                                 error={!!errors.finalDestination}
+                                required
                                 disabled={isFieldDisabled('finalDestination')}
                             >
                                 {places.map((p) => (
@@ -665,6 +712,7 @@ const fetchOrder = async (id) => {
                                 value={formData.placeOfLoading}
                                 onChange={handleChange}
                                 error={!!errors.placeOfLoading}
+                                required
                                 disabled={isFieldDisabled('placeOfLoading')}
                             >
                                 {places.map((p) => (
@@ -687,6 +735,7 @@ const fetchOrder = async (id) => {
                             <CustomSelect
                                 label="Place of Delivery"
                                 name="placeOfDelivery"
+                                required
                                 value={formData.placeOfDelivery}
                                 onChange={handleChange}
                                 disabled={isFieldDisabled('placeOfDelivery')}
@@ -928,12 +977,11 @@ const fetchOrder = async (id) => {
                                             helperText={errors.pickupLocation}
                                         />
                                         <CustomSelect
-                                            label="Category*"
+                                            label="Category"
                                             name="category"
                                             value={formData.category}
                                             onChange={handleChange}
                                             error={!!errors.category}
-                                            helperText={errors.category}
                                             required
                                         >
                                             <MenuItem value="">Select Category</MenuItem>
@@ -946,12 +994,11 @@ const fetchOrder = async (id) => {
                                     </Box>
                                     <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
                                         <CustomSelect
-                                            label="Subcategory*"
+                                            label="Subcategory"
                                             name="subcategory"
                                             value={formData.subcategory}
                                             onChange={handleChange}
                                             error={!!errors.subcategory}
-                                            helperText={errors.subcategory}
                                             required
                                         >
                                             <MenuItem value="">Select Subcategory</MenuItem>
@@ -962,12 +1009,11 @@ const fetchOrder = async (id) => {
                                             ))}
                                         </CustomSelect>
                                         <CustomSelect
-                                            label="Type*"
+                                            label="Type"
                                             name="type"
                                             value={formData.type}
                                             onChange={handleChange}
                                             error={!!errors.type}
-                                            helperText={errors.type}
                                             required
                                         >
                                             <MenuItem value="">Select Type</MenuItem>
@@ -990,7 +1036,7 @@ const fetchOrder = async (id) => {
                                             rows={2}
                                         />
                                         <CustomTextField
-                                            label="Weight*"
+                                            label="Weight"
                                             name="weight"
                                             value={formData.weight}
                                             onChange={handleChange}
@@ -1010,6 +1056,7 @@ const fetchOrder = async (id) => {
                                             InputLabelProps={{ shrink: true }}
                                             error={!!errors.eta}
                                             helperText={errors.eta}
+                                            required
                                             disabled={isFieldDisabled('eta')}
                                         />
                                         <CustomTextField
@@ -1018,6 +1065,7 @@ const fetchOrder = async (id) => {
                                             type="date"
                                             value={formData.etd}
                                             onChange={handleChange}
+                                            required
                                             InputLabelProps={{ shrink: true }}
                                             error={!!errors.etd}
                                             helperText={errors.etd}
@@ -1029,6 +1077,7 @@ const fetchOrder = async (id) => {
                                         name="shippingLine"
                                         value={formData.shippingLine}
                                         onChange={handleChange}
+                                        required
                                         error={!!errors.shippingLine}
                                         helperText={errors.shippingLine}
                                         disabled={isFieldDisabled('shippingLine')}
@@ -1284,12 +1333,29 @@ const fetchOrder = async (id) => {
                                                     <input type="file" hidden multiple onChange={handleGatepassUpload} />
                                                 </Button>
                                                 {Array.isArray(formData.gatepass) && formData.gatepass.length > 0 && (
-                                                    <Stack spacing={1} direction="row" flexWrap="wrap" gap={1}>
-                                                        {formData.gatepass.map((file, i) => (
-                                                            <Chip key={i} label={file.name || file} color="secondary" size="small" variant="outlined" />
-                                                        ))}
-                                                    </Stack>
-                                                )}
+    <Stack spacing={1} direction="row" flexWrap="wrap" gap={1}>
+        {formData.gatepass.map((gatepass, i) => {
+            // Handle new uploads (File objects) vs existing (string URLs)
+            const src = typeof gatepass === 'string' ? gatepass : URL.createObjectURL(gatepass);
+            const label = typeof gatepass === 'string' ? gatepass.split('/').pop() : gatepass.name || 'File';
+            
+            return (
+                <Chip 
+                    key={i} 
+                    label={label} 
+                    color="secondary" 
+                    size="small" 
+                    variant="outlined"
+                    onClick={() => {
+                        setPreviewSrc(src);
+                        setPreviewOpen(true);
+                    }}
+                    sx={{ cursor: 'pointer', '&:hover': { backgroundColor: '#f58220', color: 'white' } }}
+                />
+            );
+        })}
+    </Stack>
+)}
                                             </Stack>
                                         </>
                                     )}
@@ -1385,12 +1451,29 @@ const fetchOrder = async (id) => {
                                         <input type="file" hidden multiple onChange={handleFileUpload} disabled={isFieldDisabled('attachments')} />
                                     </Button>
                                     {Array.isArray(formData.attachments) && formData.attachments.length > 0 && (
-                                        <Stack spacing={1} direction="row" flexWrap="wrap" gap={1}>
-                                            {formData.attachments.map((file, i) => (
-                                                <Chip key={i} label={file.name || file} color="secondary" size="small" variant="outlined" />
-                                            ))}
-                                        </Stack>
-                                    )}
+    <Stack spacing={1} direction="row" flexWrap="wrap" gap={1}>
+        {formData.attachments.map((attachment, i) => {
+            // Handle new uploads (File objects) vs existing (string URLs)
+            const src = typeof attachment === 'string' ? attachment : URL.createObjectURL(attachment);
+            const label = typeof attachment === 'string' ? attachment.split('/').pop() : attachment.name || 'File';
+            
+            return (
+                <Chip 
+                    key={i} 
+                    label={label} 
+                    color="secondary" 
+                    size="small" 
+                    variant="outlined"
+                    onClick={() => {
+                        setPreviewSrc(src);
+                        setPreviewOpen(true);
+                    }}
+                    sx={{ cursor: 'pointer', '&:hover': { backgroundColor: '#f58220', color: 'white' } }}
+                />
+            );
+        })}
+    </Stack>
+)}
                                 </Stack>
                             </AccordionDetails>
                         </Accordion>
@@ -1417,6 +1500,50 @@ const fetchOrder = async (id) => {
                 </Box>
             </Paper>
 
+
+{/* Preview Modal */}
+<Dialog open={previewOpen} onClose={() => setPreviewOpen(false)} maxWidth="lg" fullWidth>
+    <DialogTitle>
+        File Preview
+        <IconButton 
+            onClick={() => setPreviewOpen(false)} 
+            sx={{ position: 'absolute', right: 8, top: 8 }}
+        >
+            <CloseIcon />
+        </IconButton>
+    </DialogTitle>
+    <DialogContent sx={{ p: 2 }}>
+        {previewSrc && (
+            <img 
+                src={previewSrc} 
+                alt="Preview" 
+                style={{ 
+                    width: '100%', 
+                    height: 'auto', 
+                    maxHeight: '70vh', 
+                    objectFit: 'contain',
+                    borderRadius: 2,
+                    boxShadow: '0 4px 20px rgba(0,0,0,0.1)'
+                }} 
+                onLoad={() => console.log('Preview loaded:', previewSrc)} // Debug
+                onError={(e) => {
+                    e.target.style.display = 'none';
+                    setSnackbar({ 
+                        open: true, 
+                        message: 'Failed to load file. Check URL or file type.', 
+                        severity: 'error' 
+                    });
+                }}
+            />
+        )}
+        {/* Fallback for non-images (e.g., PDF): Open in new tab */}
+        {!previewSrc.startsWith('blob:') && previewSrc.endsWith('.pdf') && (
+            <a href={previewSrc} target="_blank" rel="noopener noreferrer" style={{ display: 'block', textAlign: 'center', mt: 2 }}>
+                <Button variant="outlined" startIcon={<DownloadIcon />}>Open PDF</Button>
+            </a>
+        )}
+    </DialogContent>
+</Dialog>
             {/* Snackbar for notifications */}
             <Snackbar
                 open={snackbar.open}
