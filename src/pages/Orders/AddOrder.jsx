@@ -76,7 +76,7 @@ const CustomTextField = ({ disabled, ...props }) => (
 
 const CustomSelect = ({ label, name, value, onChange, children, sx: selectSx, error, disabled, required = false }) => (
     <FormControl size="small" sx={{ flex: 1, minWidth: 0, ...selectSx, background: "#fff" }} error={error} required={required}>
-        <InputLabel sx={{ color: "rgba(180, 174, 174, 1)", ...(disabled && { color: "#999" })}}>{label}</InputLabel>
+        <InputLabel sx={{ color: "rgba(180, 174, 174, 1)", ...(disabled && { color: "#999" }) }}>{label}</InputLabel>
         <Select
             label={label}
             name={name}
@@ -140,60 +140,66 @@ const OrderForm = () => {
     const [errors, setErrors] = useState({});
 
     const [formData, setFormData] = useState({
-        // Core fields
-        newOrderRef: "",
-        portNumber: "",
+        // Core orders fields (added missing: point_of_origin, consignment_remarks, consignment_marks)
         bookingRef: "",
-        status: "In Transit",
         rglBookingNumber: "",
-        consignmentRemarks: "",
-        consignmentMarks: "",
         placeOfLoading: "",
-        pointOfOrigin: "",
+        pointOfOrigin: "",  // Added
         finalDestination: "",
         placeOfDelivery: "",
         orderRemarks: "",
-        consignmentNumber: "",
-        consignmentVessel: "",
-        consignmentVoyage: "",
+        eta: "",
+        etd: "",
+        shippingLine: "",
+        attachments: [],
+        // Senders fields (added sender_ref, sender_remarks)
         senderName: "",
         senderContact: "",
         senderAddress: "",
         senderEmail: "",
-        // Multiples
-        receivers: [{ receiverName: "", receiverContact: "", receiverAddress: "", receiverEmail: "", containers: [] }],
-        eta: "",
-        etd: "",
-        shippingLine: "",
-        shipper: "",
-        pickupCategory: "",
+        senderRef: "",  // Added
+        senderRemarks: "",  // Added
+        // Receivers array (added receiver_ref, consignment_marks, consignment_voyage)
+        receivers: [{
+            receiverName: "",
+            receiverContact: "",
+            receiverAddress: "",
+            receiverEmail: "",
+            consignmentVessel: "",
+            consignmentNumber: "",
+            consignmentMarks: "",  // Added
+            consignmentVoyage: "",  // Added
+            totalNumber: "",
+            totalWeight: "",
+            itemRef: "",
+            receiverRef: "",  // Added
+            status: "Created",
+            containers: []
+        }],
+        // Order Items fields (added consignment_status, total_weight calculated)
+        category: '',  // Instead of null
+        subcategory: '',  // Instead of null
+        type: '',  // Or 'Select Type' if that's your placeholder
+        pickupLocation: "",
+        deliveryAddress: "",
         totalNumber: "",
+        weight: "",  // Keep single weight; remove duplicate totalWeight
+        itemRef: "",
+        consignmentStatus: "",  // Added
+        // Transport fields (added dropoff_name as drop_off_person)
+        transportType: "Road",  // Default per schema
+        thirdPartyTransport: "",
         driverName: "",
         driverContact: "",
         driverNic: "",
         driverPickupLocation: "",
         truckNumber: "",
-        thirdPartyTransport: "",
-        attachments: [],
-        transportType: "Drop Off",
-        // New fields
-        category: "",
-        subcategory: "",
-        type: "",
-        deliveryAddress: "",
-        pickupLocation: "",
-        weight: "",
-        totalWeight: "",
-        assignment: "",
-        consignmentStatus: "",
-        itemRef: "",
-        // Karachi Drop-Off fields
         dropMethod: "",
+        dropoffName: "",  // Added (drop_off_person name)
         dropOffCnic: "",
         dropOffMobile: "",
         plateNo: "",
         dropDate: "",
-        // Dubai Collection fields
         collectionMethod: "",
         fullPartial: "",
         qtyDelivered: "",
@@ -204,10 +210,31 @@ const OrderForm = () => {
         gatepass: [],
     });
 
-    // Non-editable fields in edit mode for shipping orders
-    const nonEditableInEdit = ['bookingRef', 'rglBookingNumber'];
+    // Editable fields in edit mode
+    const editableInEdit = [
+        'transportType',
+        'dropMethod',
+        'dropoffName',
+        'dropOffCnic',
+        'dropOffMobile',
+        'plateNo',
+        'dropDate',
+        'collectionMethod',
+        'fullPartial',
+        'qtyDelivered',
+        'clientReceiverName',
+        'clientReceiverId',
+        'clientReceiverMobile',
+        'deliveryDate',
+        'thirdPartyTransport',
+        'driverName',
+        'driverContact',
+        'driverNic',
+        'driverPickupLocation',
+        'truckNumber'
+    ];
 
-    // Receiver specific fields for error mapping
+    // Receiver specific fields for error mapping (updated)
     const receiverFields = [
         'receiverName',
         'receiverContact',
@@ -215,16 +242,16 @@ const OrderForm = () => {
         'receiverEmail',
         'consignmentVessel',
         'consignmentNumber',
-        'consignmentMarks',
-        'consignmentVoyage',
-        'status',
+        'consignmentMarks',  // Added
+        'consignmentVoyage',  // Added
         'totalNumber',
         'totalWeight',
-        'assignment',
-        'itemRef'
+        'itemRef',
+        'receiverRef',  // Added
+        'status'
     ];
 
-    // Required fields validation
+    // Required fields validation (updated, removed duplicate totalWeight)
     const requiredFields = [
         'bookingRef',
         'rglBookingNumber',
@@ -232,18 +259,22 @@ const OrderForm = () => {
         'placeOfLoading',
         'finalDestination',
         'transportType',
-        // New required
+        // New required for order_items
         'category',
         'subcategory',
         'type',
         'totalNumber',
-        'weight',
-        'totalWeight',
-        'shippingLine'
+        'weight',  // Single weight
+        'shippingLine',
+        'pointOfOrigin'  // Added
+        // Removed consignmentMarks and consignmentRemarks to align with UI (not rendered)
     ];
 
     // Helper to convert snake_case to camelCase
     const snakeToCamel = (str) => str.replace(/(_[a-z])/g, g => g[1].toUpperCase());
+
+    // Helper to convert camelCase to snake_case
+    const camelToSnake = (str) => str.replace(/([A-Z])/g, '_$1').toLowerCase();
 
     const validateForm = () => {
         const newErrors = {};
@@ -254,7 +285,7 @@ const OrderForm = () => {
             }
         });
 
-        // Validate receivers (at least one, and required fields)
+        // Validate receivers (at least one, and required fields; updated)
         if (formData.receivers.length === 0) {
             newErrors.receivers = 'At least one receiver is required';
         } else {
@@ -262,7 +293,7 @@ const OrderForm = () => {
                 if (!rec.receiverName?.trim()) {
                     newErrors[`receivers[${i}].receiverName`] = `Receiver ${i + 1} name is required`;
                 }
-                if (!rec.containers || rec.containers.length === 0) {
+                if (rec.containers.length === 0) {
                     newErrors[`receivers[${i}].containers`] = `At least one container is required for receiver ${i + 1}`;
                 }
                 if (!rec.consignmentNumber?.trim()) {
@@ -270,6 +301,9 @@ const OrderForm = () => {
                 }
                 if (!rec.totalWeight?.trim()) {
                     newErrors[`receivers[${i}].totalWeight`] = `Total weight is required for receiver ${i + 1}`;
+                }
+                if (!rec.receiverRef?.trim()) {
+                    newErrors[`receivers[${i}].receiverRef`] = `Receiver ref is required for receiver ${i + 1}`;
                 }
                 // Add more per-receiver validations (e.g., email)
                 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -279,12 +313,15 @@ const OrderForm = () => {
             });
         }
 
-        // Transport Type validations
+        // Transport Type validations (updated with dropoff_name)
         if (formData.transportType === 'Drop Off') {
             if (!formData.dropDate?.trim()) {
                 newErrors.dropDate = 'Drop Date is required';
             }
             if (formData.dropMethod === 'Drop-Off') {
+                if (!formData.dropoffName?.trim()) {
+                    newErrors.dropoffName = 'Drop-Off Person Name is required';
+                }
                 if (!formData.dropOffCnic?.trim()) {
                     newErrors.dropOffCnic = 'Drop-Off CNIC/ID is required';
                 }
@@ -349,12 +386,9 @@ const OrderForm = () => {
             }
         });
 
-        // Weight validation (if provided)
+        // Weight validation (single weight)
         if (formData.weight && (isNaN(formData.weight) || parseFloat(formData.weight) <= 0)) {
             newErrors.weight = 'Weight must be a positive number';
-        }
-        if (formData.totalWeight && (isNaN(formData.totalWeight) || parseFloat(formData.totalWeight) <= 0)) {
-            newErrors.totalWeight = 'Total Weight must be a positive number';
         }
 
         // Mobile validation (simple phone check)
@@ -384,23 +418,36 @@ const OrderForm = () => {
         if (Object.keys(errors).length > 0) {
             const panelsToExpand = new Set();
             Object.keys(errors).forEach(key => {
-                if (['senderName', 'senderContact', 'senderAddress', 'senderEmail'].includes(key)) panelsToExpand.add('panel1');
+                if (['senderName', 'senderContact', 'senderAddress', 'senderEmail', 'senderRef', 'senderRemarks'].includes(key)) panelsToExpand.add('panel1');
                 if (key.startsWith('receivers[')) panelsToExpand.add('panel2');
-                if (['newOrderRef', 'portNumber', 'consignmentMarks', 'consignmentNumber', 'consignmentVoyage', 'status', 'consignmentRemarks', 'category', 'subcategory', 'type', 'weight', 'pickupLocation', 'deliveryAddress', 'eta', 'etd', 'shippingLine', 'shipper', 'pickupCategory', 'totalNumber', 'totalWeight', 'assignment', 'consignmentStatus', 'itemRef'].includes(key)) panelsToExpand.add('panel3');
-                if (['transportType', 'dropMethod', 'dropOffCnic', 'dropOffMobile', 'plateNo', 'dropDate', 'collectionMethod', 'fullPartial', 'qtyDelivered', 'clientReceiverName', 'clientReceiverId', 'clientReceiverMobile', 'deliveryDate', 'driverName', 'driverContact', 'driverNic', 'driverPickupLocation', 'truckNumber', 'thirdPartyTransport'].includes(key)) panelsToExpand.add('panel4');
+                if (['category', 'subcategory', 'type', 'weight', 'pickupLocation', 'deliveryAddress', 'consignmentStatus', 'itemRef'].includes(key)) panelsToExpand.add('panel3');
+                if (['transportType', 'dropMethod', 'dropoffName', 'dropOffCnic', 'dropOffMobile', 'plateNo', 'dropDate', 'collectionMethod', 'fullPartial', 'qtyDelivered', 'clientReceiverName', 'clientReceiverId', 'clientReceiverMobile', 'deliveryDate', 'driverName', 'driverContact', 'driverNic', 'driverPickupLocation', 'truckNumber', 'thirdPartyTransport'].includes(key)) panelsToExpand.add('panel4');
             });
             setExpanded(prev => new Set([...prev, ...panelsToExpand]));
         }
     }, [errors]);
 
-    // Fetch subcategories when category changes
+
     useEffect(() => {
         if (formData.category) {
             fetchSubcategories(formData.category);
         } else {
-            setSubcategories([]);
+            setSubcategories([]);  // Already good
+            setFormData(prev => ({ ...prev, subcategory: '' }));  // Fixed: Reset subcategory to '' to match options
         }
     }, [formData.category]);
+
+    // Auto-populate receiver totalNumber and totalWeight from shipping details if empty
+    useEffect(() => {
+        setFormData(prev => ({
+            ...prev,
+            receivers: prev.receivers.map(rec => ({
+                ...rec,
+                totalNumber: rec.totalNumber || formData.totalNumber,
+                totalWeight: rec.totalWeight || formData.weight
+            }))
+        }));
+    }, [formData.totalNumber, formData.weight]);
 
     // Dummy data for categories and subcategories
     const dummyCategories = ["Electronics", "Clothing", "Books"];
@@ -415,8 +462,18 @@ const OrderForm = () => {
     };
 
     const fetchSubcategories = (category) => {
-        setSubcategories(categorySubMap[category] || []);
+        const subs = categorySubMap[category] || [];
+        setSubcategories(subs);
+        // Fixed: If no subcategories, reset formData.subcategory to '' to avoid null/mismatch
+        if (subs.length === 0) {
+            setFormData(prev => ({ ...prev, subcategory: '' }));
+        }
     };
+
+    // Example: Call fetchCategories on mount if needed
+    useEffect(() => {
+        fetchCategories();
+    }, []);
 
     // Fetch all containers
     const fetchContainers = async () => {
@@ -440,7 +497,7 @@ const OrderForm = () => {
         }
     };
 
-    // Updated fetchOrder to handle multiples
+    // Updated fetchOrder to handle new fields and multiples
     const fetchOrder = async (id) => {
         setLoading(true)
         try {
@@ -449,6 +506,8 @@ const OrderForm = () => {
             const camelData = {};
             Object.keys(response.data).forEach(apiKey => {
                 let value = response.data[apiKey];
+                // Sanitize null/undefined to '' for string fields
+                if (value === null || value === undefined) value = '';
                 // Handle dates: convert to YYYY-MM-DD format if it's a full ISO string or timestamp
                 if (['eta', 'etd', 'drop_date', 'delivery_date'].includes(apiKey)) {
                     if (value) {
@@ -460,16 +519,66 @@ const OrderForm = () => {
                         value = '';
                     }
                 }
-                const camelKey = apiKey.replace(/(_[a-z])/g, g => g[1].toUpperCase());
+                const camelKey = snakeToCamel(apiKey);
                 camelData[camelKey] = value;
             });
-            // Handle multiples
-            camelData.receivers = (response.data.receivers || []).map(rec => ({
-                ...rec,
-                containers: rec.containers ? rec.containers.map(c => c.container_number) : []
-            }));
+            // Handle order_items - take first one
+            if (response.data.order_items && response.data.order_items.length > 0) {
+                const item = response.data.order_items[0];
+                const camelItem = {};
+                Object.keys(item).forEach(apiKey => {
+                    let val = item[apiKey];
+                    if (val === null || val === undefined) val = '';
+                    const camelKey = snakeToCamel(apiKey);
+                    camelItem[camelKey] = val;
+                });
+                camelData.category = camelItem.category;
+                camelData.subcategory = camelItem.subcategory;
+                camelData.type = camelItem.type;
+                camelData.pickupLocation = camelItem.pickupLocation;
+                camelData.deliveryAddress = camelItem.deliveryAddress;
+                camelData.totalNumber = camelItem.totalNumber;
+                camelData.weight = camelItem.weight;
+                camelData.itemRef = camelItem.itemRef;
+                camelData.consignmentStatus = camelItem.consignmentStatus;
+            }
+            // Handle multiples - map receivers to camelCase (updated for new fields)
+            camelData.receivers = (response.data.receivers || []).map(rec => {
+                const camelRec = {};
+                Object.keys(rec).forEach(apiKey => {
+                    let val = rec[apiKey];
+                    // Sanitize null/undefined to ''
+                    if (val === null || val === undefined) val = '';
+                    const camelKey = snakeToCamel(apiKey);
+                    camelRec[camelKey] = val;
+                });
+                // Handle containers - strings or objects
+                if (Array.isArray(rec.containers) && rec.containers.length > 0) {
+                    camelRec.containers = rec.containers.map(c => typeof c === 'object' ? c.container_number : c);
+                } else {
+                    camelRec.containers = [];
+                }
+                // Handle status - default to "Created" if not present (assuming API may not return it yet)
+                camelRec.status = rec.status || "Created";
+                return camelRec;
+            });
             if (camelData.receivers.length === 0) {
-                camelData.receivers = [{ receiverName: "", receiverContact: "", receiverAddress: "", receiverEmail: "", containers: [] }];
+                camelData.receivers = [{
+                    receiverName: "",
+                    receiverContact: "",
+                    receiverAddress: "",
+                    receiverEmail: "",
+                    consignmentVessel: "",
+                    consignmentNumber: "",
+                    consignmentMarks: "",
+                    consignmentVoyage: "",
+                    totalNumber: "",
+                    totalWeight: "",
+                    itemRef: "",
+                    receiverRef: "",
+                    status: "Created",
+                    containers: []
+                }];
             }
             // Attachments/gatepass unchanged
             const cleanAttachments = (paths) => (paths || []).map(path => {
@@ -481,10 +590,10 @@ const OrderForm = () => {
             camelData.attachments = cleanAttachments(camelData.attachments || []);
             camelData.gatepass = cleanAttachments(camelData.gatepass || []);
             const apiBase = import.meta.env.VITE_API_URL;
-            camelData.attachments = camelData.attachments.map(path => 
+            camelData.attachments = camelData.attachments.map(path =>
                 path.startsWith('http') ? path : `${apiBase}${path}`
             );
-            camelData.gatepass = camelData.gatepass.map(path => 
+            camelData.gatepass = camelData.gatepass.map(path =>
                 path.startsWith('http') ? path : `${apiBase}${path}`
             );
             console.log('pathn data', camelData.attachments)
@@ -514,6 +623,7 @@ const OrderForm = () => {
             if (name === 'transportType' && value !== prev.transportType) {
                 // Clear all transport-specific fields when switching
                 updated.dropMethod = '';
+                updated.dropoffName = '';
                 updated.dropOffCnic = '';
                 updated.dropOffMobile = '';
                 updated.plateNo = '';
@@ -534,6 +644,7 @@ const OrderForm = () => {
                 updated.thirdPartyTransport = '';
             }
             if (name === 'dropMethod' && value === 'RGSL Pickup') {
+                updated.dropoffName = '';
                 updated.dropOffCnic = '';
                 updated.dropOffMobile = '';
             }
@@ -553,11 +664,26 @@ const OrderForm = () => {
         }
     };
 
-    // Handlers for receivers
+    // Handlers for receivers (updated for new fields)
     const addReceiver = () => {
         setFormData(prev => ({
             ...prev,
-            receivers: [...prev.receivers, { receiverName: "", receiverContact: "", receiverAddress: "", receiverEmail: "", containers: [] }]
+            receivers: [...prev.receivers, {
+                receiverName: "",
+                receiverContact: "",
+                receiverAddress: "",
+                receiverEmail: "",
+                consignmentVessel: "",
+                consignmentNumber: "",
+                consignmentMarks: "",
+                consignmentVoyage: "",
+                totalNumber: prev.totalNumber || "",
+                totalWeight: prev.weight || "",
+                itemRef: "",
+                receiverRef: "",
+                status: "Created",
+                containers: []
+            }]
         }));
     };
 
@@ -572,7 +698,7 @@ const OrderForm = () => {
         const value = e.target.value;
         setFormData(prev => ({
             ...prev,
-            receivers: prev.receivers.map((rec, i) => 
+            receivers: prev.receivers.map((rec, i) =>
                 i === index ? { ...rec, [field]: value } : rec
             )
         }));
@@ -591,7 +717,7 @@ const OrderForm = () => {
         setFormData((prev) => ({
             ...prev,
             receivers: prev.receivers.map((r, i) =>
-                i === index ? { ...r, containers: value ? [value] : [] } : r
+                i === index ? { ...r, containers: value || [] } : r
             ),
         }));
         // Clear error
@@ -641,23 +767,61 @@ const OrderForm = () => {
         const formDataToSend = new FormData();
         const dateFields = ['eta', 'etd', 'dropDate', 'deliveryDate'];
 
-        // Append core fields (exclude multiples)
-        const coreKeys = Object.keys(formData).filter(k => !['receivers', 'attachments', 'gatepass'].includes(k));
+        // Append core orders fields (updated with new fields)
+        const coreKeys = ['bookingRef', 'rglBookingNumber', 'placeOfLoading', 'pointOfOrigin', 'finalDestination', 'placeOfDelivery', 'orderRemarks', 'eta', 'etd', 'shippingLine', 'attachments'];
         coreKeys.forEach(key => {
             const value = formData[key];
             if (dateFields.includes(key) && value === '') {
                 // Skip empty dates
             } else {
-                const apiKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
+                const apiKey = camelToSnake(key);
                 formDataToSend.append(apiKey, value || '');
             }
         });
 
-        // Append multiples as JSON
-        formDataToSend.append('receivers', JSON.stringify(formData.receivers.map(rec => ({
-            ...rec,
-            containers: rec.containers // already array of strings
-        }))));
+        // Append senders fields (new)
+        const senderKeys = ['senderName', 'senderContact', 'senderAddress', 'senderEmail', 'senderRef', 'senderRemarks'];
+        senderKeys.forEach(key => {
+            const apiKey = camelToSnake(key);
+            formDataToSend.append(apiKey, formData[key] || '');
+        });
+
+        // Append receivers as JSON (updated with new fields)
+        const receiversToSend = formData.receivers.map((rec, i) => {
+            const snakeRec = {};
+            Object.keys(rec).forEach(key => {
+                if (key === 'containers') {
+                    snakeRec.containers = rec.containers;
+                } else {
+                    const snakeKey = camelToSnake(key);
+                    snakeRec[snakeKey] = rec[key];
+                }
+            });
+            // Auto-generate item_ref if empty
+            if (!snakeRec.item_ref) {
+                snakeRec.item_ref = `ITEM-REF-${i + 1}-${Date.now()}`;
+            }
+            return snakeRec;
+        });
+        formDataToSend.append('receivers', JSON.stringify(receiversToSend));
+
+        // Append order_items fields (single)
+        const itemKeys = ['category', 'subcategory', 'type', 'pickupLocation', 'deliveryAddress', 'totalNumber', 'weight', 'consignmentStatus'];
+        itemKeys.forEach(key => {
+            const apiKey = camelToSnake(key);
+            formDataToSend.append(apiKey, formData[key] || '');
+        });
+        // Auto-generate item_ref for order_items if empty
+        const orderItemRef = formData.itemRef || `ORDER-ITEM-REF-${Date.now()}`;
+        formDataToSend.append('item_ref', orderItemRef);
+
+        // Append transport fields (updated with dropoff_name)
+        const transportKeys = ['transportType', 'thirdPartyTransport', 'driverName', 'driverContact', 'driverNic', 'driverPickupLocation', 'truckNumber', 'dropMethod', 'dropoffName', 'dropOffCnic', 'dropOffMobile', 'plateNo', 'dropDate', 'collectionMethod', 'fullPartial', 'qtyDelivered', 'clientReceiverName', 'clientReceiverId', 'clientReceiverMobile', 'deliveryDate', 'gatepass'];
+        transportKeys.forEach(key => {
+            const value = formData[key];
+            const apiKey = camelToSnake(key);
+            formDataToSend.append(apiKey, value || '');
+        });
 
         // Handle attachments and gatepass
         ['attachments', 'gatepass'].forEach(key => {
@@ -669,7 +833,7 @@ const OrderForm = () => {
                     newFiles.forEach(file => formDataToSend.append(key, file));
                 }
                 if (existing.length > 0) {
-                    const apiKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
+                    const apiKey = camelToSnake(key);
                     formDataToSend.append(`${apiKey}_existing`, JSON.stringify(existing));
                 }
             }
@@ -680,10 +844,12 @@ const OrderForm = () => {
                 await api.put(`/api/orders/${orderId}`, formDataToSend, {
                     headers: { 'Content-Type': 'multipart/form-data' }
                 });
+                await fetchOrder(orderId);
             } else {
                 await api.post(`/api/orders`, formDataToSend, {
                     headers: { 'Content-Type': 'multipart/form-data' }
                 });
+                navigate('/orders');
             }
             setSnackbar({
                 open: true,
@@ -707,7 +873,7 @@ const OrderForm = () => {
                 }).filter(Boolean);
 
                 const newErrors = {};
-                errorsList.forEach(({field, msg}) => {
+                errorsList.forEach(({ field, msg }) => {
                     if (receiverFields.includes(field)) {
                         newErrors[`receivers[0].${field}`] = msg;
                     } else {
@@ -750,7 +916,10 @@ const OrderForm = () => {
     const statuses = ["Created", "In Transit", "Delivered", "Cancelled"];
     const types = ["Select Type", "Type 1", "Type 2"];
 
-    const isFieldDisabled = (name) => isEditMode && nonEditableInEdit.includes(name);
+    const isFieldDisabled = (name) => {
+        if (!isEditMode) return false;
+        return !editableInEdit.includes(name);
+    };
 
     if (loading) {
         return (
@@ -797,7 +966,7 @@ const OrderForm = () => {
                         </Stack>
                     </Stack>
 
-                    {/* Top Order Fields - with validation errors */}
+                    {/* Top Order Fields - updated with missing fields */}
                     <Stack spacing={3} mb={4}>
                         {/* Row 1: Booking Ref | RGL Booking Number */}
                         <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
@@ -830,6 +999,9 @@ const OrderForm = () => {
                                 name="pointOfOrigin"
                                 value={formData.pointOfOrigin}
                                 onChange={handleChange}
+                                error={!!errors.pointOfOrigin}
+                                required
+                                disabled={isFieldDisabled('pointOfOrigin')}
                             >
                                 {places.map((p) => (
                                     <MenuItem key={p} value={p}>
@@ -859,9 +1031,10 @@ const OrderForm = () => {
                             <CustomSelect
                                 label="Place of Delivery"
                                 name="placeOfDelivery"
-                                required
                                 value={formData.placeOfDelivery}
                                 onChange={handleChange}
+                                error={!!errors.placeOfDelivery}
+                                required
                                 disabled={isFieldDisabled('placeOfDelivery')}
                             >
                                 {places.map((p) => (
@@ -887,12 +1060,14 @@ const OrderForm = () => {
                             </CustomSelect>
                         </Box>
 
-                        {/* Row 4: Remarks */}
+                        {/* Row 4: Order Remarks */}
                         <CustomTextField
-                            label="Remarks"
+                            label="Order Remarks"
                             name="orderRemarks"
                             value={formData.orderRemarks}
                             onChange={handleChange}
+                            error={!!errors.orderRemarks}
+                            helperText={errors.orderRemarks}
                             fullWidth
                             multiline
                             rows={2}
@@ -958,205 +1133,44 @@ const OrderForm = () => {
                                         rows={2}
                                         disabled={isFieldDisabled('senderAddress')}
                                     />
+                                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                        <CustomTextField
+                                            label="Sender Email"
+                                            name="senderEmail"
+                                            value={formData.senderEmail}
+                                            onChange={handleChange}
+                                            error={!!errors.senderEmail}
+                                            helperText={errors.senderEmail}
+                                            disabled={isFieldDisabled('senderEmail')}
+                                        />
+                                        <CustomTextField
+                                            label="Sender Ref"
+                                            name="senderRef"
+                                            value={formData.senderRef}
+                                            onChange={handleChange}
+                                            error={!!errors.senderRef}
+                                            helperText={errors.senderRef}
+                                            disabled={isFieldDisabled('senderRef')}
+                                        />
+                                    </Box>
                                     <CustomTextField
-                                        label="Sender Email"
-                                        name="senderEmail"
-                                        value={formData.senderEmail}
+                                        label="Sender Remarks"
+                                        name="senderRemarks"
+                                        value={formData.senderRemarks}
                                         onChange={handleChange}
-                                        error={!!errors.senderEmail}
-                                        helperText={errors.senderEmail}
-                                        disabled={isFieldDisabled('senderEmail')}
+                                        error={!!errors.senderRemarks}
+                                        helperText={errors.senderRemarks}
+                                        multiline
+                                        rows={2}
+                                        disabled={isFieldDisabled('senderRemarks')}
                                     />
                                 </Stack>
                             </AccordionDetails>
                         </Accordion>
 
-                    <Accordion
-    expanded={expanded.has("panel2")}
-    onChange={handleAccordionChange("panel2")}
-    sx={{
-        borderRadius: 2,
-        boxShadow: "none",
-        "&:before": { display: "none" },
-        "&.Mui-expanded": { boxShadow: "0 2px 8px rgba(0,0,0,0.1)" },
-    }}
->
-    <AccordionSummary
-        expandIcon={<ExpandMoreIcon />}
-        sx={{
-            bgcolor: expanded.has("panel2") ? "#0d6c6a" : "#fff3e0",
-            borderRadius: 2,
-            "& .MuiAccordionSummary-content": { fontWeight: "bold", color: expanded.has("panel2") ? "#fff" : "#f58220" },
-        }}
-    >
-        2. Receiver Details
-    </AccordionSummary>
-    <AccordionDetails sx={{ p: 3, bgcolor: "#fff" }}>
-        <Stack spacing={2}>
-            {errors.receivers && <Alert severity="error">{errors.receivers}</Alert>}
-            {formData.receivers.map((rec, i) => (
-                <Box key={i} sx={{ p: 2, border: 1, borderColor: "grey.300", borderRadius: 2 }}>
-                    <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
-                        <Typography variant="subtitle1" color="primary" fontWeight={"bold"}>Receiver {i + 1}</Typography>
-                        {formData.receivers.length > 1 && (
-                            <IconButton onClick={() => removeReceiver(i)} size="small">
-                                <DeleteIcon />
-                            </IconButton>
-                        )}
-                    </Stack>
-                    <Stack spacing={2}>
-                        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                            <CustomTextField
-                                label="Receiver Name"
-                                value={rec.receiverName}
-                                onChange={handleReceiverChange(i, 'receiverName')}
-                                error={!!errors[`receivers[${i}].receiverName`]}
-                                helperText={errors[`receivers[${i}].receiverName`]}
-                                required
-                            />
-                            <CustomTextField
-                                label="Receiver Contact"
-                                value={rec.receiverContact}
-                                onChange={handleReceiverChange(i, 'receiverContact')}
-                                error={!!errors[`receivers[${i}].receiverContact`]}
-                                helperText={errors[`receivers[${i}].receiverContact`]}
-                            />
-                        </Box>
-                        <CustomTextField
-                            label="Receiver Address"
-                            value={rec.receiverAddress}
-                            onChange={handleReceiverChange(i, 'receiverAddress')}
-                            error={!!errors[`receivers[${i}].receiverAddress`]}
-                            helperText={errors[`receivers[${i}].receiverAddress`]}
-                            multiline
-                            rows={2}
-                        />
-                        <CustomTextField
-                            label="Receiver Email"
-                            value={rec.receiverEmail}
-                            onChange={handleReceiverChange(i, 'receiverEmail')}
-                            error={!!errors[`receivers[${i}].receiverEmail`]}
-                            helperText={errors[`receivers[${i}].receiverEmail`]}
-                        />
-                        {/* Assigned Containers - Single Select */}
-                        <Typography variant="subtitle1" color="primary" fontWeight={"bold"} >Assigned Container</Typography>
-                        <FormControl sx={{ flex: 1, minWidth: 0 }} error={!!errors[`receivers[${i}].containers`]}>
-                            <InputLabel sx={{ color: "rgba(180, 174, 174, 1)" }}>Select Container</InputLabel>
-                            <Select
-                                value={Array.isArray(rec.containers) ? rec.containers[0] || "" : rec.containers || ""}
-                                label="Select Container"
-                                onChange={handleReceiverContainersChange(i)}
-                                disabled={loadingContainers}
-                                size="medium"
-                                sx={{
-                                    "& .MuiOutlinedInput-root": {
-                                        borderRadius: 2,
-                                        transition: "all 0.3s ease",
-                                        backgroundColor: "#fff",
-                                        "& fieldset": { borderColor: "#ddd" },
-                                        "&:hover fieldset": { borderColor: "#f58220" },
-                                        "&.Mui-focused fieldset": {
-                                            borderColor: "#f58220",
-                                            boxShadow: "0 0 8px rgba(245, 130, 32, 0.3)",
-                                        },
-                                        ...(errors[`receivers[${i}].containers`] && { "& fieldset": { borderColor: "#d32f2f" } }),
-                                    },
-                                }}
-                            >
-                                {containers.map((container) => (
-                                    <MenuItem key={container.cid} value={container.container_number}>
-                                        {`${container.container_number} (${container.container_size} - ${container.derived_status || container.availability})`}
-                                    </MenuItem>
-                                ))}
-                            </Select>
-                            {errors[`receivers[${i}].containers`] && <Typography variant="caption" color="error">{errors[`receivers[${i}].containers`]}</Typography>}
-                        </FormControl>
-                        {/* Per-Receiver Consignment Details */}
-                        <Typography variant="subtitle1" color="primary" fontWeight={"bold"} >Consignment Details</Typography>
-                        <Stack spacing={2}>
-                            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                <CustomTextField
-                                    label="Consignment Vessel"
-                                    value={rec.consignmentVessel || ""}
-                                    onChange={handleReceiverChange(i, 'consignmentVessel')}
-                                />
-                                <CustomTextField
-                                    label="Consignment Number"
-                                    value={rec.consignmentNumber || ""}
-                                    onChange={handleReceiverChange(i, 'consignmentNumber')}
-                                    error={!!errors[`receivers[${i}].consignmentNumber`]}
-                                    helperText={errors[`receivers[${i}].consignmentNumber`]}
-                                    required
-                                />
-                                       <CustomTextField
-                                    label="Consignment Marks"
-                                    value={rec.consignmentMarks || ""}
-                                    onChange={handleReceiverChange(i, 'consignmentMarks')}
-                                />
-                            </Box>
-                            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                <CustomTextField
-                                    label="Consignment Voyage"
-                                    value={rec.consignmentVoyage || ""}
-                                    onChange={handleReceiverChange(i, 'consignmentVoyage')}
-                                />
-                                <CustomSelect
-                                    label="Status"
-                                    value={rec.status || ""}
-                                    onChange={handleReceiverChange(i, 'status')}
-                                >
-                                    {statuses.map((s) => (
-                                        <MenuItem key={s} value={s}>
-                                            {s}
-                                        </MenuItem>
-                                    ))}
-                                </CustomSelect>
-                                    <CustomTextField
-                                    label="Total Number"
-                                    value={rec.totalNumber || ""}
-                                    onChange={handleReceiverChange(i, 'totalNumber')}
-                                />
-                            </Box>
-                         
-                            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                <CustomTextField
-                                    label="Total Weight"
-                                    value={rec.totalWeight || ""}
-                                    onChange={handleReceiverChange(i, 'totalWeight')}
-                                    error={!!errors[`receivers[${i}].totalWeight`]}
-                                    helperText={errors[`receivers[${i}].totalWeight`]}
-                                    required
-                                />
-                                <CustomTextField
-                                    label="Reciever Id"
-                                    value={rec.assignment || ""}
-                                    onChange={handleReceiverChange(i, 'assignment')}
-                                />
-                                  <CustomTextField
-                                label="Item Ref"
-                                value={rec.itemRef || ""}
-                                onChange={handleReceiverChange(i, 'itemRef')}
-                            />
-                            </Box>
-                          
-                        </Stack>
-                    </Stack>
-                </Box>
-            ))}
-            <Button
-                variant="outlined"
-                startIcon={<AddIcon />}
-                onClick={addReceiver}
-                sx={{ alignSelf: 'flex-start' }}
-            >
-                Add Receiver
-            </Button>
-        </Stack>
-    </AccordionDetails>
-</Accordion>
                         <Accordion
-                            expanded={expanded.has("panel3")}
-                            onChange={handleAccordionChange("panel3")}
+                            expanded={expanded.has("panel2")}
+                            onChange={handleAccordionChange("panel2")}
                             sx={{
                                 borderRadius: 2,
                                 boxShadow: "none",
@@ -1167,12 +1181,12 @@ const OrderForm = () => {
                             <AccordionSummary
                                 expandIcon={<ExpandMoreIcon />}
                                 sx={{
-                                    bgcolor: expanded.has("panel3") ? "#0d6c6a" : "#fff3e0",
+                                    bgcolor: expanded.has("panel2") ? "#0d6c6a" : "#fff3e0",
                                     borderRadius: 2,
-                                    "& .MuiAccordionSummary-content": { fontWeight: "bold", color: expanded.has("panel3") ? "#fff" : "#f58220" },
+                                    "& .MuiAccordionSummary-content": { fontWeight: "bold", color: expanded.has("panel2") ? "#fff" : "#f58220" },
                                 }}
                             >
-                                3. Shipping Details
+                                2. Shipping Details
                             </AccordionSummary>
                             <AccordionDetails sx={{ p: 3, bgcolor: "#fff" }}>
                                 <Stack spacing={2}>
@@ -1184,6 +1198,7 @@ const OrderForm = () => {
                                             onChange={handleChange}
                                             error={!!errors.pickupLocation}
                                             helperText={errors.pickupLocation}
+                                            disabled={isFieldDisabled('pickupLocation')}
                                         />
                                         <CustomSelect
                                             label="Category"
@@ -1192,6 +1207,7 @@ const OrderForm = () => {
                                             onChange={handleChange}
                                             error={!!errors.category}
                                             required
+                                            disabled={isFieldDisabled('category')}
                                         >
                                             <MenuItem value="">Select Category</MenuItem>
                                             {categories.map((c) => (
@@ -1209,6 +1225,7 @@ const OrderForm = () => {
                                             onChange={handleChange}
                                             error={!!errors.subcategory}
                                             required
+                                            disabled={isFieldDisabled('subcategory')}
                                         >
                                             <MenuItem value="">Select Subcategory</MenuItem>
                                             {subcategories.map((sc) => (
@@ -1218,12 +1235,13 @@ const OrderForm = () => {
                                             ))}
                                         </CustomSelect>
                                         <CustomSelect
-                                            label="Unit"
+                                            label="Type"
                                             name="type"
                                             value={formData.type}
                                             onChange={handleChange}
                                             error={!!errors.type}
                                             required
+                                            disabled={isFieldDisabled('type')}
                                         >
                                             <MenuItem value="">Select Type</MenuItem>
                                             {types.map((t) => (
@@ -1234,7 +1252,7 @@ const OrderForm = () => {
                                         </CustomSelect>
                                     </Box>
                                     <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                   <CustomTextField
+                                        <CustomTextField
                                             label="Total Number"
                                             name="totalNumber"
                                             value={formData.totalNumber}
@@ -1242,6 +1260,7 @@ const OrderForm = () => {
                                             error={!!errors.totalNumber}
                                             helperText={errors.totalNumber}
                                             required
+                                            disabled={isFieldDisabled('totalNumber')}
                                         />
                                         <CustomTextField
                                             label="Weight"
@@ -1251,15 +1270,29 @@ const OrderForm = () => {
                                             error={!!errors.weight}
                                             helperText={errors.weight}
                                             required
+                                            disabled={isFieldDisabled('weight')}
+                                        />
+                                        {/* Removed duplicate totalWeight; calculate if needed */}
+                                    </Box>
+                                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                        <CustomTextField
+                                            label="Shipping Line"
+                                            name="shippingLine"
+                                            value={formData.shippingLine}
+                                            onChange={handleChange}
+                                            required
+                                            error={!!errors.shippingLine}
+                                            helperText={errors.shippingLine}
+                                            disabled={isFieldDisabled('shippingLine')}
                                         />
                                         <CustomTextField
-                                            label="Total Weight"
-                                            name="totalWeight"
-                                            value={formData.totalWeight}
+                                            label="Remarks"
+                                            name="consignmentStatus"
+                                            value={formData.consignmentStatus}
                                             onChange={handleChange}
-                                            error={!!errors.totalWeight}
-                                            helperText={errors.totalWeight}
-                                            required
+                                            error={!!errors.consignmentStatus}
+                                            helperText={errors.consignmentStatus}
+                                            disabled={isFieldDisabled('consignmentStatus')}
                                         />
                                     </Box>
                                     <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
@@ -1281,23 +1314,212 @@ const OrderForm = () => {
                                             type="date"
                                             value={formData.etd}
                                             onChange={handleChange}
-                                            required
                                             InputLabelProps={{ shrink: true }}
                                             error={!!errors.etd}
                                             helperText={errors.etd}
+                                            required
                                             disabled={isFieldDisabled('etd')}
                                         />
                                     </Box>
-                                    <CustomTextField
-                                        label="Shipping Line"
-                                        name="shippingLine"
-                                        value={formData.shippingLine}
-                                        onChange={handleChange}
-                                        required
-                                        error={!!errors.shippingLine}
-                                        helperText={errors.shippingLine}
-                                        disabled={isFieldDisabled('shippingLine')}
-                                    />
+
+                                </Stack>
+                            </AccordionDetails>
+                        </Accordion>
+
+                        <Accordion
+                            expanded={expanded.has("panel3")}
+                            onChange={handleAccordionChange("panel3")}
+                            sx={{
+                                borderRadius: 2,
+                                boxShadow: "none",
+                                "&:before": { display: "none" },
+                                "&.Mui-expanded": { boxShadow: "0 2px 8px rgba(0,0,0,0.1)" },
+                            }}
+                        >
+                            <AccordionSummary
+                                expandIcon={<ExpandMoreIcon />}
+                                sx={{
+                                    bgcolor: expanded.has("panel3") ? "#0d6c6a" : "#fff3e0",
+                                    borderRadius: 2,
+                                    "& .MuiAccordionSummary-content": { fontWeight: "bold", color: expanded.has("panel3") ? "#fff" : "#f58220" },
+                                }}
+                            >
+                                3. Receiver Details
+                            </AccordionSummary>
+                            <AccordionDetails sx={{ p: 3, bgcolor: "#fff" }}>
+                                <Stack spacing={2}>
+                                    {errors.receivers && <Alert severity="error">{errors.receivers}</Alert>}
+                                    {formData.receivers.map((rec, i) => (
+                                        <Box key={i} sx={{ p: 2, border: 1, borderColor: "grey.300", borderRadius: 2 }}>
+                                            <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
+                                                <Typography variant="subtitle1" color="primary" fontWeight={"bold"}>Receiver {i + 1}</Typography>
+                                                {formData.receivers.length > 1 && (
+                                                    <IconButton onClick={() => removeReceiver(i)} size="small">
+                                                        <DeleteIcon />
+                                                    </IconButton>
+                                                )}
+                                            </Stack>
+                                            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                <CustomTextField
+                                                    label="Receiver Name"
+                                                    value={rec.receiverName}
+                                                    onChange={handleReceiverChange(i, 'receiverName')}
+                                                    error={!!errors[`receivers[${i}].receiverName`]}
+                                                    helperText={errors[`receivers[${i}].receiverName`]}
+                                                    required
+                                                />
+                                                <CustomTextField
+                                                    label="Receiver Contact"
+                                                    value={rec.receiverContact}
+                                                    onChange={handleReceiverChange(i, 'receiverContact')}
+                                                    error={!!errors[`receivers[${i}].receiverContact`]}
+                                                    helperText={errors[`receivers[${i}].receiverContact`]}
+                                                />
+                                            </Box>
+                                            <Box sx={{ display: 'flex', py: 2, flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+
+                                                <CustomTextField
+                                                    label="Receiver Address"
+                                                    value={rec.receiverAddress}
+                                                    onChange={handleReceiverChange(i, 'receiverAddress')}
+                                                    error={!!errors[`receivers[${i}].receiverAddress`]}
+                                                    helperText={errors[`receivers[${i}].receiverAddress`]}
+
+                                                />
+                                                <CustomTextField
+                                                    label="Receiver Email"
+                                                    value={rec.receiverEmail}
+                                                    onChange={handleReceiverChange(i, 'receiverEmail')}
+                                                    error={!!errors[`receivers[${i}].receiverEmail`]}
+                                                    helperText={errors[`receivers[${i}].receiverEmail`]}
+                                                />
+                                            </Box>
+                                            {/* Assigned Containers - Multi Select */}
+                                            <Typography variant="subtitle1" color="primary" fontWeight={"bold"} >Assigned Containers</Typography>
+                                            <Box sx={{ display: 'flex', py: 2, flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+
+                                                <FormControl sx={{ flex: 1, minWidth: 0 }} error={!!errors[`receivers[${i}].containers`]}>
+                                                    <InputLabel sx={{ color: "rgba(180, 174, 174, 1)" }}>Select Containers</InputLabel>
+                                                    <Select
+
+                                                        value={rec.containers || []}
+                                                        label="Select Containers"
+                                                        onChange={handleReceiverContainersChange(i)}
+                                                        disabled={loadingContainers}
+                                                        size="medium"
+                                                        sx={{
+                                                            "& .MuiOutlinedInput-root": {
+                                                                borderRadius: 2,
+                                                                transition: "all 0.3s ease",
+                                                                backgroundColor: "#fff",
+                                                                "& fieldset": { borderColor: "#ddd" },
+                                                                "&:hover fieldset": { borderColor: "#f58220" },
+                                                                "&.Mui-focused fieldset": {
+                                                                    borderColor: "#f58220",
+                                                                    boxShadow: "0 0 8px rgba(245, 130, 32, 0.3)",
+                                                                },
+                                                                ...(errors[`receivers[${i}].containers`] && { "& fieldset": { borderColor: "#d32f2f" } }),
+                                                            },
+                                                        }}
+                                                    >
+                                                        {containers.map((container) => (
+                                                            <MenuItem key={container.cid} value={container.container_number}>
+                                                                {`${container.container_number} (${container.container_size} - ${container.derived_status || container.availability})`}
+                                                            </MenuItem>
+                                                        ))}
+                                                    </Select>
+                                                    {errors[`receivers[${i}].containers`] && <Typography variant="caption" color="error">{errors[`receivers[${i}].containers`]}</Typography>}
+                                                </FormControl>
+                                                <CustomSelect
+                                                    label="Status"
+                                                    name="status"
+                                                    value={rec.status}
+                                                    onChange={handleReceiverChange(i, 'status')}
+                                                    error={!!errors[`receivers[${i}].status`]}
+                                                    helperText={errors[`receivers[${i}].status`]}
+                                                >
+                                                    {statuses.map((s) => (
+                                                        <MenuItem key={s} value={s}>
+                                                            {s}
+                                                        </MenuItem>
+                                                    ))}
+                                                </CustomSelect>
+
+                                            </Box>
+                                            {/* Per-Receiver Consignment Details - updated with new fields */}
+                                            <Typography variant="subtitle1" color="primary" fontWeight={"bold"} >Consignment Details</Typography>
+                                            <Stack spacing={2}>
+                                                <Box sx={{ display: 'flex', py: 2, flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                    <CustomTextField
+                                                        label="Consignment Vessel"
+                                                        value={rec.consignmentVessel || ""}
+                                                        onChange={handleReceiverChange(i, 'consignmentVessel')}
+                                                    />
+
+                                                    <CustomTextField
+                                                        label="Consignment Marks"
+                                                        value={rec.consignmentMarks || ""}
+                                                        onChange={handleReceiverChange(i, 'consignmentMarks')}
+                                                        error={!!errors[`receivers[${i}].consignmentMarks`]}
+                                                        helperText={errors[`receivers[${i}].consignmentMarks`]}
+                                                    />
+                                                </Box>
+                                                <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                    <CustomTextField
+                                                        label="Consignment Number"
+                                                        value={rec.consignmentNumber || ""}
+                                                        onChange={handleReceiverChange(i, 'consignmentNumber')}
+                                                        error={!!errors[`receivers[${i}].consignmentNumber`]}
+                                                        helperText={errors[`receivers[${i}].consignmentNumber`]}
+                                                        required
+                                                    />
+                                                    <CustomTextField
+                                                        label="Consignment Voyage"
+                                                        value={rec.consignmentVoyage || ""}
+                                                        onChange={handleReceiverChange(i, 'consignmentVoyage')}
+                                                        error={!!errors[`receivers[${i}].consignmentVoyage`]}
+                                                        helperText={errors[`receivers[${i}].consignmentVoyage`]}
+                                                    />
+                                                    <CustomTextField
+                                                        label="Receiver Ref"
+                                                        value={rec.receiverRef || ""}
+                                                        onChange={handleReceiverChange(i, 'receiverRef')}
+                                                        error={!!errors[`receivers[${i}].receiverRef`]}
+                                                        helperText={errors[`receivers[${i}].receiverRef`]}
+                                                        required
+                                                    />
+                                                </Box>
+                                                <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                    <CustomTextField
+                                                        label="Total Number"
+                                                        value={rec.totalNumber || ""}
+                                                        onChange={handleReceiverChange(i, 'totalNumber')}
+                                                    />
+                                                    <CustomTextField
+                                                        label="Total Weight"
+                                                        value={rec.totalWeight || ""}
+                                                        onChange={handleReceiverChange(i, 'totalWeight')}
+                                                        error={!!errors[`receivers[${i}].totalWeight`]}
+                                                        helperText={errors[`receivers[${i}].totalWeight`]}
+                                                        required
+                                                    />
+                                                    <CustomTextField
+                                                        label="Ref Number"
+                                                        value={rec.itemRef || ""}
+                                                        disabled={true}
+                                                    />
+                                                </Box>
+                                            </Stack>
+                                        </Box>
+                                    ))}
+                                    <Button
+                                        variant="outlined"
+                                        startIcon={<AddIcon />}
+                                        onClick={addReceiver}
+                                        sx={{ alignSelf: 'flex-start' }}
+                                    >
+                                        Add Receiver
+                                    </Button>
                                 </Stack>
                             </AccordionDetails>
                         </Accordion>
@@ -1332,7 +1554,7 @@ const OrderForm = () => {
                                             name="transportType"
                                             value={formData.transportType}
                                             onChange={handleChange}
-                                            style={{flexDirection:"row"}}
+                                            style={{ flexDirection: "row" }}
                                         >
                                             <FormControlLabel value="Drop Off" control={<Radio />} label="Drop Off" />
                                             <FormControlLabel value="Collection" control={<Radio />} label="Collection" />
@@ -1346,40 +1568,53 @@ const OrderForm = () => {
                                             <Typography variant="h6" color="#f58220" gutterBottom>
                                                 🧭 Drop-Off Details
                                             </Typography>
-                                            <FormControl component="fieldset" error={!!errors.dropMethod}>
-                                                <RadioGroup
-                                                    name="dropMethod"
-                                                    value={formData.dropMethod}
+                                            <CustomSelect
+                                                label="Drop Method"
+                                                name="dropMethod"
+                                                value={formData.dropMethod}
+                                                onChange={handleChange}
+                                                error={!!errors.dropMethod}
+                                                required
+                                                disabled={isFieldDisabled('dropMethod')}
+                                            >
+                                                <MenuItem value="">Select Drop Method</MenuItem>
+                                                <MenuItem value="Drop-Off">Drop-Off</MenuItem>
+                                                <MenuItem value="RGSL Pickup">RGSL Pickup</MenuItem>
+                                            </CustomSelect>
+                                            <Stack spacing={2}>
+                                                <CustomTextField
+                                                    label="Drop-Off Person Name"
+                                                    name="dropoffName"
+                                                    value={formData.dropoffName}
                                                     onChange={handleChange}
-                                                >
-                                                    <FormControlLabel value="Drop-Off" control={<Radio />} label="Drop-Off" />
-                                                    <FormControlLabel value="RGSL Pickup" control={<Radio />} label="RGSL Pickup" />
-                                                </RadioGroup>
-                                            </FormControl>
-                                            {formData.dropMethod === 'Drop-Off' && (
-                                                <Stack spacing={2}>
-                                                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                                        <CustomTextField
-                                                            label="Drop-Off CNIC/ID"
-                                                            name="dropOffCnic"
-                                                            value={formData.dropOffCnic}
-                                                            onChange={handleChange}
-                                                            error={!!errors.dropOffCnic}
-                                                            helperText={errors.dropOffCnic}
-                                                            required
-                                                        />
-                                                        <CustomTextField
-                                                            label="Drop-Off Mobile"
-                                                            name="dropOffMobile"
-                                                            value={formData.dropOffMobile}
-                                                            onChange={handleChange}
-                                                            error={!!errors.dropOffMobile}
-                                                            helperText={errors.dropOffMobile}
-                                                            required
-                                                        />
-                                                    </Box>
-                                                </Stack>
-                                            )}
+                                                    error={!!errors.dropoffName}
+                                                    helperText={errors.dropoffName}
+                                                    required={formData.dropMethod === 'Drop-Off'}
+                                                    disabled={isFieldDisabled('dropoffName')}
+                                                />
+                                                <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                    <CustomTextField
+                                                        label="Drop-Off CNIC/ID"
+                                                        name="dropOffCnic"
+                                                        value={formData.dropOffCnic}
+                                                        onChange={handleChange}
+                                                        error={!!errors.dropOffCnic}
+                                                        helperText={errors.dropOffCnic}
+                                                        required={formData.dropMethod === 'Drop-Off'}
+                                                        disabled={isFieldDisabled('dropOffCnic')}
+                                                    />
+                                                    <CustomTextField
+                                                        label="Drop-Off Mobile"
+                                                        name="dropOffMobile"
+                                                        value={formData.dropOffMobile}
+                                                        onChange={handleChange}
+                                                        error={!!errors.dropOffMobile}
+                                                        helperText={errors.dropOffMobile}
+                                                        required={formData.dropMethod === 'Drop-Off'}
+                                                        disabled={isFieldDisabled('dropOffMobile')}
+                                                    />
+                                                </Box>
+                                            </Stack>
                                             <CustomTextField
                                                 label="Plate No (optional)"
                                                 name="plateNo"
@@ -1387,6 +1622,7 @@ const OrderForm = () => {
                                                 onChange={handleChange}
                                                 error={!!errors.plateNo}
                                                 helperText={errors.plateNo}
+                                                disabled={isFieldDisabled('plateNo')}
                                             />
                                             <CustomTextField
                                                 label="Drop Date"
@@ -1398,6 +1634,7 @@ const OrderForm = () => {
                                                 error={!!errors.dropDate}
                                                 helperText={errors.dropDate}
                                                 required
+                                                disabled={isFieldDisabled('dropDate')}
                                             />
                                         </Stack>
                                     )}
@@ -1407,26 +1644,32 @@ const OrderForm = () => {
                                             <Typography variant="h6" color="#f58220" gutterBottom>
                                                 🚛 Collection Details
                                             </Typography>
-                                            <FormControl component="fieldset" error={!!errors.collectionMethod}>
-                                                <RadioGroup
-                                                    name="collectionMethod"
-                                                    value={formData.collectionMethod}
-                                                    onChange={handleChange}
-                                                >
-                                                    <FormControlLabel value="Delivered by RGSL" control={<Radio />} label="Delivered by RGSL" />
-                                                    <FormControlLabel value="Collected by Client" control={<Radio />} label="Collected by Client" />
-                                                </RadioGroup>
-                                            </FormControl>
-                                            <FormControl component="fieldset" error={!!errors.fullPartial}>
-                                                <RadioGroup
-                                                    name="fullPartial"
-                                                    value={formData.fullPartial}
-                                                    onChange={handleChange}
-                                                >
-                                                    <FormControlLabel value="Full" control={<Radio />} label="Full" />
-                                                    <FormControlLabel value="Partial" control={<Radio />} label="Partial" />
-                                                </RadioGroup>
-                                            </FormControl>
+                                            <CustomSelect
+                                                label="Collection Method"
+                                                name="collectionMethod"
+                                                value={formData.collectionMethod}
+                                                onChange={handleChange}
+                                                error={!!errors.collectionMethod}
+                                                required
+                                                disabled={isFieldDisabled('collectionMethod')}
+                                            >
+                                                <MenuItem value="">Select Collection Method</MenuItem>
+                                                <MenuItem value="Delivered by RGSL">Delivered by RGSL</MenuItem>
+                                                <MenuItem value="Collected by Client">Collected by Client</MenuItem>
+                                            </CustomSelect>
+                                            <CustomSelect
+                                                label="Full/Partial"
+                                                name="fullPartial"
+                                                value={formData.fullPartial}
+                                                onChange={handleChange}
+                                                error={!!errors.fullPartial}
+                                                required
+                                                disabled={isFieldDisabled('fullPartial')}
+                                            >
+                                                <MenuItem value="">Select Full/Partial</MenuItem>
+                                                <MenuItem value="Full">Full</MenuItem>
+                                                <MenuItem value="Partial">Partial</MenuItem>
+                                            </CustomSelect>
                                             {formData.fullPartial === 'Partial' && (
                                                 <CustomTextField
                                                     label="Qty Delivered"
@@ -1437,30 +1680,31 @@ const OrderForm = () => {
                                                     helperText={errors.qtyDelivered}
                                                     required
                                                     type="number"
+                                                    disabled={isFieldDisabled('qtyDelivered')}
                                                 />
                                             )}
-                                            {formData.collectionMethod === 'Collected by Client' && (
-                                                <Stack spacing={2}>
-                                                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                                        <CustomTextField
-                                                            label="Receiver Name"
-                                                            name="clientReceiverName"
-                                                            value={formData.clientReceiverName}
-                                                            onChange={handleChange}
-                                                            error={!!errors.clientReceiverName}
-                                                            helperText={errors.clientReceiverName}
-                                                            required
-                                                        />
-                                                        <CustomTextField
-                                                            label="Receiver ID"
-                                                            name="clientReceiverId"
-                                                            value={formData.clientReceiverId}
-                                                            onChange={handleChange}
-                                                            error={!!errors.clientReceiverId}
-                                                            helperText={errors.clientReceiverId}
-                                                            required
-                                                        />
-                                                    </Box>
+                                            <Stack spacing={2}>
+                                                <CustomTextField
+                                                    label="Receiver Name / CNIC/ID"
+                                                    name="clientReceiverName"
+                                                    value={formData.clientReceiverName}
+                                                    onChange={handleChange}
+                                                    error={!!errors.clientReceiverName}
+                                                    helperText={errors.clientReceiverName}
+                                                    required={formData.collectionMethod === 'Collected by Client'}
+                                                    disabled={isFieldDisabled('clientReceiverName')}
+                                                />
+                                                <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                    <CustomTextField
+                                                        label="Receiver ID"
+                                                        name="clientReceiverId"
+                                                        value={formData.clientReceiverId}
+                                                        onChange={handleChange}
+                                                        error={!!errors.clientReceiverId}
+                                                        helperText={errors.clientReceiverId}
+                                                        required={formData.collectionMethod === 'Collected by Client'}
+                                                        disabled={isFieldDisabled('clientReceiverId')}
+                                                    />
                                                     <CustomTextField
                                                         label="Receiver Mobile"
                                                         name="clientReceiverMobile"
@@ -1468,10 +1712,20 @@ const OrderForm = () => {
                                                         onChange={handleChange}
                                                         error={!!errors.clientReceiverMobile}
                                                         helperText={errors.clientReceiverMobile}
-                                                        required
+                                                        required={formData.collectionMethod === 'Collected by Client'}
+                                                        disabled={isFieldDisabled('clientReceiverMobile')}
                                                     />
-                                                </Stack>
-                                            )}
+                                                </Box>
+                                                <CustomTextField
+                                                    label="Plate No (optional)"
+                                                    name="plateNo"
+                                                    value={formData.plateNo}
+                                                    onChange={handleChange}
+                                                    error={!!errors.plateNo}
+                                                    helperText={errors.plateNo}
+                                                    disabled={isFieldDisabled('plateNo')}
+                                                />
+                                            </Stack>
                                             <CustomTextField
                                                 label="Delivery Date"
                                                 name="deliveryDate"
@@ -1482,14 +1736,16 @@ const OrderForm = () => {
                                                 error={!!errors.deliveryDate}
                                                 helperText={errors.deliveryDate}
                                                 required
+                                                disabled={isFieldDisabled('deliveryDate')}
                                             />
                                             <Button
                                                 variant="outlined"
                                                 component="label"
                                                 sx={{ borderRadius: 2, borderColor: "#f58220", color: "#f58220", px: 3 }}
+                                                disabled={isFieldDisabled('gatepass')}
                                             >
                                                 Gatepass Upload (Optional)
-                                                <input type="file" hidden multiple onChange={handleGatepassUpload} />
+                                                <input type="file" hidden multiple onChange={handleGatepassUpload} disabled={isFieldDisabled('gatepass')} />
                                             </Button>
                                             {Array.isArray(formData.gatepass) && formData.gatepass.length > 0 && (
                                                 <Stack spacing={1} direction="row" flexWrap="wrap" gap={1}>
@@ -1497,11 +1753,11 @@ const OrderForm = () => {
                                                         const src = typeof gatepass === 'string' ? gatepass : URL.createObjectURL(gatepass);
                                                         const label = typeof gatepass === 'string' ? gatepass.split('/').pop() : gatepass.name || 'File';
                                                         return (
-                                                            <Chip 
-                                                                key={i} 
-                                                                label={label} 
-                                                                color="secondary" 
-                                                                size="small" 
+                                                            <Chip
+                                                                key={i}
+                                                                label={label}
+                                                                color="secondary"
+                                                                size="small"
                                                                 variant="outlined"
                                                                 onClick={() => {
                                                                     setPreviewSrc(src);
@@ -1529,6 +1785,7 @@ const OrderForm = () => {
                                                 error={!!errors.thirdPartyTransport}
                                                 helperText={errors.thirdPartyTransport}
                                                 required
+                                                disabled={isFieldDisabled('thirdPartyTransport')}
                                             >
                                                 {companies.map((c) => (
                                                     <MenuItem key={c} value={c}>
@@ -1545,6 +1802,7 @@ const OrderForm = () => {
                                                     error={!!errors.driverName}
                                                     helperText={errors.driverName}
                                                     required
+                                                    disabled={isFieldDisabled('driverName')}
                                                 />
                                                 <CustomTextField
                                                     label="Driver Contact number"
@@ -1554,6 +1812,7 @@ const OrderForm = () => {
                                                     error={!!errors.driverContact}
                                                     helperText={errors.driverContact}
                                                     required
+                                                    disabled={isFieldDisabled('driverContact')}
                                                 />
                                             </Box>
                                             <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
@@ -1565,6 +1824,7 @@ const OrderForm = () => {
                                                     error={!!errors.driverNic}
                                                     helperText={errors.driverNic}
                                                     required
+                                                    disabled={isFieldDisabled('driverNic')}
                                                 />
                                                 <CustomTextField
                                                     label="Driver Pickup Location"
@@ -1574,6 +1834,7 @@ const OrderForm = () => {
                                                     error={!!errors.driverPickupLocation}
                                                     helperText={errors.driverPickupLocation}
                                                     required
+                                                    disabled={isFieldDisabled('driverPickupLocation')}
                                                 />
                                             </Box>
                                             <CustomTextField
@@ -1584,6 +1845,7 @@ const OrderForm = () => {
                                                 error={!!errors.truckNumber}
                                                 helperText={errors.truckNumber}
                                                 required
+                                                disabled={isFieldDisabled('truckNumber')}
                                             />
                                         </Stack>
                                     )}
@@ -1618,8 +1880,8 @@ const OrderForm = () => {
                                         <Chip label={formData.bookingRef || "-"} variant="outlined" color="primary" />
                                     </Stack>
                                     <Stack direction="row" justifyContent="space-between" alignItems="center">
-                                        <Typography variant="body1" fontWeight="medium">Status:</Typography>
-                                        <Chip label={formData.status} color="warning" variant="filled" />
+                                        <Typography variant="body1" fontWeight="medium">Point of Origin:</Typography>
+                                        <Typography variant="body1">{formData.pointOfOrigin || "-"}</Typography>
                                     </Stack>
                                     <Stack direction="row" justifyContent="space-between" alignItems="center">
                                         <Typography variant="body1" fontWeight="medium">Place of Loading:</Typography>
@@ -1636,17 +1898,35 @@ const OrderForm = () => {
                                     <Stack spacing={1}>
                                         <Typography variant="body1" fontWeight="medium">Receivers:</Typography>
                                         {formData.receivers.map((rec, i) => (
-                                            <Chip key={i} label={rec.receiverName || `Receiver ${i+1}`} size="small" color="primary" variant="outlined" />
+                                                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                          
+                                          <Chip sx={{p:2}} key={i} label={rec.receiverName || `Receiver ${i + 1}`} size="small" color="primary" variant="outlined" />
+                                                  <Typography variant="body2" color="text.secondary">{rec.itemRef || "-"}</Typography>
+                                                </Stack>
                                         ))}
                                     </Stack>
                                     {formData.receivers.some(rec => rec.containers && rec.containers.length > 0) && (
                                         <Stack spacing={1}>
                                             <Typography variant="body1" fontWeight="medium">Assigned Containers:</Typography>
                                             {formData.receivers.flatMap(rec => rec.containers || []).map((cont, i) => (
-                                                <Chip key={i} label={cont} color="info" size="small" variant="outlined" />
+                                                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                               <Chip sx={{p:2}} key={i} label={cont} color="info" size="small" variant="outlined" />
+                                                  </Stack>
                                             ))}
                                         </Stack>
                                     )}
+                                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                        <Typography variant="body1" fontWeight="medium">Category:</Typography>
+                                        <Typography variant="body1">{formData.category || "-"}</Typography>
+                                    </Stack>
+                                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                        <Typography variant="body1" fontWeight="medium">Weight:</Typography>
+                                        <Typography variant="body1">{formData.weight || "-"}</Typography>
+                                    </Stack>
+                                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                        <Typography variant="body1" fontWeight="medium">Transport Type:</Typography>
+                                        <Typography variant="body1">{formData.transportType || "-"}</Typography>
+                                    </Stack>
                                 </Stack>
                             </AccordionDetails>
                         </Accordion>
@@ -1688,11 +1968,11 @@ const OrderForm = () => {
                                                 const src = typeof attachment === 'string' ? attachment : URL.createObjectURL(attachment);
                                                 const label = typeof attachment === 'string' ? attachment.split('/').pop() : attachment.name || 'File';
                                                 return (
-                                                    <Chip 
-                                                        key={i} 
-                                                        label={label} 
-                                                        color="secondary" 
-                                                        size="small" 
+                                                    <Chip
+                                                        key={i}
+                                                        label={label}
+                                                        color="secondary"
+                                                        size="small"
                                                         variant="outlined"
                                                         onClick={() => {
                                                             setPreviewSrc(src);
@@ -1727,8 +2007,8 @@ const OrderForm = () => {
             <Dialog open={previewOpen} onClose={() => setPreviewOpen(false)} maxWidth="lg" fullWidth>
                 <DialogTitle>
                     File Preview
-                    <IconButton 
-                        onClick={() => setPreviewOpen(false)} 
+                    <IconButton
+                        onClick={() => setPreviewOpen(false)}
                         sx={{ position: 'absolute', right: 8, top: 8 }}
                     >
                         <CloseIcon />
@@ -1736,24 +2016,24 @@ const OrderForm = () => {
                 </DialogTitle>
                 <DialogContent sx={{ p: 2 }}>
                     {previewSrc && (
-                        <img 
-                            src={previewSrc} 
-                            alt="Preview" 
-                            style={{ 
-                                width: '100%', 
-                                height: 'auto', 
-                                maxHeight: '70vh', 
+                        <img
+                            src={previewSrc}
+                            alt="Preview"
+                            style={{
+                                width: '100%',
+                                height: 'auto',
+                                maxHeight: '70vh',
                                 objectFit: 'contain',
                                 borderRadius: 2,
                                 boxShadow: '0 4px 20px rgba(0,0,0,0.1)'
-                            }} 
+                            }}
                             onLoad={() => console.log('Preview loaded:', previewSrc)}
                             onError={(e) => {
                                 e.target.style.display = 'none';
-                                setSnackbar({ 
-                                    open: true, 
-                                    message: 'Failed to load file. Check URL or file type.', 
-                                    severity: 'error' 
+                                setSnackbar({
+                                    open: true,
+                                    message: 'Failed to load file. Check URL or file type.',
+                                    severity: 'error'
                                 });
                             }}
                         />

@@ -1,4 +1,4 @@
-// OrdersList.jsx - Component for fetching and displaying orders
+// OrdersList.jsx - Component for fetching and displaying orders (updated for normalized schema)
 import { useState, useEffect } from "react";
 import {
     Box,
@@ -8,6 +8,7 @@ import {
     Stack,
     Table,
     TableBody,
+    Card,
     TableCell,
     TableContainer,
     TableHead,
@@ -29,7 +30,17 @@ import {
     DialogActions,
     Grid,
 } from "@mui/material";
+import Avatar from '@mui/material/Avatar';
 import EditIcon from "@mui/icons-material/Edit";
+import Tooltip from '@mui/material/Tooltip';
+import List from '@mui/material/List';
+import ListItem from '@mui/material/ListItem';
+import ListItemText from '@mui/material/ListItemText';
+import ListItemIcon from '@mui/material/ListItemIcon';
+import CargoIcon from '@mui/icons-material/LocalShipping'; // Or use InventoryIcon
+import PersonIcon from '@mui/icons-material/Person';
+import Divider from '@mui/material/Divider';
+import { styled } from '@mui/material/styles';
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import AddIcon from "@mui/icons-material/Add";
 import DownloadIcon from "@mui/icons-material/Download";
@@ -49,7 +60,7 @@ const OrdersList = () => {
     const [error, setError] = useState(null);
     const [filters, setFilters] = useState({
         status: "",
-        search: "",
+        booking_ref: "",  // Updated: Use booking_ref for search
     });
     const [snackbar, setSnackbar] = useState({
         open: false,
@@ -95,7 +106,7 @@ const OrdersList = () => {
         try {
             const response = await api.get(`/api/orders/${orderId}`);
             console.log('orders details',response)
-            setSelectedOrder(response.data);
+            setSelectedOrder(response.data);  // Now includes nested receivers, order_items, etc.
         } catch (err) {
             console.error("Error fetching order details:", err);
             setModalError(err.response?.data?.error || err.message || 'Failed to fetch order details');
@@ -158,7 +169,8 @@ const OrdersList = () => {
                 'Place of Loading',
                 'Final Destination',
                 'Sender',
-                'Receiver',
+                'Receivers',
+                'Containers',
                 'Associated Container',
                 'Created At'
             ];
@@ -168,9 +180,10 @@ const OrdersList = () => {
                 order.status || '',
                 order.place_of_loading || '',
                 order.final_destination || '',
-                order.sender_name || '',
-                order.receiver_name || '',
-                order.associated_container || '',
+                order.sender_name || '',  // From senders join
+                order.receiver_summary || '',  // Aggregated receivers with status
+                order.receiver_containers || '',  // Aggregated containers
+                order.container_number || '',  // From containers join
                 new Date(order.created_at).toLocaleDateString()
             ]);
 
@@ -246,6 +259,208 @@ const OrdersList = () => {
 
     const statuses = ["", "Created", "In Transit", "Delivered", "Cancelled"]; // "" for all
 
+    // Status color mapping function
+    const getStatusColors = (status) => {
+        const colorMap = {
+            'Created': { bg: '#e3f2fd', text: '#1976d2' },
+            'In Transit': { bg: '#fff3e0', text: '#f57c00' },
+            'Delivered': { bg: '#e8f5e8', text: '#388e3c' },
+            'Cancelled': { bg: '#ffebee', text: '#d32f2f' },
+            default: { bg: '#f5f5f5', text: '#666' }
+        };
+        return colorMap[status] || colorMap.default;
+    };
+
+    const StyledTooltip = styled(Tooltip)(({ theme }) => ({
+        [`& .MuiTooltip-tooltip`]: {
+            backgroundColor: theme.palette.common.white,
+            color: theme.palette.text.primary,
+            boxShadow: theme.shadows[3],
+            borderRadius: theme.shape.borderRadius,
+            fontSize: theme.typography.body2.fontSize,
+            maxWidth: '300px',
+            border: `1px solid ${theme.palette.divider}`,
+        },
+        [`& .MuiTooltip-arrow`]: {
+            color: theme.palette.common.white,
+        },
+    }));
+
+    const StyledList = styled(List)(({ theme }) => ({
+        padding: theme.spacing(1),
+        '& .MuiListItem-root': {
+            borderRadius: theme.shape.borderRadius,
+            margin: theme.spacing(0.25),
+            '&:hover': {
+                backgroundColor: theme.palette.action.hover,
+            },
+        },
+    }));
+
+    const StatusChip = ({ status }) => {
+        const colors = getStatusColors(status);
+        return (
+            <Chip
+                label={status}
+                size="small"
+                sx={{
+                    height: 18,
+                    fontSize: '0.65rem',
+                    marginLeft: 2,
+                    backgroundColor: colors.bg,
+                    color: colors.text,
+                }}
+            />
+        );
+    };
+
+// Updated helper: parse and enhance with icons/chips for better UX
+const parseSummaryToList = (summary) => {
+  if (!summary) return [];
+  return summary.split(', ').map(item => {
+    const match = item.match(/^(.*) \((.*)\)$/);
+    return match ? { 
+      primary: match[1].trim(), 
+      status: match[2].trim(),
+    } : { primary: item.trim(), status: null };
+  });
+};
+
+// Enhanced PrettyList: Modern card-based layout for receivers with avatars and status badges
+const PrettyList = ({ items, title }) => (
+  <Box sx={{ p: 1, maxWidth: 280 }}><Typography variant="caption" sx={{ fontWeight: 'bold', color: '#fff', mb: 1, display: 'block' }}>
+      {title} ({items.length})
+    </Typography>
+    <Stack spacing={0.75}>
+      {items.length > 0 ? (
+        items.map((item, index) => (
+          <Card 
+            key={index} 
+            variant="outlined" 
+            sx={{ 
+              p: 1, 
+              borderRadius: 2, 
+              border: '1px solid', 
+              borderColor: 'divider',
+              backgroundColor: '#f8f9fa', // Changed to light grey background
+              boxShadow: 'none',
+              '&:hover': { 
+                boxShadow: 1, 
+                backgroundColor: '#e9ecef' // Darker grey on hover
+              }
+            }}
+          >
+            <Stack direction="row" alignItems="center" spacing={1.5}>
+              <Avatar 
+                sx={{ 
+                  width: 18, 
+                  height: 18, 
+                  bgcolor: 'primary.light', 
+                  fontSize: '0.875rem' 
+                }}
+              >
+                {item.primary.charAt(0).toUpperCase()}
+              </Avatar>
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Typography variant="body2" fontWeight="medium" noWrap sx={{ mb: 0.25 }}>
+                  {item.primary}
+                </Typography>
+                {item.status && (
+                  <StatusChip status={item.status} size="small" sx={{ fontSize: '0.65rem', height: 18 }} />
+                )}
+              </Box>
+            </Stack>
+          </Card>
+        ))
+      ) : (
+        <Card variant="outlined" sx={{ p: 2, textAlign: 'center', borderRadius: 2, backgroundColor: '#f8f9fa' }}>
+          <Typography variant="body2" color="text.secondary" italic>
+            No items
+          </Typography>
+        </Card>
+      )}
+    </Stack>
+  </Box>
+);
+
+// Enhanced parse for containers: Simple string split
+const parseContainersToList = (containersStr) => {
+  if (!containersStr) return [];
+  return containersStr.split(', ').map(cont => ({ primary: cont.trim() }));
+};
+
+// Enhanced PrettyContainersList: Horizontal chips for compact, modern feel
+const PrettyContainersList = ({ items, title }) => (
+  <Box sx={{ p: 1, maxWidth: 280 }}>
+    <Typography variant="caption" sx={{ fontWeight: 'medium', color: 'text.secondary', mb: 1, display: 'block' }}>
+      {title} ({items.length})
+    </Typography>
+    <Stack direction="row" flexWrap="wrap" spacing={0.75} useFlexGap>
+      {items.length > 0 ? (
+        items.map((item, index) => (
+          <Chip
+            key={index}
+            label={item.primary}
+            icon={<CargoIcon fontSize="small" />}
+            size="small"
+            variant="outlined"
+            sx={{
+              borderRadius: 1.5,
+              borderColor: 'divider',
+              backgroundColor: '#f8f9fa', // Changed to light grey background
+              '& .MuiChip-icon': { color: 'secondary.main' },
+              fontSize: '0.75rem',
+              height: 24,
+              '&:hover': { backgroundColor: '#e9ecef' } // Darker grey on hover
+            }}
+          />
+        ))
+      ) : (
+        <Chip
+          label="No containers"
+          size="small"
+          variant="outlined"
+          sx={{ 
+            borderRadius: 1.5, 
+            borderColor: 'divider', 
+            backgroundColor: '#f8f9fa', // Changed to light grey background
+            color: 'text.secondary',
+            fontSize: '0.75rem',
+            height: 24,
+          }}
+        />
+      )}
+    </Stack>
+  </Box>
+);
+    const StyledTableRow = styled(TableRow)(({ theme }) => ({
+        '&:nth-of-type(odd)': {
+            backgroundColor: theme.palette.action.hover,
+        },
+        // hide last border
+        '&:last-child td, &:last-child th': {
+            border: 0,
+        },
+        '&:hover': {
+            backgroundColor: theme.palette.action.selected,
+        },
+    }));
+
+    const StyledTableCell = styled(TableCell)(({ theme }) => ({
+        borderBottom: `1px solid ${theme.palette.divider}`,
+        fontSize: '0.875rem',
+        padding: theme.spacing(1.5, 2),
+    }));
+
+    const StyledTableHeadCell = styled(TableCell)(({ theme }) => ({
+        backgroundColor: theme.palette.primary.main,
+        color: theme.palette.primary.contrastText,
+        fontWeight: 'bold',
+        fontSize: '0.875rem',
+        padding: theme.spacing(1.5, 2),
+        borderBottom: `2px solid ${theme.palette.primary.dark}`,
+    }));
+
     if (loading) {
         return (
             <Paper sx={{ p: 3, borderRadius: 3, boxShadow: 3, bgcolor: "#fafafa" }}>
@@ -307,12 +522,12 @@ const OrdersList = () => {
                     </Stack>
                 </Stack>
 
-                {/* Filters */}
+                {/* Filters - Updated: booking_ref for search */}
                 <Stack direction="row" spacing={2} mb={3} alignItems="center">
                     <TextField
                         label="Search Booking Ref"
-                        name="search"
-                        value={filters.search}
+                        name="booking_ref"  // Updated to match backend filter
+                        value={filters.booking_ref}
                         onChange={handleFilterChange}
                         size="small"
                         sx={{ width: 200 }}
@@ -334,59 +549,89 @@ const OrdersList = () => {
                     </FormControl>
                 </Stack>
 
-                <TableContainer>
+                <TableContainer sx={{ borderRadius: 2, overflow: 'hidden', boxShadow: 2 }}>
                     <Table stickyHeader>
-                        <TableHead>
-                            <TableRow>
-                                <TableCell>Booking Ref</TableCell>
-                                <TableCell>Status</TableCell>
-                                <TableCell>Place of Loading</TableCell>
-                                <TableCell>Final Destination</TableCell>
-                                <TableCell>Sender</TableCell>
-                                <TableCell>Receiver</TableCell>
-                                <TableCell>Associated Container</TableCell>
-                                <TableCell>Created At</TableCell>
-                                <TableCell>Actions</TableCell>
+                        <TableHead >
+                            <TableRow sx={{ bgcolor: '#0d6c6a' }} >
+                                {[
+                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="ref">Booking Ref</StyledTableHeadCell>,
+                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="loading">Place of Loading</StyledTableHeadCell>,
+                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="dest">Final Destination</StyledTableHeadCell>,
+                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="sender">Sender</StyledTableHeadCell>,
+                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="receivers">Receivers</StyledTableHeadCell>, // Multiple receivers with status
+                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="containers">Containers</StyledTableHeadCell> ,
+                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="status">Status</StyledTableHeadCell>,
+                                    //   <TableCell key="assoc">Associated Container</TableCell>,
+                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="created">Created At</StyledTableHeadCell>,
+                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="actions">Actions</StyledTableHeadCell>
+                                ]}
                             </TableRow>
                         </TableHead>
                         <TableBody>
-                            {orders.map((order) => (
-                                <TableRow key={order.id} hover>
-                                    <TableCell>{order.booking_ref}</TableCell>
-                                    <TableCell>
-                                        <Chip
-                                            label={order.status}
-                                            color={
-                                                order.status === "Created" ? "default" :
-                                                order.status === "In Transit" ? "warning" :
-                                                order.status === "Delivered" ? "success" :
-                                                "error"
-                                            }
-                                            size="small"
-                                        />
-                                    </TableCell>
-                                    <TableCell>{order.place_of_loading}</TableCell>
-                                    <TableCell>{order.final_destination}</TableCell>
-                                    <TableCell>{order.sender_name}</TableCell>
-                                    <TableCell>{order.receiver_name}</TableCell>
-                                    <TableCell>{order.associated_container || "-"}</TableCell>
-                                    <TableCell>{new Date(order.created_at).toLocaleDateString()}</TableCell>
-                                    <TableCell>
-                                        <Stack direction="row" spacing={1}>
-                                            <IconButton size="small" onClick={() => handleView(order.id)} title="View Details">
-                                                <VisibilityIcon />
-                                            </IconButton>
-                                            <IconButton size="small" onClick={() => handleEdit(order.id)} title="Edit">
-                                                <EditIcon />
-                                            </IconButton>
-                                        </Stack>
-                                    </TableCell>
-                                </TableRow>
-                            ))}
+                            {orders.map((order) => {
+                                const receiversList = parseSummaryToList(order.receiver_summary);
+                                const containersList = order.receiver_containers_json ? order.receiver_containers_json.split(', ').map(cont => ({ primary: cont })) : []; // Simple for containers
+                                const status = order.overall_status || order.status || 'Created';
+                                const colors = getStatusColors(status);
+
+                                return (
+                                    <StyledTableRow key={order.id}>
+                                        <StyledTableCell>{order.booking_ref}</StyledTableCell>
+                                        <StyledTableCell>{order.place_of_loading}</StyledTableCell>
+                                        <StyledTableCell>{order.final_destination}</StyledTableCell>
+                                        <StyledTableCell>{order.sender_name}</StyledTableCell>
+                                        <StyledTableCell>
+                                            <StyledTooltip
+                                                title={<PrettyList items={parseSummaryToList(order.receiver_summary)}  title="Receivers" />}
+                                                arrow
+                                                placement="top"
+                                                PopperProps={{
+                                                    sx: { '& .MuiTooltip-tooltip': { border: '1px solid #e0e0e0' } }
+                                                }}
+                                            >
+                                                <Typography variant="body2" noWrap sx={{ maxWidth: 120, cursor: 'help', fontWeight: 'medium' }}>
+                                                    {order.receiver_summary ? `${order.receiver_summary.substring(0, 20)}...` : '-'}
+                                                </Typography>
+                                            </StyledTooltip>
+                                        </StyledTableCell>
+                                        <StyledTableCell>
+                                            <StyledTooltip
+                                                title={<PrettyContainersList items={parseContainersToList(order.receiver_containers_json)} title="Containers" />}
+                                                arrow
+                                                placement="top"
+                                            >
+                                                <Typography variant="body2" noWrap sx={{ maxWidth: 100, cursor: 'help', fontWeight: 'medium' }}>
+                                                    {order.receiver_containers_json ? `${order.receiver_containers_json.substring(0, 15)}...` : '-'}
+                                                </Typography>
+                                            </StyledTooltip>
+                                        </StyledTableCell>
+                                          <StyledTableCell>
+                                            <Chip
+                                                label={status}
+                                                size="small"
+                                                sx={{ 
+                                                    backgroundColor: colors.bg,
+                                                    color: colors.text
+                                                }}
+                                            />
+                                        </StyledTableCell>
+                                        <StyledTableCell>{new Date(order.created_at).toLocaleDateString()}</StyledTableCell>
+                                        <StyledTableCell>
+                                            <Stack direction="row" spacing={1}>
+                                                <IconButton size="small" onClick={() => handleView(order.id)} title="View Details">
+                                                    <VisibilityIcon />
+                                                </IconButton>
+                                                <IconButton size="small" onClick={() => handleEdit(order.id)} title="Edit">
+                                                    <EditIcon />
+                                                </IconButton>
+                                            </Stack>
+                                        </StyledTableCell>
+                                    </StyledTableRow>
+                                );
+                            })}
                         </TableBody>
                     </Table>
                 </TableContainer>
-
                 <TablePagination
                     rowsPerPageOptions={[5, 10, 25]}
                     component="div"
@@ -395,30 +640,39 @@ const OrdersList = () => {
                     page={page}
                     onPageChange={handleChangePage}
                     onRowsPerPageChange={handleChangeRowsPerPage}
+                    sx={{ 
+                        borderTop: '1px solid rgba(224, 224, 224, 1)',
+                        '& .MuiTablePagination-selectLabel, & .MuiTablePagination-displayedRows': {
+                            color: '#f58220',
+                            fontWeight: 'medium',
+                        },
+                        '& .MuiTablePagination-actions button': {
+                            color: '#0d6c6a',
+                        }
+                    }}
                 />
+
+                <OrderModalView 
+                    openModal={openModal} 
+                    handleCloseModal={handleCloseModal} 
+                    selectedOrder={selectedOrder} 
+                    modalLoading={modalLoading} 
+                    modalError={modalError} 
+                />
+
+                {/* Snackbar for notifications */}
+                <Snackbar
+                    open={snackbar.open}
+                    autoHideDuration={6000}
+                    onClose={handleSnackbarClose}
+                    anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+                >
+                    <Alert onClose={handleSnackbarClose} severity={snackbar.severity} sx={{ width: '100%' }}>
+                        {snackbar.message}
+                    </Alert>
+                </Snackbar>
             </Paper>
-
-         <OrderModalView 
-    openModal={openModal} 
-    handleCloseModal={handleCloseModal} 
-    selectedOrder={selectedOrder} 
-    modalLoading={modalLoading} 
-    modalError={modalError} 
-/>
-
-            {/* Snackbar for notifications */}
-            <Snackbar
-                open={snackbar.open}
-                autoHideDuration={6000}
-                onClose={handleSnackbarClose}
-                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-            >
-                <Alert onClose={handleSnackbarClose} severity={snackbar.severity} sx={{ width: '100%' }}>
-                    {snackbar.message}
-                </Alert>
-            </Snackbar>
         </>
     );
-};
-
+};   
 export default OrdersList;

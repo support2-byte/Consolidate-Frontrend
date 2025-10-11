@@ -19,6 +19,7 @@ import CustomerAdd from "./pages/Customers/AddCustomer";
 import VendorsForm from "./pages/Vendors/AddVendors";
 import Containers from "./pages/Containers/Containers";
 import OrderForm from "./pages/Orders/AddOrder";
+import TrackingPage from "./pages/Orders/TrackingPage";
 // ✅ Theming wrapper
 function ThemedApp({ children }) {
   const { mode } = useThemeContext();
@@ -62,6 +63,7 @@ const router = createBrowserRouter([
       { path: "orders", element: <Orders /> },
       { path: "/orders/add", element: <OrderForm mode='add' /> },
  { path: "/orders/:id/edit", element: <OrderForm mode='edit' /> },
+      { path: "/tracking", element: <TrackingPage /> },
       // { path: "consignments", element: <Consignments /> },
       { path: "/customers/add", element: <CustomerAdd mode="add" /> },
       { path: "/customers/:id/edit", element: <CustomerAdd mode="edit" /> },

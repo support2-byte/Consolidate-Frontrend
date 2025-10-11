@@ -70,7 +70,7 @@ const OrderModalView = ({ openModal, handleCloseModal, selectedOrder, modalLoadi
      const navigate = useNavigate();
     if (!selectedOrder) return null;
 
-    const statusColor = getOrderStatusColor(selectedOrder.status);
+    const statusColor = getOrderStatusColor(selectedOrder.overall_status || selectedOrder.status);
 
     const handleEdit = (orderId) => {
         handleCloseModal(),
@@ -111,7 +111,7 @@ const OrderModalView = ({ openModal, handleCloseModal, selectedOrder, modalLoadi
         doc.setFontSize(10);
         doc.text(`Booking Ref: ${order.booking_ref || 'N/A'}`, 20, yPosition);
         yPosition += 7;
-        doc.text(`Status: ${order.status || 'N/A'}`, 20, yPosition);
+        doc.text(`Status: ${order.overall_status || order.status || 'N/A'}`, 20, yPosition);
         yPosition += 7;
         doc.text(`RGL Booking Number: ${order.rgl_booking_number || 'N/A'}`, 20, yPosition);
         yPosition += 7;
@@ -134,16 +134,27 @@ const OrderModalView = ({ openModal, handleCloseModal, selectedOrder, modalLoadi
         doc.text(`Email: ${order.sender_email || 'N/A'}`, 20, yPosition);
         yPosition += 10;
 
-        // Receiver
+        // Receivers
         doc.setFontSize(14);
         doc.text('Receiver Details', 20, yPosition);
         yPosition += 10;
         doc.setFontSize(10);
-        doc.text(`Name: ${order.receiver_name || 'N/A'}`, 20, yPosition);
-        yPosition += 7;
-        doc.text(`Contact: ${order.receiver_contact || 'N/A'}`, 20, yPosition);
-        yPosition += 7;
-        doc.text(`Email: ${order.receiver_email || 'N/A'}`, 20, yPosition);
+        (order.receivers || []).forEach((rec, index) => {
+            doc.text(`Receiver ${index + 1} Name: ${rec.receiver_name || 'N/A'}`, 20, yPosition);
+            yPosition += 7;
+            doc.text(`Receiver ${index + 1} Status: ${rec.status || 'Created'}`, 20, yPosition);
+            yPosition += 7;
+            doc.text(`Receiver ${index + 1} Contact: ${rec.receiver_contact || 'N/A'}`, 20, yPosition);
+            yPosition += 7;
+            doc.text(`Receiver ${index + 1} Email: ${rec.receiver_email || 'N/A'}`, 20, yPosition);
+            yPosition += 7;
+            doc.text(`Receiver ${index + 1} Consignment Number: ${rec.consignment_number || 'N/A'}`, 20, yPosition);
+            yPosition += 7;
+            doc.text(`Receiver ${index + 1} Total Weight: ${rec.total_weight || 'N/A'}`, 20, yPosition);
+            yPosition += 7;
+            doc.text(`Receiver ${index + 1} Containers: ${rec.containers?.join(', ') || 'N/A'}`, 20, yPosition);
+            yPosition += 10;
+        });
         yPosition += 10;
 
         // Shipping
@@ -151,9 +162,12 @@ const OrderModalView = ({ openModal, handleCloseModal, selectedOrder, modalLoadi
         doc.text('Shipping Details', 20, yPosition);
         yPosition += 10;
         doc.setFontSize(10);
-        doc.text(`Category: ${order.category || 'N/A'}`, 20, yPosition);
-        yPosition += 7;
-        doc.text(`Weight: ${order.weight ? `${order.weight} kg` : 'N/A' }`, 20, yPosition);
+        (order.order_items || []).forEach((item, index) => {
+            doc.text(`Item ${index + 1} Category: ${item.category || 'N/A'}`, 20, yPosition);
+            yPosition += 7;
+            doc.text(`Item ${index + 1} Weight: ${item.weight ? `${item.weight} kg` : 'N/A' }`, 20, yPosition);
+            yPosition += 7;
+        });
         yPosition += 10;
 
         // Transport
@@ -256,6 +270,105 @@ const OrderModalView = ({ openModal, handleCloseModal, selectedOrder, modalLoadi
         </Grid>
     );
 
+    // Helper to render receivers list
+    const renderReceivers = () => {
+        const receivers = selectedOrder.receivers || [];
+        if (receivers.length === 0) {
+            return <Typography variant="body2" color="text.secondary">No receivers</Typography>;
+        }
+        return (
+            <List dense sx={{ py: 0 }}>
+                {receivers.map((rec, index) => (
+                    <Card key={rec.id || index} sx={{ mb: 2, border: '1px solid #e3f2fd', borderRadius: 2 }}>
+                        <CardContent sx={{ p: 2 }}>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                                <Typography variant="subtitle1" fontWeight="bold" color="#f58220">
+                                    Receiver {index + 1}: {rec.receiver_name}
+                                </Typography>
+                                <Chip 
+                                    label={rec.status || 'Created'} 
+                                    size="small" 
+                                    color="primary" 
+                                    variant="filled"
+                                    sx={{ 
+                                        bgcolor: getOrderStatusColor(rec.status || 'Created'),
+                                        color: 'white',
+                                        fontWeight: 'bold'
+                                    }} 
+                                />
+                            </Box>
+                            <HorizontalKeyValue 
+                                data={{
+                                    'Contact': rec.receiver_contact,
+                                    'Address': rec.receiver_address,
+                                    'Email': rec.receiver_email,
+                                    'Consignment Number': rec.consignment_number,
+                                    'Total Number': rec.total_number,
+                                    'Total Weight': rec.total_weight ? `${rec.total_weight} kg` : 'N/A',
+                                    'Assignment': rec.assignment,
+                                    'Item Ref': rec.item_ref,
+                                    'Receiver Ref': rec.receiver_ref,
+                                    'Consignment Vessel': rec.consignment_vessel,
+                                    'Consignment Marks': rec.consignment_marks,
+                                    'Consignment Voyage': rec.consignment_voyage
+                                }} 
+                                spacing={2}
+                            />
+                            {rec.containers && rec.containers.length > 0 && (
+                                <Box sx={{ mt: 2 }}>
+                                    <Typography variant="subtitle2" fontWeight="bold" color="text.secondary" gutterBottom>
+                                        Containers:
+                                    </Typography>
+                                    <Stack direction="row" spacing={1} flexWrap="wrap">
+                                        {rec.containers.map((cont, cIndex) => (
+                                            <Chip key={cIndex} label={cont} variant="outlined" color="info" size="small" />
+                                        ))}
+                                    </Stack>
+                                </Box>
+                            )}
+                        </CardContent>
+                    </Card>
+                ))}
+            </List>
+        );
+    };
+
+    // Helper to render order items
+    const renderOrderItems = () => {
+        const items = selectedOrder.order_items || [];
+        if (items.length === 0) {
+            return <Typography variant="body2" color="text.secondary">No order items</Typography>;
+        }
+        return (
+            <List dense sx={{ py: 0 }}>
+                {items.map((item, index) => (
+                    <Card key={item.id || index} sx={{ mb: 2, border: '1px solid #e3f2fd', borderRadius: 2 }}>
+                        <CardContent sx={{ p: 2 }}>
+                            <Typography variant="subtitle1" fontWeight="bold" color="#f58220" gutterBottom>
+                                Item {index + 1}
+                            </Typography>
+                            <HorizontalKeyValue 
+                                data={{
+                                    'Category': item.category,
+                                    'Subcategory': item.subcategory,
+                                    'Type': item.type,
+                                    'Pickup Location': item.pickup_location,
+                                    'Delivery Address': item.delivery_address,
+                                    'Total Number': item.total_number,
+                                    'Weight': item.weight ? `${item.weight} kg` : 'N/A',
+                                    'Total Weight': item.total_weight ? `${item.total_weight} kg` : 'N/A',
+                                    // 'Item Ref': item.item_ref,
+                                    // 'Consignment Status': item.consignment_status
+                                }} 
+                                spacing={2}
+                            />
+                        </CardContent>
+                    </Card>
+                ))}
+            </List>
+        );
+    };
+
     return (
         <Dialog open={openModal} onClose={handleCloseModal} maxWidth="xl" fullWidth>
             <DialogTitle sx={{ 
@@ -273,6 +386,27 @@ const OrderModalView = ({ openModal, handleCloseModal, selectedOrder, modalLoadi
                     <Typography variant="h5" fontWeight="bold" sx={{ fontSize: '1.75rem' }}>
                         Order Details - {selectedOrder.booking_ref}
                     </Typography>
+                    <Chip 
+                        label={selectedOrder.overall_status || selectedOrder.status || 'Created'} 
+                        size="small" 
+                        color="primary" 
+                        variant="filled"
+                        sx={{ 
+                            ml: 1,
+                            bgcolor: statusColor,
+                            color: 'white',
+                            fontWeight: 'bold'
+                        }} 
+                    />
+                    {(selectedOrder.receivers || []).length > 0 && (
+                        <Chip 
+                            label={`(${selectedOrder.receivers.length} Receivers)`} 
+                            size="small" 
+                            color="secondary" 
+                            variant="outlined" 
+                            sx={{ ml: 1 }} 
+                        />
+                    )}
                 </Box>
                 <IconButton onClick={handleCloseModal} sx={{ color: 'white', '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' } }}>
                     <CloseIcon />
@@ -352,15 +486,15 @@ const OrderModalView = ({ openModal, handleCloseModal, selectedOrder, modalLoadi
                                             </Box>
                                             <HorizontalKeyValue 
                                                 data={{
+                                                    'Status': selectedOrder.overall_status || selectedOrder.status || 'Created',
                                                     'RGL Booking Number': selectedOrder.rgl_booking_number,
                                                     'Place of Loading': selectedOrder.place_of_loading,
                                                     'Final Destination': selectedOrder.final_destination,
                                                     'Place of Delivery': selectedOrder.place_of_delivery,
                                                     'ETA': formatDate(selectedOrder.eta),
                                                     'ETD': formatDate(selectedOrder.etd),
-                                                    'Consignment Number': selectedOrder.consignment_number,
-                                                    'Consignment Vessel': selectedOrder.consignment_vessel,
-                                                    'Consignment Voyage': selectedOrder.consignment_voyage,
+                                                    'Consignment Marks': selectedOrder.consignment_marks,
+                                                    'Point of Origin': selectedOrder.point_of_origin,
                                                     'Shipping Line': selectedOrder.shipping_line,
                                                     'Order Remarks': selectedOrder.order_remarks,
                                                     'Consignment Remarks': selectedOrder.consignment_remarks,
@@ -377,7 +511,7 @@ const OrderModalView = ({ openModal, handleCloseModal, selectedOrder, modalLoadi
                                     </Card>
                                 </Grid>
 
-                                {/* Associated Container Card */}
+                                {/* Associated Container Card
                                 <Grid item xs={12}>
                                     <Card sx={{ 
                                         boxShadow: 3, 
@@ -395,17 +529,16 @@ const OrderModalView = ({ openModal, handleCloseModal, selectedOrder, modalLoadi
                                             </Box>
                                             <HorizontalKeyValue 
                                                 data={{
-                                                    'Container ID': selectedOrder.associated_container,
-                                                    'Size': selectedOrder.container_size,
-                                                    'Type': selectedOrder.container_type,
-                                                    'Derived Status': selectedOrder.container_derived_status,
+                                                    'Container ID': selectedOrder.container_id,
+                                                    'Container Number': selectedOrder.container_number,
                                                     'Location': selectedOrder.container_location,
-                                                    'Availability': selectedOrder.container_availability
+                                                    'Availability': selectedOrder.container_availability,
+                                                    'Derived Status': selectedOrder.container_derived_status
                                                 }} 
                                             />
                                         </CardContent>
                                     </Card>
-                                </Grid>
+                                </Grid> */}
                             </Grid>
                         </TabPanel>
 
@@ -432,7 +565,9 @@ const OrderModalView = ({ openModal, handleCloseModal, selectedOrder, modalLoadi
                                                     'Name': selectedOrder.sender_name,
                                                     'Contact': selectedOrder.sender_contact,
                                                     'Address': selectedOrder.sender_address,
-                                                    'Email': selectedOrder.sender_email
+                                                    'Email': selectedOrder.sender_email,
+                                                    'Sender Ref': selectedOrder.sender_ref,
+                                                    'Sender Remarks': selectedOrder.sender_remarks
                                                 }} 
                                                 spacing={2}
                                             />
@@ -440,7 +575,7 @@ const OrderModalView = ({ openModal, handleCloseModal, selectedOrder, modalLoadi
                                     </Card>
                                 </Grid>
 
-                                {/* Receiver Details Card */}
+                                {/* Receivers Details Card */}
                                 <Grid item xs={12} md={6}>
                                     <Card sx={{ 
                                         boxShadow: 3, 
@@ -453,18 +588,10 @@ const OrderModalView = ({ openModal, handleCloseModal, selectedOrder, modalLoadi
                                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
                                                 <PersonIcon color="primary" sx={{ fontSize: '1.5rem' }} />
                                                 <Typography variant="h5" fontWeight="bold" color="#f58220" sx={{ fontSize: '1.5rem' }}>
-                                                    Receiver Details
+                                                    Receivers ({(selectedOrder.receivers || []).length})
                                                 </Typography>
                                             </Box>
-                                            <HorizontalKeyValue 
-                                                data={{
-                                                    'Name': selectedOrder.receiver_name,
-                                                    'Contact': selectedOrder.receiver_contact,
-                                                    'Address': selectedOrder.receiver_address,
-                                                    'Email': selectedOrder.receiver_email
-                                                }} 
-                                                spacing={2}
-                                            />
+                                            {renderReceivers()}
                                         </CardContent>
                                     </Card>
                                 </Grid>
@@ -489,16 +616,7 @@ const OrderModalView = ({ openModal, handleCloseModal, selectedOrder, modalLoadi
                                                     Shipping Details
                                                 </Typography>
                                             </Box>
-                                            <HorizontalKeyValue 
-                                                data={{
-                                                    'Category': selectedOrder.category,
-                                                    'Subcategory': selectedOrder.subcategory,
-                                                    'Type': selectedOrder.type,
-                                                    'Pickup Location': selectedOrder.pickup_location,
-                                                    'Delivery Address': selectedOrder.delivery_address,
-                                                    'Weight': selectedOrder.weight ? `${selectedOrder.weight} kg` : 'N/A'
-                                                }} 
-                                            />
+                                            {renderOrderItems()}
                                         </CardContent>
                                     </Card>
                                 </Grid>
@@ -525,6 +643,7 @@ const OrderModalView = ({ openModal, handleCloseModal, selectedOrder, modalLoadi
                                             </Box>
                                             <HorizontalKeyValue 
                                                 data={{
+                                                    'Transport Type': selectedOrder.transport_type,
                                                     'Driver Name': selectedOrder.driver_name,
                                                     'Driver Contact': selectedOrder.driver_contact,
                                                     'Driver NIC': selectedOrder.driver_nic,
@@ -560,6 +679,7 @@ const OrderModalView = ({ openModal, handleCloseModal, selectedOrder, modalLoadi
                                             <HorizontalKeyValue 
                                                 data={{
                                                     'Drop Method': selectedOrder.drop_method,
+                                                    'Dropoff Name': selectedOrder.dropoff_name,
                                                     'Drop-Off CNIC/ID': selectedOrder.drop_off_cnic,
                                                     'Drop-Off Mobile': selectedOrder.drop_off_mobile,
                                                     'Plate No': selectedOrder.plate_no,

@@ -24,6 +24,7 @@ import SettingsIcon from "@mui/icons-material/Settings";
 import { useState } from "react";
 import { useThemeContext } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
+import { Accessibility } from "@mui/icons-material";
 
 const expandedWidth = 240;
 const collapsedWidth = 72;
@@ -37,10 +38,11 @@ export default function DashboardLayout() {
 
   const tabs = [
     { label: "Dashboard", path: "/", icon: <DashboardIcon /> },
-    { label: "Customers", path: "/customers", icon: <TrackChangesIcon /> },
-    { label: "Vendors", path: "/vendors", icon: <PeopleIcon /> },
+    { label: "Customers", path: "/customers", icon: <PeopleIcon /> },
+    { label: "Vendors", path: "/vendors", icon: <Accessibility /> },
     { label: "Containers", path: "/containers", icon: <LocalShippingIcon /> },
     { label: "Orders", path: "/orders", icon: <ShoppingCartIcon /> },
+    { label: "Tracking", path: "/tracking", icon: <TrackChangesIcon /> },
     // { label: "Consignments", path: "/consignments", icon: <LocalShippingIcon /> },
   ];
 

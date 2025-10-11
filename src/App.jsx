@@ -11,6 +11,7 @@ import Orders from "./pages/Orders/Orders";
 import Consignments from "./pages/Consignments";
 import AddCustomer from "./pages/AddCustomer";
 import AddVendor from "./pages/AddVendor";  
+import TrackingPage from "./pages/Orders/TrackingPage";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import OrderForm from "./pages/Orders/AddOrder";
@@ -48,6 +49,7 @@ export default function App() {
             <Route path="/vendors/:id/edit" element={<AddVendor mode="edit" />} />
               {/* <Route path="/containers" element={<Containers mode="edit" />} /> */}
             <Route path="/containers" element={<AddContainers />} />
+            <Route path="/tracking" element={<TrackingPage />} />
              {/* <Route path="/containers/add" element={<AddContainers />} /> */}
           </Route>
         </Route>
