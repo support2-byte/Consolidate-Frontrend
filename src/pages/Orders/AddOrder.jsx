@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
     Box,
     Paper,
@@ -36,6 +36,7 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import DownloadIcon from "@mui/icons-material/Download";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
+import CopyIcon from "@mui/icons-material/ContentCopy"; // For duplicate button
 import { useNavigate, useLocation } from "react-router-dom";
 import { api } from "../../api";
 
@@ -123,11 +124,10 @@ const OrderForm = () => {
     const [loading, setLoading] = useState(false);
     const [loadingContainers, setLoadingContainers] = useState(false);
     const [categories, setCategories] = useState([]);
-    const [subcategories, setSubcategories] = useState([]);
     const orderId = location.state?.orderId;
     const [isEditMode, setIsEditMode] = useState(!!orderId);
 
-    console.log('Order ID from state:', orderId);
+    // console.log('Order ID from state:', orderId);
 
     // Snackbar state for error/success messages
     const [snackbar, setSnackbar] = useState({
@@ -139,55 +139,99 @@ const OrderForm = () => {
     // Validation errors state
     const [errors, setErrors] = useState({});
 
+    const initialShippingDetail = {
+        pickupLocation: "",
+        category: '',
+        subcategory: '',
+        type: '',
+        deliveryAddress: "",
+        totalNumber: "",
+        weight: "",
+        shippingLine: "",  // New: per-receiver shipping line
+        consignmentStatus: "",
+        itemRef: "",
+        remainingItems: ""  // New for partials
+    };
+    const initialSenderObject = {
+        senderName: '',
+        senderContact: '',
+        senderAddress: '',
+        senderEmail: '',
+        eta: '',
+        etd: '',
+        shippingLine: '',
+        shippingDetail: {
+            pickupLocation: '',
+            category: '',
+            subcategory: '',
+            type: '',
+            deliveryAddress: '',
+            totalNumber: '',
+            weight: '',
+            remainingItems: '',
+        },
+        fullPartial: '',
+        qtyDelivered: '',
+        containers: [],
+        status: '',
+        consignmentVessel: '',
+        consignmentMarks: '',
+        consignmentNumber: '',
+        consignmentVoyage: '',
+        senderRef: '',
+        totalNumber: '',
+        totalWeight: '',
+        itemRef: '',
+        remarks: '',
+    };
+    const initialReceiver = {
+        receiverName: "",
+        receiverContact: "",
+        receiverAddress: "",
+        receiverEmail: "",
+        consignmentVessel: "",
+        consignmentNumber: "",
+        consignmentMarks: "",
+        consignmentVoyage: "",
+        totalNumber: "",
+        totalWeight: "",
+        itemRef: "",
+        receiverRef: "",
+        remarks: "",  // New: consignment remarks
+        status: "Created",
+        containers: [],
+        shippingDetail: initialShippingDetail,
+        fullPartial: "",  // New: per-receiver
+        qtyDelivered: "",  // New: per-receiver
+        isNew: false
+    };
+
     const [formData, setFormData] = useState({
-        // Core orders fields (added missing: point_of_origin, consignment_remarks, consignment_marks)
+        // Core orders fields
         bookingRef: "",
         rglBookingNumber: "",
         placeOfLoading: "",
-        pointOfOrigin: "",  // Added
+        pointOfOrigin: "",
         finalDestination: "",
         placeOfDelivery: "",
         orderRemarks: "",
-        eta: "",
-        etd: "",
-        shippingLine: "",
+      
         attachments: [],
-        // Senders fields (added sender_ref, sender_remarks)
+        // Senders fields
         senderName: "",
         senderContact: "",
         senderAddress: "",
         senderEmail: "",
-        senderRef: "",  // Added
-        senderRemarks: "",  // Added
-        // Receivers array (added receiver_ref, consignment_marks, consignment_voyage)
-        receivers: [{
-            receiverName: "",
-            receiverContact: "",
-            receiverAddress: "",
-            receiverEmail: "",
-            consignmentVessel: "",
-            consignmentNumber: "",
-            consignmentMarks: "",  // Added
-            consignmentVoyage: "",  // Added
-            totalNumber: "",
-            totalWeight: "",
-            itemRef: "",
-            receiverRef: "",  // Added
-            status: "Created",
-            containers: []
-        }],
-        // Order Items fields (added consignment_status, total_weight calculated)
-        category: '',  // Instead of null
-        subcategory: '',  // Instead of null
-        type: '',  // Or 'Select Type' if that's your placeholder
-        pickupLocation: "",
-        deliveryAddress: "",
-        totalNumber: "",
-        weight: "",  // Keep single weight; remove duplicate totalWeight
-        itemRef: "",
-        consignmentStatus: "",  // Added
-        // Transport fields (added dropoff_name as drop_off_person)
-        transportType: "Road",  // Default per schema
+        senderRef: "",
+        senderRemarks: "",
+        senders: [{ ...initialSenderObject, shippingDetail: { ...initialShippingDetail } }], // or senders: [] if you prefer empty initially
+        // Receivers array with nested shippingDetail and per-receiver partial/full
+        receivers: [{ ...initialReceiver, shippingDetail: { ...initialShippingDetail } }],
+        // Computed globals (new)
+        globalTotalItems: 0,
+        globalRemainingItems: 0,
+        // Transport fields (remove global fullPartial/qtyDelivered)
+        transportType: "",
         thirdPartyTransport: "",
         driverName: "",
         driverContact: "",
@@ -195,14 +239,14 @@ const OrderForm = () => {
         driverPickupLocation: "",
         truckNumber: "",
         dropMethod: "",
-        dropoffName: "",  // Added (drop_off_person name)
+        dropoffName: "",
         dropOffCnic: "",
         dropOffMobile: "",
         plateNo: "",
         dropDate: "",
         collectionMethod: "",
-        fullPartial: "",
-        qtyDelivered: "",
+        fullPartial: "",  // Deprecated, but keep for legacy if needed
+        qtyDelivered: "",  // Deprecated
         clientReceiverName: "",
         clientReceiverId: "",
         clientReceiverMobile: "",
@@ -210,65 +254,41 @@ const OrderForm = () => {
         gatepass: [],
     });
 
-    // Editable fields in edit mode
+    // Editable fields in edit mode (add new per-receiver fields)
     const editableInEdit = [
-        'transportType',
-        'dropMethod',
-        'dropoffName',
-        'dropOffCnic',
-        'dropOffMobile',
-        'plateNo',
-        'dropDate',
-        'collectionMethod',
-        'fullPartial',
-        'qtyDelivered',
-        'clientReceiverName',
-        'clientReceiverId',
-        'clientReceiverMobile',
-        'deliveryDate',
-        'thirdPartyTransport',
-        'driverName',
-        'driverContact',
-        'driverNic',
-        'driverPickupLocation',
-        'truckNumber'
+        'transportType', 'dropMethod', 'dropoffName', 'dropOffCnic', 'dropOffMobile', 'plateNo', 'dropDate',
+        'collectionMethod', 'fullPartial', 'qtyDelivered', 'clientReceiverName', 'clientReceiverId', 'clientReceiverMobile', 'deliveryDate',
+        'thirdPartyTransport', 'driverName', 'driverContact', 'driverNic', 'driverPickupLocation', 'truckNumber',
+        // New: Allow editing per-receiver partials
+        'receivers[].fullPartial', 'receivers[].qtyDelivered', 'receivers[].shippingDetail.totalNumber'
     ];
 
-    // Receiver specific fields for error mapping (updated)
+    // Receiver specific fields for error mapping
     const receiverFields = [
-        'receiverName',
-        'receiverContact',
-        'receiverAddress',
-        'receiverEmail',
-        'consignmentVessel',
-        'consignmentNumber',
-        'consignmentMarks',  // Added
-        'consignmentVoyage',  // Added
-        'totalNumber',
-        'totalWeight',
-        'itemRef',
-        'receiverRef',  // Added
-        'status'
+        'receiverName', 'receiverContact', 'receiverAddress', 'receiverEmail', 'consignmentVessel', 'consignmentNumber',
+        'consignmentMarks', 'consignmentVoyage', 'totalNumber', 'totalWeight', 'itemRef', 'receiverRef', 'status',
+        // New
+        'fullPartial', 'qtyDelivered', 'remarks'
     ];
 
-    // Required fields validation (updated, removed duplicate totalWeight)
-    const requiredFields = [
-        'bookingRef',
-        'rglBookingNumber',
-        'senderName',
-        'placeOfLoading',
-        'finalDestination',
-        'transportType',
-        // New required for order_items
-        'category',
-        'subcategory',
-        'type',
-        'totalNumber',
-        'weight',  // Single weight
-        'shippingLine',
-        'pointOfOrigin'  // Added
-        // Removed consignmentMarks and consignmentRemarks to align with UI (not rendered)
+    // Shipping specific fields for validation
+    const shippingRequiredFields = [
+        'pickupLocation', 'category', 'subcategory', 'type', 'totalNumber', 'weight'
     ];
+
+    // Required fields validation
+    const requiredFields = [
+        'bookingRef', 'rglBookingNumber', 'senderName', 'placeOfLoading', 'finalDestination', 'transportType',
+         'pointOfOrigin'
+    ];
+
+    // Dummy data for categories and subcategories
+    const dummyCategories = ["Electronics", "Clothing", "Books"];
+    const categorySubMap = {
+        "Electronics": ["Smartphones", "Laptops", "Accessories"],
+        "Clothing": ["Men's Wear", "Women's Wear", "Kids Wear"],
+        "Books": ["Fiction", "Non-Fiction", "Technical"],
+    };
 
     // Helper to convert snake_case to camelCase
     const snakeToCamel = (str) => str.replace(/(_[a-z])/g, g => g[1].toUpperCase());
@@ -276,134 +296,259 @@ const OrderForm = () => {
     // Helper to convert camelCase to snake_case
     const camelToSnake = (str) => str.replace(/([A-Z])/g, '_$1').toLowerCase();
 
-    const validateForm = () => {
-        const newErrors = {};
+    // Compute global totals (new useEffect)
+    useEffect(() => {
+        const total = formData.receivers.reduce((sum, rec) => sum + (parseInt(rec.shippingDetail.totalNumber || 0) || 0), 0);
+        const remaining = formData.receivers.reduce((sum, rec) => {
+            const del = parseInt(rec.qtyDelivered || 0) || 0;
+            const recTotal = parseInt(rec.shippingDetail.totalNumber || 0) || 0;
+            return sum + Math.max(0, recTotal - del);
+        }, 0);
+        setFormData(prev => ({ ...prev, globalTotalItems: total, globalRemainingItems: remaining }));
+    }, [formData.receivers]);
 
-        requiredFields.forEach(field => {
-            if (!formData[field]?.trim()) {
-                newErrors[field] = `${field.replace(/([A-Z])/g, ' $1').trim()} is required`;
-            }
+    // Compute per-receiver remainingItems whenever relevant fields change
+    useEffect(() => {
+        setFormData(prev => ({
+            ...prev,
+            receivers: prev.receivers.map(rec => {
+                const total = parseInt(rec.shippingDetail?.totalNumber || 0) || 0;
+                const delivered = parseInt(rec.qtyDelivered || 0) || 0;
+                const remaining = Math.max(0, total - delivered);
+                if ((rec.shippingDetail?.remainingItems || 0) !== remaining) {
+                    return {
+                        ...rec,
+                        shippingDetail: {
+                            ...rec.shippingDetail,
+                            remainingItems: remaining
+                        }
+                    };
+                }
+                return rec;
+            })
+        }));
+    }, [formData.receivers.map(r => `${r.shippingDetail?.totalNumber}-${r.qtyDelivered}`).join(',')]);
+
+    // New: Auto-sync consignment totals from shipping if empty
+    useEffect(() => {
+        setFormData(prev => {
+            const updatedReceivers = prev.receivers.map(rec => {
+                const sd = rec.shippingDetail || {};
+                return {
+                    ...rec,
+                    totalNumber: rec.totalNumber || sd.totalNumber || '',
+                    totalWeight: rec.totalWeight || sd.weight || ''
+                };
+            });
+            return { ...prev, receivers: updatedReceivers };
         });
+    }, []);
+const validateForm = () => {
+    const newErrors = {};
 
-        // Validate receivers (at least one, and required fields; updated)
-        if (formData.receivers.length === 0) {
-            newErrors.receivers = 'At least one receiver is required';
-        } else {
-            formData.receivers.forEach((rec, i) => {
-                if (!rec.receiverName?.trim()) {
-                    newErrors[`receivers[${i}].receiverName`] = `Receiver ${i + 1} name is required`;
-                }
-                if (rec.containers.length === 0) {
-                    newErrors[`receivers[${i}].containers`] = `At least one container is required for receiver ${i + 1}`;
-                }
-                if (!rec.consignmentNumber?.trim()) {
-                    newErrors[`receivers[${i}].consignmentNumber`] = `Consignment number is required for receiver ${i + 1}`;
-                }
-                if (!rec.totalWeight?.trim()) {
-                    newErrors[`receivers[${i}].totalWeight`] = `Total weight is required for receiver ${i + 1}`;
-                }
-                if (!rec.receiverRef?.trim()) {
-                    newErrors[`receivers[${i}].receiverRef`] = `Receiver ref is required for receiver ${i + 1}`;
-                }
-                // Add more per-receiver validations (e.g., email)
-                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-                if (rec.receiverEmail && !emailRegex.test(rec.receiverEmail)) {
-                    newErrors[`receivers[${i}].receiverEmail`] = `Invalid receiver ${i + 1} email format`;
+    // Detect mode: Edit if formData.id exists and != 'new' (assume ID set on fetch/edit)
+    const isEditMode = formData.id && formData.id !== 'new' && formData.id !== '';
+
+    console.log('[validateForm] Mode detected:', isEditMode ? 'Edit (strict)' : 'Add (relaxed)');
+
+    // Core required fields (always enforce, but optional on add if needed) - UPDATED: Removed shippingLine, eta, etd
+    requiredFields.forEach(field => {
+        if (!formData[field]?.trim()) {
+            newErrors[field] = `${field.replace(/([A-Z])/g, ' $1').trim()} is required`;
+        }
+    });
+
+    // Dynamic validation for second panel: receivers or senders based on senderType
+    const isSenderMode = formData.senderType === 'receiver';
+    const items = isSenderMode ? formData.senders : formData.receivers;
+    const itemsKey = isSenderMode ? 'senders' : 'receivers';
+    const itemPrefix = isSenderMode ? 'Sender' : 'Receiver';
+
+    if (items.length === 0) {
+        console.log('No items present');
+        newErrors[itemsKey] = `At least one ${itemPrefix.toLowerCase()} is required`;
+    } else {
+        items.forEach((item, i) => {
+            // FIXED: Always validate required fields (independent of mode for core fields)
+            const nameField = isSenderMode ? 'senderName' : 'receiverName';
+            const contactField = isSenderMode ? 'senderContact' : 'receiverContact';
+            const addressField = isSenderMode ? 'senderAddress' : 'receiverAddress';
+            const emailField = isSenderMode ? 'senderEmail' : 'receiverEmail';
+            const refField = isSenderMode ? 'senderRef' : 'receiverRef';
+            const consignmentNumberField = 'consignmentNumber'; // Same
+
+            if (!item[nameField]?.trim()) {
+                newErrors[`${itemsKey}[${i}].${nameField}`] = `${itemPrefix} ${i + 1} name is required`;
+            }
+            if (isEditMode && item.containers.length === 0) {
+                newErrors[`${itemsKey}[${i}].containers`] = `At least one container is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
+                // TODO: Comment out if containers optional in some cases
+            }
+            if (!item[consignmentNumberField]?.trim()) {
+                newErrors[`${itemsKey}[${i}].${consignmentNumberField}`] = `Consignment number is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
+            }
+            if (!item.totalWeight?.trim()) {
+                newErrors[`${itemsKey}[${i}].totalWeight`] = `Total weight is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
+            }
+            if (!item[refField]?.trim()) {
+                newErrors[`${itemsKey}[${i}].${refField}`] = `${itemPrefix} ref is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
+            }
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (item[emailField] && !emailRegex.test(item[emailField])) {
+                newErrors[`${itemsKey}[${i}].${emailField}`] = `Invalid ${itemPrefix.toLowerCase()} ${i + 1} email format`;
+            }
+
+            // Validate nested shippingDetail
+            const sd = item.shippingDetail || {};
+            shippingRequiredFields.forEach(field => {
+                // FIXED: Always validate if empty (core required)
+                if (!sd[field]?.trim()) {
+                    newErrors[`${itemsKey}[${i}].shippingDetail.${field}`] = `${field.replace(/([A-Z])/g, ' $1').trim()} is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
                 }
             });
-        }
+            // NEW: totalNumber must be positive (enforce always, as core)
+            const totalNumStr = sd.totalNumber || '';  // FIXED: Always use sd.totalNumber (source of truth from order_items)
+            const totalNum = parseInt(totalNumStr);
+            if (isNaN(totalNum) || totalNum <= 0) {
+                newErrors[`${itemsKey}[${i}].shippingDetail.totalNumber`] = `Total Number must be positive for ${itemPrefix.toLowerCase()} ${i + 1}`;
+            }
+            if (sd.weight && (isNaN(parseFloat(sd.weight)) || parseFloat(sd.weight) <= 0)) {
+                newErrors[`${itemsKey}[${i}].shippingDetail.weight`] = `Weight must be a positive number for ${itemPrefix.toLowerCase()} ${i + 1}`;
+            }
 
-        // Transport Type validations (updated with dropoff_name)
-        if (formData.transportType === 'Drop Off') {
-            if (!formData.dropDate?.trim()) {
-                newErrors.dropDate = 'Drop Date is required';
+            // UPDATED: Per-item partial validation (use sd.totalNumber now)
+            // FIXED: Only enforce exceed check in edit mode (relax for add/new)
+            if (item.fullPartial === 'Partial') {
+                const delStr = item.qtyDelivered?.toString() || '';
+                if (!delStr.trim()) {
+                    newErrors[`${itemsKey}[${i}].qtyDelivered`] = `Qty Delivered is required for partial ${itemPrefix.toLowerCase()} ${i + 1}`;
+                } else {
+                    const del = parseInt(delStr);
+                    if (isNaN(del)) {
+                        newErrors[`${itemsKey}[${i}].qtyDelivered`] = `Qty Delivered must be a valid number for ${itemPrefix.toLowerCase()} ${i + 1}`;
+                    } else if (del <= 0) {
+                        newErrors[`${itemsKey}[${i}].qtyDelivered`] = `Qty Delivered must be positive for partial ${itemPrefix.toLowerCase()} ${i + 1}`;
+                    } else {
+                        // FIXED: Enforce exceed only in edit mode, using sd.totalNumber
+                        if (isEditMode && del > totalNum) {
+                            newErrors[`${itemsKey}[${i}].qtyDelivered`] = `Qty Delivered (${del}) cannot exceed total number (${totalNum}) for ${itemPrefix.toLowerCase()} ${i + 1}`;
+                        } else if (!isEditMode && del > totalNum) {
+                            // Optional: Soft warning for add mode (console, not hard error)
+                            console.warn(`Add mode ${itemPrefix.toLowerCase()} ${i + 1}: Qty Delivered (${del}) > Total Number (${totalNum}) - fix on edit`);
+                        }
+                    }
+                }
             }
-            if (formData.dropMethod === 'Drop-Off') {
-                if (!formData.dropoffName?.trim()) {
-                    newErrors.dropoffName = 'Drop-Off Person Name is required';
-                }
-                if (!formData.dropOffCnic?.trim()) {
-                    newErrors.dropOffCnic = 'Drop-Off CNIC/ID is required';
-                }
-                if (!formData.dropOffMobile?.trim()) {
-                    newErrors.dropOffMobile = 'Drop-Off Mobile is required';
-                }
-            }
-        }
 
-        if (formData.transportType === 'Collection') {
-            if (!formData.deliveryDate?.trim()) {
-                newErrors.deliveryDate = 'Delivery Date is required';
-            }
-            if (formData.fullPartial === 'Partial' && !formData.qtyDelivered?.trim()) {
-                newErrors.qtyDelivered = 'Qty Delivered is required for Partial';
-            }
-            if (formData.collectionMethod === 'Collected by Client') {
-                if (!formData.clientReceiverName?.trim()) {
-                    newErrors.clientReceiverName = 'Receiver Name is required';
-                }
-                if (!formData.clientReceiverId?.trim()) {
-                    newErrors.clientReceiverId = 'Receiver ID is required';
-                }
-                if (!formData.clientReceiverMobile?.trim()) {
-                    newErrors.clientReceiverMobile = 'Receiver Mobile is required';
-                }
-            }
-        }
-
-        if (formData.transportType === 'Third Party') {
-            if (!formData.thirdPartyTransport?.trim() || formData.thirdPartyTransport === 'Select 3rd party company') {
-                newErrors.thirdPartyTransport = '3rd party Transport Company is required';
-            }
-            if (!formData.driverName?.trim()) {
-                newErrors.driverName = 'Driver Name is required';
-            }
-            if (!formData.driverContact?.trim()) {
-                newErrors.driverContact = 'Driver Contact is required';
-            }
-            if (!formData.driverNic?.trim()) {
-                newErrors.driverNic = 'Driver NIC is required';
-            }
-            if (!formData.driverPickupLocation?.trim()) {
-                newErrors.driverPickupLocation = 'Driver Pickup Location is required';
-            }
-            if (!formData.truckNumber?.trim()) {
-                newErrors.truckNumber = 'Truck Number is required';
-            }
-        }
-
-        // Email validation for sender
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (formData.senderEmail && !emailRegex.test(formData.senderEmail)) {
-            newErrors.senderEmail = 'Invalid sender email format';
-        }
-
-        // Date validation (if provided)
-        const dateFields = ['eta', 'etd', 'dropDate', 'deliveryDate'];
-        dateFields.forEach(field => {
-            if (formData[field] && !/^\d{4}-\d{2}-\d{2}$/.test(formData[field])) {
-                newErrors[field] = 'Invalid date format (YYYY-MM-DD)';
-            }
+            // UPDATED: Validate per-item eta, etd (now required per UI)
+            
         });
+    }
 
-        // Weight validation (single weight)
-        if (formData.weight && (isNaN(formData.weight) || parseFloat(formData.weight) <= 0)) {
-            newErrors.weight = 'Weight must be a positive number';
+    // Transport validations (updated: conditional deliveryDate)
+    // UPDATED: Check if any item is partial for requiresDeliveryDate
+    const anyPartial = items.some(item => item.fullPartial === 'Partial');
+    const showInbound = formData.finalDestination?.includes('Karachi');  // Align with backend logic
+    const showOutbound = formData.placeOfLoading?.includes('Dubai');
+
+    if (showInbound && formData.transportType === 'Drop Off') {  // Assumed transportType values
+        if (!formData.dropDate?.trim()) {
+            newErrors.dropDate = 'Drop Date is required';
         }
-
-        // Mobile validation (simple phone check)
-        const mobileRegex = /^\d{10,15}$/;
-        if (formData.dropOffMobile && !mobileRegex.test(formData.dropOffMobile.replace(/\D/g, ''))) {
-            newErrors.dropOffMobile = 'Invalid mobile number';
+        if (formData.dropMethod === 'Drop-Off') {
+            if (!formData.dropoffName?.trim()) {
+                newErrors.dropoffName = 'Drop-Off Person Name is required';
+            }
+            if (!formData.dropOffCnic?.trim()) {
+                newErrors.dropOffCnic = 'Drop-Off CNIC/ID is required';
+            }
+            if (!formData.dropOffMobile?.trim()) {
+                newErrors.dropOffMobile = 'Drop-Off Mobile is required';
+            }
         }
-        if (formData.clientReceiverMobile && !mobileRegex.test(formData.clientReceiverMobile.replace(/\D/g, ''))) {
-            newErrors.clientReceiverMobile = 'Invalid mobile number';
+    }
+
+    if (showOutbound && formData.transportType === 'Collection') {
+        // UPDATED: Conditional on any partial or client collection
+        const requiresDeliveryDate = anyPartial || formData.collectionMethod === 'Collected by Client';
+        if (requiresDeliveryDate && !formData.deliveryDate?.trim()) {
+            newErrors.deliveryDate = 'Delivery Date is required for partial delivery or client collection';
         }
+        if (formData.collectionMethod === 'Collected by Client') {
+            if (!formData.clientReceiverName?.trim()) {
+                newErrors.clientReceiverName = 'Receiver Name is required';
+            }
+            if (!formData.clientReceiverId?.trim()) {
+                newErrors.clientReceiverId = 'Receiver ID is required';
+            }
+            if (!formData.clientReceiverMobile?.trim()) {
+                newErrors.clientReceiverMobile = 'Receiver Mobile is required';
+            }
+        }
+    }
 
-        setErrors(newErrors);
-        return Object.keys(newErrors).length === 0;
-    };
+    if (formData.transportType === 'Third Party') {
+        if (!formData.thirdPartyTransport?.trim() || formData.thirdPartyTransport === 'Select 3rd party company') {
+            newErrors.thirdPartyTransport = '3rd party Transport Company is required';
+        }
+        if (!formData.driverName?.trim()) {
+            newErrors.driverName = 'Driver Name is required';
+        }
+        if (!formData.driverContact?.trim()) {
+            newErrors.driverContact = 'Driver Contact is required';
+        }
+        if (!formData.driverNic?.trim()) {
+            newErrors.driverNic = 'Driver NIC is required';
+        }
+        if (!formData.driverPickupLocation?.trim()) {
+            newErrors.driverPickupLocation = 'Driver Pickup Location is required';
+        }
+        if (!formData.truckNumber?.trim()) {
+            newErrors.truckNumber = 'Truck Number is required';
+        }
+    }
 
+    // Email validation for sender
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (formData.senderEmail && !emailRegex.test(formData.senderEmail)) {
+        newErrors.senderEmail = 'Invalid sender email format';
+    }
+
+    // Date validation for global dates
+    const globalDateFields = ['dropDate', 'deliveryDate'];
+    globalDateFields.forEach(field => {
+        if (formData[field] && !/^\d{4}-\d{2}-\d{2}$/.test(formData[field])) {
+            newErrors[field] = 'Invalid date format (YYYY-MM-DD)';
+        }
+    });
+
+    // Date validation for per-item eta, etd
+    // items.forEach((item, i) => {
+    //     ['eta', 'etd'].forEach(field => {
+    //         if (item[field] && !/^\d{4}-\d{2}-\d{2}$/.test(item[field])) {
+    //             newErrors[`${itemsKey}[${i}].${field}`] = `Invalid ${field.toUpperCase()} date format (YYYY-MM-DD) for ${itemPrefix.toLowerCase()} ${i + 1}`;
+    //         }
+    //     });
+    // });
+
+    // Mobile validation
+    const mobileRegex = /^\d{10,15}$/;
+    if (formData.dropOffMobile && !mobileRegex.test(formData.dropOffMobile.replace(/\D/g, ''))) {
+        newErrors.dropOffMobile = 'Invalid mobile number';
+    }
+    if (formData.clientReceiverMobile && !mobileRegex.test(formData.clientReceiverMobile.replace(/\D/g, ''))) {
+        newErrors.clientReceiverMobile = 'Invalid mobile number';
+    }
+
+    // NEW: Log errors for debugging (identify frontend vs backend)
+    console.log('[validateForm] Errors detected:', newErrors);
+    if (Object.keys(newErrors).length > 0) {
+        console.log('[validateForm] Frontend blocking submit - fix these before backend hit');
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+};
     // Fetch containers on mount
     useEffect(() => {
         fetchContainers();
@@ -420,60 +565,15 @@ const OrderForm = () => {
             Object.keys(errors).forEach(key => {
                 if (['senderName', 'senderContact', 'senderAddress', 'senderEmail', 'senderRef', 'senderRemarks'].includes(key)) panelsToExpand.add('panel1');
                 if (key.startsWith('receivers[')) panelsToExpand.add('panel2');
-                if (['category', 'subcategory', 'type', 'weight', 'pickupLocation', 'deliveryAddress', 'consignmentStatus', 'itemRef'].includes(key)) panelsToExpand.add('panel3');
-                if (['transportType', 'dropMethod', 'dropoffName', 'dropOffCnic', 'dropOffMobile', 'plateNo', 'dropDate', 'collectionMethod', 'fullPartial', 'qtyDelivered', 'clientReceiverName', 'clientReceiverId', 'clientReceiverMobile', 'deliveryDate', 'driverName', 'driverContact', 'driverNic', 'driverPickupLocation', 'truckNumber', 'thirdPartyTransport'].includes(key)) panelsToExpand.add('panel4');
+                if (['transportType', 'dropMethod', 'dropoffName', 'dropOffCnic', 'dropOffMobile', 'plateNo', 'dropDate', 'collectionMethod', 'fullPartial', 'qtyDelivered', 'clientReceiverName', 'clientReceiverId', 'clientReceiverMobile', 'deliveryDate', 'driverName', 'driverContact', 'driverNic', 'driverPickupLocation', 'truckNumber', 'thirdPartyTransport'].includes(key)) panelsToExpand.add('panel3');
             });
             setExpanded(prev => new Set([...prev, ...panelsToExpand]));
         }
     }, [errors]);
 
-
-    useEffect(() => {
-        if (formData.category) {
-            fetchSubcategories(formData.category);
-        } else {
-            setSubcategories([]);  // Already good
-            setFormData(prev => ({ ...prev, subcategory: '' }));  // Fixed: Reset subcategory to '' to match options
-        }
-    }, [formData.category]);
-
-    // Auto-populate receiver totalNumber and totalWeight from shipping details if empty
-    useEffect(() => {
-        setFormData(prev => ({
-            ...prev,
-            receivers: prev.receivers.map(rec => ({
-                ...rec,
-                totalNumber: rec.totalNumber || formData.totalNumber,
-                totalWeight: rec.totalWeight || formData.weight
-            }))
-        }));
-    }, [formData.totalNumber, formData.weight]);
-
-    // Dummy data for categories and subcategories
-    const dummyCategories = ["Electronics", "Clothing", "Books"];
-    const categorySubMap = {
-        "Electronics": ["Smartphones", "Laptops", "Accessories"],
-        "Clothing": ["Men's Wear", "Women's Wear", "Kids Wear"],
-        "Books": ["Fiction", "Non-Fiction", "Technical"],
-    };
-
     const fetchCategories = () => {
         setCategories(dummyCategories);
     };
-
-    const fetchSubcategories = (category) => {
-        const subs = categorySubMap[category] || [];
-        setSubcategories(subs);
-        // Fixed: If no subcategories, reset formData.subcategory to '' to avoid null/mismatch
-        if (subs.length === 0) {
-            setFormData(prev => ({ ...prev, subcategory: '' }));
-        }
-    };
-
-    // Example: Call fetchCategories on mount if needed
-    useEffect(() => {
-        fetchCategories();
-    }, []);
 
     // Fetch all containers
     const fetchContainers = async () => {
@@ -497,23 +597,23 @@ const OrderForm = () => {
         }
     };
 
-    // Updated fetchOrder to handle new fields and multiples
+    // Updated fetchOrder to handle nested shippingDetail and new fields
+    // Improvements: Map-based matching, consistent remaining calc, validation warnings
     const fetchOrder = async (id) => {
-        setLoading(true)
+        setLoading(true);
         try {
             const response = await api.get(`/api/orders/${id}`, { params: { includeContainer: true } });
+
             // Map snake_case to camelCase for core fields
             const camelData = {};
             Object.keys(response.data).forEach(apiKey => {
                 let value = response.data[apiKey];
-                // Sanitize null/undefined to '' for string fields
                 if (value === null || value === undefined) value = '';
-                // Handle dates: convert to YYYY-MM-DD format if it's a full ISO string or timestamp
                 if (['eta', 'etd', 'drop_date', 'delivery_date'].includes(apiKey)) {
                     if (value) {
                         const date = new Date(value);
                         if (!isNaN(date.getTime())) {
-                            value = date.toISOString().split('T')[0];
+                            value = date.toISOString().split('T')[0];  // YYYY-MM-DD
                         }
                     } else {
                         value = '';
@@ -522,65 +622,115 @@ const OrderForm = () => {
                 const camelKey = snakeToCamel(apiKey);
                 camelData[camelKey] = value;
             });
-            // Handle order_items - take first one
-            if (response.data.order_items && response.data.order_items.length > 0) {
-                const item = response.data.order_items[0];
-                const camelItem = {};
-                Object.keys(item).forEach(apiKey => {
-                    let val = item[apiKey];
-                    if (val === null || val === undefined) val = '';
-                    const camelKey = snakeToCamel(apiKey);
-                    camelItem[camelKey] = val;
-                });
-                camelData.category = camelItem.category;
-                camelData.subcategory = camelItem.subcategory;
-                camelData.type = camelItem.type;
-                camelData.pickupLocation = camelItem.pickupLocation;
-                camelData.deliveryAddress = camelItem.deliveryAddress;
-                camelData.totalNumber = camelItem.totalNumber;
-                camelData.weight = camelItem.weight;
-                camelData.itemRef = camelItem.itemRef;
-                camelData.consignmentStatus = camelItem.consignmentStatus;
-            }
-            // Handle multiples - map receivers to camelCase (updated for new fields)
-            camelData.receivers = (response.data.receivers || []).map(rec => {
-                const camelRec = {};
+
+            // NEW: Create map for order_items by receiver_id (robust matching)
+            const orderItems = response.data.order_items || [];
+            const receiverItemMap = new Map();
+            orderItems.forEach(item => {
+                console.log('Mapping order item:', item);
+                if (item.receiver_id) {
+                    receiverItemMap.set(Number(item.receiver_id), item);  // FIXED: Use Number for key consistency
+                }
+            });
+
+            // Handle multiples - map receivers to camelCase
+            let mappedReceivers = (response.data.receivers || []).map(rec => {
+                // Parse containers if string (align with backend)
+                let parsedContainers = rec.containers || [];
+                if (typeof rec.containers === 'string') {
+                    if (rec.containers.trim() === '') {
+                        parsedContainers = [];
+                    } else {
+                        try {
+                            parsedContainers = JSON.parse(rec.containers);
+                        } catch (e) {
+                            parsedContainers = [rec.containers];
+                        }
+                    }
+                }
+
+                const camelRec = {
+                    ...initialReceiver,
+                    shippingDetail: { ...initialShippingDetail },
+                    isNew: false,
+                    validationWarnings: null  // NEW: For frontend alerts
+                };
+
                 Object.keys(rec).forEach(apiKey => {
                     let val = rec[apiKey];
-                    // Sanitize null/undefined to ''
                     if (val === null || val === undefined) val = '';
                     const camelKey = snakeToCamel(apiKey);
                     camelRec[camelKey] = val;
                 });
-                // Handle containers - strings or objects
-                if (Array.isArray(rec.containers) && rec.containers.length > 0) {
-                    camelRec.containers = rec.containers.map(c => typeof c === 'object' ? c.container_number : c);
-                } else {
-                    camelRec.containers = [];
-                }
-                // Handle status - default to "Created" if not present (assuming API may not return it yet)
+
+                // Handle containers
+                camelRec.containers = Array.isArray(parsedContainers) ? parsedContainers.map(c =>
+                    typeof c === 'object' ? (c.container_number || c) : c
+                ) : [];
+
                 camelRec.status = rec.status || "Created";
+
+                // FIXED: Nest shippingDetail using map by receiver_id (not index)
+                const item = receiverItemMap.get(Number(rec.id)) || {};  // FIXED: Use Number for key lookup
+                Object.keys(item).forEach(apiKey => {
+                    let val = item[apiKey];
+                    if (val === null || val === undefined) val = '';
+                    const camelKey = snakeToCamel(apiKey);
+                    // FIXED: Always set shippingDetail fields (remove hasOwnProperty check to handle missing keys in initial)
+                    camelRec.shippingDetail[camelKey] = String(val);
+                });
+
+                // New fields default
+                camelRec.fullPartial = rec.full_partial || '';
+                camelRec.qtyDelivered = rec.qty_delivered != null ? String(rec.qty_delivered) : '';
+
+                // Sync consignment totals if empty
+                camelRec.totalNumber = camelRec.totalNumber || camelRec.shippingDetail.totalNumber || '';
+                camelRec.totalWeight = camelRec.totalWeight || camelRec.shippingDetail.weight || '';
+
                 return camelRec;
             });
+
+            // FIXED: Moved fallback for missing items here (after map completes)
+            mappedReceivers.forEach(rec => {
+                if (!rec.shippingDetail.category) {
+                    console.log(`Receiver ${rec.receiver_name} missing item - adding default`);
+                    rec.shippingDetail.category = 'Unassigned';  // Temp placeholder
+                }
+            });
+
+            // Compute remainingItems for each receiver on load - FIXED: Use synced rec.totalNumber
+            mappedReceivers = mappedReceivers.map(rec => {
+                const total = parseInt(rec.totalNumber || 0) || 0;  // Use rec.totalNumber (synced)
+                const delivered = parseInt(rec.qtyDelivered || 0) || 0;
+                rec.shippingDetail.remainingItems = Math.max(0, total - delivered);
+
+                // NEW: Add validation warnings (for frontend display, e.g., in form)
+                let warnings = null;
+                const isInvalidTotal = total <= 0;
+                const isPartialInvalid = rec.fullPartial === 'Partial' && delivered > total;
+                if (isInvalidTotal || isPartialInvalid) {
+                    warnings = {};
+                    if (isInvalidTotal) warnings.total_number = 'Must be positive';
+                    if (isPartialInvalid) warnings.qty_delivered = 'Cannot exceed total_number';
+                }
+                rec.validationWarnings = warnings;
+
+                return rec;
+            });
+
+            camelData.receivers = mappedReceivers;
             if (camelData.receivers.length === 0) {
+                // Default receiver - mark as new to handle on update
                 camelData.receivers = [{
-                    receiverName: "",
-                    receiverContact: "",
-                    receiverAddress: "",
-                    receiverEmail: "",
-                    consignmentVessel: "",
-                    consignmentNumber: "",
-                    consignmentMarks: "",
-                    consignmentVoyage: "",
-                    totalNumber: "",
-                    totalWeight: "",
-                    itemRef: "",
-                    receiverRef: "",
-                    status: "Created",
-                    containers: []
+                    ...initialReceiver,
+                    shippingDetail: { ...initialShippingDetail },
+                    isNew: true,
+                    validationWarnings: { total_number: 'Must be positive' }  // Flag for user input
                 }];
             }
-            // Attachments/gatepass unchanged
+
+            // Attachments/gatepass
             const cleanAttachments = (paths) => (paths || []).map(path => {
                 if (typeof path === 'string' && path.startsWith('function wrap()')) {
                     return path.substring(62);
@@ -589,6 +739,7 @@ const OrderForm = () => {
             });
             camelData.attachments = cleanAttachments(camelData.attachments || []);
             camelData.gatepass = cleanAttachments(camelData.gatepass || []);
+
             const apiBase = import.meta.env.VITE_API_URL;
             camelData.attachments = camelData.attachments.map(path =>
                 path.startsWith('http') ? path : `${apiBase}${path}`
@@ -596,8 +747,19 @@ const OrderForm = () => {
             camelData.gatepass = camelData.gatepass.map(path =>
                 path.startsWith('http') ? path : `${apiBase}${path}`
             );
-            console.log('pathn data', camelData.attachments)
+
             setFormData(camelData);
+
+            // NEW: Optional - Show snackbar if warnings exist across receivers
+            const hasWarnings = mappedReceivers.some(r => r.validationWarnings);
+            if (hasWarnings) {
+                setSnackbar({
+                    open: true,
+                    message: 'Some receiver data needs attention (check totals/deliveries)',
+                    severity: 'warning',
+                });
+            }
+
         } catch (err) {
             console.error("Error fetching order:", err);
             setSnackbar({
@@ -609,19 +771,15 @@ const OrderForm = () => {
                 navigate('/orders');
             }
         } finally {
-            setLoading(false)
+            setLoading(false);
         }
     };
-
     const handleChange = (e) => {
         const { name, value } = e.target;
         setFormData((prev) => {
             const updated = { ...prev, [name]: value };
-            if (name === 'category') {
-                updated.subcategory = '';
-            }
             if (name === 'transportType' && value !== prev.transportType) {
-                // Clear all transport-specific fields when switching
+                // Clear transport-specific fields
                 updated.dropMethod = '';
                 updated.dropoffName = '';
                 updated.dropOffCnic = '';
@@ -629,8 +787,6 @@ const OrderForm = () => {
                 updated.plateNo = '';
                 updated.dropDate = '';
                 updated.collectionMethod = '';
-                updated.fullPartial = '';
-                updated.qtyDelivered = '';
                 updated.clientReceiverName = '';
                 updated.clientReceiverId = '';
                 updated.clientReceiverMobile = '';
@@ -653,40 +809,22 @@ const OrderForm = () => {
                 updated.clientReceiverId = '';
                 updated.clientReceiverMobile = '';
             }
-            if (name === 'fullPartial' && value === 'Full') {
-                updated.qtyDelivered = '';
-            }
             return updated;
         });
-        // Clear error on change
         if (errors[name]) {
             setErrors((prev) => ({ ...prev, [name]: '' }));
         }
     };
 
-    // Handlers for receivers (updated for new fields)
+    // Updated addReceiver
     const addReceiver = () => {
         setFormData(prev => ({
             ...prev,
-            receivers: [...prev.receivers, {
-                receiverName: "",
-                receiverContact: "",
-                receiverAddress: "",
-                receiverEmail: "",
-                consignmentVessel: "",
-                consignmentNumber: "",
-                consignmentMarks: "",
-                consignmentVoyage: "",
-                totalNumber: prev.totalNumber || "",
-                totalWeight: prev.weight || "",
-                itemRef: "",
-                receiverRef: "",
-                status: "Created",
-                containers: []
-            }]
+            receivers: [...prev.receivers, { ...initialReceiver, shippingDetail: { ...initialShippingDetail }, isNew: true }]
         }));
     };
 
+    // Updated removeReceiver
     const removeReceiver = (index) => {
         setFormData(prev => ({
             ...prev,
@@ -694,6 +832,19 @@ const OrderForm = () => {
         }));
     };
 
+    // Duplicate receiver (new)
+    const duplicateReceiver = (index) => {
+        setFormData(prev => ({
+            ...prev,
+            receivers: [
+                ...prev.receivers.slice(0, index + 1),
+                { ...prev.receivers[index], shippingDetail: { ...prev.receivers[index].shippingDetail }, isNew: true },  // Duplicate with deep copy
+                ...prev.receivers.slice(index + 1)
+            ]
+        }));
+    };
+
+    // Updated handleReceiverChange (for basic fields)
     const handleReceiverChange = (index, field) => (e) => {
         const value = e.target.value;
         setFormData(prev => ({
@@ -703,10 +854,79 @@ const OrderForm = () => {
             )
         }));
         // Clear error
-        if (errors[`receivers[${index}].${field}`]) {
+        const errorKey = `receivers[${index}].${field}`;
+        if (errors[errorKey]) {
             setErrors(prev => {
                 const newErr = { ...prev };
-                delete newErr[`receivers[${index}].${field}`];
+                delete newErr[errorKey];
+                return newErr;
+            });
+        }
+    };
+
+    // Updated handleReceiverShippingChange (with remaining sync and consignment sync)
+    const handleReceiverShippingChange = (index, field) => (e) => {
+        const value = e.target.value;
+        setFormData(prev => {
+            const rec = prev.receivers[index];
+            const oldSd = rec.shippingDetail || {};
+            const updatedSd = { ...oldSd, [field]: value };
+            if (field === 'category' && value !== oldSd.category) {
+                updatedSd.subcategory = '';
+            }
+            // Sync remaining if qtyDelivered changed indirectly
+            if (field === 'totalNumber') {
+                const del = parseInt(rec.qtyDelivered || 0);
+                updatedSd.remainingItems = Math.max(0, parseInt(value) - del);
+                // Sync to receiver totalNumber if empty
+                rec.totalNumber = rec.totalNumber || value;
+            }
+            if (field === 'weight') {
+                // Sync to receiver totalWeight if empty
+                rec.totalWeight = rec.totalWeight || value;
+            }
+            return {
+                ...prev,
+                receivers: prev.receivers.map((r, i) =>
+                    i === index ? { ...r, shippingDetail: updatedSd } : r
+                )
+            };
+        });
+        // Clear error
+        const errorKey = `receivers[${index}].shippingDetail.${field}`;
+        if (errors[errorKey]) {
+            setErrors(prev => {
+                const newErr = { ...prev };
+                delete newErr[errorKey];
+                return newErr;
+            });
+        }
+    };
+
+    // New: Handle per-receiver full/partial change
+    const handleReceiverPartialChange = (index, field) => (e) => {
+        const value = e.target.value;
+        setFormData(prev => {
+            const rec = prev.receivers[index];
+            const updated = { ...rec, [field]: value };
+            if (field === 'fullPartial' && value === 'Full') {
+                updated.qtyDelivered = '';  // Clear qty
+            } else if (field === 'qtyDelivered') {
+                const del = parseInt(value);
+                const total = parseInt(rec.shippingDetail.totalNumber || 0);
+                rec.shippingDetail.remainingItems = Math.max(0, total - del);
+            }
+            return {
+                ...prev,
+                receivers: prev.receivers.map((r, i) => i === index ? updated : r)
+            };
+        });
+        // Clear error
+        const errorKey = `receivers[${index}].${field}`;
+        if (errors[errorKey]) {
+            setErrors(prev => {
+                const newErr = { ...prev };
+                delete newErr[errorKey];
                 return newErr;
             });
         }
@@ -742,6 +962,160 @@ const OrderForm = () => {
         });
     };
 
+
+    // Handler for changing basic fields in senders array
+    const handleSenderChange = useCallback((index, field) => (event) => {
+        const value = event.target.value;
+        setFormData((prev) => ({
+            ...prev,
+            senders: prev.senders.map((item, i) =>
+                i === index ? { ...item, [field]: value } : item
+            ),
+        }));
+
+        // Clear error for this field
+        const errorKey = `senders[${index}].${field}`;
+        if (errors[errorKey]) {
+            setErrors((prev) => ({ ...prev, [errorKey]: '' }));
+        }
+    }, [errors, setErrors]);
+
+    // Handler for changing shipping detail fields in senders array
+    const handleSenderShippingChange = useCallback((index, field) => (event) => {
+        const value = event.target.value;
+        setFormData((prev) => ({
+            ...prev,
+            senders: prev.senders.map((item, i) =>
+                i === index
+                    ? {
+                        ...item,
+                        shippingDetail: { ...item.shippingDetail, [field]: value },
+                    }
+                    : item
+            ),
+        }));
+
+        // Clear error for this field
+        const errorKey = `senders[${index}].shippingDetail.${field}`;
+        if (errors[errorKey]) {
+            setErrors((prev) => ({ ...prev, [errorKey]: '' }));
+        }
+
+        // Auto-calculate remaining items if totalNumber changes
+        if (field === 'totalNumber' && item.shippingDetail.qtyDelivered) {
+            const remaining = parseInt(value, 10) - parseInt(item.shippingDetail.qtyDelivered || 0, 10);
+            setFormData((prev) => ({
+                ...prev,
+                senders: prev.senders.map((sItem, sI) =>
+                    sI === index
+                        ? {
+                            ...sItem,
+                            shippingDetail: {
+                                ...sItem.shippingDetail,
+                                remainingItems: remaining > 0 ? remaining.toString() : '0',
+                            },
+                        }
+                        : sItem
+                ),
+            }));
+        }
+    }, [errors, setErrors]);
+
+    // Handler for changing partial delivery fields in senders array
+    const handleSenderPartialChange = useCallback((index, field) => (event) => {
+        const value = event.target.value;
+        setFormData((prev) => ({
+            ...prev,
+            senders: prev.senders.map((item, i) =>
+                i === index ? { ...item, [field]: value } : item
+            ),
+        }));
+
+        // Clear error for this field
+        const errorKey = `senders[${index}].${field}`;
+        if (errors[errorKey]) {
+            setErrors((prev) => ({ ...prev, [errorKey]: '' }));
+        }
+
+        // Auto-calculate remaining items if qtyDelivered changes
+        if (field === 'qtyDelivered') {
+            const total = parseInt(item.shippingDetail.totalNumber || 0, 10);
+            const remaining = total - parseInt(value, 10);
+            setFormData((prev) => ({
+                ...prev,
+                senders: prev.senders.map((sItem, sI) =>
+                    sI === index
+                        ? {
+                            ...sItem,
+                            shippingDetail: {
+                                ...sItem.shippingDetail,
+                                remainingItems: remaining > 0 ? remaining.toString() : '0',
+                            },
+                        }
+                        : sItem
+                ),
+            }));
+        }
+    }, [errors, setErrors]);
+
+    // Handler for selecting containers in senders array
+    const handleSenderContainersChange = useCallback((index) => (event) => {
+        const value = event.target.value;
+        setFormData((prev) => ({
+            ...prev,
+            senders: prev.senders.map((item, i) =>
+                i === index ? { ...item, containers: value } : item
+            ),
+        }));
+
+        // Clear error for containers
+        const errorKey = `senders[${index}].containers`;
+        if (errors[errorKey]) {
+            setErrors((prev) => ({ ...prev, [errorKey]: '' }));
+        }
+    }, [errors, setErrors]);
+
+    // Add a new sender
+    const addSender = useCallback(() => {
+        setFormData((prev) => ({
+            ...prev,
+            senders: [...prev.senders, { ...initialSenderObject }],
+        }));
+    }, []);
+
+    // Duplicate a sender
+    const duplicateSender = useCallback((index) => {
+        const toDuplicate = formData.senders[index];
+        setFormData((prev) => ({
+            ...prev,
+            senders: [
+                ...prev.senders.slice(0, index + 1),
+                { ...toDuplicate, id: Date.now() }, // Add unique id if needed
+                ...prev.senders.slice(index + 1),
+            ],
+        }));
+    }, [formData.senders]);
+
+    // Remove a sender
+    const removeSender = useCallback((index) => {
+        setFormData((prev) => ({
+            ...prev,
+            senders: prev.senders.filter((_, i) => i !== index),
+        }));
+        // Optionally clear errors for removed item
+        Object.keys(errors).forEach((key) => {
+            if (key.startsWith(`senders[${index}]`)) {
+                setErrors((prev) => {
+                    const newErrors = { ...prev };
+                    delete newErrors[key];
+                    return newErrors;
+                });
+            }
+        });
+    }, [errors]);
+
+    // Add a
+
     const handleFileUpload = (e) => {
         const files = Array.from(e.target.files);
         setFormData((prev) => ({ ...prev, attachments: [...(Array.isArray(prev.attachments) ? prev.attachments : []), ...files] }));
@@ -751,154 +1125,270 @@ const OrderForm = () => {
         const files = Array.from(e.target.files);
         setFormData((prev) => ({ ...prev, gatepass: [...(Array.isArray(prev.gatepass) ? prev.gatepass : []), ...files] }));
     };
+ const handleSave = async () => {
+    // NEW: Relaxed validation on add - only block critical errors
+    const isAddMode = !isEditMode;  // Assume isEditMode defined (e.g., !!orderId)
+    const isSenderMode = formData.senderType === 'receiver';
+    console.log('[handleSave] Mode:', isAddMode ? 'Add (relaxed validation)' : 'Edit (strict)', `Panel2: ${isSenderMode ? 'Sender' : 'Receiver'}`);
 
-    const handleSave = async () => {
-        // Validate form first
-        if (!validateForm()) {
-            setSnackbar({
-                open: true,
-                message: 'Please fix the errors in the form',
-                severity: 'error',
-            });
-            return;
-        }
-
-        setLoading(true);
-        const formDataToSend = new FormData();
-        const dateFields = ['eta', 'etd', 'dropDate', 'deliveryDate'];
-
-        // Append core orders fields (updated with new fields)
-        const coreKeys = ['bookingRef', 'rglBookingNumber', 'placeOfLoading', 'pointOfOrigin', 'finalDestination', 'placeOfDelivery', 'orderRemarks', 'eta', 'etd', 'shippingLine', 'attachments'];
-        coreKeys.forEach(key => {
-            const value = formData[key];
-            if (dateFields.includes(key) && value === '') {
-                // Skip empty dates
-            } else {
-                const apiKey = camelToSnake(key);
-                formDataToSend.append(apiKey, value || '');
-            }
+    // Pass a mode flag to validateForm to relax checks on add
+    if (!validateForm(isAddMode)) {  // UPDATED: Pass mode to validateForm for relaxed add
+        setSnackbar({
+            open: true,
+            message: 'Please fix the errors in the form',
+            severity: 'error',
         });
+        console.log('[handleSave] Frontend validation blocked - check console for details');
+        return;
+    }
 
-        // Append senders fields (new)
-        const senderKeys = ['senderName', 'senderContact', 'senderAddress', 'senderEmail', 'senderRef', 'senderRemarks'];
-        senderKeys.forEach(key => {
-            const apiKey = camelToSnake(key);
-            formDataToSend.append(apiKey, formData[key] || '');
-        });
+    // Frontend passed - always hit backend (logs confirm)
+    console.log('[handleSave] Frontend passed - hitting backend');
 
-        // Append receivers as JSON (updated with new fields)
-        const receiversToSend = formData.receivers.map((rec, i) => {
-            const snakeRec = {};
-            Object.keys(rec).forEach(key => {
-                if (key === 'containers') {
-                    snakeRec.containers = rec.containers;
-                } else {
-                    const snakeKey = camelToSnake(key);
-                    snakeRec[snakeKey] = rec[key];
-                }
-            });
-            // Auto-generate item_ref if empty
-            if (!snakeRec.item_ref) {
-                snakeRec.item_ref = `ITEM-REF-${i + 1}-${Date.now()}`;
-            }
-            return snakeRec;
-        });
-        formDataToSend.append('receivers', JSON.stringify(receiversToSend));
+    setLoading(true);
+    const formDataToSend = new FormData();
+    const dateFields = ['eta', 'etd', 'dropDate', 'deliveryDate'];
 
-        // Append order_items fields (single)
-        const itemKeys = ['category', 'subcategory', 'type', 'pickupLocation', 'deliveryAddress', 'totalNumber', 'weight', 'consignmentStatus'];
-        itemKeys.forEach(key => {
-            const apiKey = camelToSnake(key);
-            formDataToSend.append(apiKey, formData[key] || '');
-        });
-        // Auto-generate item_ref for order_items if empty
-        const orderItemRef = formData.itemRef || `ORDER-ITEM-REF-${Date.now()}`;
-        formDataToSend.append('item_ref', orderItemRef);
-
-        // Append transport fields (updated with dropoff_name)
-        const transportKeys = ['transportType', 'thirdPartyTransport', 'driverName', 'driverContact', 'driverNic', 'driverPickupLocation', 'truckNumber', 'dropMethod', 'dropoffName', 'dropOffCnic', 'dropOffMobile', 'plateNo', 'dropDate', 'collectionMethod', 'fullPartial', 'qtyDelivered', 'clientReceiverName', 'clientReceiverId', 'clientReceiverMobile', 'deliveryDate', 'gatepass'];
-        transportKeys.forEach(key => {
-            const value = formData[key];
+    // Append core orders fields
+    const coreKeys = ['bookingRef', 'rglBookingNumber', 'placeOfLoading', 'pointOfOrigin', 'finalDestination', 'placeOfDelivery', 'orderRemarks', 'eta', 'etd', 'shippingLine', 'attachments'];
+    coreKeys.forEach(key => {
+        const value = formData[key];
+        if (dateFields.includes(key) && value === '') {
+            // Skip empty dates
+        } else {
             const apiKey = camelToSnake(key);
             formDataToSend.append(apiKey, value || '');
-        });
+        }
+    });
 
-        // Handle attachments and gatepass
-        ['attachments', 'gatepass'].forEach(key => {
-            const value = formData[key];
-            if (Array.isArray(value) && value.length > 0) {
-                const existing = value.filter(item => typeof item === 'string');
-                const newFiles = value.filter(item => item instanceof File);
-                if (newFiles.length > 0) {
-                    newFiles.forEach(file => formDataToSend.append(key, file));
-                }
-                if (existing.length > 0) {
-                    const apiKey = camelToSnake(key);
-                    formDataToSend.append(`${apiKey}_existing`, JSON.stringify(existing));
-                }
+    // Append senders fields (UPDATED: Include senderType and selectedSenderOwner for backend persistence)
+    const senderKeys = ['senderName', 'senderContact', 'senderAddress', 'senderEmail', 'senderRef', 'senderRemarks', 'senderType', 'selectedSenderOwner'];
+    senderKeys.forEach(key => {
+        const apiKey = camelToSnake(key);
+        formDataToSend.append(apiKey, formData[key] || '');
+    });
+
+    // Dynamic panel2 items
+    const panel2Items = isSenderMode ? formData.senders : formData.receivers;
+
+    // Append "receivers" as JSON (mapped from panel2 items to receiver format for backend compatibility)
+    const receiversToSend = panel2Items.map((item, i) => {
+        const sd = item.shippingDetail || {};
+        const snakeRec = {};
+
+        // Map basic fields dynamically
+        const nameVal = isSenderMode ? (item.senderName || '') : (item.receiverName || '');
+        const contactVal = isSenderMode ? (item.senderContact || '') : (item.receiverContact || '');
+        const addressVal = isSenderMode ? (item.senderAddress || '') : (item.receiverAddress || '');
+        const emailVal = isSenderMode ? (item.senderEmail || '') : (item.receiverEmail || '');
+        const refVal = isSenderMode ? (item.senderRef || '') : (item.receiverRef || '');
+
+        snakeRec.receiver_name = nameVal;
+        snakeRec.receiver_contact = contactVal;
+        snakeRec.receiver_address = addressVal;
+        snakeRec.receiver_email = emailVal;
+        snakeRec.receiver_ref = refVal;
+
+        // Consignment fields (same in both)
+        snakeRec.consignment_vessel = item.consignmentVessel || '';
+        snakeRec.consignment_number = item.consignmentNumber || '';
+        snakeRec.consignment_marks = item.consignmentMarks || '';
+        snakeRec.consignment_voyage = item.consignmentVoyage || '';
+
+        // Sync totals from shippingDetail (source of truth)
+        snakeRec.total_number = sd.totalNumber || item.totalNumber || '';
+        snakeRec.total_weight = sd.weight || item.totalWeight || '';
+
+        // Auto-generate item_ref
+        snakeRec.item_ref = item.itemRef || `ITEM-REF-${i + 1}-${Date.now()}`;
+
+        snakeRec.remarks = item.remarks || '';
+        snakeRec.containers = item.containers || [];
+        snakeRec.full_partial = item.fullPartial || '';
+        snakeRec.qty_delivered = item.qtyDelivered || '';
+        snakeRec.status = item.status || 'Created';
+
+        // Other fields if any (e.g., eta, etd, shippingLine per item)
+        snakeRec.eta = item.eta || '';
+        snakeRec.etd = item.etd || '';
+        snakeRec.shipping_line = item.shippingLine || '';
+
+        return snakeRec;
+    });
+    formDataToSend.append('receivers', JSON.stringify(receiversToSend));
+
+    // Append order_items from nested shippingDetails (same structure)
+    const orderItemsToSend = panel2Items.map((item, i) => {
+        const sd = item.shippingDetail || {};
+        const snakeItem = {};
+        Object.keys(sd).forEach(key => {
+            if (key !== 'itemRef' && key !== 'remainingItems') {  // Skip computed
+                const snakeKey = camelToSnake(key);
+                snakeItem[snakeKey] = sd[key] || '';
             }
         });
+        snakeItem.item_ref = sd.itemRef || `ORDER-ITEM-REF-${i + 1}-${Date.now()}`;
+        return snakeItem;
+    });
+    formDataToSend.append('order_items', JSON.stringify(orderItemsToSend));
 
-        try {
-            if (isEditMode) {
-                await api.put(`/api/orders/${orderId}`, formDataToSend, {
-                    headers: { 'Content-Type': 'multipart/form-data' }
-                });
-                await fetchOrder(orderId);
-            } else {
-                await api.post(`/api/orders`, formDataToSend, {
-                    headers: { 'Content-Type': 'multipart/form-data' }
-                });
-                navigate('/orders');
+    // Append transport fields
+    const transportKeys = ['transportType', 'thirdPartyTransport', 'driverName', 'driverContact', 'driverNic', 'driverPickupLocation', 'truckNumber', 'dropMethod', 'dropoffName', 'dropOffCnic', 'dropOffMobile', 'plateNo', 'dropDate', 'collectionMethod', 'clientReceiverName', 'clientReceiverId', 'clientReceiverMobile', 'deliveryDate', 'gatepass'];
+    transportKeys.forEach(key => {
+        const value = formData[key];
+        const apiKey = camelToSnake(key);
+        formDataToSend.append(apiKey, value || '');
+    });
+
+    // Handle attachments and gatepass
+    ['attachments', 'gatepass'].forEach(key => {
+        const value = formData[key];
+        if (Array.isArray(value) && value.length > 0) {
+            const existing = value.filter(item => typeof item === 'string');
+            const newFiles = value.filter(item => item instanceof File);
+            if (newFiles.length > 0) {
+                newFiles.forEach(file => formDataToSend.append(key, file));
             }
+            if (existing.length > 0) {
+                const apiKey = camelToSnake(key);
+                formDataToSend.append(`${apiKey}_existing`, JSON.stringify(existing));
+            }
+        }
+    });
+
+    try {
+        const endpoint = isEditMode ? `/api/orders/${orderId}` : '/api/orders';
+        const method = isEditMode ? 'put' : 'post';
+        console.log('[handleSave] Request to:', endpoint, 'Method:', method);
+        console.log('[handleSave] FormData entries:');
+        for (let pair of formDataToSend.entries()) {
+            console.log(`${pair[0]}:`, pair[1]);
+        }
+        const response = await api[method](endpoint, formDataToSend, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        console.log('[handleSave] Backend success:', response.data);
+
+        if (isEditMode) {
+            await fetchOrder(orderId);
+        } else {
+            navigate('/orders');
+        }
+        setSnackbar({
+            open: true,
+            message: isEditMode ? 'Order updated successfully' : 'Order created successfully',
+            severity: 'success',
+        });
+    } catch (err) {
+        console.error("[handleSave] Backend error full response:", err.response?.data || err.message);
+        const backendData = err.response?.data || {};
+        const backendMsg = backendData.error || backendData.details || err.message || 'Failed to save order';
+
+        // UPDATED: Handle backend errors as direct object (e.g., { "receivers[0].field": "msg" })
+        let newErrorsFromBackend = {};
+        if (typeof backendData === 'object' && Object.keys(backendData).length > 0) {
+            // Check if it's direct errors object
+            if (Object.keys(backendData).some(key => key.startsWith('receivers[') || key.includes('.'))) {
+                newErrorsFromBackend = { ...backendData };
+
+                // Remap keys and messages if in sender mode
+                if (isSenderMode) {
+                    const remapped = {};
+                    Object.keys(newErrorsFromBackend).forEach(oldKey => {
+                        let newKey = oldKey.replace('receivers[', 'senders[');
+                        let msg = newErrorsFromBackend[oldKey];
+
+                        // Remap field names in key
+                        newKey = newKey
+                            .replace('.receiverName', '.senderName')
+                            .replace('.receiverContact', '.senderContact')
+                            .replace('.receiverAddress', '.senderAddress')
+                            .replace('.receiverEmail', '.senderEmail')
+                            .replace('.receiverRef', '.senderRef');
+
+                        // Update message to say "sender" instead of "receiver"
+                        msg = msg.replace(/Receiver/gi, 'Sender').replace(/receiver/gi, 'sender');
+
+                        remapped[newKey] = msg;
+                    });
+                    newErrorsFromBackend = remapped;
+                }
+            } else if (backendData.details) {
+                // Fallback to string parsing if details is string
+                const detailStr = backendData.details;
+                const errorMsgs = detailStr.split(';').map(s => s.trim()).filter(Boolean);
+
+                errorMsgs.forEach(msg => {
+                    // Receiver-specific: e.g., "qty_delivered cannot exceed total_number for receiver 1"
+                    const qtyMatch = msg.match(/qty_delivered cannot exceed total_number for (receiver|sender) (\d+)/i);
+                    if (qtyMatch) {
+                        const itemType = qtyMatch[1].toLowerCase();
+                        const index = parseInt(qtyMatch[2]) - 1;
+                        const arrayKey = (itemType === 'sender' || isSenderMode) ? 'senders' : 'receivers';
+                        const adjustedMsg = msg.replace(itemType, isSenderMode ? 'sender' : 'receiver');
+                        newErrorsFromBackend[`${arrayKey}[${index}].qtyDelivered`] = adjustedMsg;
+                        return;
+                    }
+                    // Delivery date: "delivery_date required"
+                    if (msg.includes('delivery_date required')) {
+                        newErrorsFromBackend.deliveryDate = 'Delivery Date is required';
+                        return;
+                    }
+                    // General "field required" e.g., "consignment_number required for receiver 1"
+                    const recRequiredMatch = msg.match(/(\w+) required for (receiver|sender) (\d+)/i);
+                    if (recRequiredMatch) {
+                        const fieldSnake = recRequiredMatch[1];
+                        const itemType = recRequiredMatch[2].toLowerCase();
+                        const index = parseInt(recRequiredMatch[3]) - 1;
+                        const arrayKey = (itemType === 'sender' || isSenderMode) ? 'senders' : 'receivers';
+                        const camelField = snakeToCamel(fieldSnake);
+                        const fieldPath = camelField.startsWith('shippingDetail') ? `shippingDetail.${camelField.replace('shippingDetail.', '')}` : 
+                            (isSenderMode && ['receiverName', 'receiverContact', 'receiverAddress', 'receiverEmail', 'receiverRef'].includes(camelField) ? 
+                                camelField.replace('receiver', 'sender') : camelField);
+                        const adjustedMsg = msg.replace(itemType, isSenderMode ? 'sender' : 'receiver');
+                        newErrorsFromBackend[`${arrayKey}[${index}].${fieldPath}`] = `${adjustedMsg} for ${isSenderMode ? 'sender' : 'receiver'} ${index + 1}`;
+                        return;
+                    }
+                    // Generic field required e.g., "booking_ref is required"
+                    if (msg.includes(' is required')) {
+                        const fieldSnake = msg.split(' ')[0];
+                        const camel = snakeToCamel(fieldSnake);
+                        newErrorsFromBackend[camel] = msg;
+                        return;
+                    }
+                    // Fallback: Assume msg starts with field
+                    const parts = msg.split(' ');
+                    if (parts.length > 0) {
+                        const possibleField = parts[0].replace(/[^a-zA-Z]/g, '');
+                        const camelField = snakeToCamel(possibleField);
+                        newErrorsFromBackend[camelField] = msg;
+                    }
+                });
+            }
+        }
+
+        // Merge backend errors into frontend (highlight fields)
+        if (Object.keys(newErrorsFromBackend).length > 0) {
+            setErrors(prev => ({ ...prev, ...newErrorsFromBackend }));
             setSnackbar({
                 open: true,
-                message: isEditMode ? 'Order updated successfully' : 'Order created successfully',
-                severity: 'success',
-            });
-        } catch (err) {
-            console.error("Error saving order:", err);
-            // Handle backend validation errors by parsing details and setting field errors
-            if (err.response?.data?.details) {
-                const detailStr = err.response.data.details;
-                const errorsList = detailStr.split('; ').map(detail => {
-                    const match = detail.match(/^(\w+) (.+)$/);
-                    if (match) {
-                        const fieldSnake = match[1];
-                        const msg = match[2];
-                        const fieldCamel = snakeToCamel(fieldSnake);
-                        return { field: fieldCamel, msg };
-                    }
-                    return null;
-                }).filter(Boolean);
-
-                const newErrors = {};
-                errorsList.forEach(({ field, msg }) => {
-                    if (receiverFields.includes(field)) {
-                        newErrors[`receivers[0].${field}`] = msg;
-                    } else {
-                        newErrors[field] = msg;
-                    }
-                });
-                setErrors(prev => ({ ...prev, ...newErrors }));
-
-                setSnackbar({
-                    open: true,
-                    message: 'Please fix the errors in the form',
-                    severity: 'error',
-                });
-                return;
-            }
-            setSnackbar({
-                open: true,
-                message: err.response?.data?.error || err.response?.data?.details || err.message || 'Failed to save order',
+                message: 'Backend validation failed - errors highlighted in form',
                 severity: 'error',
             });
-        } finally {
-            setLoading(false);
+            console.log('[handleSave] Backend errors mapped to fields:', newErrorsFromBackend);
+            return;  // Stop here, user fixes highlighted fields
         }
-    };
 
+        // Generic backend error (no details to map)
+        setSnackbar({
+            open: true,
+            message: `Backend Error: ${backendMsg}`,
+            severity: 'error',
+        });
+    } finally {
+        setLoading(false);
+    }
+};
     const handleCancel = () => {
         navigate(-1);
     };
@@ -910,7 +1400,7 @@ const OrderForm = () => {
         setSnackbar({ ...snackbar, open: false });
     };
 
-    // Placeholder options (unchanged)
+    // Placeholder options
     const places = ["Select Place", "Singapore", "Dubai", "Rotterdam", "Hamburg", "Karachi", "Dubai-Emirates"];
     const companies = ["Select 3rd party company", "Company A", "Company B"];
     const statuses = ["Created", "In Transit", "Delivered", "Cancelled"];
@@ -918,6 +1408,22 @@ const OrderForm = () => {
 
     const isFieldDisabled = (name) => {
         if (!isEditMode) return false;
+        // For receiver fields, check if in editableInEdit (new logic allows partials)
+        if (name.startsWith('receivers[')) {
+            const match = name.match(/receivers\[(\d+)\]\.(.+)/);
+            if (match) {
+                const idx = parseInt(match[1]);
+                const field = match[2];
+                const receiver = formData.receivers[idx];
+                if (receiver?.isNew) {
+                    return false; // All fields editable for new receivers
+                } else {
+                    // For existing, only partial fields
+                    return !editableInEdit.some(e => e.includes(field));
+                }
+            }
+            return true;
+        }
         return !editableInEdit.includes(name);
     };
 
@@ -931,7 +1437,6 @@ const OrderForm = () => {
             </Paper>
         );
     }
-
     return (
         <>
             <Paper sx={{ p: 3, borderRadius: 3, boxShadow: 3, bgcolor: "#fafafa" }}>
@@ -966,9 +1471,8 @@ const OrderForm = () => {
                         </Stack>
                     </Stack>
 
-                    {/* Top Order Fields - updated with missing fields */}
+                    {/* Top Order Fields */}
                     <Stack spacing={3} mb={4}>
-                        {/* Row 1: Booking Ref | RGL Booking Number */}
                         <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
                             <CustomTextField
                                 label="Booking Ref"
@@ -991,8 +1495,6 @@ const OrderForm = () => {
                                 disabled={isFieldDisabled('rglBookingNumber')}
                             />
                         </Box>
-
-                        {/* Row 2: Point of Origin | Place of Loading */}
                         <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
                             <CustomSelect
                                 label="Point of Origin"
@@ -1025,8 +1527,6 @@ const OrderForm = () => {
                                 ))}
                             </CustomSelect>
                         </Box>
-
-                        {/* Row 3: Place of Delivery | Final Destination */}
                         <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
                             <CustomSelect
                                 label="Place of Delivery"
@@ -1059,8 +1559,6 @@ const OrderForm = () => {
                                 ))}
                             </CustomSelect>
                         </Box>
-
-                        {/* Row 4: Order Remarks */}
                         <CustomTextField
                             label="Order Remarks"
                             name="orderRemarks"
@@ -1097,73 +1595,145 @@ const OrderForm = () => {
                                     "& .MuiAccordionSummary-content": { fontWeight: "bold", color: expanded.has("panel1") ? "#fff" : "#f58220" },
                                 }}
                             >
-                                1. Sender Details
+                                1. Owner Details
                             </AccordionSummary>
                             <AccordionDetails sx={{ p: 3, bgcolor: "#fff" }}>
                                 <Stack spacing={2}>
-                                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                        <CustomTextField
-                                            label="Sender Name"
-                                            name="senderName"
-                                            value={formData.senderName}
-                                            onChange={handleChange}
-                                            error={!!errors.senderName}
-                                            helperText={errors.senderName}
-                                            required
-                                            disabled={isFieldDisabled('senderName')}
-                                        />
-                                        <CustomTextField
-                                            label="Sender Contact"
-                                            name="senderContact"
-                                            value={formData.senderContact}
-                                            onChange={handleChange}
-                                            error={!!errors.senderContact}
-                                            helperText={errors.senderContact}
-                                            disabled={isFieldDisabled('senderContact')}
-                                        />
-                                    </Box>
-                                    <CustomTextField
-                                        label="Sender Address"
-                                        name="senderAddress"
-                                        value={formData.senderAddress}
-                                        onChange={handleChange}
-                                        error={!!errors.senderAddress}
-                                        helperText={errors.senderAddress}
-                                        multiline
-                                        rows={2}
-                                        disabled={isFieldDisabled('senderAddress')}
-                                    />
-                                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                        <CustomTextField
-                                            label="Sender Email"
-                                            name="senderEmail"
-                                            value={formData.senderEmail}
-                                            onChange={handleChange}
-                                            error={!!errors.senderEmail}
-                                            helperText={errors.senderEmail}
-                                            disabled={isFieldDisabled('senderEmail')}
-                                        />
-                                        <CustomTextField
-                                            label="Sender Ref"
-                                            name="senderRef"
-                                            value={formData.senderRef}
-                                            onChange={handleChange}
-                                            error={!!errors.senderRef}
-                                            helperText={errors.senderRef}
-                                            disabled={isFieldDisabled('senderRef')}
-                                        />
-                                    </Box>
-                                    <CustomTextField
-                                        label="Sender Remarks"
-                                        name="senderRemarks"
-                                        value={formData.senderRemarks}
-                                        onChange={handleChange}
-                                        error={!!errors.senderRemarks}
-                                        helperText={errors.senderRemarks}
-                                        multiline
-                                        rows={2}
-                                        disabled={isFieldDisabled('senderRemarks')}
-                                    />
+                                    {/* Dummy data for sendersList and receiversList */}
+                                    {(() => {
+                                        const sendersList = [
+                                            { id: 1, name: 'John Doe Sender', contact: '+1-234-5678', address: '123 Sender St, City', email: 'john.sender@example.com', ref: 'SREF001', remarks: 'Preferred sender' },
+                                            { id: 2, name: 'Jane Smith Sender', contact: '+1-876-5432', address: '456 Sender Ave, Town', email: 'jane.sender@example.com', ref: 'SREF002', remarks: 'Regular sender' }
+                                        ];
+                                        const receiversList = [
+                                            { id: 1, name: 'Alice Receiver', contact: '+1-111-2222', address: '789 Receiver Blvd, Village', email: 'alice.receiver@example.com', ref: 'RREF001', remarks: 'Main receiver' },
+                                            { id: 2, name: 'Bob Receiver', contact: '+1-333-4444', address: '101 Receiver Rd, Hamlet', email: 'bob.receiver@example.com', ref: 'RREF002', remarks: 'Secondary receiver' }
+                                        ];
+                                        const typePrefix = formData.senderType === 'sender' ? 'Sender' : 'Receiver';
+                                        return (
+                                            <>
+                                                {/* Sender/Receiver Selection */}
+                                                <FormControl component="fieldset" error={!!errors.senderType}>
+                                                    <Typography variant="subtitle1" fontWeight="bold" color="#f58220" gutterBottom>
+                                                        Select Type
+                                                    </Typography>
+                                                    <RadioGroup
+                                                        name="senderType"
+                                                        value={formData.senderType}
+                                                        onChange={handleChange}
+                                                        sx={{ flexDirection: 'row', gap: 3, mb: 1 }}
+                                                        // defaultValue="sender"
+                                                    >
+                                                        <FormControlLabel value="sender" control={<Radio />} label="Sender Details" />
+                                                        <FormControlLabel value="receiver" control={<Radio />} label="Receiver Details" />
+                                                    </RadioGroup>
+                                                    {errors.senderType && <Typography variant="caption" color="error">{errors.senderType}</Typography>}
+                                                </FormControl>
+                                                <CustomSelect
+                                                    label={`Select ${typePrefix}`}
+                                                    name="selectedSenderOwner"
+                                                    value={formData.selectedSenderOwner || ""}
+                                                    onChange={(e) => {
+                                                        const value = e.target.value;
+                                                        handleChange(e); // Update the selected value
+                                                        if (value) {
+                                                            // Population logic: Use the dummy lists
+                                                            const list = formData.senderType === 'sender' ? sendersList : receiversList;
+                                                            const item = list.find(l => l.id.toString() === value);
+                                                            if (item) {
+                                                                setFormData(prev => ({
+                                                                    ...prev,
+                                                                    senderName: item.name || '',
+                                                                    senderContact: item.contact || '',
+                                                                    senderAddress: item.address || '',
+                                                                    senderEmail: item.email || '',
+                                                                    senderRef: item.ref || '',
+                                                                    senderRemarks: item.remarks || '',
+                                                                }));
+                                                            }
+                                                        }
+                                                    }}
+                                                    error={!!errors.selectedSenderOwner}
+                                                    helperText={errors.selectedSenderOwner}
+                                                    required
+                                                    disabled={isFieldDisabled('selectedSenderOwner')}
+                                                >
+                                                    <MenuItem value="">Select from List</MenuItem>
+                                                    {(formData.senderType === 'sender' ? sendersList : receiversList).map((item) => (
+                                                        <MenuItem key={item.id} value={item.id.toString()}>
+                                                            {item.name}
+                                                        </MenuItem>
+                                                    ))}
+                                                </CustomSelect>
+                                                {/* Conditional Fields based on selection */}
+                                                <Stack spacing={2}>
+                                                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                        <CustomTextField
+                                                            label={`${typePrefix} Name`}
+                                                            name="senderName"
+                                                            value={formData.senderName}
+                                                            onChange={handleChange}
+                                                            error={!!errors.senderName}
+                                                            helperText={errors.senderName}
+                                                            required
+                                                            disabled={isFieldDisabled('senderName')}
+                                                        />
+                                                        <CustomTextField
+                                                            label={`${typePrefix} Contact`}
+                                                            name="senderContact"
+                                                            value={formData.senderContact}
+                                                            onChange={handleChange}
+                                                            error={!!errors.senderContact}
+                                                            helperText={errors.senderContact}
+                                                            disabled={isFieldDisabled('senderContact')}
+                                                        />
+                                                    </Box>
+                                                    <CustomTextField
+                                                        label={`${typePrefix} Address`}
+                                                        name="senderAddress"
+                                                        value={formData.senderAddress}
+                                                        onChange={handleChange}
+                                                        error={!!errors.senderAddress}
+                                                        helperText={errors.senderAddress}
+                                                        multiline
+                                                        rows={2}
+                                                        disabled={isFieldDisabled('senderAddress')}
+                                                    />
+                                                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                        <CustomTextField
+                                                            label={`${typePrefix} Email`}
+                                                            name="senderEmail"
+                                                            value={formData.senderEmail}
+                                                            onChange={handleChange}
+                                                            error={!!errors.senderEmail}
+                                                            helperText={errors.senderEmail}
+                                                            disabled={isFieldDisabled('senderEmail')}
+                                                        />
+                                                        <CustomTextField
+                                                            label={`${typePrefix} Ref`}
+                                                            name="senderRef"
+                                                            value={formData.senderRef}
+                                                            onChange={handleChange}
+                                                            error={!!errors.senderRef}
+                                                            helperText={errors.senderRef}
+                                                            disabled={isFieldDisabled('senderRef')}
+                                                        />
+                                                    </Box>
+                                                    <CustomTextField
+                                                        label={`${typePrefix} Remarks`}
+                                                        name="senderRemarks"
+                                                        value={formData.senderRemarks}
+                                                        onChange={handleChange}
+                                                        error={!!errors.senderRemarks}
+                                                        helperText={errors.senderRemarks}
+                                                        multiline
+                                                        rows={2}
+                                                        disabled={isFieldDisabled('senderRemarks')}
+                                                    />
+                                                </Stack>
+                                            </>
+                                        );
+                                    })()}
                                 </Stack>
                             </AccordionDetails>
                         </Accordion>
@@ -1186,146 +1756,396 @@ const OrderForm = () => {
                                     "& .MuiAccordionSummary-content": { fontWeight: "bold", color: expanded.has("panel2") ? "#fff" : "#f58220" },
                                 }}
                             >
-                                2. Shipping Details
+                                2. {formData.senderType === 'receiver' ? 'Sender Details (with Shipping)' : 'Receiver Details (with Shipping)'}
                             </AccordionSummary>
                             <AccordionDetails sx={{ p: 3, bgcolor: "#fff" }}>
                                 <Stack spacing={2}>
-                                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                        <CustomTextField
-                                            label="Pickup Location"
-                                            name="pickupLocation"
-                                            value={formData.pickupLocation}
-                                            onChange={handleChange}
-                                            error={!!errors.pickupLocation}
-                                            helperText={errors.pickupLocation}
-                                            disabled={isFieldDisabled('pickupLocation')}
-                                        />
-                                        <CustomSelect
-                                            label="Category"
-                                            name="category"
-                                            value={formData.category}
-                                            onChange={handleChange}
-                                            error={!!errors.category}
-                                            required
-                                            disabled={isFieldDisabled('category')}
-                                        >
-                                            <MenuItem value="">Select Category</MenuItem>
-                                            {categories.map((c) => (
-                                                <MenuItem key={c} value={c}>
-                                                    {c}
-                                                </MenuItem>
-                                            ))}
-                                        </CustomSelect>
-                                    </Box>
-                                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                        <CustomSelect
-                                            label="Subcategory"
-                                            name="subcategory"
-                                            value={formData.subcategory}
-                                            onChange={handleChange}
-                                            error={!!errors.subcategory}
-                                            required
-                                            disabled={isFieldDisabled('subcategory')}
-                                        >
-                                            <MenuItem value="">Select Subcategory</MenuItem>
-                                            {subcategories.map((sc) => (
-                                                <MenuItem key={sc} value={sc}>
-                                                    {sc}
-                                                </MenuItem>
-                                            ))}
-                                        </CustomSelect>
-                                        <CustomSelect
-                                            label="Type"
-                                            name="type"
-                                            value={formData.type}
-                                            onChange={handleChange}
-                                            error={!!errors.type}
-                                            required
-                                            disabled={isFieldDisabled('type')}
-                                        >
-                                            <MenuItem value="">Select Type</MenuItem>
-                                            {types.map((t) => (
-                                                <MenuItem key={t} value={t}>
-                                                    {t}
-                                                </MenuItem>
-                                            ))}
-                                        </CustomSelect>
-                                    </Box>
-                                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                        <CustomTextField
-                                            label="Total Number"
-                                            name="totalNumber"
-                                            value={formData.totalNumber}
-                                            onChange={handleChange}
-                                            error={!!errors.totalNumber}
-                                            helperText={errors.totalNumber}
-                                            required
-                                            disabled={isFieldDisabled('totalNumber')}
-                                        />
-                                        <CustomTextField
-                                            label="Weight"
-                                            name="weight"
-                                            value={formData.weight}
-                                            onChange={handleChange}
-                                            error={!!errors.weight}
-                                            helperText={errors.weight}
-                                            required
-                                            disabled={isFieldDisabled('weight')}
-                                        />
-                                        {/* Removed duplicate totalWeight; calculate if needed */}
-                                    </Box>
-                                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                        <CustomTextField
-                                            label="Shipping Line"
-                                            name="shippingLine"
-                                            value={formData.shippingLine}
-                                            onChange={handleChange}
-                                            required
-                                            error={!!errors.shippingLine}
-                                            helperText={errors.shippingLine}
-                                            disabled={isFieldDisabled('shippingLine')}
-                                        />
-                                        <CustomTextField
-                                            label="Remarks"
-                                            name="consignmentStatus"
-                                            value={formData.consignmentStatus}
-                                            onChange={handleChange}
-                                            error={!!errors.consignmentStatus}
-                                            helperText={errors.consignmentStatus}
-                                            disabled={isFieldDisabled('consignmentStatus')}
-                                        />
-                                    </Box>
-                                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                        <CustomTextField
-                                            label="ETA"
-                                            name="eta"
-                                            type="date"
-                                            value={formData.eta}
-                                            onChange={handleChange}
-                                            InputLabelProps={{ shrink: true }}
-                                            error={!!errors.eta}
-                                            helperText={errors.eta}
-                                            required
-                                            disabled={isFieldDisabled('eta')}
-                                        />
-                                        <CustomTextField
-                                            label="ETD"
-                                            name="etd"
-                                            type="date"
-                                            value={formData.etd}
-                                            onChange={handleChange}
-                                            InputLabelProps={{ shrink: true }}
-                                            error={!!errors.etd}
-                                            helperText={errors.etd}
-                                            required
-                                            disabled={isFieldDisabled('etd')}
-                                        />
-                                    </Box>
+                                    {formData.senderType === 'sender' ? (
+                                        errors.receivers && <Alert severity="error">{errors.receivers}</Alert>
+                                    ) : (
+                                        errors.senders && <Alert severity="error">{errors.senders}</Alert>
+                                    )}
+                                    {/* Dynamic: Summary Table for multiples */}
+                                    {(formData.senderType === 'sender' ? formData.receivers : formData.senders).length > 1 && (
+                                        <Stack spacing={1}>
+                                            <Typography variant="subtitle2" color="primary">
+                                                {formData.senderType === 'sender' ? 'Receivers' : 'Senders'} Overview
+                                            </Typography>
+                                            <Stack direction="row" spacing={2} sx={{ overflowX: 'auto' }}>
+                                                {(formData.senderType === 'sender' ? formData.receivers : formData.senders).map((rec, i) => (
+                                                    <Chip
+                                                        key={i}
+                                                        label={`${(formData.senderType === 'sender' ? rec.receiverName : rec.senderName) ||
+                                                            (formData.senderType === 'sender' ? `Receiver ${i + 1}` : `Sender ${i + 1}`)
+                                                            } (Items: ${rec.shippingDetail?.totalNumber || 0
+                                                            } / Remaining: ${rec.shippingDetail?.remainingItems || 0
+                                                            })`}
+                                                        variant={rec.fullPartial === 'Partial' ? "filled" : "outlined"}
+                                                        color={rec.fullPartial === 'Partial' ? "warning" : "primary"}
+                                                    />
+                                                ))}
+                                            </Stack>
+                                        </Stack>
+                                    )}
+                                    {(formData.senderType === 'sender' ? formData.receivers : formData.senders).map((rec, i) => {
+                                        const isSenderMode = formData.senderType === 'receiver';
+                                        const currentList = isSenderMode ? formData.senders : formData.receivers;
+                                        return (
+                                            <Box key={i} sx={{ p: 2, border: 1, borderColor: "grey.300", borderRadius: 2 }}>
+                                                <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
+                                                    <Typography variant="subtitle1" color="primary" fontWeight={"bold"}>
+                                                        {isSenderMode ? `Sender ${i + 1}` : `Receiver ${i + 1}`}
+                                                    </Typography>
+                                                    <Stack direction="row" spacing={1}>
+                                                        {!isEditMode && (
+                                                            <>
+                                                                <IconButton
+                                                                    onClick={() => (isSenderMode ? duplicateSender : duplicateReceiver)(i)}
+                                                                    size="small"
+                                                                    title="Duplicate"
+                                                                >
+                                                                    <CopyIcon />
+                                                                </IconButton>
+                                                                {currentList.length > 1 && (
+                                                                    <IconButton
+                                                                        onClick={() => (isSenderMode ? removeSender : removeReceiver)(i)}
+                                                                        size="small"
+                                                                        title="Delete"
+                                                                    >
+                                                                        <DeleteIcon />
+                                                                    </IconButton>
+                                                                )}
+                                                            </>
+                                                        )}
+                                                    </Stack>
+                                                </Stack>
 
+                                                {/* Dynamic: Basic Info */}
+                                                <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                    <CustomTextField
+                                                        label={isSenderMode ? "Sender Name" : "Receiver Name"}
+                                                        value={isSenderMode ? rec.senderName : rec.receiverName}
+                                                        onChange={isSenderMode ? handleSenderChange(i, 'senderName') : handleReceiverChange(i, 'receiverName')}
+                                                        error={!!(isSenderMode ? errors[`senders[${i}].senderName`] : errors[`receivers[${i}].receiverName`])}
+                                                        helperText={isSenderMode ? errors[`senders[${i}].senderName`] : errors[`receivers[${i}].receiverName`]}
+                                                        required
+                                                        disabled={isFieldDisabled(isSenderMode ? `senders[${i}].senderName` : `receivers[${i}].receiverName`)}
+                                                    />
+                                                    <CustomTextField
+                                                        label={isSenderMode ? "Sender Contact" : "Receiver Contact"}
+                                                        value={isSenderMode ? rec.senderContact : rec.receiverContact}
+                                                        onChange={isSenderMode ? handleSenderChange(i, 'senderContact') : handleReceiverChange(i, 'receiverContact')}
+                                                        error={!!(isSenderMode ? errors[`senders[${i}].senderContact`] : errors[`receivers[${i}].receiverContact`])}
+                                                        helperText={isSenderMode ? errors[`senders[${i}].senderContact`] : errors[`receivers[${i}].receiverContact`]}
+                                                        disabled={isFieldDisabled(isSenderMode ? `senders[${i}].senderContact` : `receivers[${i}].receiverContact`)}
+                                                    />
+                                                </Box>
+                                                <Box sx={{ display: 'flex', py: 2, flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                    <CustomTextField
+                                                        label={isSenderMode ? "Sender Address" : "Receiver Address"}
+                                                        value={isSenderMode ? rec.senderAddress : rec.receiverAddress}
+                                                        onChange={isSenderMode ? handleSenderChange(i, 'senderAddress') : handleReceiverChange(i, 'receiverAddress')}
+                                                        error={!!(isSenderMode ? errors[`senders[${i}].senderAddress`] : errors[`receivers[${i}].receiverAddress`])}
+                                                        helperText={isSenderMode ? errors[`senders[${i}].senderAddress`] : errors[`receivers[${i}].receiverAddress`]}
+                                                        disabled={isFieldDisabled(isSenderMode ? `senders[${i}].senderAddress` : `receivers[${i}].receiverAddress`)}
+                                                    />
+                                                    <CustomTextField
+                                                        label={isSenderMode ? "Sender Email" : "Receiver Email"}
+                                                        value={isSenderMode ? rec.senderEmail : rec.receiverEmail}
+                                                        onChange={isSenderMode ? handleSenderChange(i, 'senderEmail') : handleReceiverChange(i, 'receiverEmail')}
+                                                        error={!!(isSenderMode ? errors[`senders[${i}].senderEmail`] : errors[`receivers[${i}].receiverEmail`])}
+                                                        helperText={isSenderMode ? errors[`senders[${i}].senderEmail`] : errors[`receivers[${i}].receiverEmail`]}
+                                                        disabled={isFieldDisabled(isSenderMode ? `senders[${i}].senderEmail` : `receivers[${i}].senderEmail`)}
+                                                    />
+                                                </Box>
+                                                {/* Nested Shipping Details */}
+                                                <Typography variant="subtitle1" color="primary" fontWeight={"bold"} mb={1}>Shipping Details</Typography>
+                                                <Stack spacing={2}>
+                                                    {/* Moved: ETA, ETD, Shipping Line to top of receiver/sender */}
+                                                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                        <CustomTextField
+                                                            label="ETA"
+                                                            name={isSenderMode ? `senders[${i}].eta` : `receivers[${i}].eta`}
+                                                            type="date"
+                                                            value={rec.eta || ""}
+                                                            onChange={(e) => (isSenderMode ? handleSenderChange(i, 'eta') : handleReceiverChange(i, 'eta'))(e)}
+                                                            InputLabelProps={{ shrink: true }}
+                                                            error={!!(isSenderMode ? errors[`senders[${i}].eta`] : errors[`receivers[${i}].eta`])}
+                                                            helperText={isSenderMode ? errors[`senders[${i}].eta`] : errors[`receivers[${i}].eta`]}
+                                                            required
+                                                            disabled={isFieldDisabled(isSenderMode ? `senders[${i}].eta` : `receivers[${i}].eta`)}
+                                                        />
+                                                        <CustomTextField
+                                                            label="ETD"
+                                                            name={isSenderMode ? `senders[${i}].etd` : `receivers[${i}].etd`}
+                                                            type="date"
+                                                            value={rec.etd || ""}
+                                                            onChange={(e) => (isSenderMode ? handleSenderChange(i, 'etd') : handleReceiverChange(i, 'etd'))(e)}
+                                                            InputLabelProps={{ shrink: true }}
+                                                            error={!!(isSenderMode ? errors[`senders[${i}].etd`] : errors[`receivers[${i}].etd`])}
+                                                            helperText={isSenderMode ? errors[`senders[${i}].etd`] : errors[`receivers[${i}].etd`]}
+                                                            required
+                                                            disabled={isFieldDisabled(isSenderMode ? `senders[${i}].etd` : `receivers[${i}].etd`)}
+                                                        />
+                                                    </Box>
+                                                    <CustomTextField
+                                                        label="Shipping Line"
+                                                        name={isSenderMode ? `senders[${i}].shippingLine` : `receivers[${i}].shippingLine`}
+                                                        value={rec.shippingLine || ""}
+                                                        onChange={(e) => (isSenderMode ? handleSenderChange(i, 'shippingLine') : handleReceiverChange(i, 'shippingLine'))(e)}
+                                                        error={!!(isSenderMode ? errors[`senders[${i}].shippingLine`] : errors[`receivers[${i}].shippingLine`])}
+                                                        helperText={isSenderMode ? errors[`senders[${i}].shippingLine`] : errors[`receivers[${i}].shippingLine`]}
+                                                        required
+                                                        fullWidth
+                                                        disabled={isFieldDisabled(isSenderMode ? `senders[${i}].shippingLine` : `receivers[${i}].shippingLine`)}
+                                                    />
+                                                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                        <CustomTextField
+                                                            label="Pickup Location"
+                                                            value={rec.shippingDetail?.pickupLocation || ""}
+                                                            onChange={isSenderMode ? handleSenderShippingChange(i, 'pickupLocation') : handleReceiverShippingChange(i, 'pickupLocation')}
+                                                            error={!!(isSenderMode ? errors[`senders[${i}].shippingDetail.pickupLocation`] : errors[`receivers[${i}].shippingDetail.pickupLocation`])}
+                                                            helperText={isSenderMode ? errors[`senders[${i}].shippingDetail.pickupLocation`] : errors[`receivers[${i}].shippingDetail.pickupLocation`]}
+                                                            required
+                                                            disabled={isFieldDisabled(isSenderMode ? `senders[${i}].shippingDetail.pickupLocation` : `receivers[${i}].shippingDetail.pickupLocation`)}
+                                                        />
+                                                        <CustomSelect
+                                                            label="Category"
+                                                            value={rec.shippingDetail?.category || ""}
+                                                            onChange={isSenderMode ? handleSenderShippingChange(i, 'category') : handleReceiverShippingChange(i, 'category')}
+                                                            error={!!(isSenderMode ? errors[`senders[${i}].shippingDetail.category`] : errors[`receivers[${i}].shippingDetail.category`])}
+                                                            helperText={isSenderMode ? errors[`senders[${i}].shippingDetail.category`] : errors[`receivers[${i}].shippingDetail.category`]}
+                                                            required
+                                                            disabled={isFieldDisabled(isSenderMode ? `senders[${i}].shippingDetail.category` : `receivers[${i}].shippingDetail.category`)}
+                                                        >
+                                                            <MenuItem value="">Select Category</MenuItem>
+                                                            {categories.map((c) => (
+                                                                <MenuItem key={c} value={c}>
+                                                                    {c}
+                                                                </MenuItem>
+                                                            ))}
+                                                        </CustomSelect>
+                                                    </Box>
+                                                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                        <CustomSelect
+                                                            label="Subcategory"
+                                                            value={rec.shippingDetail?.subcategory || ""}
+                                                            onChange={isSenderMode ? handleSenderShippingChange(i, 'subcategory') : handleReceiverShippingChange(i, 'subcategory')}
+                                                            error={!!(isSenderMode ? errors[`senders[${i}].shippingDetail.subcategory`] : errors[`receivers[${i}].shippingDetail.subcategory`])}
+                                                            helperText={isSenderMode ? errors[`senders[${i}].shippingDetail.subcategory`] : errors[`receivers[${i}].shippingDetail.subcategory`]}
+                                                            required
+                                                            disabled={isFieldDisabled(isSenderMode ? `senders[${i}].shippingDetail.subcategory` : `receivers[${i}].shippingDetail.subcategory`)}
+                                                        >
+                                                            <MenuItem value="">Select Subcategory</MenuItem>
+                                                            {(categorySubMap[rec.shippingDetail?.category] || []).map((sc) => (
+                                                                <MenuItem key={sc} value={sc}>
+                                                                    {sc}
+                                                                </MenuItem>
+                                                            ))}
+                                                        </CustomSelect>
+                                                        <CustomSelect
+                                                            label="Type"
+                                                            value={rec.shippingDetail?.type || ""}
+                                                            onChange={isSenderMode ? handleSenderShippingChange(i, 'type') : handleReceiverShippingChange(i, 'type')}
+                                                            error={!!(isSenderMode ? errors[`senders[${i}].shippingDetail.type`] : errors[`receivers[${i}].shippingDetail.type`])}
+                                                            helperText={isSenderMode ? errors[`senders[${i}].shippingDetail.type`] : errors[`receivers[${i}].shippingDetail.type`]}
+                                                            required
+                                                            disabled={isFieldDisabled(isSenderMode ? `senders[${i}].shippingDetail.type` : `receivers[${i}].shippingDetail.type`)}
+                                                        >
+                                                            <MenuItem value="">Select Type</MenuItem>
+                                                            {types.map((t) => (
+                                                                <MenuItem key={t} value={t}>
+                                                                    {t}
+                                                                </MenuItem>
+                                                            ))}
+                                                        </CustomSelect>
+                                                    </Box>
+                                                    <CustomTextField
+                                                        label="Delivery Address"
+                                                        value={rec.shippingDetail?.deliveryAddress || ""}
+                                                        onChange={isSenderMode ? handleSenderShippingChange(i, 'deliveryAddress') : handleReceiverShippingChange(i, 'deliveryAddress')}
+                                                        error={!!(isSenderMode ? errors[`senders[${i}].shippingDetail.deliveryAddress`] : errors[`receivers[${i}].shippingDetail.deliveryAddress`])}
+                                                        helperText={isSenderMode ? errors[`senders[${i}].shippingDetail.deliveryAddress`] : errors[`receivers[${i}].shippingDetail.deliveryAddress`]}
+                                                        fullWidth
+                                                        disabled={isFieldDisabled(isSenderMode ? `senders[${i}].shippingDetail.deliveryAddress` : `receivers[${i}].shippingDetail.deliveryAddress`)}
+                                                    />
+                                                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                        <CustomTextField
+                                                            label="Total Number"
+                                                            value={rec.shippingDetail?.totalNumber || ""}
+                                                            onChange={isSenderMode ? handleSenderShippingChange(i, 'totalNumber') : handleReceiverShippingChange(i, 'totalNumber')}
+                                                            error={!!(isSenderMode ? errors[`senders[${i}].shippingDetail.totalNumber`] : errors[`receivers[${i}].shippingDetail.totalNumber`])}
+                                                            helperText={isSenderMode ? errors[`senders[${i}].shippingDetail.totalNumber`] : errors[`receivers[${i}].shippingDetail.totalNumber`]}
+                                                            required
+                                                            disabled={isFieldDisabled(isSenderMode ? `senders[${i}].shippingDetail.totalNumber` : `receivers[${i}].shippingDetail.totalNumber`)}
+                                                        />
+                                                        <CustomTextField
+                                                            label="Weight"
+                                                            value={rec.shippingDetail?.weight || ""}
+                                                            onChange={isSenderMode ? handleSenderShippingChange(i, 'weight') : handleReceiverShippingChange(i, 'weight')}
+                                                            error={!!(isSenderMode ? errors[`senders[${i}].shippingDetail.weight`] : errors[`receivers[${i}].shippingDetail.weight`])}
+                                                            helperText={isSenderMode ? errors[`senders[${i}].shippingDetail.weight`] : errors[`receivers[${i}].shippingDetail.weight`]}
+                                                            required
+                                                            disabled={isFieldDisabled(isSenderMode ? `senders[${i}].shippingDetail.weight` : `receivers[${i}].shippingDetail.weight`)}
+                                                        />
+                                                    </Box>
+                                                    {/* <CustomTextField
+                                                        label="Remaining Items"
+                                                        value={rec.shippingDetail?.remainingItems || ""}
+                                                        disabled={true}
+                                                        helperText="Auto-calculated for partial deliveries"
+                                                    /> */}
+                                                </Stack>
+
+                                                {/* Assigned Containers */}
+                                                <Typography variant="subtitle1" color="primary" fontWeight={"bold"} mt={2}>Assigned Containers</Typography>
+                                                <Box sx={{ display: 'flex', py: 2, flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                    <FormControl sx={{ flex: 1, minWidth: 0 }} error={!!(isSenderMode ? errors[`senders[${i}].containers`] : errors[`receivers[${i}].containers`])}>
+                                                        <InputLabel sx={{ color: "rgba(180, 174, 174, 1)" }}>Select Containers</InputLabel>
+                                                        <Select
+                                                            value={rec.containers || []}
+                                                            label="Select Containers"
+                                                            onChange={isSenderMode ? handleSenderContainersChange(i) : handleReceiverContainersChange(i)}
+                                                            disabled={loadingContainers || isFieldDisabled(isSenderMode ? `senders[${i}].containers` : `receivers[${i}].containers`)}
+                                                            size="medium"
+                                                            multiple
+                                                            sx={{
+                                                                "& .MuiOutlinedInput-root": {
+                                                                    borderRadius: 2,
+                                                                    transition: "all 0.3s ease",
+                                                                    backgroundColor: "#fff",
+                                                                    "& fieldset": { borderColor: "#ddd" },
+                                                                    "&:hover fieldset": { borderColor: "#f58220" },
+                                                                    "&.Mui-focused fieldset": {
+                                                                        borderColor: "#f58220",
+                                                                        boxShadow: "0 0 8px rgba(245, 130, 32, 0.3)",
+                                                                    },
+                                                                    ...((isSenderMode ? errors[`senders[${i}].containers`] : errors[`receivers[${i}].containers`]) && { "& fieldset": { borderColor: "#d32f2f" } }),
+                                                                    ...(isFieldDisabled(isSenderMode ? `senders[${i}].containers` : `receivers[${i}].containers`) && { backgroundColor: "#f5f5f5", color: "#999" }),
+                                                                },
+                                                            }}
+                                                        >
+                                                            {containers.map((container) => (
+                                                                <MenuItem key={container.cid} value={container.container_number}>
+                                                                    {`${container.container_number} (${container.container_size} - ${container.derived_status || container.availability})`}
+                                                                </MenuItem>
+                                                            ))}
+                                                        </Select>
+                                                        {(isSenderMode ? errors[`senders[${i}].containers`] : errors[`receivers[${i}].containers`]) &&
+                                                            <Typography variant="caption" color="error">
+                                                                {isSenderMode ? errors[`senders[${i}].containers`] : errors[`receivers[${i}].containers`]}
+                                                            </Typography>
+                                                        }
+                                                    </FormControl>
+                                                    <CustomSelect
+                                                        label="Status"
+                                                        value={rec.status}
+                                                        onChange={isSenderMode ? handleSenderChange(i, 'status') : handleReceiverChange(i, 'status')}
+                                                        error={!!(isSenderMode ? errors[`senders[${i}].status`] : errors[`receivers[${i}].status`])}
+                                                        helperText={isSenderMode ? errors[`senders[${i}].status`] : errors[`receivers[${i}].status`]}
+                                                        disabled={isFieldDisabled(isSenderMode ? `senders[${i}].status` : `receivers[${i}].status`)}
+                                                    >
+                                                        {statuses.map((s) => (
+                                                            <MenuItem key={s} value={s}>
+                                                                {s}
+                                                            </MenuItem>
+                                                        ))}
+                                                    </CustomSelect>
+                                                </Box>
+                                                {/* Consignment Details */}
+                                                <Typography variant="subtitle1" color="primary" fontWeight={"bold"} mt={2}>Consignment Details</Typography>
+                                                <Stack spacing={2}>
+                                                    <Box sx={{ display: 'flex', py: 2, flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                        <CustomTextField
+                                                            label="Consignment Vessel"
+                                                            value={rec.consignmentVessel || ""}
+                                                            onChange={isSenderMode ? handleSenderChange(i, 'consignmentVessel') : handleReceiverChange(i, 'consignmentVessel')}
+                                                            disabled={isFieldDisabled(isSenderMode ? `senders[${i}].consignmentVessel` : `receivers[${i}].consignmentVessel`)}
+                                                        />
+                                                        <CustomTextField
+                                                            label="Consignment Marks"
+                                                            value={rec.consignmentMarks || ""}
+                                                            onChange={isSenderMode ? handleSenderChange(i, 'consignmentMarks') : handleReceiverChange(i, 'consignmentMarks')}
+                                                            error={!!(isSenderMode ? errors[`senders[${i}].consignmentMarks`] : errors[`receivers[${i}].consignmentMarks`])}
+                                                            helperText={isSenderMode ? errors[`senders[${i}].consignmentMarks`] : errors[`receivers[${i}].consignmentMarks`]}
+                                                            disabled={isFieldDisabled(isSenderMode ? `senders[${i}].consignmentMarks` : `receivers[${i}].consignmentMarks`)}
+                                                        />
+                                                    </Box>
+                                                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                        <CustomTextField
+                                                            label="Consignment Number"
+                                                            value={rec.consignmentNumber || ""}
+                                                            onChange={isSenderMode ? handleSenderChange(i, 'consignmentNumber') : handleReceiverChange(i, 'consignmentNumber')}
+                                                            error={!!(isSenderMode ? errors[`senders[${i}].consignmentNumber`] : errors[`receivers[${i}].consignmentNumber`])}
+                                                            helperText={isSenderMode ? errors[`senders[${i}].consignmentNumber`] : errors[`receivers[${i}].consignmentNumber`]}
+                                                            required
+                                                            disabled={isFieldDisabled(isSenderMode ? `senders[${i}].consignmentNumber` : `receivers[${i}].consignmentNumber`)}
+                                                        />
+                                                        <CustomTextField
+                                                            label="Consignment Voyage"
+                                                            value={rec.consignmentVoyage || ""}
+                                                            onChange={isSenderMode ? handleSenderChange(i, 'consignmentVoyage') : handleReceiverChange(i, 'consignmentVoyage')}
+                                                            error={!!(isSenderMode ? errors[`senders[${i}].consignmentVoyage`] : errors[`receivers[${i}].consignmentVoyage`])}
+                                                            helperText={isSenderMode ? errors[`senders[${i}].consignmentVoyage`] : errors[`receivers[${i}].consignmentVoyage`]}
+                                                            disabled={isFieldDisabled(isSenderMode ? `senders[${i}].consignmentVoyage` : `receivers[${i}].consignmentVoyage`)}
+                                                        />
+                                                        <CustomTextField
+                                                            label={isSenderMode ? "Sender Ref" : "Receiver Ref"}
+                                                            value={isSenderMode ? rec.senderRef : rec.receiverRef}
+                                                            onChange={isSenderMode ? handleSenderChange(i, 'senderRef') : handleReceiverChange(i, 'receiverRef')}
+                                                            error={!!(isSenderMode ? errors[`senders[${i}].senderRef`] : errors[`receivers[${i}].receiverRef`])}
+                                                            helperText={isSenderMode ? errors[`senders[${i}].senderRef`] : errors[`receivers[${i}].receiverRef`]}
+                                                            required
+                                                            disabled={isFieldDisabled(isSenderMode ? `senders[${i}].senderRef` : `receivers[${i}].receiverRef`)}
+                                                        />
+                                                    </Box>
+                                                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                        <CustomTextField
+                                                            label="Total Number"
+                                                            value={rec.totalNumber || ""}
+                                                            onChange={isSenderMode ? handleSenderChange(i, 'totalNumber') : handleReceiverChange(i, 'totalNumber')}
+                                                            disabled={isFieldDisabled(isSenderMode ? `senders[${i}].totalNumber` : `receivers[${i}].totalNumber`)}
+                                                        />
+                                                        <CustomTextField
+                                                            label="Total Weight*"
+                                                            value={rec.totalWeight || ""}
+                                                            onChange={isSenderMode ? handleSenderChange(i, 'totalWeight') : handleReceiverChange(i, 'totalWeight')}
+                                                            error={!!(isSenderMode ? errors[`senders[${i}].totalWeight`] : errors[`receivers[${i}].totalWeight`])}
+                                                            helperText={(isSenderMode ? errors[`senders[${i}].totalWeight`] : errors[`receivers[${i}].totalWeight`]) || "Synced from shipping (editable for overrides)"}
+                                                            required
+                                                            disabled={isFieldDisabled(isSenderMode ? `senders[${i}].totalWeight` : `receivers[${i}].totalWeight`)}
+                                                        />
+                                                        <CustomTextField
+                                                            label="Ref Number"
+                                                            value={rec.itemRef || ""}
+                                                            disabled={true}
+                                                        />
+                                                    </Box>
+                                                    {/* New: Moved Remarks to consignment */}
+                                                    <CustomTextField
+                                                        label="Remarks"
+                                                        value={rec.remarks || ""}
+                                                        onChange={isSenderMode ? handleSenderChange(i, 'remarks') : handleReceiverChange(i, 'remarks')}
+                                                        multiline
+                                                        rows={2}
+                                                        fullWidth
+                                                        disabled={isFieldDisabled(isSenderMode ? `senders[${i}].remarks` : `receivers[${i}].remarks`)}
+                                                    />
+                                                </Stack>
+                                            </Box>
+                                        );
+                                    })}
+                                    <Button
+                                        variant="outlined"
+                                        startIcon={<AddIcon />}
+                                        onClick={formData.senderType === 'receiver' ? addSender : addReceiver}
+                                        sx={{ alignSelf: 'flex-start' }}
+                                    >
+                                        {formData.senderType === 'receiver' ? 'Add Sender' : 'Add Receiver'}
+                                    </Button>
                                 </Stack>
                             </AccordionDetails>
                         </Accordion>
-
                         <Accordion
                             expanded={expanded.has("panel3")}
                             onChange={handleAccordionChange("panel3")}
@@ -1344,205 +2164,7 @@ const OrderForm = () => {
                                     "& .MuiAccordionSummary-content": { fontWeight: "bold", color: expanded.has("panel3") ? "#fff" : "#f58220" },
                                 }}
                             >
-                                3. Receiver Details
-                            </AccordionSummary>
-                            <AccordionDetails sx={{ p: 3, bgcolor: "#fff" }}>
-                                <Stack spacing={2}>
-                                    {errors.receivers && <Alert severity="error">{errors.receivers}</Alert>}
-                                    {formData.receivers.map((rec, i) => (
-                                        <Box key={i} sx={{ p: 2, border: 1, borderColor: "grey.300", borderRadius: 2 }}>
-                                            <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
-                                                <Typography variant="subtitle1" color="primary" fontWeight={"bold"}>Receiver {i + 1}</Typography>
-                                                {formData.receivers.length > 1 && (
-                                                    <IconButton onClick={() => removeReceiver(i)} size="small">
-                                                        <DeleteIcon />
-                                                    </IconButton>
-                                                )}
-                                            </Stack>
-                                            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                                <CustomTextField
-                                                    label="Receiver Name"
-                                                    value={rec.receiverName}
-                                                    onChange={handleReceiverChange(i, 'receiverName')}
-                                                    error={!!errors[`receivers[${i}].receiverName`]}
-                                                    helperText={errors[`receivers[${i}].receiverName`]}
-                                                    required
-                                                />
-                                                <CustomTextField
-                                                    label="Receiver Contact"
-                                                    value={rec.receiverContact}
-                                                    onChange={handleReceiverChange(i, 'receiverContact')}
-                                                    error={!!errors[`receivers[${i}].receiverContact`]}
-                                                    helperText={errors[`receivers[${i}].receiverContact`]}
-                                                />
-                                            </Box>
-                                            <Box sx={{ display: 'flex', py: 2, flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-
-                                                <CustomTextField
-                                                    label="Receiver Address"
-                                                    value={rec.receiverAddress}
-                                                    onChange={handleReceiverChange(i, 'receiverAddress')}
-                                                    error={!!errors[`receivers[${i}].receiverAddress`]}
-                                                    helperText={errors[`receivers[${i}].receiverAddress`]}
-
-                                                />
-                                                <CustomTextField
-                                                    label="Receiver Email"
-                                                    value={rec.receiverEmail}
-                                                    onChange={handleReceiverChange(i, 'receiverEmail')}
-                                                    error={!!errors[`receivers[${i}].receiverEmail`]}
-                                                    helperText={errors[`receivers[${i}].receiverEmail`]}
-                                                />
-                                            </Box>
-                                            {/* Assigned Containers - Multi Select */}
-                                            <Typography variant="subtitle1" color="primary" fontWeight={"bold"} >Assigned Containers</Typography>
-                                            <Box sx={{ display: 'flex', py: 2, flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-
-                                                <FormControl sx={{ flex: 1, minWidth: 0 }} error={!!errors[`receivers[${i}].containers`]}>
-                                                    <InputLabel sx={{ color: "rgba(180, 174, 174, 1)" }}>Select Containers</InputLabel>
-                                                    <Select
-
-                                                        value={rec.containers || []}
-                                                        label="Select Containers"
-                                                        onChange={handleReceiverContainersChange(i)}
-                                                        disabled={loadingContainers}
-                                                        size="medium"
-                                                        sx={{
-                                                            "& .MuiOutlinedInput-root": {
-                                                                borderRadius: 2,
-                                                                transition: "all 0.3s ease",
-                                                                backgroundColor: "#fff",
-                                                                "& fieldset": { borderColor: "#ddd" },
-                                                                "&:hover fieldset": { borderColor: "#f58220" },
-                                                                "&.Mui-focused fieldset": {
-                                                                    borderColor: "#f58220",
-                                                                    boxShadow: "0 0 8px rgba(245, 130, 32, 0.3)",
-                                                                },
-                                                                ...(errors[`receivers[${i}].containers`] && { "& fieldset": { borderColor: "#d32f2f" } }),
-                                                            },
-                                                        }}
-                                                    >
-                                                        {containers.map((container) => (
-                                                            <MenuItem key={container.cid} value={container.container_number}>
-                                                                {`${container.container_number} (${container.container_size} - ${container.derived_status || container.availability})`}
-                                                            </MenuItem>
-                                                        ))}
-                                                    </Select>
-                                                    {errors[`receivers[${i}].containers`] && <Typography variant="caption" color="error">{errors[`receivers[${i}].containers`]}</Typography>}
-                                                </FormControl>
-                                                <CustomSelect
-                                                    label="Status"
-                                                    name="status"
-                                                    value={rec.status}
-                                                    onChange={handleReceiverChange(i, 'status')}
-                                                    error={!!errors[`receivers[${i}].status`]}
-                                                    helperText={errors[`receivers[${i}].status`]}
-                                                >
-                                                    {statuses.map((s) => (
-                                                        <MenuItem key={s} value={s}>
-                                                            {s}
-                                                        </MenuItem>
-                                                    ))}
-                                                </CustomSelect>
-
-                                            </Box>
-                                            {/* Per-Receiver Consignment Details - updated with new fields */}
-                                            <Typography variant="subtitle1" color="primary" fontWeight={"bold"} >Consignment Details</Typography>
-                                            <Stack spacing={2}>
-                                                <Box sx={{ display: 'flex', py: 2, flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                                    <CustomTextField
-                                                        label="Consignment Vessel"
-                                                        value={rec.consignmentVessel || ""}
-                                                        onChange={handleReceiverChange(i, 'consignmentVessel')}
-                                                    />
-
-                                                    <CustomTextField
-                                                        label="Consignment Marks"
-                                                        value={rec.consignmentMarks || ""}
-                                                        onChange={handleReceiverChange(i, 'consignmentMarks')}
-                                                        error={!!errors[`receivers[${i}].consignmentMarks`]}
-                                                        helperText={errors[`receivers[${i}].consignmentMarks`]}
-                                                    />
-                                                </Box>
-                                                <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                                    <CustomTextField
-                                                        label="Consignment Number"
-                                                        value={rec.consignmentNumber || ""}
-                                                        onChange={handleReceiverChange(i, 'consignmentNumber')}
-                                                        error={!!errors[`receivers[${i}].consignmentNumber`]}
-                                                        helperText={errors[`receivers[${i}].consignmentNumber`]}
-                                                        required
-                                                    />
-                                                    <CustomTextField
-                                                        label="Consignment Voyage"
-                                                        value={rec.consignmentVoyage || ""}
-                                                        onChange={handleReceiverChange(i, 'consignmentVoyage')}
-                                                        error={!!errors[`receivers[${i}].consignmentVoyage`]}
-                                                        helperText={errors[`receivers[${i}].consignmentVoyage`]}
-                                                    />
-                                                    <CustomTextField
-                                                        label="Receiver Ref"
-                                                        value={rec.receiverRef || ""}
-                                                        onChange={handleReceiverChange(i, 'receiverRef')}
-                                                        error={!!errors[`receivers[${i}].receiverRef`]}
-                                                        helperText={errors[`receivers[${i}].receiverRef`]}
-                                                        required
-                                                    />
-                                                </Box>
-                                                <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                                    <CustomTextField
-                                                        label="Total Number"
-                                                        value={rec.totalNumber || ""}
-                                                        onChange={handleReceiverChange(i, 'totalNumber')}
-                                                    />
-                                                    <CustomTextField
-                                                        label="Total Weight"
-                                                        value={rec.totalWeight || ""}
-                                                        onChange={handleReceiverChange(i, 'totalWeight')}
-                                                        error={!!errors[`receivers[${i}].totalWeight`]}
-                                                        helperText={errors[`receivers[${i}].totalWeight`]}
-                                                        required
-                                                    />
-                                                    <CustomTextField
-                                                        label="Ref Number"
-                                                        value={rec.itemRef || ""}
-                                                        disabled={true}
-                                                    />
-                                                </Box>
-                                            </Stack>
-                                        </Box>
-                                    ))}
-                                    <Button
-                                        variant="outlined"
-                                        startIcon={<AddIcon />}
-                                        onClick={addReceiver}
-                                        sx={{ alignSelf: 'flex-start' }}
-                                    >
-                                        Add Receiver
-                                    </Button>
-                                </Stack>
-                            </AccordionDetails>
-                        </Accordion>
-
-                        <Accordion
-                            expanded={expanded.has("panel4")}
-                            onChange={handleAccordionChange("panel4")}
-                            sx={{
-                                borderRadius: 2,
-                                boxShadow: "none",
-                                "&:before": { display: "none" },
-                                "&.Mui-expanded": { boxShadow: "0 2px 8px rgba(0,0,0,0.1)" },
-                            }}
-                        >
-                            <AccordionSummary
-                                expandIcon={<ExpandMoreIcon />}
-                                sx={{
-                                    bgcolor: expanded.has("panel4") ? "#0d6c6a" : "#fff3e0",
-                                    borderRadius: 2,
-                                    "& .MuiAccordionSummary-content": { fontWeight: "bold", color: expanded.has("panel4") ? "#fff" : "#f58220" },
-                                }}
-                            >
-                                4. Transport
+                                3. Transport
                             </AccordionSummary>
                             <AccordionDetails sx={{ p: 3, bgcolor: "#fff" }}>
                                 <Stack spacing={3}>
@@ -1657,32 +2279,6 @@ const OrderForm = () => {
                                                 <MenuItem value="Delivered by RGSL">Delivered by RGSL</MenuItem>
                                                 <MenuItem value="Collected by Client">Collected by Client</MenuItem>
                                             </CustomSelect>
-                                            <CustomSelect
-                                                label="Full/Partial"
-                                                name="fullPartial"
-                                                value={formData.fullPartial}
-                                                onChange={handleChange}
-                                                error={!!errors.fullPartial}
-                                                required
-                                                disabled={isFieldDisabled('fullPartial')}
-                                            >
-                                                <MenuItem value="">Select Full/Partial</MenuItem>
-                                                <MenuItem value="Full">Full</MenuItem>
-                                                <MenuItem value="Partial">Partial</MenuItem>
-                                            </CustomSelect>
-                                            {formData.fullPartial === 'Partial' && (
-                                                <CustomTextField
-                                                    label="Qty Delivered"
-                                                    name="qtyDelivered"
-                                                    value={formData.qtyDelivered}
-                                                    onChange={handleChange}
-                                                    error={!!errors.qtyDelivered}
-                                                    helperText={errors.qtyDelivered}
-                                                    required
-                                                    type="number"
-                                                    disabled={isFieldDisabled('qtyDelivered')}
-                                                />
-                                            )}
                                             <Stack spacing={2}>
                                                 <CustomTextField
                                                     label="Receiver Name / CNIC/ID"
@@ -1749,12 +2345,12 @@ const OrderForm = () => {
                                             </Button>
                                             {Array.isArray(formData.gatepass) && formData.gatepass.length > 0 && (
                                                 <Stack spacing={1} direction="row" flexWrap="wrap" gap={1}>
-                                                    {formData.gatepass.map((gatepass, i) => {
+                                                    {formData.gatepass.map((gatepass, j) => {
                                                         const src = typeof gatepass === 'string' ? gatepass : URL.createObjectURL(gatepass);
                                                         const label = typeof gatepass === 'string' ? gatepass.split('/').pop() : gatepass.name || 'File';
                                                         return (
                                                             <Chip
-                                                                key={i}
+                                                                key={j}
                                                                 label={label}
                                                                 color="secondary"
                                                                 size="small"
@@ -1854,8 +2450,8 @@ const OrderForm = () => {
                         </Accordion>
 
                         <Accordion
-                            expanded={expanded.has("panel5")}
-                            onChange={handleAccordionChange("panel5")}
+                            expanded={expanded.has("panel4")}
+                            onChange={handleAccordionChange("panel4")}
                             sx={{
                                 borderRadius: 2,
                                 boxShadow: "none",
@@ -1866,12 +2462,12 @@ const OrderForm = () => {
                             <AccordionSummary
                                 expandIcon={<ExpandMoreIcon />}
                                 sx={{
-                                    bgcolor: expanded.has("panel5") ? "#0d6c6a" : "#fff3e0",
+                                    bgcolor: expanded.has("panel4") ? "#0d6c6a" : "#fff3e0",
                                     borderRadius: 2,
-                                    "& .MuiAccordionSummary-content": { fontWeight: "bold", color: expanded.has("panel5") ? "#fff" : "#f58220" },
+                                    "& .MuiAccordionSummary-content": { fontWeight: "bold", color: expanded.has("panel4") ? "#fff" : "#f58220" },
                                 }}
                             >
-                                5. Order Summary
+                                4. Order Summary
                             </AccordionSummary>
                             <AccordionDetails sx={{ p: 3, bgcolor: "#fff" }}>
                                 <Stack spacing={2}>
@@ -1898,30 +2494,43 @@ const OrderForm = () => {
                                     <Stack spacing={1}>
                                         <Typography variant="body1" fontWeight="medium">Receivers:</Typography>
                                         {formData.receivers.map((rec, i) => (
-                                                <Stack direction="row" justifyContent="space-between" alignItems="center">
-                                          
-                                          <Chip sx={{p:2}} key={i} label={rec.receiverName || `Receiver ${i + 1}`} size="small" color="primary" variant="outlined" />
-                                                  <Typography variant="body2" color="text.secondary">{rec.itemRef || "-"}</Typography>
-                                                </Stack>
+                                            <Stack direction="row" justifyContent="space-between" alignItems="center" key={i}>
+                                                <Chip sx={{ p: 2 }} label={rec.receiverName || `Receiver ${i + 1}`} size="small" color="primary" variant="outlined" />
+                                                <Typography variant="body2" color="text.secondary">
+                                                    Delivered: {rec.qtyDelivered || 0} / Remaining: {rec.shippingDetail.remainingItems || 0}
+                                                </Typography>
+                                            </Stack>
                                         ))}
                                     </Stack>
                                     {formData.receivers.some(rec => rec.containers && rec.containers.length > 0) && (
                                         <Stack spacing={1}>
                                             <Typography variant="body1" fontWeight="medium">Assigned Containers:</Typography>
                                             {formData.receivers.flatMap(rec => rec.containers || []).map((cont, i) => (
-                                                <Stack direction="row" justifyContent="space-between" alignItems="center">
-                                               <Chip sx={{p:2}} key={i} label={cont} color="info" size="small" variant="outlined" />
-                                                  </Stack>
+                                                <Stack direction="row" justifyContent="space-between" alignItems="center" key={i}>
+                                                    <Chip sx={{ p: 2 }} label={cont} color="info" size="small" variant="outlined" />
+                                                </Stack>
                                             ))}
                                         </Stack>
                                     )}
+                                    {/* New: Global Totals */}
+                                    <Divider />
                                     <Stack direction="row" justifyContent="space-between" alignItems="center">
-                                        <Typography variant="body1" fontWeight="medium">Category:</Typography>
-                                        <Typography variant="body1">{formData.category || "-"}</Typography>
+                                        <Typography variant="body1" fontWeight="medium">Total Items (All Receivers):</Typography>
+                                        <Chip label={formData.globalTotalItems || "-"} variant="outlined" color="success" />
+                                    </Stack>
+                                    {formData.globalRemainingItems < formData.globalTotalItems && (
+                                        <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                            <Typography variant="body1" fontWeight="medium">Remaining Items (Partials):</Typography>
+                                            <Chip label={formData.globalRemainingItems} variant="filled" color="warning" />
+                                        </Stack>
+                                    )}
+                                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                        <Typography variant="body1" fontWeight="medium">Shipping Line:</Typography>
+                                        <Typography variant="body1">{formData.receivers[0]?.shippingLine || "-"}</Typography>
                                     </Stack>
                                     <Stack direction="row" justifyContent="space-between" alignItems="center">
-                                        <Typography variant="body1" fontWeight="medium">Weight:</Typography>
-                                        <Typography variant="body1">{formData.weight || "-"}</Typography>
+                                        <Typography variant="body1" fontWeight="medium">ETA:</Typography>
+                                        <Typography variant="body1">{formData.receivers[0]?.eta || "-"}</Typography>
                                     </Stack>
                                     <Stack direction="row" justifyContent="space-between" alignItems="center">
                                         <Typography variant="body1" fontWeight="medium">Transport Type:</Typography>
@@ -1932,8 +2541,8 @@ const OrderForm = () => {
                         </Accordion>
 
                         <Accordion
-                            expanded={expanded.has("panel6")}
-                            onChange={handleAccordionChange("panel6")}
+                            expanded={expanded.has("panel5")}
+                            onChange={handleAccordionChange("panel5")}
                             sx={{
                                 borderRadius: 2,
                                 boxShadow: "none",
@@ -1944,12 +2553,12 @@ const OrderForm = () => {
                             <AccordionSummary
                                 expandIcon={<ExpandMoreIcon />}
                                 sx={{
-                                    bgcolor: expanded.has("panel6") ? "#0d6c6a" : "#fff3e0",
+                                    bgcolor: expanded.has("panel5") ? "#0d6c6a" : "#fff3e0",
                                     borderRadius: 2,
-                                    "& .MuiAccordionSummary-content": { fontWeight: "bold", color: expanded.has("panel6") ? "#fff" : "#f58220" },
+                                    "& .MuiAccordionSummary-content": { fontWeight: "bold", color: expanded.has("panel5") ? "#fff" : "#f58220" },
                                 }}
                             >
-                                6. Attachments
+                                5. Attachments
                             </AccordionSummary>
                             <AccordionDetails sx={{ p: 3, bgcolor: "#fff" }}>
                                 <Stack spacing={2}>
@@ -1989,7 +2598,7 @@ const OrderForm = () => {
                         </Accordion>
                     </Stack>
 
-                    {/* Bottom Buttons - unchanged */}
+                    {/* Bottom Buttons */}
                     <Stack direction="row" justifyContent="flex-end" gap={2} mt={4} pt={3} borderTop="1px solid #e0e0e0">
                         <Button
                             variant="outlined"
@@ -2038,7 +2647,6 @@ const OrderForm = () => {
                             }}
                         />
                     )}
-                    {/* Fallback for non-images (e.g., PDF): Open in new tab */}
                     {!previewSrc.startsWith('blob:') && previewSrc.endsWith('.pdf') && (
                         <a href={previewSrc} target="_blank" rel="noopener noreferrer" style={{ display: 'block', textAlign: 'center', mt: 2 }}>
                             <Button variant="outlined" startIcon={<DownloadIcon />}>Open PDF</Button>
