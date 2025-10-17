@@ -23,16 +23,21 @@ import {
     InputLabel,
     CircularProgress,
     Snackbar,
+    CardContent,
     Alert,
     Dialog,
     DialogTitle,
     DialogContent,
     DialogActions,
     Grid,
+    AlertTitle,
+    Checkbox,
+    Collapse 
 } from "@mui/material";
 import Avatar from '@mui/material/Avatar';
 import EditIcon from "@mui/icons-material/Edit";
 import Tooltip from '@mui/material/Tooltip';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import List from '@mui/material/List';
 import ListItem from '@mui/material/ListItem';
 import ListItemText from '@mui/material/ListItemText';
@@ -40,13 +45,19 @@ import ListItemIcon from '@mui/material/ListItemIcon';
 import CargoIcon from '@mui/icons-material/LocalShipping'; // Or use InventoryIcon
 import PersonIcon from '@mui/icons-material/Person';
 import Divider from '@mui/material/Divider';
+import InfoIcon from "@mui/icons-material/Info";
+import LocalShippingIcon from "@mui/icons-material/LocalShipping";
 import { styled } from '@mui/material/styles';
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import AddIcon from "@mui/icons-material/Add";
 import DownloadIcon from "@mui/icons-material/Download";
 import CloseIcon from "@mui/icons-material/Close";
+import { getOrderStatusColor } from "./Utlis"; 
 import { useNavigate } from "react-router-dom";
 import OrderModalView from './OrderModalView'
+import AssignmentIcon from '@mui/icons-material/Assignment';
+import InventoryIcon from '@mui/icons-material/Inventory';
+import CheckIcon from '@mui/icons-material/Check';  
 // import { ordersApi } from "../api"; // Adjust path as needed
 import { api } from "../../api";
 
@@ -58,6 +69,8 @@ const OrdersList = () => {
     const [rowsPerPage, setRowsPerPage] = useState(10);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+        const [loadingContainers, setLoadingContainers] = useState(false);
+        const [assignmentError, setAssignmentError] = useState(null);
     const [filters, setFilters] = useState({
         status: "",
         booking_ref: "",  // Updated: Use booking_ref for search
@@ -68,11 +81,18 @@ const OrdersList = () => {
         severity: "info",
     });
     const [openModal, setOpenModal] = useState(false);
+const [assignments, setAssignments] = useState({}); // For storing receiver-container assignments
 
     const [selectedOrder, setSelectedOrder] = useState(null);
     const [modalLoading, setModalLoading] = useState(false);
     const [modalError, setModalError] = useState(null);
     const [exporting, setExporting] = useState(false);
+
+    // New states for selection and assignment
+    const [selectedOrders, setSelectedOrders] = useState([]);
+    const [openAssignModal, setOpenAssignModal] = useState(false);
+    const [containers, setContainers] = useState([]);
+    const [selectedContainer, setSelectedContainer] = useState('');
 
     const fetchOrders = async () => {
         setLoading(true);
@@ -85,6 +105,7 @@ const OrdersList = () => {
                 ...filters,
             };
             const response = await api.get(`/api/orders`, { params });
+            console.log('Fetched orders:', response.data);
             setOrders(response.data.data || []);
             setTotal(response.data.total || 0);
         } catch (err) {
@@ -99,6 +120,61 @@ const OrdersList = () => {
             setLoading(false);
         }
     };
+
+        // Helper to normalize containers (handle string or array)
+    // const normContainers = selectedOrder ? normalizeContainers(selectedOrders.containers) : []; 
+
+   // Helper for horizontal key-value pairs in Grid
+    const HorizontalKeyValue = ({ data, spacing = 3 }) => (
+        <Grid container spacing={spacing}>
+            {Object.entries(data).map(([key, value]) => (
+                <Grid item xs={12} sm={6} md={4} key={key}>
+                    <Box sx={{ 
+                        p: 2, 
+                        border: '1px solid #e3f2fd', 
+                        borderRadius: 2, 
+                        bgcolor: 'linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)',
+                        transition: 'all 0.3s ease',
+                        '&:hover': { 
+                            boxShadow: '0 4px 12px rgba(245, 130, 32, 0.15)',
+                            transform: 'translateY(-2px)',
+                            borderColor: '#f58220'
+                        }
+                    }}>
+                        <Typography variant="caption" color="text.secondary" display="block" sx={{ 
+                            textTransform: 'uppercase', 
+                            fontWeight: 'bold',
+                            fontSize: '0.75rem',
+                            mb: 0.5
+                        }}>
+                            {key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                        </Typography>
+                        <Typography variant="body2" fontWeight="bold" color="text.primary" sx={{ fontSize: '1rem' }}>
+                            {value || 'N/A'}
+                        </Typography>
+                    </Box>
+                </Grid>
+            ))}
+        </Grid>
+    );
+
+    // Fetch open containers
+    const fetchContainers = async () => {
+        if (loadingContainers) return; // Prevent multiple calls
+        setLoadingContainers(true);
+        setAssignmentError(null);
+        try {
+            const response = await api.get('/api/containers');
+            setContainers(response.data.data || []);
+        } catch (err) {
+            console.error("Error fetching containers:", err);
+            setAssignmentError('Failed to fetch containers. Please check the backend query for table "cm".');
+            setSnackbar({ open: true, message: 'Failed to fetch containers', severity: 'error' });
+        } finally {
+            setLoadingContainers(false);
+        }
+    };
+
 
     const fetchOrderDetails = async (orderId) => {
         setModalLoading(true);
@@ -119,6 +195,65 @@ const OrdersList = () => {
             setModalLoading(false);
         }
     };
+
+const handleClick = (id) => {
+  const selectedIndex = selectedOrders.indexOf(id);
+  let newSelected = [...selectedOrders];
+
+  if (selectedIndex === -1) {
+    newSelected.push(id);
+  } else {
+    newSelected.splice(selectedIndex, 1);
+  }
+
+  setSelectedOrders(newSelected);
+};
+
+// 2. handleSelectAllClick function (select/deselect all visible rows)
+const handleSelectAllClick = (event) => {
+  if (event.target.checked) {
+    const newSelected = orders.map((n) => n.id);
+    setSelectedOrders(newSelected);
+    return;
+  }
+  setSelectedOrders([]);
+};
+
+const isSelected = (id) => selectedOrders.indexOf(id) !== -1;
+
+   const handleAssign = async () => {
+  if (selectedOrders.length === 0 || !selectedContainer) {
+    setSnackbar({
+      open: true,
+      message: 'Please select orders and a container.',
+      severity: 'warning',
+    });
+    return;
+  }
+  try {
+    await api.post('/api/orders/assign-container', {
+      order_ids: selectedOrders,
+      container_id: selectedContainer,
+    });
+    setSnackbar({
+      open: true,
+      message: `Successfully assigned ${selectedOrders.length} orders to container.`,
+      severity: 'success',
+    });
+    // fetchContainers(); // Refresh containers
+    setOpenAssignModal(false);
+    setSelectedOrders([]); // Clear selection after assign
+    setSelectedContainer('');
+    fetchOrders(); // Refresh list
+  } catch (err) {
+    console.error('Error assigning container:', err);
+    setSnackbar({
+      open: true,
+      message: err.response?.data?.error || err.message || 'Failed to assign container',
+      severity: 'error',
+    });
+  }
+};
 
     const exportOrders = async () => {
         if (total === 0) {
@@ -178,7 +313,7 @@ const OrdersList = () => {
             const rows = allOrders.map((order) => [
                 order.booking_ref || '',
                 order.status || '',
-                order.place_of_loading || '',
+                order?.place_of_loading || '',
                 order.final_destination || '',
                 order.sender_name || '',  // From senders join
                 order.receiver_summary || '',  // Aggregated receivers with status
@@ -222,6 +357,10 @@ const OrdersList = () => {
     useEffect(() => {
         fetchOrders();
     }, [page, rowsPerPage, filters]);
+
+    useEffect(() => {
+        fetchContainers();
+    }, [openAssignModal]);  // Fetch when modal opens
 
     const handleChangePage = (event, newPage) => {
         setPage(newPage);
@@ -297,6 +436,33 @@ const OrdersList = () => {
         },
     }));
 
+       const normalizeContainers = (containers) => {
+        if (!containers) return [];
+        if (typeof containers === 'string') {
+            return [containers.trim()];
+        }
+        if (Array.isArray(containers)) {
+            return containers;
+        }
+        return [];
+    };
+    // Handle assign container to receiver
+    const handleAssignContainer = async (receiverId, containerId) => {
+        if (!containerId) return;
+        try {
+            await api.post(`/api/orders/${selectedOrder.id}/receivers/${receiverId}/assign-container`, { container_id: containerId });
+            setSnackbar({ open: true, message: 'Container assigned successfully', severity: 'success' });
+            fetchContainers(); // Refresh open containers
+            // Refresh order details if needed (e.g., refetch selectedOrder in parent)
+        } catch (err) {
+            console.error('Error assigning container:', err);
+            setAssignmentError(err.response?.data?.error || 'Failed to assign container');
+            setSnackbar({ open: true, message: 'Failed to assign container', severity: 'error' });
+        }
+    };
+
+
+
     const StatusChip = ({ status }) => {
         const colors = getStatusColors(status);
         return (
@@ -315,15 +481,13 @@ const OrdersList = () => {
     };
 
 // Updated helper: parse and enhance with icons/chips for better UX
-const parseSummaryToList = (summary) => {
-  if (!summary) return [];
-  return summary.split(', ').map(item => {
-    const match = item.match(/^(.*) \((.*)\)$/);
-    return match ? { 
-      primary: match[1].trim(), 
-      status: match[2].trim(),
-    } : { primary: item.trim(), status: null };
-  });
+const parseSummaryToList = (receivers) => {
+    console.log('Parsing receivers:', receivers);
+    if (!receivers || !Array.isArray(receivers)) return [];
+    return receivers.map(rec => ({
+        primary: rec.receiver_name,
+        status: rec.status
+    }));
 };
 
 // Enhanced PrettyList: Modern card-based layout for receivers with avatars and status badges
@@ -391,6 +555,7 @@ const parseContainersToList = (containersStr) => {
 
 // Enhanced PrettyContainersList: Horizontal chips for compact, modern feel
 const PrettyContainersList = ({ items, title }) => (
+    console.log('Containers items:', items),    
   <Box sx={{ p: 1, maxWidth: 280 }}>
     <Typography variant="caption" sx={{ fontWeight: 'medium', color: 'text.secondary', mb: 1, display: 'block' }}>
       {title} ({items.length})
@@ -483,6 +648,9 @@ const PrettyContainersList = ({ items, title }) => (
         );
     }
 
+const numSelected = selectedOrders.length;
+const rowCount = orders.length;
+
     return (
         <>
             <Paper sx={{ p: 3, borderRadius: 3, boxShadow: 3, bgcolor: "#fafafa" }}>
@@ -491,6 +659,20 @@ const PrettyContainersList = ({ items, title }) => (
                         Orders List
                     </Typography>
                     <Stack direction="row" spacing={2}>
+                  <Button
+  variant="contained"
+  disabled={numSelected === 0}
+  onClick={() => setOpenAssignModal(true)}
+  startIcon={<AddIcon />}
+  sx={{
+    borderRadius: 2,
+    backgroundColor: "#0d6c6a",
+    color: "#fff",
+    "&:hover": { backgroundColor: "#0d6c6a" },
+  }}
+>
+  Add Selected to Container ({numSelected})
+</Button>
                         <Button
                             variant="outlined"
                             startIcon={<DownloadIcon />}
@@ -521,7 +703,7 @@ const PrettyContainersList = ({ items, title }) => (
                         </Button>
                     </Stack>
                 </Stack>
-
+   
                 {/* Filters - Updated: booking_ref for search */}
                 <Stack direction="row" spacing={2} mb={3} alignItems="center">
                     <TextField
@@ -553,6 +735,14 @@ const PrettyContainersList = ({ items, title }) => (
                     <Table stickyHeader>
                         <TableHead >
                             <TableRow sx={{ bgcolor: '#0d6c6a' }} >
+                              <TableCell padding="checkbox" sx={{ bgcolor: '#0d6c6a', color: '#fff' }}>
+  <Checkbox
+    color="primary"
+    indeterminate={numSelected > 0 && numSelected < rowCount}
+    checked={rowCount > 0 && numSelected === rowCount}
+    onChange={handleSelectAllClick}
+  />
+</TableCell>
                                 {[
                                     <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="ref">Booking Ref</StyledTableHeadCell>,
                                     <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="loading">Place of Loading</StyledTableHeadCell>,
@@ -568,32 +758,56 @@ const PrettyContainersList = ({ items, title }) => (
                             </TableRow>
                         </TableHead>
                         <TableBody>
-                            {orders.map((order) => {
-                                const receiversList = parseSummaryToList(order.receiver_summary);
+                        {orders.map((order) => {
+                            console.log('Rendering order:', order.receivers);
+  const isItemSelected = isSelected(order.id);
+                        //  renderReceivers( order.receivers);
                                 const containersList = order.receiver_containers_json ? order.receiver_containers_json.split(', ').map(cont => ({ primary: cont })) : []; // Simple for containers
                                 const status = order.overall_status || order.status || 'Created';
                                 const colors = getStatusColors(status);
 
                                 return (
-                                    <StyledTableRow key={order.id}>
+                                   <StyledTableRow 
+      key={order.id}
+      onClick={() => handleClick(order.id)}
+      role="checkbox"
+      aria-checked={isItemSelected}
+      selected={isItemSelected}
+      sx={{ cursor: 'pointer' }}
+    >
+      <TableCell padding="checkbox">
+        <Checkbox
+          checked={isItemSelected}
+          onChange={(event) => {
+            handleClick(order.id);
+            event.stopPropagation();
+          }}
+          inputProps={{
+            'aria-labelledby': `enhanced-table-checkbox-${order.id}`,
+          }}
+        />
+      </TableCell>
                                         <StyledTableCell>{order.booking_ref}</StyledTableCell>
-                                        <StyledTableCell>{order.place_of_loading}</StyledTableCell>
+                                        <StyledTableCell>{order?.place_of_loading}</StyledTableCell>
                                         <StyledTableCell>{order.final_destination}</StyledTableCell>
                                         <StyledTableCell>{order.sender_name}</StyledTableCell>
-                                        <StyledTableCell>
-                                            <StyledTooltip
-                                                title={<PrettyList items={parseSummaryToList(order.receiver_summary)}  title="Receivers" />}
-                                                arrow
-                                                placement="top"
-                                                PopperProps={{
-                                                    sx: { '& .MuiTooltip-tooltip': { border: '1px solid #e0e0e0' } }
-                                                }}
-                                            >
-                                                <Typography variant="body2" noWrap sx={{ maxWidth: 120, cursor: 'help', fontWeight: 'medium' }}>
-                                                    {order.receiver_summary ? `${order.receiver_summary.substring(0, 20)}...` : '-'}
-                                                </Typography>
-                                            </StyledTooltip>
-                                        </StyledTableCell>
+                                       <StyledTableCell>
+    <StyledTooltip
+        title={<PrettyList items={parseSummaryToList(order.receivers)} title="Receivers" />}
+        arrow
+        placement="top"
+        PopperProps={{
+            sx: { '& .MuiTooltip-tooltip': { border: '1px solid #e0e0e0' } }
+        }}
+    >
+        <Typography variant="body2" noWrap sx={{ maxWidth: 120, cursor: 'help', fontWeight: 'medium' }}>
+            {order.receivers && order.receivers.length > 0 
+                ? `${order.receivers.map(r => r.receiver_name).join(', ').substring(0, 20)}...` 
+                : '-'
+            }
+        </Typography>
+    </StyledTooltip>
+</StyledTableCell>
                                         <StyledTableCell>
                                             <StyledTooltip
                                                 title={<PrettyContainersList items={parseContainersToList(order.receiver_containers_json)} title="Containers" />}
@@ -671,6 +885,446 @@ const PrettyContainersList = ({ items, title }) => (
                         {snackbar.message}
                     </Alert>
                 </Snackbar>
+
+<Dialog 
+    open={openAssignModal} 
+    onClose={() => setOpenAssignModal(false)} 
+    maxWidth="xl" 
+    fullWidth
+    PaperProps={{
+        sx: {
+            borderRadius: 3,
+            maxHeight: '95vh', // Prevent overflow on small screens
+            overflow: 'hidden',
+            // width: { xs: '98%', sm: '90%', md: '60%' } // Responsive width
+        }
+    }}
+>
+    <DialogTitle sx={{ 
+        bgcolor: '#0d6c6a', 
+        color: 'white', 
+        borderRadius: '12px 12px 0 0',
+        py: { xs: 2, sm: 2.5 },
+        px: { xs: 2, sm: 3 }
+    }}>
+        <Stack direction="row" justifyContent="space-between" alignItems="center">
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                <LocalShippingIcon sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }} />
+                <Typography variant={{ xs: 'h6', sm: 'h5' }} fontWeight="bold">
+                    Assign Selected Orders to Container
+                </Typography>
+                <Chip 
+                    label={`(${selectedOrders.length} Orders)`} 
+                    size="small" 
+                    color="secondary" 
+                    variant="filled" 
+                    sx={{ 
+                        ml: 1,
+                        fontSize: { xs: '0.7rem', sm: '0.8rem' }
+                    }}
+                />
+            </Box>
+            <IconButton 
+                onClick={() => setOpenAssignModal(false)} 
+                sx={{ color: 'white', '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' } }}
+            >
+                <CloseIcon />
+            </IconButton>
+        </Stack>
+    </DialogTitle>
+    <DialogContent sx={{ 
+        mt: 2,
+        p: { xs: 2, sm: 3 }, 
+        overflow: 'auto',
+        height: '80vh',
+        maxHeight: '80vh' // Sc rollable content on small screens
+    }}>
+        <Grid container justifyContent={"space-between"} mb={3} spacing={{ xs: 2, sm: 2 }}>
+            {/* Available Containers Section */}
+            <Grid item width="48%" xs={12}>
+                <Card sx={{ 
+                    boxShadow: 2, 
+                    borderRadius: 2,
+                    border: '1px solid #e3f2fd',
+                    '&:hover': { boxShadow: '0 4px 12px rgba(245, 130, 32, 0.1)' }
+                }}>
+                    <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <InventoryIcon color="primary" sx={{ fontSize: { xs: '1rem', sm: '1.2rem' } }} />
+                                <Typography variant={{ xs: 'subtitle2', sm: 'subtitle1' }} fontWeight="bold" color="#f58220">
+                                    Available Open Containers ({containers.length})
+                                </Typography>
+                            </Box>
+                            <Button
+                                variant="outlined"
+                                size="small"
+                                onClick={fetchContainers}
+                                disabled={loadingContainers}
+                                startIcon={loadingContainers ? <CircularProgress size={16} /> : <RefreshIcon />}
+                                sx={{ minWidth: 'auto' }}
+                            >
+                                {loadingContainers ? 'Loading...' : 'Refresh'}
+                            </Button>
+                        </Box>
+                        {loadingContainers ? (
+                            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: { xs: 3, sm: 4 } }}>
+                                <CircularProgress size={24} />
+                                <Typography variant="body2" sx={{ ml: 2, color: 'text.secondary' }}>
+                                    Fetching containers...
+                                </Typography>
+                            </Box>
+                        ) : containers.length === 0 ? (
+                            <Alert severity="info" icon={<InfoIcon />}>
+                                <AlertTitle>No Containers Available</AlertTitle>
+                                No open containers found. Try refreshing or check if any are marked as 'Available'.
+                            </Alert>
+                        ) : (
+                            <TableContainer sx={{ maxHeight: { xs: 250, sm: 300 }, overflow: 'auto' }}>
+                                <Table size="small" stickyHeader>
+                                    <TableHead sx={{ bgcolor: '#f8f9fa' }}>
+                                        <TableRow>
+                                            <TableCell sx={{ fontWeight: 'bold', color: '#f58220', px: { xs: 1, sm: 2 } }}>Container No</TableCell>
+                                            <TableCell sx={{ fontWeight: 'bold', color: '#f58220', px: { xs: 1, sm: 2 } }}>Status</TableCell>
+                                            <TableCell sx={{ fontWeight: 'bold', color: '#f58220', px: { xs: 1, sm: 2 } }}>Location</TableCell>
+                                            <TableCell sx={{ fontWeight: 'bold', color: '#f58220', px: { xs: 1, sm: 2 } }}>Owner Type</TableCell>
+                                        </TableRow>
+                                    </TableHead>
+                                    <TableBody>
+                                        {containers.map((container) => (
+                                            <TableRow 
+                                                key={container.cid} 
+                                                hover 
+                                                selected={selectedContainer === container.cid}
+                                                onClick={() => setSelectedContainer(container.cid)}
+                                                sx={{ 
+                                                    cursor: 'pointer',
+                                                    '&:hover': { bgcolor: '#f0f8ff' },
+                                                    transition: 'all 0.2s ease',
+                                                    '&.Mui-selected': { bgcolor: 'success.50' }
+                                                }}
+                                            >
+                                                <TableCell sx={{ px: { xs: 1, sm: 2 }, fontWeight: 'medium' }}>{container.container_number}</TableCell>
+                                                <TableCell sx={{ px: { xs: 1, sm: 2 } }}>
+                                                    <Chip 
+                                                        label={container.derived_status} 
+                                                        size="small" 
+                                                        color={container.derived_status === 'Available' ? 'success' : 'default'} 
+                                                    />
+                                                </TableCell>
+                                                <TableCell sx={{ px: { xs: 1, sm: 2 } }}>{container.location || 'N/A'}</TableCell>
+                                                <TableCell sx={{ px: { xs: 1, sm: 2 } }}>
+                                                    <Chip 
+                                                        label={container.owner_type.toUpperCase()} 
+                                                        size="small" 
+                                                        variant="outlined" 
+                                                        color="info" 
+                                                    />
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </TableContainer>
+                        )}
+                    </CardContent>
+                </Card>
+            </Grid> 
+             {/* All Receivers Section */}
+            <Grid item width="48%"  xs={12}>
+                <Card sx={{ 
+                    boxShadow: 2, 
+                    borderRadius: 2,
+                    border: '1px solid #e3f2fd',
+                    '&:hover': { boxShadow: '0 4px 12px rgba(245, 130, 32, 0.1)' }
+                }}>
+                    <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                            <PersonIcon color="primary" sx={{ fontSize: { xs: '1rem', sm: '1.2rem' } }} />
+                            <Typography variant={{ xs: 'subtitle2', sm: 'subtitle1' }} fontWeight="bold" color="#f58220">
+                                All Receivers
+                            </Typography>
+                            <Chip 
+                                label={`(${selectedOrders.reduce((total, orderId) => {
+                                    const order = orders.find(o => o.id === orderId);
+                                    return total + (order ? (order.receivers ? order.receivers.length : 0) : 0);
+                                }, 0)})`} 
+                                size="small" 
+                                color="info" 
+                            />
+                        </Box>
+                        <TableContainer sx={{ maxHeight: { xs: 200, sm: 250 }, overflow: 'auto' }}>
+                            <Table size="small" stickyHeader>
+                                <TableHead sx={{ bgcolor: '#f8f9fa' }}>
+                                    <TableRow>
+                                        <TableCell sx={{ fontWeight: 'bold', color: '#f58220', px: { xs: 1, sm: 2 } }}>Name</TableCell>
+                                        <TableCell sx={{ fontWeight: 'bold', color: '#f58220', px: { xs: 1, sm: 2 } }}>Order</TableCell>
+                                        <TableCell sx={{ fontWeight: 'bold', color: '#f58220', px: { xs: 1, sm: 2 } }}>Status</TableCell>
+                                        <TableCell sx={{ fontWeight: 'bold', color: '#f58220', px: { xs: 1, sm: 2 } }}>Containers</TableCell>
+                                    </TableRow>
+                                </TableHead>
+                                <TableBody>
+                                    {selectedOrders.flatMap(orderId => {
+                                        const order = orders.find(o => o.id === orderId);
+                                        return order && order.receivers ? order.receivers.map(rec => ({
+                                            ...rec,
+                                            orderRef: order.booking_ref
+                                        })) : [];
+                                    }).map((rec, index) => (
+                                        <TableRow 
+                                            key={`${rec.order_id}-${rec.id || index}`} 
+                                            hover 
+                                            sx={{ 
+                                                '&:hover': { bgcolor: '#f8f9fa' },
+                                                transition: 'background-color 0.2s ease'
+                                            }}
+                                        >
+                                            <TableCell sx={{ px: { xs: 1, sm: 2 }, fontWeight: 'medium' }}>{rec.receiver_name}</TableCell>
+                                            <TableCell sx={{ px: { xs: 1, sm: 2 } }}>{rec.orderRef}</TableCell>
+                                            <TableCell sx={{ px: { xs: 1, sm: 2 } }}>
+                                                <Chip 
+                                                    label={rec.status || 'Created'} 
+                                                    size="small" 
+                                                    color={rec.status === 'Delivered' ? 'success' : rec.status === 'In Transit' ? 'warning' : 'default'} 
+                                                />
+                                            </TableCell>
+                                            <TableCell sx={{ px: { xs: 1, sm: 2 } }}>
+                                                {rec.containers && rec.containers.length > 0 
+                                                    ? <Chip label={rec.containers.join(', ')} size="small" variant="outlined" color="info" />
+                                                    : <Chip label="None" size="small" color="default" variant="outlined" />
+                                                }
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </TableContainer>
+                        {selectedOrders.reduce((total, orderId) => {
+                            const order = orders.find(o => o.id === orderId);
+                            return total + (order ? (order.receivers ? order.receivers.length : 0) : 0);
+                        }, 0) === 0 && (
+                            <Alert severity="info" sx={{ mt: 2, borderRadius: 1 }}>
+                                <AlertTitle>No Receivers Found</AlertTitle>
+                                The selected orders have no associated receivers.
+                            </Alert>
+                        )}
+                    </CardContent>
+                </Card>
+            </Grid>
+     
+
+           
+            </Grid>
+
+<Grid container width="100%" justifyContent="space-between" sx={{ mt: 1,  overflow: 'auto',
+       }}>
+               {/* Selected Orders Section */}
+            <Grid width="48%" item xs={12}>
+                <Card sx={{ 
+                    boxShadow: 2, 
+                    borderRadius: 2,
+                    border: '1px solid #e3f2fd',
+                    '&:hover': { boxShadow: '0 4px 12px rgba(245, 130, 32, 0.1)' }
+                }}>
+                    <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                            <InfoIcon color="primary" sx={{ fontSize: { xs: '1rem', sm: '1.2rem' } }} />
+                            <Typography variant={{ xs: 'subtitle2', sm: 'subtitle1' }} fontWeight="bold" color="#f58220">
+                                Selected Orders
+                            </Typography>
+                        </Box>
+                        <TableContainer sx={{ maxHeight: { xs: 200, sm: 250 }, overflow: 'auto' }}>
+                            <Table size="small" stickyHeader>
+                                <TableHead sx={{ bgcolor: '#f8f9fa' }}>
+                                    <TableRow>
+                                        <TableCell sx={{ fontWeight: 'bold', color: '#f58220', px: { xs: 1, sm: 2 } }}>Booking Ref</TableCell>
+                                        <TableCell sx={{ fontWeight: 'bold', color: '#f58220', px: { xs: 1, sm: 2 } }}>Status</TableCell>
+                                        <TableCell sx={{ fontWeight: 'bold', color: '#f58220', px: { xs: 1, sm: 2 } }}>Receivers</TableCell>
+                                    </TableRow>
+                                </TableHead>
+                                <TableBody>
+                                    {selectedOrders.map(orderId => {
+                                        const order = orders.find(o => o.id === orderId);
+                                        if (!order) return null;
+                                        const numReceivers = order.receivers ? order.receivers.length : 0;
+                                        return (
+                                            <TableRow 
+                                                key={orderId} 
+                                                hover 
+                                                sx={{ 
+                                                    '&:hover': { bgcolor: '#f8f9fa' },
+                                                    cursor: 'pointer',
+                                                    transition: 'background-color 0.2s ease'
+                                                }}
+                                            >
+                                                <TableCell sx={{ px: { xs: 1, sm: 2 } }}>{order.booking_ref}</TableCell>
+                                                <TableCell sx={{ px: { xs: 1, sm: 2 } }}>
+                                                    <Chip 
+                                                        label={order.status || 'Created'} 
+                                                        size="small" 
+                                                        color={order.status === 'Delivered' ? 'success' : order.status === 'In Transit' ? 'warning' : 'default'} 
+                                                    />
+                                                </TableCell>
+                                                <TableCell sx={{ px: { xs: 1, sm: 2 } }}>
+                                                    <Chip 
+                                                        label={`${numReceivers}`} 
+                                                        size="small" 
+                                                        color="info" 
+                                                        variant="outlined" 
+                                                        icon={<PersonIcon fontSize="small" />}
+                                                    />
+                                                </TableCell>
+                                            </TableRow>
+                                        );
+                                    })}
+                                </TableBody>
+                            </Table>
+                        </TableContainer>
+                        {selectedOrders.length === 0 && (
+                            <Alert severity="warning" sx={{ mt: 2, borderRadius: 1 }}>
+                                <AlertTitle>No Orders Selected</AlertTitle>
+                                Please select orders from the main table to assign containers.
+                            </Alert>
+                        )}
+                    </CardContent>
+                </Card>
+            </Grid>
+        {/* Container Selection Section */}
+            <Grid  width="48%" item xs={12}>
+                <Card sx={{ 
+                    boxShadow: 2, 
+                    borderRadius: 2,
+                    border: '1px solid #e3f2fd',
+                    '&:hover': { boxShadow: '0 4px 12px rgba(245, 130, 32, 0.1)' }
+                }}>
+                    <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                            <InventoryIcon color="primary" sx={{ fontSize: { xs: '1rem', sm: '1.2rem' } }} />
+                            <Typography variant={{ xs: 'subtitle2', sm: 'subtitle1' }} fontWeight="bold" color="#f58220">
+                                Select Container
+                            </Typography>
+                        </Box>
+                        <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+                            <InputLabel>Available Container</InputLabel>
+                            <Select
+                                value={selectedContainer}
+                                label="Available Container"
+                                onChange={(e) => setSelectedContainer(e.target.value)}
+                                startAdornment={
+                                    selectedContainer ? (
+                                        <Chip 
+                                            label="Selected" 
+                                            size="small" 
+                                            color="success" 
+                                            sx={{ mr: 1, height: 20 }} 
+                                        />
+                                    ) : null
+                                }
+                            >
+                                <MenuItem value="">
+                                    <em>Choose a container from available options below</em>
+                                </MenuItem>
+                                {containers.map((container) => (
+                                    <MenuItem key={container.cid} value={container.cid}>
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
+                                            <CargoIcon fontSize="small" color="info" />
+                                            <Box sx={{ flex: 1 }}>
+                                                <Typography variant="body2" fontWeight="medium">
+                                                    {container.container_number}
+                                                </Typography>
+                                                <Typography variant="caption" color="text.secondary">
+                                                    {container.derived_status} • {container.owner_type}
+                                                </Typography>
+                                            </Box>
+                                            {container.location && (
+                                                <Chip 
+                                                    label={container.location} 
+                                                    size="small" 
+                                                    variant="outlined" 
+                                                    color="info" 
+                                                />
+                                            )}
+                                        </Box>
+                                    </MenuItem>
+                                ))}
+                            </Select>
+                        </FormControl>
+                        {!selectedContainer && containers.length > 0 && (
+                            <Alert severity="info" icon={<InfoIcon />}>
+                                Select a container to assign. It will be linked to all {selectedOrders.reduce((total, orderId) => {
+                                    const order = orders.find(o => o.id === orderId);
+                                    return total + (order ? (order.receivers ? order.receivers.length : 0) : 0);
+                                }, 0)} receivers in the selected orders.
+                            </Alert>
+                        )}
+                    </CardContent>
+                </Card>
+            </Grid>
+
+        
+            
+        </Grid>
+
+        {/* Summary Alert */}
+        {selectedOrders.length > 0 && selectedContainer && (
+            <Collapse in={true} timeout={300}>
+                <Alert 
+                    severity="success" 
+                    icon={<CheckIcon />} 
+                    sx={{ 
+                        mt: 2, 
+                        borderRadius: 2,
+                        animation: 'slideIn 0.3s ease-out'
+                    }}
+                >
+                    <AlertTitle>Ready to Assign</AlertTitle>
+                    <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
+                        This will assign the selected container to {selectedOrders.reduce((total, orderId) => {
+                            const order = orders.find(o => o.id === orderId);
+                            return total + (order ? (order.receivers ? order.receivers.length : 0) : 0);
+                        }, 0)} receivers across {selectedOrders.length} orders.
+                    </Typography>
+                </Alert>
+            </Collapse>
+        )}
+    </DialogContent>
+    <DialogActions sx={{ 
+        p: { xs: 2, sm: 3 }, 
+        bgcolor: '#f8f9fa', 
+        borderTop: '1px solid #e0e0e0',
+        justifyContent: 'space-between'
+    }}>
+        <Button 
+            onClick={() => setOpenAssignModal(false)} 
+            variant="outlined" 
+            sx={{ 
+                borderRadius: 2, 
+                borderColor: '#f58220', 
+                color: '#f58220',
+                px: 3,
+                '&:hover': { borderColor: '#e65100', color: '#e65100' }
+            }}
+        >
+            Cancel
+        </Button>
+        <Button 
+            onClick={handleAssign} 
+            variant="contained" 
+            disabled={!selectedContainer || selectedOrders.length === 0}
+            sx={{ 
+                borderRadius: 2, 
+                bgcolor: '#f58220',
+                px: 4,
+                '&:hover': { bgcolor: '#e65100' },
+                '&.Mui-disabled': { bgcolor: 'grey.400' },
+                boxShadow: selectedContainer ? '0 3px 8px rgba(245, 130, 32, 0.3)' : 'none'
+            }}
+            startIcon={<AssignmentIcon />}
+        >
+            Assign ({selectedOrders.length} Orders)
+        </Button>
+    </DialogActions>
+</Dialog>
             </Paper>
         </>
     );
