@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
     Box,
     Paper,
@@ -191,14 +191,21 @@ const OrderForm = () => {
         orderRemarks: "",
 
         attachments: [],
-        // Senders fields
+        // Owner fields (both sender and receiver)
         senderName: "",
         senderContact: "",
         senderAddress: "",
         senderEmail: "",
         senderRef: "",
         senderRemarks: "",
-        senders: [{ ...initialSenderObject, shippingDetails: [] }],
+        receiverName: "",
+        receiverContact: "",
+        receiverAddress: "",
+        receiverEmail: "",
+        receiverRef: "",
+        receiverRemarks: "",
+        // Senders array
+        senders: [],
         // Receivers array with nested shippingDetails
         receivers: [{ ...initialReceiver, shippingDetails: [] }],
         // Computed globals
@@ -219,6 +226,7 @@ const OrderForm = () => {
         plateNo: "",
         dropDate: "",
         collectionMethod: "",
+        collection_scope: "Partial",
         fullPartial: "",  // Deprecated
         qtyDelivered: "",  // Deprecated
         clientReceiverName: "",
@@ -233,16 +241,16 @@ const OrderForm = () => {
     // Editable fields in edit mode
     const editableInEdit = [
         'transportType', 'dropMethod', 'dropoffName', 'dropOffCnic', 'dropOffMobile', 'plateNo', 'dropDate',
-        'collectionMethod', 'fullPartial', 'qtyDelivered', 'clientReceiverName', 'clientReceiverId', 'clientReceiverMobile', 'deliveryDate',
+        'collectionMethod', 'collection_scope', 'qtyDelivered', 'clientReceiverName', 'clientReceiverId', 'clientReceiverMobile', 'deliveryDate',
         'thirdPartyTransport', 'driverName', 'driverContact', 'driverNic', 'driverPickupLocation', 'truckNumber',
         // Per-receiver partials and shipping
-        'receivers[].fullPartial', 'receivers[].qtyDelivered', 'receivers[].shippingDetails[].totalNumber'
+        'receivers[].fullPartial', 'receivers[].qtyDelivered', 'receivers[].shippingDetails[].totalNumber',
+        'senders[].fullPartial', 'senders[].qtyDelivered', 'senders[].shippingDetails[].totalNumber'
     ];
 
     // Required fields validation
     const requiredFields = [
-        'bookingRef', 'rglBookingNumber', 'senderName', 'placeOfLoading', 'finalDestination', 'transportType',
-        'pointOfOrigin'
+        'bookingRef', 'rglBookingNumber', 'placeOfLoading', 'pointOfOrigin', 'finalDestination', 'placeOfDelivery', 'transportType'
     ];
 
     // Dummy data for categories and subcategories
@@ -250,7 +258,7 @@ const OrderForm = () => {
     const categorySubMap = {
         "Electronics": ["Smartphones", "Laptops", "Accessories"],
         "Clothing": ["Men's Wear", "Women's Wear", "Kids Wear"],
-        "Books": ["Fiction", "Non-Fiction", "Technical"],   
+        "Books": ["Fiction", "Non-Fiction", "Technical"],
     };
     const types = ["Select Unit", "Unit 1", "Unit 2"];
     const statuses = ["Created", "In Transit", "Delivered", "Cancelled"];
@@ -263,11 +271,12 @@ const OrderForm = () => {
     // Helper to convert camelCase to snake_case
     const camelToSnake = (str) => str.replace(/([A-Z])/g, '_$1').toLowerCase();
 
-    // Compute global totals
+    // Compute global totals dynamically
     useEffect(() => {
+        const items = formData.senderType === 'sender' ? formData.receivers : formData.senders;
         let total = 0;
         let remaining = 0;
-        formData.receivers.forEach(rec => {
+        items.forEach(rec => {
             const recTotal = (rec.shippingDetails || []).reduce((sum, sd) => sum + (parseInt(sd.totalNumber || 0) || 0), 0);
             const recDelivered = parseInt(rec.qtyDelivered || 0) || 0;
             const recRemaining = Math.max(0, recTotal - recDelivered);
@@ -275,13 +284,22 @@ const OrderForm = () => {
             remaining += recRemaining;
         });
         setFormData(prev => ({ ...prev, globalTotalItems: total, globalRemainingItems: remaining }));
-    }, [formData.receivers]);
+    }, [formData.senderType, formData.receivers, formData.senders]);
 
-    // Compute per-receiver remaining and per-sd remaining proportionally when partial changes
+    // Compute remaining items dep
+    const remainingDep = useMemo(() => {
+        const items = formData.senderType === 'sender' ? formData.receivers : formData.senders;
+        return items.flatMap(rec => 
+            (rec.shippingDetails || []).map(sd => `${sd.totalNumber || ''}-${rec.qtyDelivered || ''}-${rec.fullPartial || ''}`)
+        ).join(',');
+    }, [formData.senderType, formData.receivers, formData.senders]);
+
+    // Compute per-item remaining dynamically
     useEffect(() => {
+        const listKey = formData.senderType === 'sender' ? 'receivers' : 'senders';
         setFormData(prev => ({
             ...prev,
-            receivers: prev.receivers.map(rec => {
+            [listKey]: prev[listKey].map(rec => {
                 const shippingDetails = rec.shippingDetails || [];
                 const recTotal = shippingDetails.reduce((sum, sd) => sum + (parseInt(sd.totalNumber || 0) || 0), 0);
                 const delivered = parseInt(rec.qtyDelivered || 0) || 0;
@@ -299,7 +317,7 @@ const OrderForm = () => {
                 }
             })
         }));
-    }, [formData.receivers.flatMap(r => r.shippingDetails.map(sd => `${sd.totalNumber}-${r.qtyDelivered}-${r.fullPartial}`)).join(',')]);
+    }, [remainingDep, formData.senderType]);
 
     const validateForm = () => {
         const newErrors = {};
@@ -311,6 +329,12 @@ const OrderForm = () => {
                 newErrors[field] = `${field.replace(/([A-Z])/g, ' $1').trim()} is required`;
             }
         });
+
+        // Validate owner name
+        const ownerNameKey = formData.senderType === 'sender' ? 'senderName' : 'receiverName';
+        if (!formData[ownerNameKey]?.trim()) {
+            newErrors[ownerNameKey] = 'Owner name is required';
+        }
 
         // Validate senderType
         if (!formData.senderType) {
@@ -352,9 +376,9 @@ const OrderForm = () => {
                 if (!item.etd?.trim()) {
                     newErrors[`${itemsKey}[${i}].etd`] = `ETD is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
                 }
-                if (!item.shippingLine?.trim()) {
-                    newErrors[`${itemsKey}[${i}].shippingLine`] = `Shipping Line is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
-                }
+                // if (!item.shippingLine?.trim()) {
+                //     newErrors[`${itemsKey}[${i}].shippingLine`] = `Shipping Line is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
+                // }
 
                 // Validate each shippingDetail
                 const shippingDetails = item.shippingDetails || [];
@@ -463,8 +487,9 @@ const OrderForm = () => {
 
         // Email and mobile validations
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (formData.senderEmail && !emailRegex.test(formData.senderEmail)) {
-            newErrors.senderEmail = 'Invalid sender email format';
+        const ownerEmailKey = formData.senderType === 'sender' ? 'senderEmail' : 'receiverEmail';
+        if (formData[ownerEmailKey] && !emailRegex.test(formData[ownerEmailKey])) {
+            newErrors[ownerEmailKey] = 'Invalid owner email format';
         }
         const mobileRegex = /^\d{10,15}$/;
         if (formData.dropOffMobile && !mobileRegex.test(formData.dropOffMobile.replace(/\D/g, ''))) {
@@ -492,7 +517,7 @@ const OrderForm = () => {
         if (Object.keys(errors).length > 0) {
             const panelsToExpand = new Set();
             Object.keys(errors).forEach(key => {
-                if (['senderName', 'senderContact', 'senderAddress', 'senderEmail', 'senderRef', 'senderRemarks'].includes(key)) panelsToExpand.add('panel1');
+                if (['senderName', 'senderContact', 'senderAddress', 'senderEmail', 'senderRef', 'senderRemarks', 'receiverName', 'receiverContact', 'receiverAddress', 'receiverEmail', 'receiverRef', 'receiverRemarks'].includes(key)) panelsToExpand.add('panel1');
                 if (key.startsWith('receivers[') || key.startsWith('senders[')) panelsToExpand.add('panel2');
                 if (['transportType', 'dropMethod', 'dropoffName', 'dropOffCnic', 'dropOffMobile', 'plateNo', 'dropDate', 'collectionMethod', 'fullPartial', 'qtyDelivered', 'clientReceiverName', 'clientReceiverId', 'clientReceiverMobile', 'deliveryDate', 'driverName', 'driverContact', 'driverNic', 'driverPickupLocation', 'truckNumber', 'thirdPartyTransport'].includes(key)) panelsToExpand.add('panel3');
             });
@@ -534,7 +559,7 @@ const OrderForm = () => {
             if (!response.data) {
                 throw new Error('Invalid response data');
             }
-
+             console.log('Fetched order data:', response.data);
             // Map snake_case to camelCase for core fields
             const camelData = {};
             Object.keys(response.data).forEach(apiKey => {
@@ -554,46 +579,81 @@ const OrderForm = () => {
                 camelData[camelKey] = value;
             });
 
-            // Handle multiples - map receivers to camelCase
-            let mappedReceivers = ((response.data.receivers || []) || []).map(rec => {
-                if (!rec) return null;  // Skip invalid rec
+            // Set senderType from API
+            camelData.senderType = response.data.sender_type || 'sender';
 
-                const camelRec = {
-                    ...initialReceiver,
-                    shippingDetails: [],
-                    isNew: false,
-                    validationWarnings: null
-                };
-
-                Object.keys(rec).forEach(apiKey => {
-                    let val = rec[apiKey];
-                    if (val === null || val === undefined) val = '';
-                    const camelKey = snakeToCamel(apiKey);
-                    camelRec[camelKey] = val;
-                });
-
-                // Handle legacy shippingDetail to array
-                if (rec.shipping_detail) {
-                    const sd = { ...rec.shipping_detail };
-                    Object.keys(sd).forEach(key => {
-                        const camelKey = snakeToCamel(key);
-                        sd[camelKey] = sd[key];
-                        delete sd[key];
-                    });
-                    camelRec.shippingDetails = [sd];
+            // Map owner fields
+            const ownerPrefix = camelData.senderType === 'sender' ? 'sender' : 'receiver';
+            const ownerFields = ['name', 'contact', 'address', 'email', 'ref', 'remarks'];
+            ownerFields.forEach(field => {
+                const apiKey = `${ownerPrefix}_${field}`;
+                const snakeVal = response.data[apiKey];
+                if (snakeVal !== null && snakeVal !== undefined) {
+                    camelData[`${ownerPrefix}${field.charAt(0).toUpperCase() + field.slice(1)}`] = snakeVal;
                 }
+            });
 
-                camelRec.status = rec.status || "Created";
+            // Handle panel2 - dynamic based on senderType
+            // API always provides 'receivers' array, which maps to panel2 items
+            const panel2ApiKey = 'receivers';
+            const panel2Prefix = camelData.senderType === 'sender' ? 'receiver' : 'sender';
+            const panel2ListKey = camelData.senderType === 'sender' ? 'receivers' : 'senders';
+            const initialItem = panel2Prefix === 'receiver' ? initialReceiver : initialSenderObject;
+            let mappedPanel2 = [];
+            if (response.data[panel2ApiKey]) {
+                mappedPanel2 = (response.data[panel2ApiKey] || []).map(rec => {
+                    if (!rec) return null;
 
-                // New fields default
-                camelRec.fullPartial = camelRec.fullPartial || '';
-                camelRec.qtyDelivered = camelRec.qtyDelivered != null ? String(camelRec.qtyDelivered) : '0';
+                    const camelRec = {
+                        ...initialItem,
+                        shippingDetails: [],
+                        isNew: false,
+                        validationWarnings: null
+                    };
 
-                return camelRec;
-            }).filter(Boolean);
+                    Object.keys(rec).forEach(apiKey => {
+                        let val = rec[apiKey];
+                        if (val === null || val === undefined) val = '';
+                        const camelKey = snakeToCamel(apiKey);
+                        if (['name', 'contact', 'address', 'email'].includes(camelKey)) {
+                            camelRec[`${panel2Prefix}${camelKey.charAt(0).toUpperCase() + camelKey.slice(1)}`] = val;
+                        } else {
+                            camelRec[camelKey] = val;
+                        }
+                    });
 
-            // Fallback receiver fields to order-level if empty
-            mappedReceivers.forEach(rec => {
+                    // Handle legacy shipping_detail to array
+                    if (rec.shipping_detail) {
+                        const sd = { ...rec.shipping_detail };
+                        Object.keys(sd).forEach(key => {
+                            const camelKey = snakeToCamel(key);
+                            sd[camelKey] = sd[key];
+                            delete sd[key];
+                        });
+                        camelRec.shippingDetails = [sd];
+                    }
+
+                    // If no shippingDetails, create default one from receiver-level totals
+                    if (!camelRec.shippingDetails || camelRec.shippingDetails.length === 0) {
+                        camelRec.shippingDetails = [{
+                            ...initialShippingDetail,
+                            totalNumber: rec.total_number || '',
+                            weight: rec.total_weight || ''
+                        }];
+                    }
+
+                    camelRec.status = rec.status || "Created";
+
+                    // New fields default
+                    camelRec.fullPartial = camelRec.fullPartial || '';
+                    camelRec.qtyDelivered = camelRec.qtyDelivered != null ? String(camelRec.qtyDelivered) : '0';
+
+                    return camelRec;
+                }).filter(Boolean);
+            }
+
+            // Fallback panel2 fields to order-level if empty
+            mappedPanel2.forEach(rec => {
                 if (rec.eta === '' && camelData.eta) {
                     rec.eta = camelData.eta;
                 }
@@ -606,7 +666,7 @@ const OrderForm = () => {
             });
 
             // Compute remainingItems on load
-            mappedReceivers = mappedReceivers.map(rec => {
+            mappedPanel2 = mappedPanel2.map(rec => {
                 const shippingDetails = rec.shippingDetails || [];
                 const recTotal = shippingDetails.reduce((sum, sd) => sum + (parseInt(sd.totalNumber || 0) || 0), 0);
                 const delivered = parseInt(rec.qtyDelivered || 0) || 0;
@@ -637,17 +697,18 @@ const OrderForm = () => {
                 return rec;
             });
 
-            camelData.receivers = mappedReceivers;
-            if (!camelData.receivers || camelData.receivers.length === 0) {
-                camelData.receivers = [{
-                    ...initialReceiver,
+            camelData[panel2ListKey] = mappedPanel2;
+            if (!camelData[panel2ListKey] || camelData[panel2ListKey].length === 0) {
+                camelData[panel2ListKey] = [{
+                    ...initialItem,
                     shippingDetails: [],
                     isNew: true
                 }];
             }
 
-            // Set senderType
-            camelData.senderType = 'sender';
+            // Ensure the other list is empty
+            const otherListKey = panel2ListKey === 'receivers' ? 'senders' : 'receivers';
+            camelData[otherListKey] = [];
 
             // Attachments/gatepass
             const cleanAttachments = (paths) => (paths || []).map(path => {
@@ -671,19 +732,19 @@ const OrderForm = () => {
 
             // Set initial errors from validation warnings
             const initialErrors = {};
-            camelData.receivers.forEach((rec, i) => {
+            mappedPanel2.forEach((rec, i) => {
                 if (rec.validationWarnings) {
                     if (rec.validationWarnings.total_number) {
-                        initialErrors[`receivers[${i}].totalNumber`] = rec.validationWarnings.total_number;
+                        initialErrors[`${panel2ListKey}[${i}].totalNumber`] = rec.validationWarnings.total_number;
                     }
                     if (rec.validationWarnings.qty_delivered) {
-                        initialErrors[`receivers[${i}].qtyDelivered`] = rec.validationWarnings.qty_delivered;
+                        initialErrors[`${panel2ListKey}[${i}].qtyDelivered`] = rec.validationWarnings.qty_delivered;
                     }
                 }
             });
             setErrors(initialErrors);
 
-            const hasWarnings = mappedReceivers.some(r => r && r.validationWarnings);
+            const hasWarnings = mappedPanel2.some(r => r && r.validationWarnings);
             if (hasWarnings) {
                 setSnackbar({
                     open: true,
@@ -741,6 +802,16 @@ const OrderForm = () => {
                 updated.clientReceiverName = '';
                 updated.clientReceiverId = '';
                 updated.clientReceiverMobile = '';
+            }
+            if (name === 'senderType' && value !== prev.senderType) {
+                // Clear opposite owner fields if switching
+                const newPrefix = value;
+                const oldPrefix = prev.senderType;
+                const fields = ['Name', 'Contact', 'Address', 'Email', 'Ref', 'Remarks'];
+                fields.forEach(key => {
+                    const oldKey = `${oldPrefix}${key}`;
+                    if (updated[oldKey]) updated[oldKey] = '';
+                });
             }
             return updated;
         });
@@ -805,8 +876,8 @@ const OrderForm = () => {
             return {
                 ...prev,
                 receivers: prev.receivers.map((r, i) =>
-                    i === index ? { 
-                        ...r, 
+                    i === index ? {
+                        ...r,
                         shippingDetails: r.shippingDetails.map((sd, k) => k === j ? updatedSd : sd)
                     } : r
                 )
@@ -859,8 +930,8 @@ const OrderForm = () => {
         setFormData(prev => ({
             ...prev,
             receivers: prev.receivers.map((r, i) =>
-                i === index ? { 
-                    ...r, 
+                i === index ? {
+                    ...r,
                     shippingDetails: [
                         ...r.shippingDetails.slice(0, j + 1),
                         { ...toDuplicate },
@@ -880,6 +951,148 @@ const OrderForm = () => {
         }));
     };
 
+    // Frontend: handleSaveShipping function (add this to your AddOrder.jsx component)
+// This function saves/updates shipping details for a specific receiver index without full form submission
+// It can be called on the "Save" button click for shipping section
+const handleSaveShipping = async (index) => {
+  if (!validateShippingDetails(index)) {
+    setSnackbar({
+      open: true,
+      message: 'Please fix shipping detail errors',
+      severity: 'error',
+    });
+    return;
+  }
+
+  setLoading(true);
+  const formDataToSend = new FormData();
+
+  // Dynamic panel2
+  const panel2FieldPrefix = formData.senderType === 'sender' ? 'receiver' : 'sender';
+  const listKey = formData.senderType === 'sender' ? 'receivers' : 'senders';
+  const currentList = formData[listKey];
+  const itemData = currentList[index];
+  const snakeRec = {
+    [`${panel2FieldPrefix}_name`]: formData.senderType === 'sender' ? itemData.receiverName || '' : itemData.senderName || '',
+    [`${panel2FieldPrefix}_contact`]: formData.senderType === 'sender' ? itemData.receiverContact || '' : itemData.senderContact || '',
+    [`${panel2FieldPrefix}_address`]: formData.senderType === 'sender' ? itemData.receiverAddress || '' : itemData.senderAddress || '',
+    [`${panel2FieldPrefix}_email`]: formData.senderType === 'sender' ? itemData.receiverEmail || '' : itemData.senderEmail || '',
+    eta: itemData.eta || '',
+    etd: itemData.etd || '',
+    remarks: itemData.remarks || '',
+    shipping_line: itemData.shippingLine || ''
+  };
+
+  // Append panel2 data as JSON
+  formDataToSend.append( `${panel2FieldPrefix}s`, JSON.stringify([snakeRec]) );
+
+  // Append shipping details as order_items flat list for this item
+  const orderItemsToSend = (itemData.shippingDetails || []).map((sd, j) => {
+    const snakeItem = {};
+    Object.keys(sd).forEach(key => {
+      if (key !== 'remainingItems') {
+        const snakeKey = camelToSnake(key);
+        snakeItem[snakeKey] = sd[key] || '';
+      }
+    });
+    snakeItem.item_ref = `ORDER-ITEM-REF-${index + 1}-${j + 1}-${Date.now()}`;
+    return snakeItem;
+  });
+  formDataToSend.append('order_items', JSON.stringify(orderItemsToSend));
+
+  // Append order_id for update
+  formDataToSend.append('order_id', orderId);
+
+  try {
+    const response = await api.put(`/api/orders/${orderId}/shipping`, formDataToSend, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+
+    // Update local formData with response if needed
+    if (response.data.success) {
+      // Optionally refetch full order or update local state
+      await fetchOrder(orderId);
+      setSnackbar({
+        open: true,
+        message: 'Shipping details saved successfully',
+        severity: 'success',
+      });
+    }
+  } catch (err) {
+    console.error("[handleSaveShipping] Error:", err.response?.data || err.message);
+    const backendMsg = err.response?.data?.error || err.message || 'Failed to save shipping details';
+    setSnackbar({
+      open: true,
+      message: `Error: ${backendMsg}`,
+      severity: 'error',
+    });
+  } finally {
+    setLoading(false);
+  }
+};
+
+// Validation helper for shipping details (add this too)
+const validateShippingDetails = (index) => {
+  const panel2FieldPrefix = formData.senderType === 'sender' ? 'receiver' : 'sender';
+  const listKey = formData.senderType === 'sender' ? 'receivers' : 'senders';
+  const currentList = formData[listKey];
+  const itemData = currentList[index];
+  const shippingDetails = itemData.shippingDetails || [];
+  let isValid = true;
+  const newErrors = { ...errors };
+
+  // Validate item level
+  const nameField = formData.senderType === 'sender' ? 'receiverName' : 'senderName';
+  if (!itemData[nameField]?.trim()) {
+    newErrors[`${listKey}[${index}].${nameField}`] = `${panel2FieldPrefix} name required`;
+    isValid = false;
+  }
+  if (!itemData.eta) {
+    newErrors[`${listKey}[${index}].eta`] = 'ETA required';
+    isValid = false;
+  }
+  if (!itemData.etd) {
+    newErrors[`${listKey}[${index}].etd`] = 'ETD required';
+    isValid = false;
+  }
+
+  // Validate each shipping detail
+  shippingDetails.forEach((sd, j) => {
+    if (!sd.pickupLocation?.trim()) {
+      newErrors[`${listKey}[${index}].shippingDetails[${j}].pickupLocation`] = 'Pickup location required';
+      isValid = false;
+    }
+    if (!sd.category?.trim()) {
+      newErrors[`${listKey}[${index}].shippingDetails[${j}].category`] = 'Category required';
+      isValid = false;
+    }
+    if (!sd.subcategory?.trim()) {
+      newErrors[`${listKey}[${index}].shippingDetails[${j}].subcategory`] = 'Subcategory required';
+      isValid = false;
+    }
+    if (!sd.type?.trim()) {
+      newErrors[`${listKey}[${index}].shippingDetails[${j}].type`] = 'Type required';
+      isValid = false;
+    }
+    if (!sd.deliveryAddress?.trim()) {
+      newErrors[`${listKey}[${index}].shippingDetails[${j}].deliveryAddress`] = 'Delivery address required';
+      isValid = false;
+    }
+    const totalNum = parseInt(sd.totalNumber || 0);
+    if (!sd.totalNumber || totalNum <= 0) {
+      newErrors[`${listKey}[${index}].shippingDetails[${j}].totalNumber`] = 'Total number must be positive';
+      isValid = false;
+    }
+    const weight = parseFloat(sd.weight || 0);
+    if (!sd.weight || weight <= 0) {
+      newErrors[`${listKey}[${index}].shippingDetails[${j}].weight`] = 'Weight must be positive';
+      isValid = false;
+    }
+  });
+
+  setErrors(newErrors);
+  return isValid;
+};
     // Sender handlers (similar)
     const addSender = useCallback(() => {
         setFormData((prev) => ({
@@ -971,8 +1184,8 @@ const OrderForm = () => {
         setFormData(prev => ({
             ...prev,
             senders: prev.senders.map((r, i) =>
-                i === index ? { 
-                    ...r, 
+                i === index ? {
+                    ...r,
                     shippingDetails: [
                         ...r.shippingDetails.slice(0, j + 1),
                         { ...toDuplicate },
@@ -1018,138 +1231,139 @@ const OrderForm = () => {
         setFormData((prev) => ({ ...prev, gatepass: [...(Array.isArray(prev.gatepass) ? prev.gatepass : []), ...files] }));
     };
 
-    const handleSave = async () => {
-        if (!validateForm()) {
-            setSnackbar({
-                open: true,
-                message: 'Please fix the errors in the form',
-                severity: 'error',
-            });
-            return;
-        }
-
-        setLoading(true);
-        const formDataToSend = new FormData();
-        const dateFields = ['eta', 'etd', 'dropDate', 'deliveryDate'];
-
-        // Append core orders fields
-        const coreKeys = ['bookingRef', 'rglBookingNumber', 'placeOfLoading', 'pointOfOrigin', 'finalDestination', 'placeOfDelivery', 'orderRemarks', 'eta', 'etd', 'shippingLine', 'attachments'];
-        coreKeys.forEach(key => {
-            const value = formData[key];
-            if (dateFields.includes(key) && value === '') {
-                // Skip empty dates
-            } else {
-                const apiKey = camelToSnake(key);
-                formDataToSend.append(apiKey, value || '');
-            }
+const handleSave = async () => {
+    if (!validateForm()) {
+        setSnackbar({
+            open: true,
+            message: 'Please fix the errors in the form',
+            severity: 'error',
         });
+        return;
+    }
 
-        // Append sender fields
-        const senderKeys = ['senderName', 'senderContact', 'senderAddress', 'senderEmail', 'senderRef', 'senderRemarks', 'senderType', 'selectedSenderOwner'];
-        senderKeys.forEach(key => {
-            const apiKey = camelToSnake(key);
-            formDataToSend.append(apiKey, formData[key] || '');
-        });
+    setLoading(true);
+    const formDataToSend = new FormData();
+    const dateFields = ['eta', 'etd', 'dropDate', 'deliveryDate'];
 
-        // Dynamic panel2 items
-        const panel2Items = formData.senderType === 'receiver' ? formData.senders : formData.receivers;
-        const isSenderMode = formData.senderType === 'receiver';
-
-        // Append receivers as JSON (basic info)
-        const receiversToSend = panel2Items.map((item, i) => {
-            const snakeRec = {};
-            const nameVal = isSenderMode ? (item.senderName || '') : (item.receiverName || '');
-            const contactVal = isSenderMode ? (item.senderContact || '') : (item.receiverContact || '');
-            const addressVal = isSenderMode ? (item.senderAddress || '') : (item.receiverAddress || '');
-            const emailVal = isSenderMode ? (item.senderEmail || '') : (item.receiverEmail || '');
-
-            snakeRec.receiver_name = nameVal;
-            snakeRec.receiver_contact = contactVal;
-            snakeRec.receiver_address = addressVal;
-            snakeRec.receiver_email = emailVal;
-
-            snakeRec.eta = item.eta || '';
-            snakeRec.etd = item.etd || '';
-            snakeRec.shipping_line = item.shippingLine || '';
-            snakeRec.full_partial = item.fullPartial || '';
-            snakeRec.qty_delivered = item.qtyDelivered || '';
-            snakeRec.status = item.status || 'Created';
-            snakeRec.remarks = item.remarks || '';
-
-            return snakeRec;
-        });
-        formDataToSend.append('receivers', JSON.stringify(receiversToSend));
-
-        // Append order_items from all shippingDetails flat
-        const orderItemsToSend = [];
-        panel2Items.forEach((item, i) => {
-            (item.shippingDetails || []).forEach((sd, j) => {
-                const snakeItem = {};
-                Object.keys(sd).forEach(key => {
-                    if (key !== 'remainingItems') {
-                        const snakeKey = camelToSnake(key);
-                        snakeItem[snakeKey] = sd[key] || '';
-                    }
-                });
-                snakeItem.item_ref = `ORDER-ITEM-REF-${i + 1}-${j + 1}-${Date.now()}`;
-                orderItemsToSend.push(snakeItem);
-            });
-        });
-        formDataToSend.append('order_items', JSON.stringify(orderItemsToSend));
-
-        // Append transport fields
-        const transportKeys = ['transportType', 'thirdPartyTransport', 'driverName', 'driverContact', 'driverNic', 'driverPickupLocation', 'truckNumber', 'dropMethod', 'dropoffName', 'dropOffCnic', 'dropOffMobile', 'plateNo', 'dropDate', 'collectionMethod', 'clientReceiverName', 'clientReceiverId', 'clientReceiverMobile', 'deliveryDate', 'gatepass'];
-        transportKeys.forEach(key => {
-            const value = formData[key];
+    // Append core orders fields
+    const coreKeys = ['bookingRef', 'rglBookingNumber', 'placeOfLoading', 'pointOfOrigin', 'finalDestination', 'placeOfDelivery', 'orderRemarks', 'eta', 'etd', 'attachments'];
+    coreKeys.forEach(key => {
+        const value = formData[key];
+        if (dateFields.includes(key) && value === '') {
+            // Skip empty dates
+        } else {
             const apiKey = camelToSnake(key);
             formDataToSend.append(apiKey, value || '');
-        });
-
-        // Handle attachments and gatepass
-        ['attachments', 'gatepass'].forEach(key => {
-            const value = formData[key];
-            if (Array.isArray(value) && value.length > 0) {
-                const existing = value.filter(item => typeof item === 'string');
-                const newFiles = value.filter(item => item instanceof File);
-                if (newFiles.length > 0) {
-                    newFiles.forEach(file => formDataToSend.append(key, file));
-                }
-                if (existing.length > 0) {
-                    const apiKey = camelToSnake(key);
-                    formDataToSend.append(`${apiKey}_existing`, JSON.stringify(existing));
-                }
-            }
-        });
-
-        try {
-            const endpoint = isEditMode ? `/api/orders/${orderId}` : '/api/orders';
-            const method = isEditMode ? 'put' : 'post';
-            const response = await api[method](endpoint, formDataToSend, {
-                headers: { 'Content-Type': 'multipart/form-data' }
-            });
-
-            if (isEditMode) {
-                await fetchOrder(orderId);
-            } else {
-                navigate('/orders');
-            }
-            setSnackbar({
-                open: true,
-                message: isEditMode ? 'Order updated successfully' : 'Order created successfully',
-                severity: 'success',
-            });
-        } catch (err) {
-            console.error("[handleSave] Backend error:", err.response?.data || err.message);
-            const backendMsg = err.response?.data?.error || err.message || 'Failed to save order';
-            setSnackbar({
-                open: true,
-                message: `Backend Error: ${backendMsg}`,
-                severity: 'error',
-            });
-        } finally {
-            setLoading(false);
         }
-    };
+    });
+
+    // Append owner fields dynamically
+    const ownerFieldPrefix = formData.senderType === 'sender' ? 'sender' : 'receiver';
+    const ownerFields = ['Name', 'Contact', 'Address', 'Email', 'Ref', 'Remarks'];
+    ownerFields.forEach(key => {
+        const value = formData[`${ownerFieldPrefix}${key}`] || '';
+        const apiKey = `${ownerFieldPrefix}_${camelToSnake(key.toLowerCase())}`;
+        formDataToSend.append(apiKey, value);
+    });
+    formDataToSend.append('sender_type', formData.senderType);
+
+    // Append selected_sender_owner
+    formDataToSend.append('selected_sender_owner', formData.selectedSenderOwner || '');
+
+    // Dynamic panel2 items
+    const panel2Items = formData.senderType === 'receiver' ? formData.senders : formData.receivers;
+    const panel2FieldPrefix = formData.senderType === 'sender' ? 'receiver' : 'sender';
+    const panel2ArrayKey = `${panel2FieldPrefix}s`;
+
+    // Append panel2 as JSON (basic info)
+    const panel2ToSend = panel2Items.map((item) => {
+        const snakeRec = {
+            [`${panel2FieldPrefix}_name`]: formData.senderType === 'sender' ? (item.receiverName || '') : (item.senderName || ''),
+            [`${panel2FieldPrefix}_contact`]: formData.senderType === 'sender' ? (item.receiverContact || '') : (item.senderContact || ''),
+            [`${panel2FieldPrefix}_address`]: formData.senderType === 'sender' ? (item.receiverAddress || '') : (item.senderAddress || ''),
+            [`${panel2FieldPrefix}_email`]: formData.senderType === 'sender' ? (item.receiverEmail || '') : (item.senderEmail || ''),
+            eta: item.eta || '',
+            etd: item.etd || '',
+            shipping_line: item.shippingLine || '',
+            full_partial: item.fullPartial || '',
+            qty_delivered: item.qtyDelivered || '',
+            status: item.status || 'Created',
+            remarks: item.remarks || '',
+        };
+        return snakeRec;
+    });
+    formDataToSend.append(panel2ArrayKey, JSON.stringify(panel2ToSend));
+
+    // Append order_items from all shippingDetails flat
+    const orderItemsToSend = [];
+    panel2Items.forEach((item, i) => {
+        (item.shippingDetails || []).forEach((sd, j) => {
+            const snakeItem = {};
+            Object.keys(sd).forEach(key => {
+                if (key !== 'remainingItems') {
+                    const snakeKey = camelToSnake(key);
+                    snakeItem[snakeKey] = sd[key] || '';
+                }
+            });
+            snakeItem.item_ref = `ORDER-ITEM-REF-${i + 1}-${j + 1}-${Date.now()}`;
+            orderItemsToSend.push(snakeItem);
+        });
+    });
+    formDataToSend.append('order_items', JSON.stringify(orderItemsToSend));
+
+    // Append transport fields
+    const transportKeys = ['transportType','collection_scope', 'thirdPartyTransport', 'driverName', 'driverContact', 'driverNic', 'driverPickupLocation', 'truckNumber', 'dropMethod', 'dropoffName', 'dropOffCnic', 'dropOffMobile', 'plateNo', 'dropDate', 'collectionMethod', 'clientReceiverName', 'clientReceiverId', 'clientReceiverMobile', 'deliveryDate', 'gatepass'];
+    transportKeys.forEach(key => {
+        const value = formData[key];
+        const apiKey = camelToSnake(key);
+        formDataToSend.append(apiKey, value || '');
+    });
+
+    // Handle attachments and gatepass
+    ['attachments', 'gatepass'].forEach(key => {
+        const value = formData[key];
+        if (Array.isArray(value) && value.length > 0) {
+            const existing = value.filter(item => typeof item === 'string');
+            const newFiles = value.filter(item => item instanceof File);
+            if (newFiles.length > 0) {
+                newFiles.forEach(file => formDataToSend.append(key, file));
+            }
+            if (existing.length > 0) {
+                const apiKey = camelToSnake(key);
+                formDataToSend.append(`${apiKey}_existing`, JSON.stringify(existing));
+            }
+        }
+    });
+
+    try {
+        const endpoint = isEditMode ? `/api/orders/${orderId}` : '/api/orders';
+        const method = isEditMode ? 'put' : 'post';
+        const response = await api[method](endpoint, formDataToSend, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+        });
+
+        if (isEditMode) {
+            await fetchOrder(orderId);
+        } else {
+            navigate('/orders');
+        }
+        setSnackbar({
+            open: true,
+            message: isEditMode ? 'Order updated successfully' : 'Order created successfully',
+            severity: 'success',
+        });
+    } catch (err) {
+        console.error("[handleSave] Backend error:", err.response?.data || err.message);
+        const backendMsg = err.response?.data?.error || err.message || 'Failed to save order';
+        setSnackbar({
+            open: true,
+            message: `Backend Error: ${backendMsg}`,
+            severity: 'error',
+        });
+    } finally {
+        setLoading(false);
+    }
+};
 
     const handleCancel = () => {
         navigate(-1);
@@ -1173,7 +1387,7 @@ const OrderForm = () => {
                 const item = list[idx];
                 if (item?.isNew) return false;
             }
-            return !editableInEdit.some(e => name.includes(e.replace('receivers[].', '').replace('receivers[', '')));
+            return !editableInEdit.some(e => name.includes(e.replace('receivers[].', '').replace('receivers[', '').replace('senders[].', '').replace('senders[', '')));
         }
         return !editableInEdit.includes(name);
     };
@@ -1188,6 +1402,9 @@ const OrderForm = () => {
             </Paper>
         );
     }
+
+    const firstPanel2Item = (formData.senderType === 'sender' ? formData.receivers : formData.senders)[0] || {};
+    const ownerName = formData.senderType === 'sender' ? formData.senderName : formData.receiverName;
 
     return (
         <>
@@ -1488,133 +1705,132 @@ const OrderForm = () => {
                                 </Stack>
                             </AccordionDetails>
                         </Accordion>
-<Accordion
-    expanded={expanded.has("panel2")}
-    onChange={handleAccordionChange("panel2")}
-    sx={{
-        borderRadius: 2,
-        boxShadow: "none",
-        "&:before": { display: "none" },
-        "&.Mui-expanded": { boxShadow: "0 2px 8px rgba(0,0,0,0.1)" },
-    }}
->
-    <AccordionSummary
-        expandIcon={<ExpandMoreIcon />}
-        sx={{
-            bgcolor: expanded.has("panel2") ? "#0d6c6a" : "#fff3e0",
-            borderRadius: 2,
-            "& .MuiAccordionSummary-content": {
-                fontWeight: "bold",
-                color: expanded.has("panel2") ? "#fff" : "#f58220",
-            },
-        }}
-    >
-        2. {formData.senderType === 'receiver' ? 'Sender Details (with Shipping)' : 'Receiver Details (with Shipping)'}
-    </AccordionSummary>
-    <AccordionDetails sx={{ p: 3, bgcolor: "#fff" }}>
-        <Stack spacing={2}>
-            {formData.senderType === 'sender' ? (
-                errors.receivers && <Alert severity="error">{errors.receivers}</Alert>
-            ) : (
-                errors.senders && <Alert severity="error">{errors.senders}</Alert>
-            )}
-            {/* Dynamic: Summary Table for multiples */}
-            {(formData.senderType === 'sender' ? formData.receivers : formData.senders).length > 1 && (
-                <Stack spacing={1}>
-                    <Typography variant="subtitle2" color="primary">
-                        {formData.senderType === 'sender' ? 'Receivers' : 'Senders'} Overview
-                    </Typography>
-                    <Stack direction="row" spacing={2} sx={{ overflowX: 'auto' }}>
-                        {(formData.senderType === 'sender' ? formData.receivers : formData.senders).map((rec, i) => {
-                            const totalItems = (rec.shippingDetails || []).reduce((sum, sd) => sum + (parseInt(sd.totalNumber || 0) || 0), 0);
-                            const remainingItems = (rec.shippingDetails || []).reduce((sum, sd) => sum + (parseInt(sd.remainingItems || 0) || 0), 0);
-                            return (
-                                <Chip
-                                    key={i}
-                                    label={`${
-                                        (formData.senderType === 'sender' ? rec.receiverName : rec.senderName) ||
-                                        (formData.senderType === 'sender' ? `Receiver ${i + 1}` : `Sender ${i + 1}`)
-                                    } (Items: ${totalItems} / Remaining: ${remainingItems})`}
-                                    variant={rec.fullPartial === 'Partial' ? "filled" : "outlined"}
-                                    color={rec.fullPartial === 'Partial' ? "warning" : "primary"}
-                                />
-                            );
-                        })}
-                    </Stack>
-                </Stack>
-            )}
-            {(() => {
-                const currentList = formData.senderType === 'sender' ? formData.receivers : formData.senders;
-                const isSenderMode = formData.senderType === 'receiver';
-                const typePrefix = isSenderMode ? 'Sender' : 'Receiver';
-                const handleChangeFn = isSenderMode ? handleSenderChange : handleReceiverChange;
-                const handleShippingChangeFn = isSenderMode ? handleSenderShippingChange : handleReceiverShippingChange;
-                const handlePartialChangeFn = isSenderMode ? handleSenderPartialChange : handleReceiverPartialChange;
-                const addShippingFn = isSenderMode ? addSenderShipping : addReceiverShipping;
-                const duplicateShippingFn = isSenderMode ? duplicateSenderShipping : duplicateReceiverShipping;
-                const removeShippingFn = isSenderMode ? removeSenderShipping : removeReceiverShipping;
-                const listKey = isSenderMode ? 'senders' : 'receivers';
-                const errorsPrefix = isSenderMode ? `senders[${0}]` : `receivers[${0}]`;
-                const disabledPrefix = isSenderMode ? `senders[${0}]` : `receivers[${0}]`;
-                const addRecFn = isSenderMode ? addSender : addReceiver;
-
-                const renderRecForm = (rec, i) => {
-                    const recErrorsPrefix = isSenderMode ? `senders[${i}]` : `receivers[${i}]`;
-                    const recDisabledPrefix = isSenderMode ? `senders[${i}]` : `receivers[${i}]`;
-                    const emptySd = {
-                        pickupLocation: '',
-                        category: '',
-                        subcategory: '',
-                        type: '',
-                        totalNumber: '',
-                        weight: '',
-                        deliveryAddress: '',
-                        itemRef: `REF-${i + 1}-1`
-                    };
-
-                    const handleEmptySdChange = (field, value) => {
-                        addShippingFn(i);
-                        handleShippingChangeFn(i, 0, field, value);
-                    };
-
-                    const renderShippingSection = () => (
-                        <Stack spacing={2}>
-                            <Typography variant="subtitle1" color="primary" fontWeight={"bold"} mb={1}>
-                                Shipping Details
-                            </Typography>
-                            {/* ETA, ETD, Shipping Line at receiver/sender level */}
-                            <Box
+                        <Accordion
+                            expanded={expanded.has("panel2")}
+                            onChange={handleAccordionChange("panel2")}
+                            sx={{
+                                borderRadius: 2,
+                                boxShadow: "none",
+                                "&:before": { display: "none" },
+                                "&.Mui-expanded": { boxShadow: "0 2px 8px rgba(0,0,0,0.1)" },
+                            }}
+                        >
+                            <AccordionSummary
+                                expandIcon={<ExpandMoreIcon />}
                                 sx={{
-                                    display: 'flex',
-                                    flexDirection: { xs: 'column', sm: 'row' },
-                                    gap: 2,
-                                    alignItems: 'stretch',
+                                    bgcolor: expanded.has("panel2") ? "#0d6c6a" : "#fff3e0",
+                                    borderRadius: 2,
+                                    "& .MuiAccordionSummary-content": {
+                                        fontWeight: "bold",
+                                        color: expanded.has("panel2") ? "#fff" : "#f58220",
+                                    },
                                 }}
                             >
-                                <CustomTextField
-                                    label="ETA"
-                                    type="date"
-                                    value={rec.eta || ""}
-                                    onChange={(e) => handleChangeFn(i, 'eta')(e)}
-                                    InputLabelProps={{ shrink: true }}
-                                    error={!!errors[`${listKey}[${i}].eta`]}
-                                    helperText={errors[`${listKey}[${i}].eta`]}
-                                    required
-                                    disabled={isFieldDisabled(`${recDisabledPrefix}.eta`)}
-                                />
-                                <CustomTextField
-                                    label="ETD"
-                                    type="date"
-                                    value={rec.etd || ""}
-                                    onChange={(e) => handleChangeFn(i, 'etd')(e)}
-                                    InputLabelProps={{ shrink: true }}
-                                    error={!!errors[`${listKey}[${i}].etd`]}
-                                    helperText={errors[`${listKey}[${i}].etd`]}
-                                    required
-                                    disabled={isFieldDisabled(`${recDisabledPrefix}.etd`)}
-                                />
-                            </Box>
-                            {/* <CustomTextField
+                                2. {formData.senderType === 'receiver' ? 'Sender Details (with Shipping)' : 'Receiver Details (with Shipping)'}
+                            </AccordionSummary>
+                            <AccordionDetails sx={{ p: 3, bgcolor: "#fff" }}>
+                                <Stack spacing={2}>
+                                    {formData.senderType === 'sender' ? (
+                                        errors.receivers && <Alert severity="error">{errors.receivers}</Alert>
+                                    ) : (
+                                        errors.senders && <Alert severity="error">{errors.senders}</Alert>
+                                    )}
+                                    {/* Dynamic: Summary Table for multiples */}
+                                    {(formData.senderType === 'sender' ? formData.receivers : formData.senders).length > 1 && (
+                                        <Stack spacing={1}>
+                                            <Typography variant="subtitle2" color="primary">
+                                                {formData.senderType === 'sender' ? 'Receivers' : 'Senders'} Overview
+                                            </Typography>
+                                            <Stack direction="row" spacing={2} sx={{ overflowX: 'auto' }}>
+                                                {(formData.senderType === 'sender' ? formData.receivers : formData.senders).map((rec, i) => {
+                                                    const totalItems = (rec.shippingDetails || []).reduce((sum, sd) => sum + (parseInt(sd.totalNumber || 0) || 0), 0);
+                                                    const remainingItems = (rec.shippingDetails || []).reduce((sum, sd) => sum + (parseInt(sd.remainingItems || 0) || 0), 0);
+                                                    return (
+                                                        <Chip
+                                                            key={i}
+                                                            label={`${(formData.senderType === 'sender' ? rec.receiverName : rec.senderName) ||
+                                                                (formData.senderType === 'sender' ? `Receiver ${i + 1}` : `Sender ${i + 1}`)
+                                                                } (Items: ${totalItems} / Remaining: ${remainingItems})`}
+                                                            variant={rec.fullPartial === 'Partial' ? "filled" : "outlined"}
+                                                            color={rec.fullPartial === 'Partial' ? "warning" : "primary"}
+                                                        />
+                                                    );
+                                                })}
+                                            </Stack>
+                                        </Stack>
+                                    )}
+                                    {(() => {
+                                        const currentList = formData.senderType === 'sender' ? formData.receivers : formData.senders;
+                                        const isSenderMode = formData.senderType === 'receiver';
+                                        const typePrefix = isSenderMode ? 'Sender' : 'Receiver';
+                                        const handleChangeFn = isSenderMode ? handleSenderChange : handleReceiverChange;
+                                        const handleShippingChangeFn = isSenderMode ? handleSenderShippingChange : handleReceiverShippingChange;
+                                        const handlePartialChangeFn = isSenderMode ? handleSenderPartialChange : handleReceiverPartialChange;
+                                        const addShippingFn = isSenderMode ? addSenderShipping : addReceiverShipping;
+                                        const duplicateShippingFn = isSenderMode ? duplicateSenderShipping : duplicateReceiverShipping;
+                                        const removeShippingFn = isSenderMode ? removeSenderShipping : removeReceiverShipping;
+                                        const listKey = isSenderMode ? 'senders' : 'receivers';
+                                        const errorsPrefix = isSenderMode ? `senders[${0}]` : `receivers[${0}]`;
+                                        const disabledPrefix = isSenderMode ? `senders[${0}]` : `receivers[${0}]`;
+                                        const addRecFn = isSenderMode ? addSender : addReceiver;
+
+                                        const renderRecForm = (rec, i) => {
+                                            const recErrorsPrefix = isSenderMode ? `senders[${i}]` : `receivers[${i}]`;
+                                            const recDisabledPrefix = isSenderMode ? `senders[${i}]` : `receivers[${i}]`;
+                                            const emptySd = {
+                                                pickupLocation: '',
+                                                category: '',
+                                                subcategory: '',
+                                                type: '',
+                                                totalNumber: '',
+                                                weight: '',
+                                                deliveryAddress: '',
+                                                itemRef: `REF-${i + 1}-1`
+                                            };
+
+                                            const handleEmptySdChange = (field, value) => {
+                                                addShippingFn(i);
+                                                handleShippingChangeFn(i, 0, field)({ target: { value } });
+                                            };
+
+                                            const renderShippingSection = () => (
+                                                <Stack spacing={2}>
+                                                    <Typography variant="subtitle1" color="primary" fontWeight={"bold"} mb={1}>
+                                                        Shipping Details
+                                                    </Typography>
+                                                    {/* ETA, ETD, Shipping Line at receiver/sender level */}
+                                                    <Box
+                                                        sx={{
+                                                            display: 'flex',
+                                                            flexDirection: { xs: 'column', sm: 'row' },
+                                                            gap: 2,
+                                                            alignItems: 'stretch',
+                                                        }}
+                                                    >
+                                                        <CustomTextField
+                                                            label="ETA"
+                                                            type="date"
+                                                            value={rec.eta || ""}
+                                                            onChange={(e) => handleChangeFn(i, 'eta')(e)}
+                                                            InputLabelProps={{ shrink: true }}
+                                                            error={!!errors[`${listKey}[${i}].eta`]}
+                                                            helperText={errors[`${listKey}[${i}].eta`]}
+                                                            required
+                                                            disabled={isFieldDisabled(`${recDisabledPrefix}.eta`)}
+                                                        />
+                                                        <CustomTextField
+                                                            label="ETD"
+                                                            type="date"
+                                                            value={rec.etd || ""}
+                                                            onChange={(e) => handleChangeFn(i, 'etd')(e)}
+                                                            InputLabelProps={{ shrink: true }}
+                                                            error={!!errors[`${listKey}[${i}].etd`]}
+                                                            helperText={errors[`${listKey}[${i}].etd`]}
+                                                            required
+                                                            disabled={isFieldDisabled(`${recDisabledPrefix}.etd`)}
+                                                        />
+                                                    </Box>
+                                                    {/* <CustomTextField
                                 label="Shipping Line"
                                 value={rec.shippingLine || ""}
                                 onChange={(e) => handleChangeFn(i, 'shippingLine')(e)}
@@ -1624,374 +1840,374 @@ const OrderForm = () => {
                                 fullWidth
                                 disabled={isFieldDisabled(`${recDisabledPrefix}.shippingLine`)}
                             /> */}
-                            {/* Shipping Details Forms */}
-                            {(rec.shippingDetails || []).length === 0 ? (
-                                <Box sx={{ p: 1.5, border: 1, borderColor: "grey.200", borderRadius: 1 }}>
-                                    <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
-                                        <Typography variant="body2" color="primary" fontWeight="bold">
-                                            Shipping Detail 1
-                                        </Typography>
-                                        <Stack direction="row" spacing={1}>
-                                            {!isEditMode && (
-                                                <>
-                                                    <IconButton
-                                                        onClick={() => duplicateShippingFn(i, 0)}
-                                                        size="small"
-                                                        title="Duplicate"
-                                                    >
-                                                        <CopyIcon />
-                                                    </IconButton>
-                                                    <IconButton
-                                                        onClick={() => removeShippingFn(i, 0)}
-                                                        size="small"
-                                                        title="Delete"
-                                                    >
-                                                        <DeleteIcon />
-                                                    </IconButton>
-                                                </>
-                                            )}
-                                        </Stack>
-                                    </Stack>
-                                    <Stack spacing={1.5}>
-                                        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                            <CustomTextField
-                                                label="Pickup Location"
-                                                value={emptySd.pickupLocation}
-                                                onChange={(e) => handleEmptySdChange('pickupLocation', e.target.value)}
-                                                error={!!errors[`${listKey}[${i}].shippingDetails[0].pickupLocation`]}
-                                                helperText={errors[`${listKey}[${i}].shippingDetails[0].pickupLocation`]}
-                                                required
-                                                disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].pickupLocation`)}
-                                            />
-                                            <CustomSelect
-                                                label="Category"
-                                                value={emptySd.category}
-                                                onChange={(e) => handleEmptySdChange('category', e.target.value)}
-                                                error={!!errors[`${listKey}[${i}].shippingDetails[0].category`]}
-                                                helperText={errors[`${listKey}[${i}].shippingDetails[0].category`]}
-                                                required
-                                                disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].category`)}
-                                                renderValue={(selected) => selected || "Select Category"}
-                                            >
-                                                <MenuItem value="">Select Category</MenuItem>
-                                                {categories.map((c) => (
-                                                    <MenuItem key={c} value={c}>
-                                                        {c}
-                                                    </MenuItem>
-                                                ))}
-                                            </CustomSelect>
-                                        </Box>
-                                        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                            <CustomSelect
-                                                label="Subcategory"
-                                                value={emptySd.subcategory}
-                                                onChange={(e) => handleEmptySdChange('subcategory', e.target.value)}
-                                                error={!!errors[`${listKey}[${i}].shippingDetails[0].subcategory`]}
-                                                helperText={errors[`${listKey}[${i}].shippingDetails[0].subcategory`]}
-                                                required
-                                                disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].subcategory`)}
-                                                renderValue={(selected) => selected || "Select Subcategory"}
-                                            >
-                                                <MenuItem value="">Select Subcategory</MenuItem>
-                                                {(categorySubMap[emptySd.category] || []).map((sc) => (
-                                                    <MenuItem key={sc} value={sc}>
-                                                        {sc}
-                                                    </MenuItem>
-                                                ))}
-                                            </CustomSelect>
-                                            <CustomSelect
-                                                label="Type"
-                                                value={emptySd.type}
-                                                onChange={(e) => handleEmptySdChange('type', e.target.value)}
-                                                error={!!errors[`${listKey}[${i}].shippingDetails[0].type`]}
-                                                helperText={errors[`${listKey}[${i}].shippingDetails[0].type`]}
-                                                required
-                                                disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].type`)}
-                                                renderValue={(selected) => selected || "Select Type"}
-                                            >
-                                                <MenuItem value="">Select Unit</MenuItem>
-                                                {types.slice(1).map((t) => (
-                                                    <MenuItem key={t} value={t}>
-                                                        {t}
-                                                    </MenuItem>
-                                                ))}
-                                            </CustomSelect>
-                                        </Box>
-                                        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                            <CustomTextField
-                                                label="Total Number"
-                                                value={emptySd.totalNumber}
-                                                onChange={(e) => handleEmptySdChange('totalNumber', e.target.value)}
-                                                error={!!errors[`${listKey}[${i}].shippingDetails[0].totalNumber`]}
-                                                helperText={errors[`${listKey}[${i}].shippingDetails[0].totalNumber`]}
-                                                required
-                                                disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].totalNumber`)}
-                                            />
-                                            <CustomTextField
-                                                label="Weight"
-                                                value={emptySd.weight}
-                                                onChange={(e) => handleEmptySdChange('weight', e.target.value)}
-                                                error={!!errors[`${listKey}[${i}].shippingDetails[0].weight`]}
-                                                helperText={errors[`${listKey}[${i}].shippingDetails[0].weight`]}
-                                                required
-                                                disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].weight`)}
-                                            />
-                                        </Box>
-                                        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                            <CustomTextField
-                                                label="Delivery Address"
-                                                value={emptySd.deliveryAddress}
-                                                onChange={(e) => handleEmptySdChange('deliveryAddress', e.target.value)}
-                                                error={!!errors[`${listKey}[${i}].shippingDetails[0].deliveryAddress`]}
-                                                helperText={errors[`${listKey}[${i}].shippingDetails[0].deliveryAddress`]}
-                                                fullWidth
-                                                disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].deliveryAddress`)}
-                                            />
-                                            <CustomTextField label="Ref Number" value={emptySd.itemRef} disabled={true} />
-                                        </Box>
-                                    </Stack>
-                                </Box>
-                            ) : (
-                                (rec.shippingDetails || []).map((sd, j) => (
-                                    <Box key={j} sx={{ p: 1.5, border: 1, borderColor: "grey.200", borderRadius: 1 }}>
-                                        <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
-                                            <Typography variant="body2" color="primary" fontWeight="bold">
-                                                Shipping Detail {j + 1}
-                                            </Typography>
-                                            <Stack direction="row" spacing={1}>
-                                                {!isEditMode && (
-                                                    <>
-                                                        <IconButton
-                                                            onClick={() => duplicateShippingFn(i, j)}
-                                                            size="small"
-                                                            title="Duplicate"
+                                                    {/* Shipping Details Forms */}
+                                                    {(rec.shippingDetails || []).length === 0 ? (
+                                                        <Box sx={{ p: 1.5, border: 1, borderColor: "grey.200", borderRadius: 1 }}>
+                                                            <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
+                                                                <Typography variant="body2" color="primary" fontWeight="bold">
+                                                                    Shipping Detail 1
+                                                                </Typography>
+                                                                <Stack direction="row" spacing={1}>
+                                                                    {!isEditMode && (
+                                                                        <>
+                                                                            <IconButton
+                                                                                onClick={() => duplicateShippingFn(i, 0)}
+                                                                                size="small"
+                                                                                title="Duplicate"
+                                                                            >
+                                                                                <CopyIcon />
+                                                                            </IconButton>
+                                                                            <IconButton
+                                                                                onClick={() => removeShippingFn(i, 0)}
+                                                                                size="small"
+                                                                                title="Delete"
+                                                                            >
+                                                                                <DeleteIcon />
+                                                                            </IconButton>
+                                                                        </>
+                                                                    )}
+                                                                </Stack>
+                                                            </Stack>
+                                                            <Stack spacing={1.5}>
+                                                                <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                                    <CustomTextField
+                                                                        label="Pickup Location"
+                                                                        value={emptySd.pickupLocation}
+                                                                        onChange={(e) => handleEmptySdChange('pickupLocation', e.target.value)}
+                                                                        error={!!errors[`${listKey}[${i}].shippingDetails[0].pickupLocation`]}
+                                                                        helperText={errors[`${listKey}[${i}].shippingDetails[0].pickupLocation`]}
+                                                                        required
+                                                                        disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].pickupLocation`)}
+                                                                    />
+                                                                    <CustomSelect
+                                                                        label="Category"
+                                                                        value={emptySd.category}
+                                                                        onChange={(e) => handleEmptySdChange('category', e.target.value)}
+                                                                        error={!!errors[`${listKey}[${i}].shippingDetails[0].category`]}
+                                                                        helperText={errors[`${listKey}[${i}].shippingDetails[0].category`]}
+                                                                        required
+                                                                        disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].category`)}
+                                                                        renderValue={(selected) => selected || "Select Category"}
+                                                                    >
+                                                                        <MenuItem value="">Select Category</MenuItem>
+                                                                        {categories.map((c) => (
+                                                                            <MenuItem key={c} value={c}>
+                                                                                {c}
+                                                                            </MenuItem>
+                                                                        ))}
+                                                                    </CustomSelect>
+                                                                </Box>
+                                                                <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                                    <CustomSelect
+                                                                        label="Subcategory"
+                                                                        value={emptySd.subcategory}
+                                                                        onChange={(e) => handleEmptySdChange('subcategory', e.target.value)}
+                                                                        error={!!errors[`${listKey}[${i}].shippingDetails[0].subcategory`]}
+                                                                        helperText={errors[`${listKey}[${i}].shippingDetails[0].subcategory`]}
+                                                                        required
+                                                                        disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].subcategory`)}
+                                                                        renderValue={(selected) => selected || "Select Subcategory"}
+                                                                    >
+                                                                        <MenuItem value="">Select Subcategory</MenuItem>
+                                                                        {(categorySubMap[emptySd.category] || []).map((sc) => (
+                                                                            <MenuItem key={sc} value={sc}>
+                                                                                {sc}
+                                                                            </MenuItem>
+                                                                        ))}
+                                                                    </CustomSelect>
+                                                                    <CustomSelect
+                                                                        label="Type"
+                                                                        value={emptySd.type}
+                                                                        onChange={(e) => handleEmptySdChange('type', e.target.value)}
+                                                                        error={!!errors[`${listKey}[${i}].shippingDetails[0].type`]}
+                                                                        helperText={errors[`${listKey}[${i}].shippingDetails[0].type`]}
+                                                                        required
+                                                                        disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].type`)}
+                                                                        renderValue={(selected) => selected || "Select Type"}
+                                                                    >
+                                                                        <MenuItem value="">Select Unit</MenuItem>
+                                                                        {types.slice(1).map((t) => (
+                                                                            <MenuItem key={t} value={t}>
+                                                                                {t}
+                                                                            </MenuItem>
+                                                                        ))}
+                                                                    </CustomSelect>
+                                                                </Box>
+                                                                <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                                    <CustomTextField
+                                                                        label="Total Number"
+                                                                        value={emptySd.totalNumber}
+                                                                        onChange={(e) => handleEmptySdChange('totalNumber', e.target.value)}
+                                                                        error={!!errors[`${listKey}[${i}].shippingDetails[0].totalNumber`]}
+                                                                        helperText={errors[`${listKey}[${i}].shippingDetails[0].totalNumber`]}
+                                                                        required
+                                                                        disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].totalNumber`)}
+                                                                    />
+                                                                    <CustomTextField
+                                                                        label="Weight"
+                                                                        value={emptySd.weight}
+                                                                        onChange={(e) => handleEmptySdChange('weight', e.target.value)}
+                                                                        error={!!errors[`${listKey}[${i}].shippingDetails[0].weight`]}
+                                                                        helperText={errors[`${listKey}[${i}].shippingDetails[0].weight`]}
+                                                                        required
+                                                                        disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].weight`)}
+                                                                    />
+                                                                </Box>
+                                                                <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                                    <CustomTextField
+                                                                        label="Delivery Address"
+                                                                        value={emptySd.deliveryAddress}
+                                                                        onChange={(e) => handleEmptySdChange('deliveryAddress', e.target.value)}
+                                                                        error={!!errors[`${listKey}[${i}].shippingDetails[0].deliveryAddress`]}
+                                                                        helperText={errors[`${listKey}[${i}].shippingDetails[0].deliveryAddress`]}
+                                                                        fullWidth
+                                                                        disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].deliveryAddress`)}
+                                                                    />
+                                                                    <CustomTextField label="Ref Number" value={emptySd.itemRef} disabled={true} />
+                                                                </Box>
+                                                            </Stack>
+                                                        </Box>
+                                                    ) : (
+                                                        (rec.shippingDetails || []).map((sd, j) => (
+                                                            <Box key={j} sx={{ p: 1.5, border: 1, borderColor: "grey.200", borderRadius: 1 }}>
+                                                                <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
+                                                                    <Typography variant="body2" color="primary" fontWeight="bold">
+                                                                        Shipping Detail {j + 1}
+                                                                    </Typography>
+                                                                    <Stack direction="row" spacing={1}>
+                                                                        {!isEditMode && (
+                                                                            <>
+                                                                                <IconButton
+                                                                                    onClick={() => duplicateShippingFn(i, j)}
+                                                                                    size="small"
+                                                                                    title="Duplicate"
+                                                                                >
+                                                                                    <CopyIcon />
+                                                                                </IconButton>
+                                                                                {(rec.shippingDetails || []).length > 1 && (
+                                                                                    <IconButton
+                                                                                        onClick={() => removeShippingFn(i, j)}
+                                                                                        size="small"
+                                                                                        title="Delete"
+                                                                                    >
+                                                                                        <DeleteIcon />
+                                                                                    </IconButton>
+                                                                                )}
+                                                                            </>
+                                                                        )}
+                                                                    </Stack>
+                                                                </Stack>
+                                                                <Stack spacing={1.5}>
+                                                                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                                        <CustomTextField
+                                                                            label="Pickup Location"
+                                                                            value={sd.pickupLocation || ""}
+                                                                            onChange={(e) => handleShippingChangeFn(i, j, 'pickupLocation')(e)}
+                                                                            error={!!errors[`${listKey}[${i}].shippingDetails[${j}].pickupLocation`]}
+                                                                            helperText={errors[`${listKey}[${i}].shippingDetails[${j}].pickupLocation`]}
+                                                                            required
+                                                                            // disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[${j}].pickupLocation`)}
+                                                                        />
+                                                                        <CustomSelect
+                                                                            label="Category"
+                                                                            value={sd.category || ""}
+                                                                            onChange={(e) => handleShippingChangeFn(i, j, 'category')(e)}
+                                                                            error={!!errors[`${listKey}[${i}].shippingDetails[${j}].category`]}
+                                                                            helperText={errors[`${listKey}[${i}].shippingDetails[${j}].category`]}
+                                                                            required
+                                                                            // disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[${j}].category`)}
+                                                                            renderValue={(selected) => selected || "Select Category"}
+                                                                        >
+                                                                            <MenuItem value="">Select Category</MenuItem>
+                                                                            {categories.map((c) => (
+                                                                                <MenuItem key={c} value={c}>
+                                                                                    {c}
+                                                                                </MenuItem>
+                                                                            ))}
+                                                                        </CustomSelect>
+                                                                    </Box>
+                                                                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                                        <CustomSelect
+                                                                            label="Subcategory"
+                                                                            value={sd.subcategory || ""}
+                                                                            onChange={(e) => handleShippingChangeFn(i, j, 'subcategory')(e)}
+                                                                            error={!!errors[`${listKey}[${i}].shippingDetails[${j}].subcategory`]}
+                                                                            helperText={errors[`${listKey}[${i}].shippingDetails[${j}].subcategory`]}
+                                                                            required
+                                                                            // disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[${j}].subcategory`)}
+                                                                            renderValue={(selected) => selected || "Select Subcategory"}
+                                                                        >
+                                                                            <MenuItem value="">Select Subcategory</MenuItem>
+                                                                            {(categorySubMap[sd.category] || []).map((sc) => (
+                                                                                <MenuItem key={sc} value={sc}>
+                                                                                    {sc}
+                                                                                </MenuItem>
+                                                                            ))}
+                                                                        </CustomSelect>
+                                                                        <CustomSelect
+                                                                            label="Type"
+                                                                            value={sd.type || ""}
+                                                                            onChange={(e) => handleShippingChangeFn(i, j, 'type')(e)}
+                                                                            error={!!errors[`${listKey}[${i}].shippingDetails[${j}].type`]}
+                                                                            helperText={errors[`${listKey}[${i}].shippingDetails[${j}].type`]}
+                                                                            required
+                                                                            // disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[${j}].type`)}
+                                                                            renderValue={(selected) => selected || "Select Type"}
+                                                                        >
+                                                                            <MenuItem value="">Select Unit</MenuItem>
+                                                                            {types.slice(1).map((t) => (
+                                                                                <MenuItem key={t} value={t}>
+                                                                                    {t}
+                                                                                </MenuItem>
+                                                                            ))}
+                                                                        </CustomSelect>
+                                                                    </Box>
+                                                                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                                        <CustomTextField
+                                                                            label="Total Number"
+                                                                            value={sd.totalNumber || ""}
+                                                                            onChange={(e) => handleShippingChangeFn(i, j, 'totalNumber')(e)}
+                                                                            error={!!errors[`${listKey}[${i}].shippingDetails[${j}].totalNumber`]}
+                                                                            helperText={errors[`${listKey}[${i}].shippingDetails[${j}].totalNumber`]}
+                                                                            required
+                                                                            // disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[${j}].totalNumber`)}
+                                                                        />
+                                                                        <CustomTextField
+                                                                            label="Weight"
+                                                                            value={sd.weight || ""}
+                                                                            onChange={(e) => handleShippingChangeFn(i, j, 'weight')(e)}
+                                                                            error={!!errors[`${listKey}[${i}].shippingDetails[${j}].weight`]}
+                                                                            helperText={errors[`${listKey}[${i}].shippingDetails[${j}].weight`]}
+                                                                            required
+                                                                            // disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[${j}].weight`)}
+                                                                        />
+                                                                    </Box>
+                                                                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                                        <CustomTextField
+                                                                            label="Delivery Address"
+                                                                            value={sd.deliveryAddress || ""}
+                                                                            onChange={(e) => handleShippingChangeFn(i, j, 'deliveryAddress')(e)}
+                                                                            error={!!errors[`${listKey}[${i}].shippingDetails[${j}].deliveryAddress`]}
+                                                                            helperText={errors[`${listKey}[${i}].shippingDetails[${j}].deliveryAddress`]}
+                                                                            fullWidth
+                                                                            // disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[${j}].deliveryAddress`)}s
+                                                                        />
+                                                                        <CustomTextField label="Ref Number" value={sd.itemRef || `REF-${i + 1}-${j + 1}`} disabled={true} />
+                                                                    </Box>
+                                                                </Stack>
+                                                            </Box>
+                                                        ))
+                                                    )}
+                                                    <Stack direction="row" spacing={1} sx={{ justifyContent: 'space-between' }}>
+                                                        <Button
+                                                            variant="outlined"
+                                                            startIcon={<AddIcon />}
+                                                            onClick={() => addShippingFn(i)}
                                                         >
-                                                            <CopyIcon />
-                                                        </IconButton>
-                                                        {(rec.shippingDetails || []).length > 1 && (
-                                                            <IconButton
-                                                                onClick={() => removeShippingFn(i, j)}
-                                                                size="small"
-                                                                title="Delete"
-                                                            >
-                                                                <DeleteIcon />
-                                                            </IconButton>
-                                                        )}
-                                                    </>
-                                                )}
-                                            </Stack>
-                                        </Stack>
-                                        <Stack spacing={1.5}>
-                                            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                                <CustomTextField
-                                                    label="Pickup Location"
-                                                    value={sd.pickupLocation || ""}
-                                                    onChange={(e) => handleShippingChangeFn(i, j, 'pickupLocation')(e)}
-                                                    error={!!errors[`${listKey}[${i}].shippingDetails[${j}].pickupLocation`]}
-                                                    helperText={errors[`${listKey}[${i}].shippingDetails[${j}].pickupLocation`]}
-                                                    required
-                                                    disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[${j}].pickupLocation`)}
-                                                />
-                                                <CustomSelect
-                                                    label="Category"
-                                                    value={sd.category || ""}
-                                                    onChange={(e) => handleShippingChangeFn(i, j, 'category')(e)}
-                                                    error={!!errors[`${listKey}[${i}].shippingDetails[${j}].category`]}
-                                                    helperText={errors[`${listKey}[${i}].shippingDetails[${j}].category`]}
-                                                    required
-                                                    disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[${j}].category`)}
-                                                    renderValue={(selected) => selected || "Select Category"}
-                                                >
-                                                    <MenuItem value="">Select Category</MenuItem>
-                                                    {categories.map((c) => (
-                                                        <MenuItem key={c} value={c}>
-                                                            {c}
-                                                        </MenuItem>
-                                                    ))}
-                                                </CustomSelect>
-                                            </Box>
-                                            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                                <CustomSelect
-                                                    label="Subcategory"
-                                                    value={sd.subcategory || ""}
-                                                    onChange={(e) => handleShippingChangeFn(i, j, 'subcategory')(e)}
-                                                    error={!!errors[`${listKey}[${i}].shippingDetails[${j}].subcategory`]}
-                                                    helperText={errors[`${listKey}[${i}].shippingDetails[${j}].subcategory`]}
-                                                    required
-                                                    disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[${j}].subcategory`)}
-                                                    renderValue={(selected) => selected || "Select Subcategory"}
-                                                >
-                                                    <MenuItem value="">Select Subcategory</MenuItem>
-                                                    {(categorySubMap[sd.category] || []).map((sc) => (
-                                                        <MenuItem key={sc} value={sc}>
-                                                            {sc}
-                                                        </MenuItem>
-                                                    ))}
-                                                </CustomSelect>
-                                                <CustomSelect
-                                                    label="Type"
-                                                    value={sd.type || ""}
-                                                    onChange={(e) => handleShippingChangeFn(i, j, 'type')(e)}
-                                                    error={!!errors[`${listKey}[${i}].shippingDetails[${j}].type`]}
-                                                    helperText={errors[`${listKey}[${i}].shippingDetails[${j}].type`]}
-                                                    required
-                                                    disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[${j}].type`)}
-                                                    renderValue={(selected) => selected || "Select Type"}
-                                                >
-                                                    <MenuItem value="">Select Unit</MenuItem>
-                                                    {types.slice(1).map((t) => (
-                                                        <MenuItem key={t} value={t}>
-                                                            {t}
-                                                        </MenuItem>
-                                                    ))}
-                                                </CustomSelect>
-                                            </Box>
-                                            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                                <CustomTextField
-                                                    label="Total Number"
-                                                    value={sd.totalNumber || ""}
-                                                    onChange={(e) => handleShippingChangeFn(i, j, 'totalNumber')(e)}
-                                                    error={!!errors[`${listKey}[${i}].shippingDetails[${j}].totalNumber`]}
-                                                    helperText={errors[`${listKey}[${i}].shippingDetails[${j}].totalNumber`]}
-                                                    required
-                                                    disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[${j}].totalNumber`)}
-                                                />
-                                                <CustomTextField
-                                                    label="Weight"
-                                                    value={sd.weight || ""}
-                                                    onChange={(e) => handleShippingChangeFn(i, j, 'weight')(e)}
-                                                    error={!!errors[`${listKey}[${i}].shippingDetails[${j}].weight`]}
-                                                    helperText={errors[`${listKey}[${i}].shippingDetails[${j}].weight`]}
-                                                    required
-                                                    disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[${j}].weight`)}
-                                                />
-                                            </Box>
-                                            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                                <CustomTextField
-                                                    label="Delivery Address"
-                                                    value={sd.deliveryAddress || ""}
-                                                    onChange={(e) => handleShippingChangeFn(i, j, 'deliveryAddress')(e)}
-                                                    error={!!errors[`${listKey}[${i}].shippingDetails[${j}].deliveryAddress`]}
-                                                    helperText={errors[`${listKey}[${i}].shippingDetails[${j}].deliveryAddress`]}
-                                                    fullWidth
-                                                    disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[${j}].deliveryAddress`)}
-                                                />
-                                                <CustomTextField label="Ref Number" value={sd.itemRef || `REF-${i + 1}-${j + 1}`} disabled={true} />
-                                            </Box>
-                                        </Stack>
-                                    </Box>
-                                ))
-                            )}
-                            <Stack direction="row" spacing={1} sx={{justifyContent: 'space-between' }}>
-                                <Button
-                                    variant="outlined"
-                                    startIcon={<AddIcon />}
-                                    onClick={() => addShippingFn(i)}
-                                >
-                                    Add Shipping Detail
-                                </Button>
-                                <Button
-                                    variant="contained"
-                                    onClick={() => handleSaveShipping?.(i)} // Define handleSaveShipping in parent component if needed
-                                >
-                                    Save
-                                </Button>
-                            </Stack>
-                        </Stack>
-                    );
+                                                            Add Shipping Detail
+                                                        </Button>
+                                                        <Button
+                                                            variant="contained"
+                                                            onClick={() => handleSaveShipping(i)}
+                                                        >
+                                                            Save
+                                                        </Button>
+                                                    </Stack>
+                                                </Stack>
+                                            );
 
-                    return (
-                        <Box key={i} sx={{ p: 2, border: 1, borderColor: "grey.300", borderRadius: 2 }}>
-                            <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
-                                <Typography variant="subtitle1" color="primary" fontWeight={"bold"}>
-                                    {typePrefix} {i + 1}
-                                </Typography>
-                                <Stack direction="row" spacing={1}>
-                                    {!isEditMode && (
-                                        <>
-                                            <IconButton
-                                                onClick={() => (isSenderMode ? duplicateSender : duplicateReceiver)(i)}
-                                                size="small"
-                                                title="Duplicate"
-                                            >
-                                                <CopyIcon />
-                                            </IconButton>
-                                            {currentList.length > 1 && (
-                                                <IconButton
-                                                    onClick={() => (isSenderMode ? removeSender : removeReceiver)(i)}
-                                                    size="small"
-                                                    title="Delete"
-                                                >
-                                                    <DeleteIcon />
-                                                </IconButton>
-                                            )}
-                                        </>
-                                    )}
-                                </Stack>
-                            </Stack>
-                            {/* Show validation warnings if present */}
-                            {rec.validationWarnings && (
-                                <Alert severity="warning" sx={{ mb: 2 }}>
-                                    {Object.entries(rec.validationWarnings)
-                                        .map(([key, msg]) => `${snakeToCamel(key).replace(/([A-Z])/g, ' $1').trim()}: ${msg}`)
-                                        .join('; ')}
-                                </Alert>
-                            )}
-                            {/* Dynamic: Basic Info */}
-                            <Box
-                                sx={{
-                                    display: 'flex',
-                                    flexDirection: { xs: 'column', sm: 'row' },
-                                    gap: 2,
-                                    alignItems: 'stretch',
-                                }}
-                            >
-                                <CustomTextField
-                                    label={`${typePrefix} Name`}
-                                    value={isSenderMode ? rec.senderName : rec.receiverName}
-                                    onChange={handleChangeFn(i, isSenderMode ? 'senderName' : 'receiverName')}
-                                    error={!!errors[`${listKey}[${i}].${isSenderMode ? 'senderName' : 'receiverName'}`]}
-                                    helperText={errors[`${listKey}[${i}].${isSenderMode ? 'senderName' : 'receiverName'}`]}
-                                    required
-                                    disabled={isFieldDisabled(`${recDisabledPrefix}.${isSenderMode ? 'senderName' : 'receiverName'}`)}
-                                />
-                                <CustomTextField
-                                    label={`${typePrefix} Contact`}
-                                    value={isSenderMode ? rec.senderContact : rec.receiverContact}
-                                    onChange={handleChangeFn(i, isSenderMode ? 'senderContact' : 'receiverContact')}
-                                    error={!!errors[`${listKey}[${i}].${isSenderMode ? 'senderContact' : 'receiverContact'}`]}
-                                    helperText={errors[`${listKey}[${i}].${isSenderMode ? 'senderContact' : 'receiverContact'}`]}
-                                    disabled={isFieldDisabled(`${recDisabledPrefix}.${isSenderMode ? 'senderContact' : 'receiverContact'}`)}
-                                />
-                            </Box>
-                            <Box
-                                sx={{
-                                    display: 'flex',
-                                    py: 2,
-                                    flexDirection: { xs: 'column', sm: 'row' },
-                                    gap: 2,
-                                    alignItems: 'stretch',
-                                }}
-                            >
-                                <CustomTextField
-                                    label={`${typePrefix} Address`}
-                                    value={isSenderMode ? rec.senderAddress : rec.receiverAddress}
-                                    onChange={handleChangeFn(i, isSenderMode ? 'senderAddress' : 'receiverAddress')}
-                                    error={!!errors[`${listKey}[${i}].${isSenderMode ? 'senderAddress' : 'receiverAddress'}`]}
-                                    helperText={errors[`${listKey}[${i}].${isSenderMode ? 'senderAddress' : 'receiverAddress'}`]}
-                                    disabled={isFieldDisabled(`${recDisabledPrefix}.${isSenderMode ? 'senderAddress' : 'receiverAddress'}`)}
-                                />
-                                <CustomTextField
-                                    label={`${typePrefix} Email`}
-                                    value={isSenderMode ? rec.senderEmail : rec.receiverEmail}
-                                    onChange={handleChangeFn(i, isSenderMode ? 'senderEmail' : 'receiverEmail')}
-                                    error={!!errors[`${listKey}[${i}].${isSenderMode ? 'senderEmail' : 'receiverEmail'}`]}
-                                    helperText={errors[`${listKey}[${i}].${isSenderMode ? 'senderEmail' : 'receiverEmail'}`]}
-                                    disabled={isFieldDisabled(`${recDisabledPrefix}.${isSenderMode ? 'senderEmail' : 'receiverEmail'}`)}
-                                />
-                            </Box>
-                            {renderShippingSection()}
-                            {/* <CustomTextField
+                                            return (
+                                                <Box key={i} sx={{ p: 2, border: 1, borderColor: "grey.300", borderRadius: 2 }}>
+                                                    <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
+                                                        <Typography variant="subtitle1" color="primary" fontWeight={"bold"}>
+                                                            {typePrefix} {i + 1}
+                                                        </Typography>
+                                                        <Stack direction="row" spacing={1}>
+                                                            {!isEditMode && (
+                                                                <>
+                                                                    <IconButton
+                                                                        onClick={() => (isSenderMode ? duplicateSender : duplicateReceiver)(i)}
+                                                                        size="small"
+                                                                        title="Duplicate"
+                                                                    >
+                                                                        <CopyIcon />
+                                                                    </IconButton>
+                                                                    {currentList.length > 1 && (
+                                                                        <IconButton
+                                                                            onClick={() => (isSenderMode ? removeSender : removeReceiver)(i)}
+                                                                            size="small"
+                                                                            title="Delete"
+                                                                        >
+                                                                            <DeleteIcon />
+                                                                        </IconButton>
+                                                                    )}
+                                                                </>
+                                                            )}
+                                                        </Stack>
+                                                    </Stack>
+                                                    {/* Show validation warnings if present */}
+                                                    {rec.validationWarnings && (
+                                                        <Alert severity="warning" sx={{ mb: 2 }}>
+                                                            {Object.entries(rec.validationWarnings)
+                                                                .map(([key, msg]) => `${snakeToCamel(key).replace(/([A-Z])/g, ' $1').trim()}: ${msg}`)
+                                                                .join('; ')}
+                                                        </Alert>
+                                                    )}
+                                                    {/* Dynamic: Basic Info */}
+                                                    <Box
+                                                        sx={{
+                                                            display: 'flex',
+                                                            flexDirection: { xs: 'column', sm: 'row' },
+                                                            gap: 2,
+                                                            alignItems: 'stretch',
+                                                        }}
+                                                    >
+                                                        <CustomTextField
+                                                            label={`${typePrefix} Name`}
+                                                            value={isSenderMode ? rec.senderName : rec.receiverName}
+                                                            onChange={handleChangeFn(i, isSenderMode ? 'senderName' : 'receiverName')}
+                                                            error={!!errors[`${listKey}[${i}].${isSenderMode ? 'senderName' : 'receiverName'}`]}
+                                                            helperText={errors[`${listKey}[${i}].${isSenderMode ? 'senderName' : 'receiverName'}`]}
+                                                            required
+                                                            disabled={isFieldDisabled(`${recDisabledPrefix}.${isSenderMode ? 'senderName' : 'receiverName'}`)}
+                                                        />
+                                                        <CustomTextField
+                                                            label={`${typePrefix} Contact`}
+                                                            value={isSenderMode ? rec.senderContact : rec.receiverContact}
+                                                            onChange={handleChangeFn(i, isSenderMode ? 'senderContact' : 'receiverContact')}
+                                                            error={!!errors[`${listKey}[${i}].${isSenderMode ? 'senderContact' : 'receiverContact'}`]}
+                                                            helperText={errors[`${listKey}[${i}].${isSenderMode ? 'senderContact' : 'receiverContact'}`]}
+                                                            disabled={isFieldDisabled(`${recDisabledPrefix}.${isSenderMode ? 'senderContact' : 'receiverContact'}`)}
+                                                        />
+                                                    </Box>
+                                                    <Box
+                                                        sx={{
+                                                            display: 'flex',
+                                                            py: 2,
+                                                            flexDirection: { xs: 'column', sm: 'row' },
+                                                            gap: 2,
+                                                            alignItems: 'stretch',
+                                                        }}
+                                                    >
+                                                        <CustomTextField
+                                                            label={`${typePrefix} Address`}
+                                                            value={isSenderMode ? rec.senderAddress : rec.receiverAddress}
+                                                            onChange={handleChangeFn(i, isSenderMode ? 'senderAddress' : 'receiverAddress')}
+                                                            error={!!errors[`${listKey}[${i}].${isSenderMode ? 'senderAddress' : 'receiverAddress'}`]}
+                                                            helperText={errors[`${listKey}[${i}].${isSenderMode ? 'senderAddress' : 'receiverAddress'}`]}
+                                                            disabled={isFieldDisabled(`${recDisabledPrefix}.${isSenderMode ? 'senderAddress' : 'receiverAddress'}`)}
+                                                        />
+                                                        <CustomTextField
+                                                            label={`${typePrefix} Email`}
+                                                            value={isSenderMode ? rec.senderEmail : rec.receiverEmail}
+                                                            onChange={handleChangeFn(i, isSenderMode ? 'senderEmail' : 'receiverEmail')}
+                                                            error={!!errors[`${listKey}[${i}].${isSenderMode ? 'senderEmail' : 'receiverEmail'}`]}
+                                                            helperText={errors[`${listKey}[${i}].${isSenderMode ? 'senderEmail' : 'receiverEmail'}`]}
+                                                            disabled={isFieldDisabled(`${recDisabledPrefix}.${isSenderMode ? 'senderEmail' : 'receiverEmail'}`)}
+                                                        />
+                                                    </Box>
+                                                    {renderShippingSection()}
+                                                    {/* <CustomTextField
                                 label="Remarks"
                                 value={rec.remarks || ""}
                                 onChange={handleChangeFn(i, 'remarks')}
@@ -2000,46 +2216,46 @@ const OrderForm = () => {
                                 fullWidth
                                 disabled={isFieldDisabled(`${recDisabledPrefix}.remarks`)}
                             /> */}
-                        </Box>
-                    );
-                };
+                                                </Box>
+                                            );
+                                        };
 
-                const handleEmptyRecChange = (field, value) => {
-                    addRecFn();
-                    const fn = isSenderMode ? handleSenderChange : handleReceiverChange;
-                    fn(0, field, value);
-                };
+                                        const handleEmptyRecChange = (field, value) => {
+                                            addRecFn();
+                                            const fn = isSenderMode ? handleSenderChange : handleReceiverChange;
+                                            fn(0, field)({ target: { value } });
+                                        };
 
-                const emptyRec = {
-                    [isSenderMode ? 'senderName' : 'receiverName']: '',
-                    [isSenderMode ? 'senderContact' : 'receiverContact']: '',
-                    [isSenderMode ? 'senderAddress' : 'receiverAddress']: '',
-                    [isSenderMode ? 'senderEmail' : 'receiverEmail']: '',
-                    eta: '',
-                    etd: '',
-                    shippingLine: '',
-                    shippingDetails: []
-                };
+                                        const emptyRec = {
+                                            [isSenderMode ? 'senderName' : 'receiverName']: '',
+                                            [isSenderMode ? 'senderContact' : 'receiverContact']: '',
+                                            [isSenderMode ? 'senderAddress' : 'receiverAddress']: '',
+                                            [isSenderMode ? 'senderEmail' : 'receiverEmail']: '',
+                                            eta: '',
+                                            etd: '',
+                                            shippingLine: '',
+                                            shippingDetails: []
+                                        };
 
-                if (currentList.length === 0) {
-                    // Render empty receiver/sender form
-                    const emptyI = 0;
-                    return renderRecForm(emptyRec, emptyI).props.children[0].props.children; // Hacky, but renders the inner Box without outer key/Box
-                } else {
-                    return currentList.map((rec, i) => renderRecForm(rec, i));
-                }
-            })()}
-            <Button
-                variant="outlined"
-                startIcon={<AddIcon />}
-                onClick={formData.senderType === 'receiver' ? addSender : addReceiver}
-                sx={{ alignSelf: 'flex-start' }}
-            >
-                {formData.senderType === 'receiver' ? 'Add Sender' : 'Add Receiver'}
-            </Button>
-        </Stack>
-    </AccordionDetails>
-</Accordion>
+                                        if (currentList.length === 0) {
+                                            // Render empty receiver/sender form
+                                            const emptyI = 0;
+                                            return renderRecForm(emptyRec, emptyI);
+                                        } else {
+                                            return currentList.map((rec, i) => renderRecForm(rec, i));
+                                        }
+                                    })()}
+                                    <Button
+                                        variant="outlined"
+                                        startIcon={<AddIcon />}
+                                        onClick={formData.senderType === 'receiver' ? addSender : addReceiver}
+                                        sx={{ alignSelf: 'flex-start' }}
+                                    >
+                                        {formData.senderType === 'receiver' ? 'Add Sender' : 'Add Receiver'}
+                                    </Button>
+                                </Stack>
+                            </AccordionDetails>
+                        </Accordion>
                         <Accordion
                             expanded={expanded.has("panel3")}
                             onChange={handleAccordionChange("panel3")}
@@ -2343,6 +2559,96 @@ const OrderForm = () => {
                                             />
                                         </Stack>
                                     )}
+                                </Stack>
+                            </AccordionDetails>
+                        </Accordion>
+                        <Accordion
+                            expanded={expanded.has("panel4")}
+                            onChange={handleAccordionChange("panel4")}
+                            sx={{
+                                borderRadius: 2,
+                                boxShadow: "none",
+                                "&:before": { display: "none" },
+                                "&.Mui-expanded": { boxShadow: "0 2px 8px rgba(0,0,0,0.1)" },
+                            }}
+                        >
+                            <AccordionSummary
+                                expandIcon={<ExpandMoreIcon />}
+                                sx={{
+                                    bgcolor: expanded.has("panel4") ? "#0d6c6a" : "#fff3e0",
+                                    borderRadius: 2,
+                                    "& .MuiAccordionSummary-content": { fontWeight: "bold", color: expanded.has("panel4") ? "#fff" : "#f58220" },
+                                }}
+                            >
+                                4. Order Summary
+                            </AccordionSummary>
+                            <AccordionDetails sx={{ p: 3, bgcolor: "#fff" }}>
+                                <Stack spacing={2}>
+                                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                        <Typography variant="body1" fontWeight="medium">Booking Ref:</Typography>
+                                        <Chip label={formData.bookingRef || "-"} variant="outlined" color="primary" />
+                                    </Stack>
+                                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                        <Typography variant="body1" fontWeight="medium">Point of Origin:</Typography>
+                                        <Typography variant="body1">{formData.pointOfOrigin || "-"}</Typography>
+                                    </Stack>
+                                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                        <Typography variant="body1" fontWeight="medium">Place of Loading:</Typography>
+                                        <Typography variant="body1">{formData.placeOfLoading || "-"}</Typography>
+                                    </Stack>
+                                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                        <Typography variant="body1" fontWeight="medium">Final Destination:</Typography>
+                                        <Typography variant="body1">{formData.finalDestination || "-"}</Typography>
+                                    </Stack>
+                                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                        <Typography variant="body1" fontWeight="medium">Owner:</Typography>
+                                        <Typography variant="body1">{ownerName || "-"}</Typography>
+                                    </Stack>
+                                    <Stack spacing={1}>
+                                        <Typography variant="body1" fontWeight="medium">{formData.senderType === 'sender' ? 'Receivers:' : 'Senders:'}</Typography>
+                                        {(formData.senderType === 'sender' ? formData.receivers : formData.senders).map((rec, i) => (
+                                            <Stack direction="row" justifyContent="space-between" alignItems="center" key={i}>
+                                                <Chip sx={{ p: 2 }} label={formData.senderType === 'sender' ? rec.receiverName : rec.senderName || `${formData.senderType === 'sender' ? 'Receiver' : 'Sender'} ${i + 1}`} size="small" color="primary" variant="outlined" />
+                                                <Typography variant="body2" color="text.secondary">
+                                                    Delivered: {rec.qtyDelivered || 0} / { (rec.shippingDetails || []).reduce((sum, sd) => sum + (parseInt(sd.totalNumber || 0) || 0), 0) } items
+                                                </Typography>
+                                            </Stack>
+                                        ))}
+                                    </Stack>
+                                    {formData.receivers.some(rec => rec.containers && rec.containers.length > 0) && (
+                                        <Stack spacing={1}>
+                                            <Typography variant="body1" fontWeight="medium">Assigned Containers:</Typography>
+                                            {formData.receivers.flatMap(rec => rec.containers || []).map((cont, i) => (
+                                                <Stack direction="row" justifyContent="space-between" alignItems="center" key={i}>
+                                                    <Chip sx={{ p: 2 }} label={cont} color="info" size="small" variant="outlined" />
+                                                </Stack>
+                                            ))}
+                                        </Stack>
+                                    )}
+                                    {/* New: Global Totals */}
+                                    <Divider />
+                                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                        <Typography variant="body1" fontWeight="medium">Total Items (All {formData.senderType === 'sender' ? 'Receivers' : 'Senders'}):</Typography>
+                                        <Chip label={formData.globalTotalItems || "-"} variant="outlined" color="success" />
+                                    </Stack>
+                                    {/* {formData.globalRemainingItems < formData.globalTotalItems && (
+                                        <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                            <Typography variant="body1" fontWeight="medium">Remaining Items (Partials):</Typography>
+                                            <Chip label={formData.globalRemainingItems} variant="filled" color="warning" />
+                                        </Stack>
+                                    )} */}
+                                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                        <Typography variant="body1" fontWeight="medium">Shipping Line:</Typography>
+                                        <Typography variant="body1">{firstPanel2Item.shippingLine || "-"}</Typography>
+                                    </Stack>
+                                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                        <Typography variant="body1" fontWeight="medium">ETA:</Typography>
+                                        <Typography variant="body1">{firstPanel2Item.eta || "-"}</Typography>
+                                    </Stack>
+                                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                        <Typography variant="body1" fontWeight="medium">Transport Type:</Typography>
+                                        <Typography variant="body1">{formData.transportType || "-"}</Typography>
+                                    </Stack>
                                 </Stack>
                             </AccordionDetails>
                         </Accordion>

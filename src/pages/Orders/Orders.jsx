@@ -44,6 +44,9 @@ import ListItemText from '@mui/material/ListItemText';
 import ListItemIcon from '@mui/material/ListItemIcon';
 import CargoIcon from '@mui/icons-material/LocalShipping'; // Or use InventoryIcon
 import PersonIcon from '@mui/icons-material/Person';
+import StackIcon from '@mui/icons-material/StackedLineChart';
+import AssignmentIndIcon from '@mui/icons-material/AssignmentInd';
+import ViewColumnIcon from '@mui/icons-material/ViewColumn';
 import Divider from '@mui/material/Divider';
 import InfoIcon from "@mui/icons-material/Info";
 import LocalShippingIcon from "@mui/icons-material/LocalShipping";
@@ -58,6 +61,7 @@ import OrderModalView from './OrderModalView'
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import InventoryIcon from '@mui/icons-material/Inventory';
 import CheckIcon from '@mui/icons-material/Check';  
+import AssignModal from "./AssignContainer";
 // import { ordersApi } from "../api"; // Adjust path as needed
 import { api } from "../../api";
 
@@ -69,6 +73,7 @@ const OrdersList = () => {
     const [rowsPerPage, setRowsPerPage] = useState(10);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [showAllColumns, setShowAllColumns] = useState(false)
         const [loadingContainers, setLoadingContainers] = useState(false);
         const [assignmentError, setAssignmentError] = useState(null);
     const [filters, setFilters] = useState({
@@ -120,7 +125,12 @@ const [assignments, setAssignments] = useState({}); // For storing receiver-cont
             setLoading(false);
         }
     };
-
+const handleReceiverAction = (receiver) => {
+        console.log('Editing receiver:', receiver);
+        // Example: Open an edit modal or update state
+        // You can implement logic here, e.g., setEditingReceiver(receiver);
+        alert(`Editing receiver: ${receiver.receiver_name}`); // Placeholder for demo
+    };
         // Helper to normalize containers (handle string or array)
     // const normContainers = selectedOrder ? normalizeContainers(selectedOrders.containers) : []; 
 
@@ -157,7 +167,17 @@ const [assignments, setAssignments] = useState({}); // For storing receiver-cont
             ))}
         </Grid>
     );
-
+const handleUpdateReceiver = (updatedReceiver) => {
+    // Update in orders state, e.g.:
+    setOrders(prevOrders =>
+        prevOrders.map(order =>
+            order.receivers?.map(rec =>
+                rec.id === updatedReceiver.id ? { ...rec, ...updatedReceiver } : rec
+            ) || order.receivers
+        )
+    );
+    // Optional: Show success snackbar
+};
     // Fetch open containers
     const fetchContainers = async () => {
         if (loadingContainers) return; // Prevent multiple calls
@@ -254,7 +274,20 @@ const isSelected = (id) => selectedOrders.indexOf(id) !== -1;
     });
   }
 };
+const onUpdateAssignedQty = (receiverId, newQty) => {
+    setOrders(prevOrders => prevOrders.map(order => ({
+        ...order,
+        receivers: order.receivers?.map(rec => rec.id === receiverId ? { ...rec, qty_delivered: newQty } : rec)
+    })));
+};
+const onRemoveContainers = (receiverId) => {
+    setOrders(prevOrders => prevOrders.map(order => ({
+        ...order,
+        receivers: order.receivers?.map(rec => rec.id === receiverId ? { ...rec, containers: [] } : rec)
+    })));
 
+    // Optional: Show success snackbar
+};
     const exportOrders = async () => {
         if (total === 0) {
             setSnackbar({
@@ -490,61 +523,150 @@ const parseSummaryToList = (receivers) => {
     }));
 };
 
-// Enhanced PrettyList: Modern card-based layout for receivers with avatars and status badges
+// Enhanced PrettyList: Modern vertical card-based layout for receivers with improved alignment, avatars, and status badges
 const PrettyList = ({ items, title }) => (
-  <Box sx={{ p: 1, maxWidth: 280 }}><Typography variant="caption" sx={{ fontWeight: 'bold', color: '#fff', mb: 1, display: 'block' }}>
-      {title} ({items.length})
-    </Typography>
-    <Stack spacing={0.75}>
-      {items.length > 0 ? (
-        items.map((item, index) => (
-          <Card 
-            key={index} 
-            variant="outlined" 
-            sx={{ 
-              p: 1, 
-              borderRadius: 2, 
-              border: '1px solid', 
-              borderColor: 'divider',
-              backgroundColor: '#f8f9fa', // Changed to light grey background
-              boxShadow: 'none',
-              '&:hover': { 
-                boxShadow: 1, 
-                backgroundColor: '#e9ecef' // Darker grey on hover
-              }
-            }}
-          >
-            <Stack direction="row" alignItems="center" spacing={1.5}>
-              <Avatar 
-                sx={{ 
-                  width: 18, 
-                  height: 18, 
-                  bgcolor: 'primary.light', 
-                  fontSize: '0.875rem' 
-                }}
-              >
-                {item.primary.charAt(0).toUpperCase()}
-              </Avatar>
-              <Box sx={{ flex: 1, minWidth: 0 }}>
-                <Typography variant="body2" fontWeight="medium" noWrap sx={{ mb: 0.25 }}>
-                  {item.primary}
-                </Typography>
+  <Card 
+    variant="outlined" 
+    sx={{ 
+      p: 2, 
+      borderRadius: 2, 
+      border: '1px solid', 
+      borderColor: 'divider',
+      backgroundColor: '#fafafa', // Subtle off-white background for better contrast
+      boxShadow: 'none',
+      '&:hover': { 
+        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)' // Gentle shadow on hover for depth
+      }
+    }}
+  >
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+      {/* Title Section - Centered and prominent */}
+      <Box sx={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center',
+        pb: 1,
+        borderBottom: '1px solid',
+        borderColor: 'divider'
+      }}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 'bold', color: '#f58220' }}> {/* Use brand color for title */}
+          {title}
+        </Typography>
+        <Chip 
+          label={`(${items.length})`} 
+          size="small" 
+          color="primary" 
+          variant="outlined" 
+          sx={{ 
+            fontSize: '0.7rem',
+            height: 20,
+            '& .MuiChip-label': { px: 0.5 }
+          }} 
+        />
+      </Box>
+
+      {/* Items List - Vertical stack with improved spacing */}
+      <Stack spacing={1} sx={{ maxHeight: 200, overflow: 'auto' }}> {/* Add scrollable height for better UX in dense lists */}
+        {items.length > 0 ? (
+          items.map((item, index) => (
+            <Card 
+              key={index} 
+              variant="outlined" 
+              sx={{ 
+                p: 1.5, 
+                borderRadius: 1.5, 
+                border: '1px solid', 
+                borderColor: 'grey.200',
+                backgroundColor: '#fff', // Clean white for individual cards
+                boxShadow: 'none',
+                transition: 'all 0.2s ease', // Smooth transitions
+                '&:hover': { 
+                  boxShadow: '0 1px 4px rgba(0, 0, 0, 0.1)', 
+                  transform: 'translateY(-1px)', // Subtle lift on hover
+                  borderColor: 'primary.light'
+                },
+                cursor: 'pointer' // Indicate interactivity
+              }}
+              onClick={() => { /* Optional: Add click handler for item selection */ }}
+            >
+              <Stack direction="row" alignItems="center" spacing={1.5} sx={{ width: '100%' }}>
+                {/* Avatar - Slightly larger for better touch targets */}
+                <Avatar 
+                  sx={{ 
+                    width: 32, 
+                    height: 32, 
+                    bgcolor: 'primary.main', 
+                    fontSize: '1rem',
+                    flexShrink: 0 // Prevent shrinking
+                  }}
+                >
+                  {item.primary ? item.primary.charAt(0).toUpperCase() : '?'}
+                </Avatar>
+                
+                {/* Content - Flexible box for text wrapping */}
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography 
+                    variant="body2" 
+                    fontWeight="medium" 
+                    noWrap 
+                    sx={{ 
+                      color: 'text.primary',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    {item.primary || 'Unnamed Item'}
+                  </Typography>
+                  {item.secondary && (
+                    <Typography 
+                      variant="caption" 
+                      sx={{ 
+                        color: 'text.secondary',
+                        display: 'block',
+                        mt: 0.25
+                      }}
+                    >
+                      {item.secondary}
+                    </Typography>
+                  )}
+                </Box>
+                
+                {/* Status Badge - Aligned to the right */}
                 {item.status && (
-                  <StatusChip status={item.status} size="small" sx={{ fontSize: '0.65rem', height: 18 }} />
+                  <StatusChip 
+                    status={item.status} 
+                    size="small" 
+                    sx={{ 
+                      fontSize: '0.7rem', 
+                      height: 20,
+                      minWidth: 60,
+                      flexShrink: 0,
+                      '& .MuiChip-label': { px: 0.5 }
+                    }} 
+                  />
                 )}
-              </Box>
-            </Stack>
-          </Card>
-        ))
-      ) : (
-        <Card variant="outlined" sx={{ p: 2, textAlign: 'center', borderRadius: 2, backgroundColor: '#f8f9fa' }}>
-          <Typography variant="body2" color="text.secondary" italic>
-            No items
-          </Typography>
-        </Card>
-      )}
-    </Stack>
-  </Box>
+              </Stack>
+            </Card>
+          ))
+        ) : (
+          <Box sx={{ 
+            display: 'flex', 
+            flexDirection: 'column', 
+            alignItems: 'center', 
+            justifyContent: 'center', 
+            py: 3, 
+            color: 'text.secondary' 
+          }}>
+            <EmojiEventsIcon sx={{ fontSize: 40, color: 'grey.300', mb: 1 }} /> {/* Visual placeholder */}
+            <Typography variant="body2" sx={{ fontStyle: 'italic' }}>
+              No items available
+            </Typography>
+          </Box>
+        )}
+      </Stack>
+    </Box>
+  </Card>
 );
 
 // Enhanced parse for containers: Simple string split
@@ -745,8 +867,8 @@ const rowCount = orders.length;
 </TableCell>
                                 {[
                                     <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="ref">Booking Ref</StyledTableHeadCell>,
-                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="loading">Place of Loading</StyledTableHeadCell>,
-                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="dest">Final Destination</StyledTableHeadCell>,
+                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="loading">POL</StyledTableHeadCell>,
+                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="dest">POD</StyledTableHeadCell>,
                                     <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="sender">Sender</StyledTableHeadCell>,
                                     <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="receivers">Receivers</StyledTableHeadCell>, // Multiple receivers with status
                                     <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="containers">Containers</StyledTableHeadCell> ,
@@ -789,7 +911,7 @@ const rowCount = orders.length;
       </TableCell>
                                         <StyledTableCell>{order.booking_ref}</StyledTableCell>
                                         <StyledTableCell>{order?.place_of_loading}</StyledTableCell>
-                                        <StyledTableCell>{order.final_destination}</StyledTableCell>
+                                        <StyledTableCell>{order.place_of_loading}</StyledTableCell>
                                         <StyledTableCell>{order.sender_name}</StyledTableCell>
                                        <StyledTableCell>
     <StyledTooltip
@@ -886,447 +1008,24 @@ const rowCount = orders.length;
                     </Alert>
                 </Snackbar>
 
-<Dialog 
-    open={openAssignModal} 
-    onClose={() => setOpenAssignModal(false)} 
-    maxWidth="xl" 
-    fullWidth
-    PaperProps={{
-        sx: {
-            borderRadius: 3,
-            maxHeight: '95vh', // Prevent overflow on small screens
-            overflow: 'hidden',
-            // width: { xs: '98%', sm: '90%', md: '60%' } // Responsive width
-        }
-    }}
->
-    <DialogTitle sx={{ 
-        bgcolor: '#0d6c6a', 
-        color: 'white', 
-        borderRadius: '12px 12px 0 0',
-        py: { xs: 2, sm: 2.5 },
-        px: { xs: 2, sm: 3 }
-    }}>
-        <Stack direction="row" justifyContent="space-between" alignItems="center">
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                <LocalShippingIcon sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }} />
-                <Typography variant={{ xs: 'h6', sm: 'h5' }} fontWeight="bold">
-                    Assign Selected Orders to Container
-                </Typography>
-                <Chip 
-                    label={`(${selectedOrders.length} Orders)`} 
-                    size="small" 
-                    color="secondary" 
-                    variant="filled" 
-                    sx={{ 
-                        ml: 1,
-                        fontSize: { xs: '0.7rem', sm: '0.8rem' }
-                    }}
-                />
-            </Box>
-            <IconButton 
-                onClick={() => setOpenAssignModal(false)} 
-                sx={{ color: 'white', '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' } }}
-            >
-                <CloseIcon />
-            </IconButton>
-        </Stack>
-    </DialogTitle>
-    <DialogContent sx={{ 
-        mt: 2,
-        p: { xs: 2, sm: 3 }, 
-        overflow: 'auto',
-        height: '80vh',
-        maxHeight: '80vh' // Sc rollable content on small screens
-    }}>
-        <Grid container justifyContent={"space-between"} mb={3} spacing={{ xs: 2, sm: 2 }}>
-            {/* Available Containers Section */}
-            <Grid item width="48%" xs={12}>
-                <Card sx={{ 
-                    boxShadow: 2, 
-                    borderRadius: 2,
-                    border: '1px solid #e3f2fd',
-                    '&:hover': { boxShadow: '0 4px 12px rgba(245, 130, 32, 0.1)' }
-                }}>
-                    <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                <InventoryIcon color="primary" sx={{ fontSize: { xs: '1rem', sm: '1.2rem' } }} />
-                                <Typography variant={{ xs: 'subtitle2', sm: 'subtitle1' }} fontWeight="bold" color="#f58220">
-                                    Available Open Containers ({containers.length})
-                                </Typography>
-                            </Box>
-                            <Button
-                                variant="outlined"
-                                size="small"
-                                onClick={fetchContainers}
-                                disabled={loadingContainers}
-                                startIcon={loadingContainers ? <CircularProgress size={16} /> : <RefreshIcon />}
-                                sx={{ minWidth: 'auto' }}
-                            >
-                                {loadingContainers ? 'Loading...' : 'Refresh'}
-                            </Button>
-                        </Box>
-                        {loadingContainers ? (
-                            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: { xs: 3, sm: 4 } }}>
-                                <CircularProgress size={24} />
-                                <Typography variant="body2" sx={{ ml: 2, color: 'text.secondary' }}>
-                                    Fetching containers...
-                                </Typography>
-                            </Box>
-                        ) : containers.length === 0 ? (
-                            <Alert severity="info" icon={<InfoIcon />}>
-                                <AlertTitle>No Containers Available</AlertTitle>
-                                No open containers found. Try refreshing or check if any are marked as 'Available'.
-                            </Alert>
-                        ) : (
-                            <TableContainer sx={{ maxHeight: { xs: 250, sm: 300 }, overflow: 'auto' }}>
-                                <Table size="small" stickyHeader>
-                                    <TableHead sx={{ bgcolor: '#f8f9fa' }}>
-                                        <TableRow>
-                                            <TableCell sx={{ fontWeight: 'bold', color: '#f58220', px: { xs: 1, sm: 2 } }}>Container No</TableCell>
-                                            <TableCell sx={{ fontWeight: 'bold', color: '#f58220', px: { xs: 1, sm: 2 } }}>Status</TableCell>
-                                            <TableCell sx={{ fontWeight: 'bold', color: '#f58220', px: { xs: 1, sm: 2 } }}>Location</TableCell>
-                                            <TableCell sx={{ fontWeight: 'bold', color: '#f58220', px: { xs: 1, sm: 2 } }}>Owner Type</TableCell>
-                                        </TableRow>
-                                    </TableHead>
-                                    <TableBody>
-                                        {containers.map((container) => (
-                                            <TableRow 
-                                                key={container.cid} 
-                                                hover 
-                                                selected={selectedContainer === container.cid}
-                                                onClick={() => setSelectedContainer(container.cid)}
-                                                sx={{ 
-                                                    cursor: 'pointer',
-                                                    '&:hover': { bgcolor: '#f0f8ff' },
-                                                    transition: 'all 0.2s ease',
-                                                    '&.Mui-selected': { bgcolor: 'success.50' }
-                                                }}
-                                            >
-                                                <TableCell sx={{ px: { xs: 1, sm: 2 }, fontWeight: 'medium' }}>{container.container_number}</TableCell>
-                                                <TableCell sx={{ px: { xs: 1, sm: 2 } }}>
-                                                    <Chip 
-                                                        label={container.derived_status} 
-                                                        size="small" 
-                                                        color={container.derived_status === 'Available' ? 'success' : 'default'} 
-                                                    />
-                                                </TableCell>
-                                                <TableCell sx={{ px: { xs: 1, sm: 2 } }}>{container.location || 'N/A'}</TableCell>
-                                                <TableCell sx={{ px: { xs: 1, sm: 2 } }}>
-                                                    <Chip 
-                                                        label={container.owner_type.toUpperCase()} 
-                                                        size="small" 
-                                                        variant="outlined" 
-                                                        color="info" 
-                                                    />
-                                                </TableCell>
-                                            </TableRow>
-                                        ))}
-                                    </TableBody>
-                                </Table>
-                            </TableContainer>
-                        )}
-                    </CardContent>
-                </Card>
-            </Grid> 
-             {/* All Receivers Section */}
-            <Grid item width="48%"  xs={12}>
-                <Card sx={{ 
-                    boxShadow: 2, 
-                    borderRadius: 2,
-                    border: '1px solid #e3f2fd',
-                    '&:hover': { boxShadow: '0 4px 12px rgba(245, 130, 32, 0.1)' }
-                }}>
-                    <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                            <PersonIcon color="primary" sx={{ fontSize: { xs: '1rem', sm: '1.2rem' } }} />
-                            <Typography variant={{ xs: 'subtitle2', sm: 'subtitle1' }} fontWeight="bold" color="#f58220">
-                                All Receivers
-                            </Typography>
-                            <Chip 
-                                label={`(${selectedOrders.reduce((total, orderId) => {
-                                    const order = orders.find(o => o.id === orderId);
-                                    return total + (order ? (order.receivers ? order.receivers.length : 0) : 0);
-                                }, 0)})`} 
-                                size="small" 
-                                color="info" 
-                            />
-                        </Box>
-                        <TableContainer sx={{ maxHeight: { xs: 200, sm: 250 }, overflow: 'auto' }}>
-                            <Table size="small" stickyHeader>
-                                <TableHead sx={{ bgcolor: '#f8f9fa' }}>
-                                    <TableRow>
-                                        <TableCell sx={{ fontWeight: 'bold', color: '#f58220', px: { xs: 1, sm: 2 } }}>Name</TableCell>
-                                        <TableCell sx={{ fontWeight: 'bold', color: '#f58220', px: { xs: 1, sm: 2 } }}>Order</TableCell>
-                                        <TableCell sx={{ fontWeight: 'bold', color: '#f58220', px: { xs: 1, sm: 2 } }}>Status</TableCell>
-                                        <TableCell sx={{ fontWeight: 'bold', color: '#f58220', px: { xs: 1, sm: 2 } }}>Containers</TableCell>
-                                    </TableRow>
-                                </TableHead>
-                                <TableBody>
-                                    {selectedOrders.flatMap(orderId => {
-                                        const order = orders.find(o => o.id === orderId);
-                                        return order && order.receivers ? order.receivers.map(rec => ({
-                                            ...rec,
-                                            orderRef: order.booking_ref
-                                        })) : [];
-                                    }).map((rec, index) => (
-                                        <TableRow 
-                                            key={`${rec.order_id}-${rec.id || index}`} 
-                                            hover 
-                                            sx={{ 
-                                                '&:hover': { bgcolor: '#f8f9fa' },
-                                                transition: 'background-color 0.2s ease'
-                                            }}
-                                        >
-                                            <TableCell sx={{ px: { xs: 1, sm: 2 }, fontWeight: 'medium' }}>{rec.receiver_name}</TableCell>
-                                            <TableCell sx={{ px: { xs: 1, sm: 2 } }}>{rec.orderRef}</TableCell>
-                                            <TableCell sx={{ px: { xs: 1, sm: 2 } }}>
-                                                <Chip 
-                                                    label={rec.status || 'Created'} 
-                                                    size="small" 
-                                                    color={rec.status === 'Delivered' ? 'success' : rec.status === 'In Transit' ? 'warning' : 'default'} 
-                                                />
-                                            </TableCell>
-                                            <TableCell sx={{ px: { xs: 1, sm: 2 } }}>
-                                                {rec.containers && rec.containers.length > 0 
-                                                    ? <Chip label={rec.containers.join(', ')} size="small" variant="outlined" color="info" />
-                                                    : <Chip label="None" size="small" color="default" variant="outlined" />
-                                                }
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        </TableContainer>
-                        {selectedOrders.reduce((total, orderId) => {
-                            const order = orders.find(o => o.id === orderId);
-                            return total + (order ? (order.receivers ? order.receivers.length : 0) : 0);
-                        }, 0) === 0 && (
-                            <Alert severity="info" sx={{ mt: 2, borderRadius: 1 }}>
-                                <AlertTitle>No Receivers Found</AlertTitle>
-                                The selected orders have no associated receivers.
-                            </Alert>
-                        )}
-                    </CardContent>
-                </Card>
-            </Grid>
-     
-
-           
-            </Grid>
-
-<Grid container width="100%" justifyContent="space-between" sx={{ mt: 1,  overflow: 'auto',
-       }}>
-               {/* Selected Orders Section */}
-            <Grid width="48%" item xs={12}>
-                <Card sx={{ 
-                    boxShadow: 2, 
-                    borderRadius: 2,
-                    border: '1px solid #e3f2fd',
-                    '&:hover': { boxShadow: '0 4px 12px rgba(245, 130, 32, 0.1)' }
-                }}>
-                    <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                            <InfoIcon color="primary" sx={{ fontSize: { xs: '1rem', sm: '1.2rem' } }} />
-                            <Typography variant={{ xs: 'subtitle2', sm: 'subtitle1' }} fontWeight="bold" color="#f58220">
-                                Selected Orders
-                            </Typography>
-                        </Box>
-                        <TableContainer sx={{ maxHeight: { xs: 200, sm: 250 }, overflow: 'auto' }}>
-                            <Table size="small" stickyHeader>
-                                <TableHead sx={{ bgcolor: '#f8f9fa' }}>
-                                    <TableRow>
-                                        <TableCell sx={{ fontWeight: 'bold', color: '#f58220', px: { xs: 1, sm: 2 } }}>Booking Ref</TableCell>
-                                        <TableCell sx={{ fontWeight: 'bold', color: '#f58220', px: { xs: 1, sm: 2 } }}>Status</TableCell>
-                                        <TableCell sx={{ fontWeight: 'bold', color: '#f58220', px: { xs: 1, sm: 2 } }}>Receivers</TableCell>
-                                    </TableRow>
-                                </TableHead>
-                                <TableBody>
-                                    {selectedOrders.map(orderId => {
-                                        const order = orders.find(o => o.id === orderId);
-                                        if (!order) return null;
-                                        const numReceivers = order.receivers ? order.receivers.length : 0;
-                                        return (
-                                            <TableRow 
-                                                key={orderId} 
-                                                hover 
-                                                sx={{ 
-                                                    '&:hover': { bgcolor: '#f8f9fa' },
-                                                    cursor: 'pointer',
-                                                    transition: 'background-color 0.2s ease'
-                                                }}
-                                            >
-                                                <TableCell sx={{ px: { xs: 1, sm: 2 } }}>{order.booking_ref}</TableCell>
-                                                <TableCell sx={{ px: { xs: 1, sm: 2 } }}>
-                                                    <Chip 
-                                                        label={order.status || 'Created'} 
-                                                        size="small" 
-                                                        color={order.status === 'Delivered' ? 'success' : order.status === 'In Transit' ? 'warning' : 'default'} 
-                                                    />
-                                                </TableCell>
-                                                <TableCell sx={{ px: { xs: 1, sm: 2 } }}>
-                                                    <Chip 
-                                                        label={`${numReceivers}`} 
-                                                        size="small" 
-                                                        color="info" 
-                                                        variant="outlined" 
-                                                        icon={<PersonIcon fontSize="small" />}
-                                                    />
-                                                </TableCell>
-                                            </TableRow>
-                                        );
-                                    })}
-                                </TableBody>
-                            </Table>
-                        </TableContainer>
-                        {selectedOrders.length === 0 && (
-                            <Alert severity="warning" sx={{ mt: 2, borderRadius: 1 }}>
-                                <AlertTitle>No Orders Selected</AlertTitle>
-                                Please select orders from the main table to assign containers.
-                            </Alert>
-                        )}
-                    </CardContent>
-                </Card>
-            </Grid>
-        {/* Container Selection Section */}
-            <Grid  width="48%" item xs={12}>
-                <Card sx={{ 
-                    boxShadow: 2, 
-                    borderRadius: 2,
-                    border: '1px solid #e3f2fd',
-                    '&:hover': { boxShadow: '0 4px 12px rgba(245, 130, 32, 0.1)' }
-                }}>
-                    <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                            <InventoryIcon color="primary" sx={{ fontSize: { xs: '1rem', sm: '1.2rem' } }} />
-                            <Typography variant={{ xs: 'subtitle2', sm: 'subtitle1' }} fontWeight="bold" color="#f58220">
-                                Select Container
-                            </Typography>
-                        </Box>
-                        <FormControl fullWidth size="small" sx={{ mb: 2 }}>
-                            <InputLabel>Available Container</InputLabel>
-                            <Select
-                                value={selectedContainer}
-                                label="Available Container"
-                                onChange={(e) => setSelectedContainer(e.target.value)}
-                                startAdornment={
-                                    selectedContainer ? (
-                                        <Chip 
-                                            label="Selected" 
-                                            size="small" 
-                                            color="success" 
-                                            sx={{ mr: 1, height: 20 }} 
-                                        />
-                                    ) : null
-                                }
-                            >
-                                <MenuItem value="">
-                                    <em>Choose a container from available options below</em>
-                                </MenuItem>
-                                {containers.map((container) => (
-                                    <MenuItem key={container.cid} value={container.cid}>
-                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
-                                            <CargoIcon fontSize="small" color="info" />
-                                            <Box sx={{ flex: 1 }}>
-                                                <Typography variant="body2" fontWeight="medium">
-                                                    {container.container_number}
-                                                </Typography>
-                                                <Typography variant="caption" color="text.secondary">
-                                                    {container.derived_status} • {container.owner_type}
-                                                </Typography>
-                                            </Box>
-                                            {container.location && (
-                                                <Chip 
-                                                    label={container.location} 
-                                                    size="small" 
-                                                    variant="outlined" 
-                                                    color="info" 
-                                                />
-                                            )}
-                                        </Box>
-                                    </MenuItem>
-                                ))}
-                            </Select>
-                        </FormControl>
-                        {!selectedContainer && containers.length > 0 && (
-                            <Alert severity="info" icon={<InfoIcon />}>
-                                Select a container to assign. It will be linked to all {selectedOrders.reduce((total, orderId) => {
-                                    const order = orders.find(o => o.id === orderId);
-                                    return total + (order ? (order.receivers ? order.receivers.length : 0) : 0);
-                                }, 0)} receivers in the selected orders.
-                            </Alert>
-                        )}
-                    </CardContent>
-                </Card>
-            </Grid>
-
-        
-            
-        </Grid>
-
-        {/* Summary Alert */}
-        {selectedOrders.length > 0 && selectedContainer && (
-            <Collapse in={true} timeout={300}>
-                <Alert 
-                    severity="success" 
-                    icon={<CheckIcon />} 
-                    sx={{ 
-                        mt: 2, 
-                        borderRadius: 2,
-                        animation: 'slideIn 0.3s ease-out'
-                    }}
-                >
-                    <AlertTitle>Ready to Assign</AlertTitle>
-                    <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
-                        This will assign the selected container to {selectedOrders.reduce((total, orderId) => {
-                            const order = orders.find(o => o.id === orderId);
-                            return total + (order ? (order.receivers ? order.receivers.length : 0) : 0);
-                        }, 0)} receivers across {selectedOrders.length} orders.
-                    </Typography>
-                </Alert>
-            </Collapse>
-        )}
-    </DialogContent>
-    <DialogActions sx={{ 
-        p: { xs: 2, sm: 3 }, 
-        bgcolor: '#f8f9fa', 
-        borderTop: '1px solid #e0e0e0',
-        justifyContent: 'space-between'
-    }}>
-        <Button 
-            onClick={() => setOpenAssignModal(false)} 
-            variant="outlined" 
-            sx={{ 
-                borderRadius: 2, 
-                borderColor: '#f58220', 
-                color: '#f58220',
-                px: 3,
-                '&:hover': { borderColor: '#e65100', color: '#e65100' }
-            }}
-        >
-            Cancel
-        </Button>
-        <Button 
-            onClick={handleAssign} 
-            variant="contained" 
-            disabled={!selectedContainer || selectedOrders.length === 0}
-            sx={{ 
-                borderRadius: 2, 
-                bgcolor: '#f58220',
-                px: 4,
-                '&:hover': { bgcolor: '#e65100' },
-                '&.Mui-disabled': { bgcolor: 'grey.400' },
-                boxShadow: selectedContainer ? '0 3px 8px rgba(245, 130, 32, 0.3)' : 'none'
-            }}
-            startIcon={<AssignmentIcon />}
-        >
-            Assign ({selectedOrders.length} Orders)
-        </Button>
-    </DialogActions>
-</Dialog>
+               <AssignModal
+    openAssignModal={openAssignModal}
+    setOpenAssignModal={setOpenAssignModal}
+    selectedOrders={selectedOrders}
+    orders={orders} // Assuming 'orders' is available
+    containers={containers}
+    selectedContainer={selectedContainer}
+    setSelectedContainer={setSelectedContainer}
+    loadingContainers={loadingContainers}
+    fetchContainers={fetchContainers}
+    onUpdateAssignedQty={onUpdateAssignedQty}
+    onRemoveContainers={onRemoveContainers}
+    handleAssign={handleAssign}
+    handleReceiverAction={handleReceiverAction}
+    onUpdateReceiver={handleUpdateReceiver}
+/>
             </Paper>
         </>
     );
-};   
-export default OrdersList;
+};
+export default OrdersList;  
