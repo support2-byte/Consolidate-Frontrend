@@ -1,7 +1,8 @@
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import {
   AppBar, Toolbar, Typography, Drawer, List, ListItemButton,
-  ListItemIcon, ListItemText, CssBaseline, Box, IconButton, Divider, Container
+  ListItemIcon, ListItemText, CssBaseline, Box, IconButton, Divider, Container,
+  Collapse, ListSubheader
 } from "@mui/material";
 
 import PeopleIcon from "@mui/icons-material/People";
@@ -21,6 +22,14 @@ import TrackChangesIcon from "@mui/icons-material/TrackChanges";
 import WarehouseIcon from "@mui/icons-material/Warehouse";
 import ReceiptIcon from "@mui/icons-material/Receipt";
 import SettingsIcon from "@mui/icons-material/Settings";
+import PaymentIcon from "@mui/icons-material/Payment";
+import CategoryIcon from "@mui/icons-material/Category";
+import DirectionsBoatIcon from "@mui/icons-material/DirectionsBoat";
+import LocationOnIcon from "@mui/icons-material/LocationOn";
+import AccountBalanceIcon from "@mui/icons-material/AccountBalance";
+import PrintIcon from "@mui/icons-material/Print";
+import ExpandLessIcon from "@mui/icons-material/ExpandLess";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import { useState } from "react";
 import { useThemeContext } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
@@ -33,6 +42,7 @@ export default function DashboardLayout() {
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [openAdmin, setOpenAdmin] = useState(true); // New state for Admin collapse
   const { mode, toggleTheme } = useThemeContext();
   const { user, logout } = useAuth();
 
@@ -42,9 +52,24 @@ export default function DashboardLayout() {
     { label: "Vendors", path: "/vendors", icon: <Accessibility /> },
     { label: "Containers", path: "/containers", icon: <LocalShippingIcon /> },
     { label: "Orders", path: "/orders", icon: <ShoppingCartIcon /> },
-    { label: "Tracking", path: "/tracking", icon: <TrackChangesIcon /> },
-    // { label: "Consignments", path: "/consignments", icon: <LocalShippingIcon /> },
+    // { label: "Tracking", path: "/tracking", icon: <TrackChangesIcon /> },
+    { label: "Consignments", path: "/consignments", icon: <LocalShippingIcon /> },
   ];
+
+  // New Admin sub-items
+  const adminSubItems = [
+    { text: "Payment Types", icon: <PaymentIcon />, path: "/admin/payment-types" },
+    { text: "Categories", icon: <CategoryIcon />, path: "/admin/categories" },
+    { text: "Vessels", icon: <DirectionsBoatIcon />, path: "/admin/vessels" },
+    { text: "Places", icon: <LocationOnIcon />, path: "/admin/places" },
+    { text: "Banks", icon: <AccountBalanceIcon />, path: "/admin/banks" },
+    { text: "3rd Parties", icon: <PeopleIcon />, path: "/admin/third-parties" },
+    // { text: "Barcode Print Test", icon: <PrintIcon />, path: "/admin/barcode-print" },
+  ];
+
+  const handleAdminClick = () => {
+    setOpenAdmin(!openAdmin);
+  };
 
   const drawerContent = (
     <Box display="flex" flexDirection="column" height="100%">
@@ -73,21 +98,21 @@ export default function DashboardLayout() {
             component={Link}
             to={tab.path}
             selected={location.pathname === tab.path}
-          sx={{
+            sx={{
               justifyContent: collapsed ? "center" : "flex-start",
+              borderRadius: 8,
+              margin: "2px 8px",
+              transition: "all 0.2s ease-in-out",
               "&.Mui-selected": {
                 backgroundColor: "#f58220",
                 color: "#ff4d4d",
-                margin:"3px 5px" ,
-                // paddingLeft:8,
-                borderRadius:15
+                margin: "3px 5px",
+                borderRadius: 15,
               },
               "&:hover": {
                 backgroundColor: "#ffebee",
-                 color: "#ff4d4d",
-                // margin:"0px 10px" ,
-                // paddingLeft:8,
-                // borderRadius:15
+                color: "#ff4d4d",
+                transform: "translateX(4px)",
               },
             }}
           >
@@ -110,6 +135,93 @@ export default function DashboardLayout() {
             )}
           </ListItemButton>
         ))}
+
+        {/* New Admin Panel Section */}
+        <ListItemButton
+          onClick={handleAdminClick}
+          sx={{
+            justifyContent: collapsed ? "center" : "flex-start",
+            borderRadius: 8,
+            margin: "2px 8px",
+            transition: "all 0.2s ease-in-out",
+            mt: 2,
+            "&:hover": {
+              backgroundColor: "#e3f2fd",
+              transform: "translateX(4px)",
+            },
+          }}
+        >
+          <ListItemIcon
+            sx={{
+              minWidth: 0,
+              mr: collapsed ? 0 : 2,
+              color: mode === "dark" ? "#fff" : "#f58220",
+            }}
+          >
+            <SettingsIcon />
+          </ListItemIcon>
+          {!collapsed && (
+            <ListItemText
+              primary="Admin Panel"
+              primaryTypographyProps={{
+                sx: { 
+                  color: mode === "dark" ? "#fff" : "#000",
+                  fontWeight: "medium",
+                },
+              }}
+            />
+          )}
+          {!collapsed && (
+            <Box sx={{ ml: "auto", mr: 1 }}>
+              {openAdmin ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+            </Box>
+          )}
+        </ListItemButton>
+
+        {/* Collapsible Admin Sub-Items */}
+        {!collapsed && (
+          <Collapse in={openAdmin} timeout="auto" unmountOnExit sx={{ pl: 4 }}>
+            <List component="div" disablePadding>
+              {adminSubItems.map((subItem) => (
+                <ListItemButton
+                  key={subItem.text}
+                  component={Link}
+                  to={subItem.path}
+                  selected={location.pathname === subItem.path}
+                  sx={{
+                    justifyContent: "flex-start",
+                    borderRadius: 6,
+                    margin: "1px 4px",
+                    transition: "all 0.2s ease-in-out",
+                    "&.Mui-selected": {
+                      backgroundColor: "#f58220",
+                      color: "#ff4d4d",
+                      borderRadius: 12,
+                    },
+                    "&:hover": {
+                      backgroundColor: "#ffebee",
+                      color: "#ff4d4d",
+                      transform: "translateX(2px)",
+                    },
+                  }}
+                >
+                  <ListItemIcon sx={{ minWidth: 40, color: mode === "dark" ? "#fff" : "#000" }}>
+                    {subItem.icon}
+                  </ListItemIcon>
+                  <ListItemText
+                    primary={subItem.text}
+                    primaryTypographyProps={{
+                      sx: { 
+                        fontSize: "0.875rem",
+                        color: mode === "dark" ? "#fff" : "#000",
+                      },
+                    }}
+                  />
+                </ListItemButton>
+              ))}
+            </List>
+          </Collapse>
+        )}
       </List>
 
       <Divider />

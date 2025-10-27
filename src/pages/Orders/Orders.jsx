@@ -32,38 +32,25 @@ import {
     Grid,
     AlertTitle,
     Checkbox,
-    Collapse 
+    Collapse
 } from "@mui/material";
 import Avatar from '@mui/material/Avatar';
 import EditIcon from "@mui/icons-material/Edit";
 import Tooltip from '@mui/material/Tooltip';
-import RefreshIcon from '@mui/icons-material/Refresh';
 import List from '@mui/material/List';
-import ListItem from '@mui/material/ListItem';
-import ListItemText from '@mui/material/ListItemText';
-import ListItemIcon from '@mui/material/ListItemIcon';
 import CargoIcon from '@mui/icons-material/LocalShipping'; // Or use InventoryIcon
-import PersonIcon from '@mui/icons-material/Person';
-import StackIcon from '@mui/icons-material/StackedLineChart';
-import AssignmentIndIcon from '@mui/icons-material/AssignmentInd';
-import ViewColumnIcon from '@mui/icons-material/ViewColumn';
-import Divider from '@mui/material/Divider';
-import InfoIcon from "@mui/icons-material/Info";
-import LocalShippingIcon from "@mui/icons-material/LocalShipping";
 import { styled } from '@mui/material/styles';
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import AddIcon from "@mui/icons-material/Add";
 import DownloadIcon from "@mui/icons-material/Download";
 import CloseIcon from "@mui/icons-material/Close";
-import { getOrderStatusColor } from "./Utlis"; 
+import UpdateIcon from "@mui/icons-material/Update";
 import { useNavigate } from "react-router-dom";
 import OrderModalView from './OrderModalView'
-import AssignmentIcon from '@mui/icons-material/Assignment';
-import InventoryIcon from '@mui/icons-material/Inventory';
-import CheckIcon from '@mui/icons-material/Check';  
 import AssignModal from "./AssignContainer";
 // import { ordersApi } from "../api"; // Adjust path as needed
 import { api } from "../../api";
+// Handlers
 
 const OrdersList = () => {
     const navigate = useNavigate();
@@ -74,8 +61,9 @@ const OrdersList = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [showAllColumns, setShowAllColumns] = useState(false)
-        const [loadingContainers, setLoadingContainers] = useState(false);
-        const [assignmentError, setAssignmentError] = useState(null);
+    const [loadingContainers, setLoadingContainers] = useState(false);
+    const [assignmentError, setAssignmentError] = useState(null);
+    const [selectedContainers, setSelectedContainers] = useState([]);
     const [filters, setFilters] = useState({
         status: "",
         booking_ref: "",  // Updated: Use booking_ref for search
@@ -86,7 +74,7 @@ const OrdersList = () => {
         severity: "info",
     });
     const [openModal, setOpenModal] = useState(false);
-const [assignments, setAssignments] = useState({}); // For storing receiver-container assignments
+    const [assignments, setAssignments] = useState({}); // For storing receiver-container assignments
 
     const [selectedOrder, setSelectedOrder] = useState(null);
     const [modalLoading, setModalLoading] = useState(false);
@@ -98,7 +86,58 @@ const [assignments, setAssignments] = useState({}); // For storing receiver-cont
     const [openAssignModal, setOpenAssignModal] = useState(false);
     const [containers, setContainers] = useState([]);
     const [selectedContainer, setSelectedContainer] = useState('');
+    // States for status update
+    const [openStatusDialog, setOpenStatusDialog] = useState(false);
+    const [selectedOrderForUpdate, setSelectedOrderForUpdate] = useState(null);
+    const [selectedStatus, setSelectedStatus] = useState('');
 
+
+    // ... your existing component logic (useState, handlers, etc.)
+
+
+    // Handlers
+    const handleStatusUpdate = (orderId, order) => {
+        setSelectedOrderForUpdate(order);
+        setSelectedStatus(order.status || 'Received for Shipment'); // Default to first status
+        setOpenStatusDialog(true);
+    };
+
+    const handleCloseStatusDialog = () => {
+        setOpenStatusDialog(false);
+        setSelectedOrderForUpdate(null);
+        setSelectedStatus('');
+    };
+
+    const handleStatusChange = (event) => {
+        setSelectedStatus(event.target.value);
+    };
+
+    const handleConfirmStatusUpdate = async () => {
+        if (!selectedOrderForUpdate || !selectedStatus) return;
+
+        try {
+            // API call to update status (triggers notifications as per mapping)
+            await api.put(`/api/orders/${selectedOrderForUpdate.id}/status`, {
+                status: selectedStatus,
+                // Optional: Include trigger logic if backend handles notifications
+                notifyClient: true, // Based on "Shown to Client?" mapping
+                notifyParties: true // Sender/Receiver as per rules
+            });
+            setSnackbar({
+                open: true,
+                message: `Status updated to "${selectedStatus}" successfully! Notifications sent as per rules.`,
+                severity: 'success',
+            });
+            fetchOrders(); // Refresh the list
+        } catch (err) {
+            setSnackbar({
+                open: true,
+                message: 'Failed to update status',
+                severity: 'error',
+            });
+        }
+        handleCloseStatusDialog();
+    };
     const fetchOrders = async () => {
         setLoading(true);
         setError(null);
@@ -125,34 +164,34 @@ const [assignments, setAssignments] = useState({}); // For storing receiver-cont
             setLoading(false);
         }
     };
-const handleReceiverAction = (receiver) => {
+    const handleReceiverAction = (receiver) => {
         console.log('Editing receiver:', receiver);
         // Example: Open an edit modal or update state
         // You can implement logic here, e.g., setEditingReceiver(receiver);
         alert(`Editing receiver: ${receiver.receiver_name}`); // Placeholder for demo
     };
-        // Helper to normalize containers (handle string or array)
+    // Helper to normalize containers (handle string or array)
     // const normContainers = selectedOrder ? normalizeContainers(selectedOrders.containers) : []; 
 
-   // Helper for horizontal key-value pairs in Grid
+    // Helper for horizontal key-value pairs in Grid
     const HorizontalKeyValue = ({ data, spacing = 3 }) => (
         <Grid container spacing={spacing}>
             {Object.entries(data).map(([key, value]) => (
                 <Grid item xs={12} sm={6} md={4} key={key}>
-                    <Box sx={{ 
-                        p: 2, 
-                        border: '1px solid #e3f2fd', 
-                        borderRadius: 2, 
+                    <Box sx={{
+                        p: 2,
+                        border: '1px solid #e3f2fd',
+                        borderRadius: 2,
                         bgcolor: 'linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)',
                         transition: 'all 0.3s ease',
-                        '&:hover': { 
+                        '&:hover': {
                             boxShadow: '0 4px 12px rgba(245, 130, 32, 0.15)',
                             transform: 'translateY(-2px)',
                             borderColor: '#f58220'
                         }
                     }}>
-                        <Typography variant="caption" color="text.secondary" display="block" sx={{ 
-                            textTransform: 'uppercase', 
+                        <Typography variant="caption" color="text.secondary" display="block" sx={{
+                            textTransform: 'uppercase',
                             fontWeight: 'bold',
                             fontSize: '0.75rem',
                             mb: 0.5
@@ -167,17 +206,17 @@ const handleReceiverAction = (receiver) => {
             ))}
         </Grid>
     );
-const handleUpdateReceiver = (updatedReceiver) => {
-    // Update in orders state, e.g.:
-    setOrders(prevOrders =>
-        prevOrders.map(order =>
-            order.receivers?.map(rec =>
-                rec.id === updatedReceiver.id ? { ...rec, ...updatedReceiver } : rec
-            ) || order.receivers
-        )
-    );
-    // Optional: Show success snackbar
-};
+    const handleUpdateReceiver = (updatedReceiver) => {
+        // Update in orders state, e.g.:
+        setOrders(prevOrders =>
+            prevOrders.map(order =>
+                order.receivers?.map(rec =>
+                    rec.id === updatedReceiver.id ? { ...rec, ...updatedReceiver } : rec
+                ) || order.receivers
+            )
+        );
+        // Optional: Show success snackbar
+    };
     // Fetch open containers
     const fetchContainers = async () => {
         if (loadingContainers) return; // Prevent multiple calls
@@ -185,6 +224,7 @@ const handleUpdateReceiver = (updatedReceiver) => {
         setAssignmentError(null);
         try {
             const response = await api.get('/api/containers');
+            console.log('Fetched containers:', response);
             setContainers(response.data.data || []);
         } catch (err) {
             console.error("Error fetching containers:", err);
@@ -201,7 +241,7 @@ const handleUpdateReceiver = (updatedReceiver) => {
         setModalError(null);
         try {
             const response = await api.get(`/api/orders/${orderId}`);
-            console.log('orders details',response)
+            console.log('orders details', response)
             setSelectedOrder(response.data);  // Now includes nested receivers, order_items, etc.
         } catch (err) {
             console.error("Error fetching order details:", err);
@@ -216,78 +256,89 @@ const handleUpdateReceiver = (updatedReceiver) => {
         }
     };
 
-const handleClick = (id) => {
-  const selectedIndex = selectedOrders.indexOf(id);
-  let newSelected = [...selectedOrders];
+    const handleClick = (id) => {
+        const selectedIndex = selectedOrders.indexOf(id);
+        let newSelected = [...selectedOrders];
 
-  if (selectedIndex === -1) {
-    newSelected.push(id);
-  } else {
-    newSelected.splice(selectedIndex, 1);
-  }
+        if (selectedIndex === -1) {
+            newSelected.push(id);
+        } else {
+            newSelected.splice(selectedIndex, 1);
+        }
 
-  setSelectedOrders(newSelected);
-};
+        setSelectedOrders(newSelected);
+    };
 
-// 2. handleSelectAllClick function (select/deselect all visible rows)
-const handleSelectAllClick = (event) => {
-  if (event.target.checked) {
-    const newSelected = orders.map((n) => n.id);
-    setSelectedOrders(newSelected);
-    return;
-  }
-  setSelectedOrders([]);
-};
+    // 2. handleSelectAllClick function (select/deselect all visible rows)
+    const handleSelectAllClick = (event) => {
+        if (event.target.checked) {
+            const newSelected = orders.map((n) => n.id);
+            setSelectedOrders(newSelected);
+            return;
+        }
+        setSelectedOrders([]);
+    };
 
-const isSelected = (id) => selectedOrders.indexOf(id) !== -1;
+    const isSelected = (id) => selectedOrders.indexOf(id) !== -1;
+    const handleAssign = async (containerId, quantities) => {
+        console.log('selected', containerId, selectedOrders, quantities);
+        if (selectedOrders.length === 0 || !containerId) {
+            setSnackbar({
+                open: true,
+                message: 'Please select orders and a container.',
+                severity: 'warning',
+            });
+            return;
+        }
+        // Validate quantities if provided
+        if (quantities && Object.keys(quantities).length === 0) {
+            setSnackbar({
+                open: true,
+                message: 'Please specify quantities for at least one receiver.',
+                severity: 'warning',
+            });
+            return;
+        }
+        try {
+            const res = await api.post('/api/orders/assign-container', {
+                order_ids: selectedOrders,
+                container_id: containerId,
+                quantities, // Include quantities object
+            });
+            setSnackbar({
+                open: true,
+                message: `Successfully assigned container & quantities to ${res.data.tracking?.length || selectedOrders.length} receivers across ${selectedOrders.length} orders.`,
+                severity: 'success',
+            });
+            console.log('response', res);
+            fetchContainers(); // Refresh containers
+            setOpenAssignModal(false);
+            setSelectedOrders([]); // Clear selection after assign
+            setSelectedContainer('');
+            fetchOrders(); // Refresh list
+        } catch (err) {
+            console.error('Error assigning container:', err);
+            setSnackbar({
+                open: true,
+                message: err.response?.data?.error || err.message || 'Failed to assign container',
+                severity: 'error',
+            });
+        }
+    };
+    const onUpdateAssignedQty = (receiverId, newQty) => {
+        setOrders(prevOrders => prevOrders.map(order => ({
+            ...order,
+            receivers: order.receivers?.map(rec => rec.id === receiverId ? { ...rec, qty_delivered: newQty } : rec)
+        })));
+    };
+    const onRemoveContainers = (receiverId) => {
+        setOrders(prevOrders => prevOrders.map(order => ({
+            ...order,
+            receivers: order.receivers?.map(rec => rec.id === receiverId ? { ...rec, containers: [] } : rec)
+        })));
 
-   const handleAssign = async () => {
-  if (selectedOrders.length === 0 || !selectedContainer) {
-    setSnackbar({
-      open: true,
-      message: 'Please select orders and a container.',
-      severity: 'warning',
-    });
-    return;
-  }
-  try {
-    await api.post('/api/orders/assign-container', {
-      order_ids: selectedOrders,
-      container_id: selectedContainer,
-    });
-    setSnackbar({
-      open: true,
-      message: `Successfully assigned ${selectedOrders.length} orders to container.`,
-      severity: 'success',
-    });
-    // fetchContainers(); // Refresh containers
-    setOpenAssignModal(false);
-    setSelectedOrders([]); // Clear selection after assign
-    setSelectedContainer('');
-    fetchOrders(); // Refresh list
-  } catch (err) {
-    console.error('Error assigning container:', err);
-    setSnackbar({
-      open: true,
-      message: err.response?.data?.error || err.message || 'Failed to assign container',
-      severity: 'error',
-    });
-  }
-};
-const onUpdateAssignedQty = (receiverId, newQty) => {
-    setOrders(prevOrders => prevOrders.map(order => ({
-        ...order,
-        receivers: order.receivers?.map(rec => rec.id === receiverId ? { ...rec, qty_delivered: newQty } : rec)
-    })));
-};
-const onRemoveContainers = (receiverId) => {
-    setOrders(prevOrders => prevOrders.map(order => ({
-        ...order,
-        receivers: order.receivers?.map(rec => rec.id === receiverId ? { ...rec, containers: [] } : rec)
-    })));
-
-    // Optional: Show success snackbar
-};
+        // Optional: Show success snackbar
+    };
     const exportOrders = async () => {
         if (total === 0) {
             setSnackbar({
@@ -429,15 +480,48 @@ const onRemoveContainers = (receiverId) => {
         setSnackbar((prev) => ({ ...prev, open: false }));
     };
 
-    const statuses = ["", "Created", "In Transit", "Delivered", "Cancelled"]; // "" for all
 
-    // Status color mapping function
+    const statuses = [
+        'Created',
+        'Received for Shipment',
+        'Waiting for Authentication',
+        'Shipper Authentication Confirmed',
+        'Waiting for Consignee Authentication',
+        'Waiting for Shipper Authentication (if applicable)',
+        'Consignee Authentication Confirmed',
+        'In Process',
+        'Ready for Loading',
+        'Loaded into Container',
+        'Departed for Port',
+        'Offloaded at Port',
+        'Clearance Completed',
+        'Containers Returned (Internal only)', // Internal only - no client visibility
+        'Hold',
+        'Cancelled',
+        'Delivered'
+    ];
+
     const getStatusColors = (status) => {
+        // Extend your existing getStatusColors function to handle new statuses
         const colorMap = {
-            'Created': { bg: '#e3f2fd', text: '#1976d2' },
-            'In Transit': { bg: '#fff3e0', text: '#f57c00' },
-            'Delivered': { bg: '#e8f5e8', text: '#388e3c' },
+            'Created': { bg: '#00695c', text: '#f1f8e9' },
+            'Received for Shipment': { bg: '#e3f2fd', text: '#1976d2' },
+            'Waiting for Authentication': { bg: '#fff3e0', text: '#ef6c00' },
+            'Shipper Authentication Confirmed': { bg: '#e8f5e8', text: '#388e3c' },
+            'Waiting for Consignee Authentication': { bg: '#fff3e0', text: '#ef6c00' },
+            'Waiting for Shipper Authentication (if applicable)': { bg: '#fff3e0', text: '#ef6c00' },
+            'Consignee Authentication Confirmed': { bg: '#e8f5e8', text: '#388e3c' },
+            'In Process': { bg: '#fff3e0', text: '#ef6c00' },
+            'Ready for Loading': { bg: '#f3e5f5', text: '#7b1fa2' },
+            'Loaded into Container': { bg: '#e0f2f1', text: '#00695c' },
+            'Departed for Port': { bg: '#e1f5fe', text: '#0277bd' },
+            'Offloaded at Port': { bg: '#f1f8e9', text: '#689f38' },
+            'Clearance Completed': { bg: '#fce4ec', text: '#c2185b' },
+            'Containers Returned (Internal only)': { bg: '#ffebee', text: '#c62828' }, // Internal red
+            'Hold': { bg: '#fff3e0', text: '#f57c00' },
             'Cancelled': { bg: '#ffebee', text: '#d32f2f' },
+            'Delivered': { bg: '#e8f5e8', text: '#2e7d32' },
+            // Fallback for unknown
             default: { bg: '#f5f5f5', text: '#666' }
         };
         return colorMap[status] || colorMap.default;
@@ -469,7 +553,7 @@ const onRemoveContainers = (receiverId) => {
         },
     }));
 
-       const normalizeContainers = (containers) => {
+    const normalizeContainers = (containers) => {
         if (!containers) return [];
         if (typeof containers === 'string') {
             return [containers.trim()];
@@ -481,6 +565,7 @@ const onRemoveContainers = (receiverId) => {
     };
     // Handle assign container to receiver
     const handleAssignContainer = async (receiverId, containerId) => {
+        // console.log('assign container', receiverId, containerId)
         if (!containerId) return;
         try {
             await api.post(`/api/orders/${selectedOrder.id}/receivers/${receiverId}/assign-container`, { container_id: containerId });
@@ -513,213 +598,213 @@ const onRemoveContainers = (receiverId) => {
         );
     };
 
-// Updated helper: parse and enhance with icons/chips for better UX
-const parseSummaryToList = (receivers) => {
-    console.log('Parsing receivers:', receivers);
-    if (!receivers || !Array.isArray(receivers)) return [];
-    return receivers.map(rec => ({
-        primary: rec.receiver_name,
-        status: rec.status
-    }));
-};
+    // Updated helper: parse and enhance with icons/chips for better UX
+    const parseSummaryToList = (receivers) => {
+        // console.log('Parsing receivers:', receivers);
+        if (!receivers || !Array.isArray(receivers)) return [];
+        return receivers.map(rec => ({
+            primary: rec.receiver_name,
+            status: rec.status
+        }));
+    };
 
-// Enhanced PrettyList: Modern vertical card-based layout for receivers with improved alignment, avatars, and status badges
-const PrettyList = ({ items, title }) => (
-  <Card 
-    variant="outlined" 
-    sx={{ 
-      p: 2, 
-      borderRadius: 2, 
-      border: '1px solid', 
-      borderColor: 'divider',
-      backgroundColor: '#fafafa', // Subtle off-white background for better contrast
-      boxShadow: 'none',
-      '&:hover': { 
-        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)' // Gentle shadow on hover for depth
-      }
-    }}
-  >
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-      {/* Title Section - Centered and prominent */}
-      <Box sx={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center',
-        pb: 1,
-        borderBottom: '1px solid',
-        borderColor: 'divider'
-      }}>
-        <Typography variant="subtitle2" sx={{ fontWeight: 'bold', color: '#f58220' }}> {/* Use brand color for title */}
-          {title}
-        </Typography>
-        <Chip 
-          label={`(${items.length})`} 
-          size="small" 
-          color="primary" 
-          variant="outlined" 
-          sx={{ 
-            fontSize: '0.7rem',
-            height: 20,
-            '& .MuiChip-label': { px: 0.5 }
-          }} 
-        />
-      </Box>
-
-      {/* Items List - Vertical stack with improved spacing */}
-      <Stack spacing={1} sx={{ maxHeight: 200, overflow: 'auto' }}> {/* Add scrollable height for better UX in dense lists */}
-        {items.length > 0 ? (
-          items.map((item, index) => (
-            <Card 
-              key={index} 
-              variant="outlined" 
-              sx={{ 
-                p: 1.5, 
-                borderRadius: 1.5, 
-                border: '1px solid', 
-                borderColor: 'grey.200',
-                backgroundColor: '#fff', // Clean white for individual cards
-                boxShadow: 'none',
-                transition: 'all 0.2s ease', // Smooth transitions
-                '&:hover': { 
-                  boxShadow: '0 1px 4px rgba(0, 0, 0, 0.1)', 
-                  transform: 'translateY(-1px)', // Subtle lift on hover
-                  borderColor: 'primary.light'
-                },
-                cursor: 'pointer' // Indicate interactivity
-              }}
-              onClick={() => { /* Optional: Add click handler for item selection */ }}
-            >
-              <Stack direction="row" alignItems="center" spacing={1.5} sx={{ width: '100%' }}>
-                {/* Avatar - Slightly larger for better touch targets */}
-                <Avatar 
-                  sx={{ 
-                    width: 32, 
-                    height: 32, 
-                    bgcolor: 'primary.main', 
-                    fontSize: '1rem',
-                    flexShrink: 0 // Prevent shrinking
-                  }}
-                >
-                  {item.primary ? item.primary.charAt(0).toUpperCase() : '?'}
-                </Avatar>
-                
-                {/* Content - Flexible box for text wrapping */}
-                <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <Typography 
-                    variant="body2" 
-                    fontWeight="medium" 
-                    noWrap 
-                    sx={{ 
-                      color: 'text.primary',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap'
-                    }}
-                  >
-                    {item.primary || 'Unnamed Item'}
-                  </Typography>
-                  {item.secondary && (
-                    <Typography 
-                      variant="caption" 
-                      sx={{ 
-                        color: 'text.secondary',
-                        display: 'block',
-                        mt: 0.25
-                      }}
-                    >
-                      {item.secondary}
-                    </Typography>
-                  )}
-                </Box>
-                
-                {/* Status Badge - Aligned to the right */}
-                {item.status && (
-                  <StatusChip 
-                    status={item.status} 
-                    size="small" 
-                    sx={{ 
-                      fontSize: '0.7rem', 
-                      height: 20,
-                      minWidth: 60,
-                      flexShrink: 0,
-                      '& .MuiChip-label': { px: 0.5 }
-                    }} 
-                  />
-                )}
-              </Stack>
-            </Card>
-          ))
-        ) : (
-          <Box sx={{ 
-            display: 'flex', 
-            flexDirection: 'column', 
-            alignItems: 'center', 
-            justifyContent: 'center', 
-            py: 3, 
-            color: 'text.secondary' 
-          }}>
-            <EmojiEventsIcon sx={{ fontSize: 40, color: 'grey.300', mb: 1 }} /> {/* Visual placeholder */}
-            <Typography variant="body2" sx={{ fontStyle: 'italic' }}>
-              No items available
-            </Typography>
-          </Box>
-        )}
-      </Stack>
-    </Box>
-  </Card>
-);
-
-// Enhanced parse for containers: Simple string split
-const parseContainersToList = (containersStr) => {
-  if (!containersStr) return [];
-  return containersStr.split(', ').map(cont => ({ primary: cont.trim() }));
-};
-
-// Enhanced PrettyContainersList: Horizontal chips for compact, modern feel
-const PrettyContainersList = ({ items, title }) => (
-    console.log('Containers items:', items),    
-  <Box sx={{ p: 1, maxWidth: 280 }}>
-    <Typography variant="caption" sx={{ fontWeight: 'medium', color: 'text.secondary', mb: 1, display: 'block' }}>
-      {title} ({items.length})
-    </Typography>
-    <Stack direction="row" flexWrap="wrap" spacing={0.75} useFlexGap>
-      {items.length > 0 ? (
-        items.map((item, index) => (
-          <Chip
-            key={index}
-            label={item.primary}
-            icon={<CargoIcon fontSize="small" />}
-            size="small"
+    // Enhanced PrettyList: Modern vertical card-based layout for receivers with improved alignment, avatars, and status badges
+    const PrettyList = ({ items, title }) => (
+        <Card
             variant="outlined"
             sx={{
-              borderRadius: 1.5,
-              borderColor: 'divider',
-              backgroundColor: '#f8f9fa', // Changed to light grey background
-              '& .MuiChip-icon': { color: 'secondary.main' },
-              fontSize: '0.75rem',
-              height: 24,
-              '&:hover': { backgroundColor: '#e9ecef' } // Darker grey on hover
+                p: 2,
+                borderRadius: 2,
+                border: '1px solid',
+                borderColor: 'divider',
+                backgroundColor: '#fafafa', // Subtle off-white background for better contrast
+                boxShadow: 'none',
+                '&:hover': {
+                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)' // Gentle shadow on hover for depth
+                }
             }}
-          />
-        ))
-      ) : (
-        <Chip
-          label="No containers"
-          size="small"
-          variant="outlined"
-          sx={{ 
-            borderRadius: 1.5, 
-            borderColor: 'divider', 
-            backgroundColor: '#f8f9fa', // Changed to light grey background
-            color: 'text.secondary',
-            fontSize: '0.75rem',
-            height: 24,
-          }}
-        />
-      )}
-    </Stack>
-  </Box>
-);
+        >
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                {/* Title Section - Centered and prominent */}
+                <Box sx={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    pb: 1,
+                    borderBottom: '1px solid',
+                    borderColor: 'divider'
+                }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 'bold', color: '#f58220' }}> {/* Use brand color for title */}
+                        {title}
+                    </Typography>
+                    <Chip
+                        label={`(${items.length})`}
+                        size="small"
+                        color="primary"
+                        variant="outlined"
+                        sx={{
+                            fontSize: '0.7rem',
+                            height: 20,
+                            '& .MuiChip-label': { px: 0.5 }
+                        }}
+                    />
+                </Box>
+
+                {/* Items List - Vertical stack with improved spacing */}
+                <Stack spacing={1} sx={{ maxHeight: 200, overflow: 'auto' }}> {/* Add scrollable height for better UX in dense lists */}
+                    {items.length > 0 ? (
+                        items.map((item, index) => (
+                            <Card
+                                key={index}
+                                variant="outlined"
+                                sx={{
+                                    p: 1.5,
+                                    borderRadius: 1.5,
+                                    border: '1px solid',
+                                    borderColor: 'grey.200',
+                                    backgroundColor: '#fff', // Clean white for individual cards
+                                    boxShadow: 'none',
+                                    transition: 'all 0.2s ease', // Smooth transitions
+                                    '&:hover': {
+                                        boxShadow: '0 1px 4px rgba(0, 0, 0, 0.1)',
+                                        transform: 'translateY(-1px)', // Subtle lift on hover
+                                        borderColor: 'primary.light'
+                                    },
+                                    cursor: 'pointer' // Indicate interactivity
+                                }}
+                                onClick={() => { /* Optional: Add click handler for item selection */ }}
+                            >
+                                <Stack direction="row" alignItems="center" spacing={1.5} sx={{ width: '100%' }}>
+                                    {/* Avatar - Slightly larger for better touch targets */}
+                                    <Avatar
+                                        sx={{
+                                            width: 32,
+                                            height: 32,
+                                            bgcolor: 'primary.main',
+                                            fontSize: '1rem',
+                                            flexShrink: 0 // Prevent shrinking
+                                        }}
+                                    >
+                                        {item.primary ? item.primary.charAt(0).toUpperCase() : '?'}
+                                    </Avatar>
+
+                                    {/* Content - Flexible box for text wrapping */}
+                                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                                        <Typography
+                                            variant="body2"
+                                            fontWeight="medium"
+                                            noWrap
+                                            sx={{
+                                                color: 'text.primary',
+                                                overflow: 'hidden',
+                                                textOverflow: 'ellipsis',
+                                                whiteSpace: 'nowrap'
+                                            }}
+                                        >
+                                            {item.primary || 'Unnamed Item'}
+                                        </Typography>
+                                        {item.secondary && (
+                                            <Typography
+                                                variant="caption"
+                                                sx={{
+                                                    color: 'text.secondary',
+                                                    display: 'block',
+                                                    mt: 0.25
+                                                }}
+                                            >
+                                                {item.secondary}
+                                            </Typography>
+                                        )}
+                                    </Box>
+
+                                    {/* Status Badge - Aligned to the right */}
+                                    {item.status && (
+                                        <StatusChip
+                                            status={item.status}
+                                            size="small"
+                                            sx={{
+                                                fontSize: '0.7rem',
+                                                height: 20,
+                                                minWidth: 60,
+                                                flexShrink: 0,
+                                                '& .MuiChip-label': { px: 0.5 }
+                                            }}
+                                        />
+                                    )}
+                                </Stack>
+                            </Card>
+                        ))
+                    ) : (
+                        <Box sx={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            py: 3,
+                            color: 'text.secondary'
+                        }}>
+                            <EmojiEventsIcon sx={{ fontSize: 40, color: 'grey.300', mb: 1 }} /> {/* Visual placeholder */}
+                            <Typography variant="body2" sx={{ fontStyle: 'italic' }}>
+                                No items available
+                            </Typography>
+                        </Box>
+                    )}
+                </Stack>
+            </Box>
+        </Card>
+    );
+
+    // Enhanced parse for containers: Simple string split
+    const parseContainersToList = (containersStr) => {
+        if (!containersStr) return [];
+        return containersStr.split(', ').map(cont => ({ primary: cont.trim() }));
+    };
+
+    // Enhanced PrettyContainersList: Horizontal chips for compact, modern feel
+    const PrettyContainersList = ({ items, title }) => (
+        console.log('Containers items:', items),
+        <Box sx={{ p: 1, maxWidth: 280 }}>
+            <Typography variant="caption" sx={{ fontWeight: 'medium', color: 'text.secondary', mb: 1, display: 'block' }}>
+                {title} ({items.length})
+            </Typography>
+            <Stack direction="row" flexWrap="wrap" spacing={0.75} useFlexGap>
+                {items.length > 0 ? (
+                    items.map((item, index) => (
+                        <Chip
+                            key={index}
+                            label={item.primary}
+                            icon={<CargoIcon fontSize="small" />}
+                            size="small"
+                            variant="outlined"
+                            sx={{
+                                borderRadius: 1.5,
+                                borderColor: 'divider',
+                                backgroundColor: '#f8f9fa', // Changed to light grey background
+                                '& .MuiChip-icon': { color: 'secondary.main' },
+                                fontSize: '0.75rem',
+                                height: 24,
+                                '&:hover': { backgroundColor: '#e9ecef' } // Darker grey on hover
+                            }}
+                        />
+                    ))
+                ) : (
+                    <Chip
+                        label="No containers"
+                        size="small"
+                        variant="outlined"
+                        sx={{
+                            borderRadius: 1.5,
+                            borderColor: 'divider',
+                            backgroundColor: '#f8f9fa', // Changed to light grey background
+                            color: 'text.secondary',
+                            fontSize: '0.75rem',
+                            height: 24,
+                        }}
+                    />
+                )}
+            </Stack>
+        </Box>
+    );
     const StyledTableRow = styled(TableRow)(({ theme }) => ({
         '&:nth-of-type(odd)': {
             backgroundColor: theme.palette.action.hover,
@@ -770,8 +855,8 @@ const PrettyContainersList = ({ items, title }) => (
         );
     }
 
-const numSelected = selectedOrders.length;
-const rowCount = orders.length;
+    const numSelected = selectedOrders.length;
+    const rowCount = orders.length;
 
     return (
         <>
@@ -781,20 +866,20 @@ const rowCount = orders.length;
                         Orders List
                     </Typography>
                     <Stack direction="row" spacing={2}>
-                  <Button
-  variant="contained"
-  disabled={numSelected === 0}
-  onClick={() => setOpenAssignModal(true)}
-  startIcon={<AddIcon />}
-  sx={{
-    borderRadius: 2,
-    backgroundColor: "#0d6c6a",
-    color: "#fff",
-    "&:hover": { backgroundColor: "#0d6c6a" },
-  }}
->
-  Add Selected to Container ({numSelected})
-</Button>
+                        <Button
+                            variant="contained"
+                            disabled={numSelected === 0}
+                            onClick={() => setOpenAssignModal(true)}
+                            startIcon={<AddIcon />}
+                            sx={{
+                                borderRadius: 2,
+                                backgroundColor: "#0d6c6a",
+                                color: "#fff",
+                                "&:hover": { backgroundColor: "#0d6c6a" },
+                            }}
+                        >
+                            Add Selected to Container ({numSelected})
+                        </Button>
                         <Button
                             variant="outlined"
                             startIcon={<DownloadIcon />}
@@ -825,7 +910,7 @@ const rowCount = orders.length;
                         </Button>
                     </Stack>
                 </Stack>
-   
+
                 {/* Filters - Updated: booking_ref for search */}
                 <Stack direction="row" spacing={2} mb={3} alignItems="center">
                     <TextField
@@ -844,9 +929,10 @@ const rowCount = orders.length;
                             label="Status"
                             onChange={handleFilterChange}
                         >
+                            <MenuItem value="">All</MenuItem> {/* Added "All" option */}
                             {statuses.map((status) => (
                                 <MenuItem key={status} value={status}>
-                                    {status || "All"}
+                                    {status}
                                 </MenuItem>
                             ))}
                         </Select>
@@ -857,21 +943,21 @@ const rowCount = orders.length;
                     <Table stickyHeader>
                         <TableHead >
                             <TableRow sx={{ bgcolor: '#0d6c6a' }} >
-                              <TableCell padding="checkbox" sx={{ bgcolor: '#0d6c6a', color: '#fff' }}>
-  <Checkbox
-    color="primary"
-    indeterminate={numSelected > 0 && numSelected < rowCount}
-    checked={rowCount > 0 && numSelected === rowCount}
-    onChange={handleSelectAllClick}
-  />
-</TableCell>
+                                <TableCell padding="checkbox" sx={{ bgcolor: '#0d6c6a', color: '#fff' }}>
+                                    <Checkbox
+                                        color="primary"
+                                        indeterminate={numSelected > 0 && numSelected < rowCount}
+                                        checked={rowCount > 0 && numSelected === rowCount}
+                                        onChange={handleSelectAllClick}
+                                    />
+                                </TableCell>
                                 {[
                                     <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="ref">Booking Ref</StyledTableHeadCell>,
                                     <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="loading">POL</StyledTableHeadCell>,
                                     <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="dest">POD</StyledTableHeadCell>,
                                     <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="sender">Sender</StyledTableHeadCell>,
                                     <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="receivers">Receivers</StyledTableHeadCell>, // Multiple receivers with status
-                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="containers">Containers</StyledTableHeadCell> ,
+                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="containers">Containers</StyledTableHeadCell>,
                                     <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="status">Status</StyledTableHeadCell>,
                                     //   <TableCell key="assoc">Associated Container</TableCell>,
                                     <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="created">Created At</StyledTableHeadCell>,
@@ -880,56 +966,56 @@ const rowCount = orders.length;
                             </TableRow>
                         </TableHead>
                         <TableBody>
-                        {orders.map((order) => {
-                            console.log('Rendering order:', order.receivers);
-  const isItemSelected = isSelected(order.id);
-                        //  renderReceivers( order.receivers);
+                            {orders.map((order) => {
+                                console.log('Rendering order:', order.receivers);
+                                const isItemSelected = isSelected(order.id);
+                                //  renderReceivers( order.receivers);
                                 const containersList = order.receiver_containers_json ? order.receiver_containers_json.split(', ').map(cont => ({ primary: cont })) : []; // Simple for containers
                                 const status = order.overall_status || order.status || 'Created';
                                 const colors = getStatusColors(status);
 
                                 return (
-                                   <StyledTableRow 
-      key={order.id}
-      onClick={() => handleClick(order.id)}
-      role="checkbox"
-      aria-checked={isItemSelected}
-      selected={isItemSelected}
-      sx={{ cursor: 'pointer' }}
-    >
-      <TableCell padding="checkbox">
-        <Checkbox
-          checked={isItemSelected}
-          onChange={(event) => {
-            handleClick(order.id);
-            event.stopPropagation();
-          }}
-          inputProps={{
-            'aria-labelledby': `enhanced-table-checkbox-${order.id}`,
-          }}
-        />
-      </TableCell>
+                                    <StyledTableRow
+                                        key={order.id}
+                                        onClick={() => handleClick(order.id)}
+                                        role="checkbox"
+                                        aria-checked={isItemSelected}
+                                        selected={isItemSelected}
+                                        sx={{ cursor: 'pointer' }}
+                                    >
+                                        <TableCell padding="checkbox">
+                                            <Checkbox
+                                                checked={isItemSelected}
+                                                onChange={(event) => {
+                                                    handleClick(order.id);
+                                                    event.stopPropagation();
+                                                }}
+                                                inputProps={{
+                                                    'aria-labelledby': `enhanced-table-checkbox-${order.id}`,
+                                                }}
+                                            />
+                                        </TableCell>
                                         <StyledTableCell>{order.booking_ref}</StyledTableCell>
                                         <StyledTableCell>{order?.place_of_loading}</StyledTableCell>
                                         <StyledTableCell>{order.place_of_loading}</StyledTableCell>
                                         <StyledTableCell>{order.sender_name}</StyledTableCell>
-                                       <StyledTableCell>
-    <StyledTooltip
-        title={<PrettyList items={parseSummaryToList(order.receivers)} title="Receivers" />}
-        arrow
-        placement="top"
-        PopperProps={{
-            sx: { '& .MuiTooltip-tooltip': { border: '1px solid #e0e0e0' } }
-        }}
-    >
-        <Typography variant="body2" noWrap sx={{ maxWidth: 120, cursor: 'help', fontWeight: 'medium' }}>
-            {order.receivers && order.receivers.length > 0 
-                ? `${order.receivers.map(r => r.receiver_name).join(', ').substring(0, 20)}...` 
-                : '-'
-            }
-        </Typography>
-    </StyledTooltip>
-</StyledTableCell>
+                                        <StyledTableCell>
+                                            <StyledTooltip
+                                                title={<PrettyList items={parseSummaryToList(order.receivers)} title="Receivers" />}
+                                                arrow
+                                                placement="top"
+                                                PopperProps={{
+                                                    sx: { '& .MuiTooltip-tooltip': { border: '1px solid #e0e0e0' } }
+                                                }}
+                                            >
+                                                <Typography variant="body2" noWrap sx={{ maxWidth: 120, cursor: 'help', fontWeight: 'medium' }}>
+                                                    {order.receivers && order.receivers.length > 0
+                                                        ? `${order.receivers.map(r => r.receiver_name).join(', ').substring(0, 20)}...`
+                                                        : '-'
+                                                    }
+                                                </Typography>
+                                            </StyledTooltip>
+                                        </StyledTableCell>
                                         <StyledTableCell>
                                             <StyledTooltip
                                                 title={<PrettyContainersList items={parseContainersToList(order.receiver_containers_json)} title="Containers" />}
@@ -941,11 +1027,12 @@ const rowCount = orders.length;
                                                 </Typography>
                                             </StyledTooltip>
                                         </StyledTableCell>
-                                          <StyledTableCell>
+                                        <StyledTableCell>
                                             <Chip
-                                                label={status}
-                                                size="small"
-                                                sx={{ 
+                                                label={`${status.substring(0, 15)}...`} // Internal status for admin
+                                                // size="small"
+                                                sx={{
+                                                    flexShrink: 0,  
                                                     backgroundColor: colors.bg,
                                                     color: colors.text
                                                 }}
@@ -954,10 +1041,13 @@ const rowCount = orders.length;
                                         <StyledTableCell>{new Date(order.created_at).toLocaleDateString()}</StyledTableCell>
                                         <StyledTableCell>
                                             <Stack direction="row" spacing={1}>
-                                                <IconButton size="small" onClick={() => handleView(order.id)} title="View Details">
+                                                <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleStatusUpdate(order.id, order); }} title="Update Status">
+                                                    <UpdateIcon />
+                                                </IconButton>
+                                                <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleView(order.id); }} title="View Details">
                                                     <VisibilityIcon />
                                                 </IconButton>
-                                                <IconButton size="small" onClick={() => handleEdit(order.id)} title="Edit">
+                                                <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleEdit(order.id); }} title="Edit">
                                                     <EditIcon />
                                                 </IconButton>
                                             </Stack>
@@ -976,7 +1066,7 @@ const rowCount = orders.length;
                     page={page}
                     onPageChange={handleChangePage}
                     onRowsPerPageChange={handleChangeRowsPerPage}
-                    sx={{ 
+                    sx={{
                         borderTop: '1px solid rgba(224, 224, 224, 1)',
                         '& .MuiTablePagination-selectLabel, & .MuiTablePagination-displayedRows': {
                             color: '#f58220',
@@ -988,12 +1078,12 @@ const rowCount = orders.length;
                     }}
                 />
 
-                <OrderModalView 
-                    openModal={openModal} 
-                    handleCloseModal={handleCloseModal} 
-                    selectedOrder={selectedOrder} 
-                    modalLoading={modalLoading} 
-                    modalError={modalError} 
+                <OrderModalView
+                    openModal={openModal}
+                    handleCloseModal={handleCloseModal}
+                    selectedOrder={selectedOrder}
+                    modalLoading={modalLoading}
+                    modalError={modalError}
                 />
 
                 {/* Snackbar for notifications */}
@@ -1008,22 +1098,59 @@ const rowCount = orders.length;
                     </Alert>
                 </Snackbar>
 
-               <AssignModal
-    openAssignModal={openAssignModal}
-    setOpenAssignModal={setOpenAssignModal}
-    selectedOrders={selectedOrders}
-    orders={orders} // Assuming 'orders' is available
-    containers={containers}
-    selectedContainer={selectedContainer}
-    setSelectedContainer={setSelectedContainer}
-    loadingContainers={loadingContainers}
-    fetchContainers={fetchContainers}
-    onUpdateAssignedQty={onUpdateAssignedQty}
-    onRemoveContainers={onRemoveContainers}
-    handleAssign={handleAssign}
-    handleReceiverAction={handleReceiverAction}
-    onUpdateReceiver={handleUpdateReceiver}
-/>
+                <AssignModal
+                    openAssignModal={openAssignModal}
+                    setOpenAssignModal={setOpenAssignModal}
+                    selectedOrders={selectedOrders}
+                    orders={orders} // Assuming 'orders' is available
+                    containers={containers}
+                    selectedContainers={selectedContainers}
+                    setSelectedContainers={setSelectedContainers}
+                    loadingContainers={loadingContainers}
+                    fetchContainers={fetchContainers}
+                    onUpdateAssignedQty={onUpdateAssignedQty}
+                    onRemoveContainers={onRemoveContainers}
+                    handleAssign={handleAssign}
+                    handleReceiverAction={handleReceiverAction}
+                    onUpdateReceiver={handleUpdateReceiver}
+
+    
+                />
+
+                {/* Status Update Dialog */}
+                <Dialog
+                    open={openStatusDialog}
+                    onClose={handleCloseStatusDialog}
+                    maxWidth="xs"
+                    fullWidth
+                >
+                    <DialogTitle>Update Order Status</DialogTitle>
+                    <DialogContent>
+                        <Typography variant="body2" color="text.secondary" mb={2}>
+                            Select new status for "{selectedOrderForUpdate?.booking_ref}". Notifications will be sent based on rules.
+                        </Typography>
+                        <FormControl fullWidth margin="dense">
+                            <InputLabel>Status</InputLabel>
+                            <Select
+                                value={selectedStatus}
+                                label="Status"
+                                onChange={handleStatusChange}
+                            >
+                                {statuses.map((status) => (
+                                    <MenuItem key={status} value={status}>
+                                        {status}
+                                    </MenuItem>
+                                ))}
+                            </Select>
+                        </FormControl>
+                    </DialogContent>
+                    <DialogActions>
+                        <Button onClick={handleCloseStatusDialog}>Cancel</Button>
+                        <Button onClick={handleConfirmStatusUpdate} variant="contained">
+                            Update & Notify
+                        </Button>
+                    </DialogActions>
+                </Dialog>
             </Paper>
         </>
     );

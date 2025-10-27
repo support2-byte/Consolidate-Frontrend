@@ -16,10 +16,19 @@ import { ThemeProvider as MuiThemeProvider, createTheme } from "@mui/material/st
 import CssBaseline from "@mui/material/CssBaseline";
 import { AuthProvider } from "./context/AuthContext";
 import CustomerAdd from "./pages/Customers/AddCustomer";
+import Consignments from "./pages/Consignments/Consignments";
+import AddConsignment from "./pages/Consignments/AddConsignment";
 import VendorsForm from "./pages/Vendors/AddVendors";
 import Containers from "./pages/Containers/Containers";
 import OrderForm from "./pages/Orders/AddOrder";
 import TrackingPage from "./pages/Orders/TrackingPage";
+import PaymentTypes from "./pages/SystemData/PaymentTypes";
+import Categories from "./pages/SystemData/Categories";
+import Vessels from "./pages/SystemData/Vessels";  
+import Places from "./pages/SystemData/Places";
+import Banks from "./pages/SystemData/Banks";
+import ThirdParties from "./pages/SystemData/ThirdParties";
+import BarcodePrintTest from "./pages/SystemData/BarcodePrintTest";
 // ✅ Theming wrapper
 function ThemedApp({ children }) {
   const { mode } = useThemeContext();
@@ -64,11 +73,21 @@ const router = createBrowserRouter([
       { path: "/orders/add", element: <OrderForm mode='add' /> },
  { path: "/orders/:id/edit", element: <OrderForm mode='edit' /> },
       { path: "/tracking", element: <TrackingPage /> },
-      // { path: "consignments", element: <Consignments /> },
+      { path: "consignments", element: <Consignments /> },
       { path: "/customers/add", element: <CustomerAdd mode="add" /> },
       { path: "/customers/:id/edit", element: <CustomerAdd mode="edit" /> },
       { path: "/vendors/add", element: <VendorsForm mode="add" /> },
       { path: "/vendors/:id/edit", element: <VendorsForm mode="edit" /> },
+      { path: "/consignments/add", element: <AddConsignment mode="add" /> },
+      { path: "/consignments/:id/edit", element: <AddConsignment mode="edit" /> },
+      { path: "/admin/payment-types", element: <PaymentTypes /> },
+      { path: "/admin/categories", element: <Categories /> },
+      { path: "/admin/vessels", element: <Vessels /> },
+      { path: "/admin/places", element: <Places /> },
+      { path: "/admin/banks", element: <Banks /> },
+      { path: "/admin/third-parties", element: <ThirdParties /> },
+      { path: "/admin/barcode-print", element: <BarcodePrintTest /> },
+
     ],
   },
 ]);

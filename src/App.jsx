@@ -15,6 +15,14 @@ import TrackingPage from "./pages/Orders/TrackingPage";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import OrderForm from "./pages/Orders/AddOrder";
+import PaymentTypes from "./pages/SystemData/PaymentTypes";
+import Categories from "./pages/SystemData/Categories";
+import Vessels from "./pages/SystemData/Vessels";  
+import Places from "./pages/SystemData/Places";
+import Banks from "./pages/SystemData/Banks";
+import ThirdParties from "./pages/SystemData/ThirdParties";
+import BarcodePrintTest from "./pages/SystemData/BarcodePrintTest";
+
 function ProtectedRoute() {
   const { user, loading } = useAuth();
   if (loading) return <div>Loading...</div>; // while checking session
@@ -50,6 +58,15 @@ export default function App() {
               {/* <Route path="/containers" element={<Containers mode="edit" />} /> */}
             <Route path="/containers" element={<AddContainers />} />
             <Route path="/tracking" element={<TrackingPage />} />
+            <Route path="/consignments" element={<Consignments />} /> 
+            <Route path="/admin/payment-types" element={<PaymentTypes />} />
+  <Route path="/admin/categories" element={<Categories />} />
+  <Route path="/admin/vessels" element={<Vessels />} />
+  <Route path="/admin/places" element={<Places />} />
+  <Route path="/admin/banks" element={<Banks />} />
+  <Route path="/admin/third-parties" element={<ThirdParties />} />
+  <Route path="/admin/barcode-print" element={<BarcodePrintTest />} />
+            
              {/* <Route path="/containers/add" element={<AddContainers />} /> */}
           </Route>
         </Route>
