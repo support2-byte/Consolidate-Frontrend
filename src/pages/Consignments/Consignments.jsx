@@ -42,6 +42,7 @@ import {
   Info as InfoIcon
 } from "@mui/icons-material";
 import { useNavigate } from "react-router-dom"; // Assuming React Router is used
+  import { styled } from '@mui/material/styles';
 
 export default function Consignments() {
   const navigate = useNavigate();
@@ -378,14 +379,49 @@ export default function Consignments() {
   const total = filteredConsignments.length;
   const totalWeight = filteredConsignments.reduce((sum, item) => sum + (item.total_weight_kg || 0), 0);
   const totalOrders = filteredConsignments.reduce((sum, item) => sum + (item.num_orders || 0), 0);
+  const StyledTableRow = styled(TableRow)(({ theme }) => ({
+        '&:nth-of-type(odd)': {
+            backgroundColor: theme.palette.action.hover,
+        },
+        // hide last border
+        '&:last-child td, &:last-child th': {
+            border: 0,
+        },
+        '&:hover': {
+            backgroundColor: theme.palette.action.selected,
+        },
+    }));
 
+    const StyledTableCell = styled(TableCell)(({ theme }) => ({
+        borderBottom: `1px solid ${theme.palette.divider}`,
+        fontSize: '0.875rem',
+        padding: theme.spacing(1.5, 2),
+    }));
+
+    const StyledTableHeadCell = styled(TableCell)(({ theme }) => ({
+        backgroundColor: theme.palette.primary.main,
+        color: theme.palette.primary.contrastText,
+        fontWeight: 'bold',
+        fontSize: '0.875rem',
+        padding: theme.spacing(1.5, 2),
+        borderBottom: `2px solid ${theme.palette.primary.dark}`,
+    }));
   return (
-    <Paper sx={{ p: { xs: 2, md: 3 }, borderRadius: 3, boxShadow: 3, bgcolor: "#fafafa", width: '100%' }}>
-      {/* Summary Card */}
-      <Card sx={{ mb: 3, borderRadius: 2, boxShadow: 1 }}>
+    <Paper 
+      sx={{ 
+        p: { xs: 2, md: 3 }, 
+        borderRadius: 3, 
+        boxShadow: 3,
+        overflowX: 'hidden', // Prevent horizontal scroll on Paper
+        backgroundColor: 'background.default',
+        maxWidth: '100vw', // Ensure it doesn't exceed viewport
+      }}
+    >
+      {/* Summary Card - Responsive Stack */}
+      <Card sx={{ mb: 3, borderRadius: 2, boxShadow: 1, transition: 'box-shadow 0.2s ease' }} onMouseEnter={(e) => e.currentTarget.style.boxShadow = '0 4px 12px rgba(13, 108, 106, 0.15)'} onMouseLeave={(e) => e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.12)'}>
         <CardContent sx={{ p: 2 }}>
           <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={2}>
-            <Typography variant="body1" color="text.secondary">
+            <Typography variant="body1" color="text.secondary" sx={{ fontSize: { xs: '0.875rem', md: '1rem' } }}>
               Showing <strong>{total}</strong> consignments • Total Orders: <strong>{totalOrders}</strong> • Total Weight: <strong>{totalWeight.toLocaleString()} kg</strong>
             </Typography>
             <Chip 
@@ -394,34 +430,58 @@ export default function Consignments() {
               color={numSelected > 0 ? "primary" : "default"}
               size="small"
               variant="outlined"
+              sx={{ 
+                borderRadius: 1.5,
+                fontWeight: 'medium',
+                minWidth: 120,
+                justifyContent: 'center',
+                transition: 'all 0.2s ease',
+                '&:hover': { transform: 'scale(1.02)' }
+              }}
             />
           </Stack>
         </CardContent>
       </Card>
 
-      <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
-        <Typography variant="h4" fontWeight="bold" color="#f58220" sx={{ fontSize: { xs: '1.5rem', md: '1.75rem' } }}>
+      {/* Header - Responsive with Stacked Buttons on Mobile */}
+      <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={{ xs: 2, sm: 0 }} mb={2}>
+        <Typography 
+          variant="h4" 
+          fontWeight="bold" 
+          color="#f58220" 
+          sx={{ 
+            fontSize: { xs: '1.5rem', md: '1.75rem' },
+            mb: { xs: 1, sm: 0 },
+            transition: 'transform 0.2s ease',
+            '&:hover': { transform: 'scale(1.01)' }
+          }}
+        >
           Consignments
         </Typography>
-        <Stack direction="row" spacing={1}>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ width: { xs: '100%', sm: 'auto' } }}>
           <Tooltip title={numSelected === 0 ? "Select items to add to vessel" : ""}>
             <span>
               <Button
                 variant="contained"
                 disabled={numSelected === 0}
-                onClick={() => console.log('Add selected to vessel')} // Dummy
+                onClick={() => console.log('Add selected to vessel')}
                 startIcon={<AddIcon />}
                 size="medium"
+                fullWidth={true} // Full width on mobile
                 sx={{
                   borderRadius: 2,
                   backgroundColor: "#0d6c6a",
                   color: "#fff",
-                  "&:hover": { backgroundColor: "#0d6c6a" },
-                  minWidth: { xs: 'auto', md: 160 },
+                  "&:hover": { backgroundColor: "#0a5a59" },
                   fontSize: '0.875rem',
+                  fontWeight: 'medium',
+                  transition: 'all 0.2s ease',
+                  minHeight: 40,
+                  width: 200,
+                  '&:disabled': { backgroundColor: 'grey.400' }
                 }}
               >
-                Add to Vessel ({numSelected})
+              Vessel ({numSelected})
               </Button>
             </span>
           </Tooltip>
@@ -431,30 +491,41 @@ export default function Consignments() {
               startIcon={<DownloadIcon />}
               onClick={handleExport}
               disabled={loading || exporting || total === 0}
-              size="medium"
+              size="small"
+              fullWidth={true} // Full width on mobile
               sx={{
                 borderRadius: 2,
                 borderColor: "#0d6c6a",
                 color: "#0d6c6a",
                 "&:hover": { borderColor: "#0d6c6a", backgroundColor: "#0d6c6a", color: "#fff" },
                 fontSize: '0.875rem',
+                fontWeight: 'medium',
+                transition: 'all 0.2s ease',
+                minHeight: 40,
+                width: 120,
+                '&:disabled': { borderColor: 'grey.400', color: 'grey.400' }
               }}
             >
-              {exporting ? <CircularProgress size={20} color="inherit" /> : "Export"}
+              {exporting ? <CircularProgress size={16} color="inherit" /> : "Export"}
             </Button>
           </Tooltip>
           <Tooltip title="Create new consignment">
             <Button
               variant="contained"
               startIcon={<AddIcon />}
-              onClick={() => navigate("/consignments/add")} // Dummy
-              size="medium"
+              onClick={() => navigate("/consignments/add")}
+              size="small"
+              fullWidth={true} // Full width on mobile
               sx={{
                 borderRadius: 2,
                 backgroundColor: "#0d6c6a",
                 color: "#fff",
-                "&:hover": { backgroundColor: "#0d6c6a" },
+                "&:hover": { backgroundColor: "#0a5a59" },
                 fontSize: '0.875rem',
+                fontWeight: 'medium',
+                transition: 'all 0.2s ease',
+                minHeight: 40,
+                width: 100,
               }}
             >
               New
@@ -463,7 +534,7 @@ export default function Consignments() {
         </Stack>
       </Stack>
 
-      {/* Filters - Compact */}
+      {/* Filters - Compact and Responsive */}
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} mb={2} alignItems="center">
         <TextField
           label="Search Consignment #"
@@ -471,7 +542,15 @@ export default function Consignments() {
           value={filters.consignment_id}
           onChange={handleFilterChange}
           size="small"
-          sx={{ width: { xs: '100%', sm: 200 } }}
+          sx={{ 
+            width: { xs: '100%', sm: 200 },
+            '& .MuiOutlinedInput-root': {
+              borderRadius: 2,
+              backgroundColor: 'background.paper',
+              transition: 'box-shadow 0.2s ease',
+              '&:focus': { boxShadow: '0 0 0 2px rgba(13, 108, 106, 0.25)' }
+            }
+          }}
           placeholder="e.g., CON-001"
         />
         <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 150 } }}>
@@ -481,6 +560,14 @@ export default function Consignments() {
             value={filters.status}
             label="Status"
             onChange={handleFilterChange}
+            sx={{
+              borderRadius: 2,
+              backgroundColor: 'background.paper',
+              '& .MuiOutlinedInput-notchedOutline': {
+                borderColor: '#0d6c6a',
+                '&:focus': { borderColor: '#0d6c6a' }
+              }
+            }}
           >
             <MenuItem value="">All</MenuItem>
             {statuses.map((status) => (
@@ -492,32 +579,48 @@ export default function Consignments() {
         </FormControl>
       </Stack>
 
-      <TableContainer sx={{ borderRadius: 2, overflow: 'auto', boxShadow: 2, maxHeight: 600 }}>
-        <Table stickyHeader size="medium" aria-label="Consignments table">
+      {/* Table - Full Width, No Horizontal Scroll, Responsive Columns */}
+      <TableContainer sx={{ 
+        borderRadius: 2, 
+        overflow: 'hidden', // Hidden instead of auto to prevent scroll
+        boxShadow: 2, 
+        maxHeight: 600,
+        width: '100%',
+        '&::-webkit-scrollbar': {
+          height: 6,
+          width: 6,
+        },
+        '&::-webkit-scrollbar-track': {
+          background: 'background.paper',
+        },
+        '&::-webkit-scrollbar-thumb': {
+          background: '#0d6c6a',
+          borderRadius: 3,
+        }
+      }}>
+        <Table stickyHeader size="small" aria-label="Consignments table" sx={{ tableLayout: 'fixed' }}> {/* fixed layout for column control */}
           <TableHead>
-            <TableRow sx={{ bgcolor: '#0d6c6a' }}>
-              <TableCell padding="checkbox" sx={{ bgcolor: '#0d6c6a', color: '#fff', p: 1.5 }}>
+            <TableRow>
+              <StyledTableHeadCell padding="checkbox" sx={{ width: 50, padding: '12px 8px' }}> {/* Adjusted padding for checkbox */}
                 <Checkbox
                   color="primary"
                   indeterminate={numSelected > 0 && numSelected < rowCount}
                   checked={rowCount > 0 && numSelected === rowCount}
                   onChange={handleSelectAllClick}
-                  size="medium"
+                  size="small"
                   aria-label="Select all consignments"
                 />
-              </TableCell>
+              </StyledTableHeadCell>
               {columns.map((column) => (
-                <TableCell 
+                <StyledTableHeadCell 
                   key={column.key} 
                   sx={{ 
-                    bgcolor: '#0d6c6a', 
-                    color: '#fff', 
-                    fontWeight: 'bold', 
-                    p: 1.5, 
-                    fontSize: '1rem',
-                    border: 0,
-                    minWidth: 100,
-                    whiteSpace: 'nowrap'
+                    width: `${100 / (columns.length + 2)}%`, // Distribute width evenly
+                    maxWidth: 150, // Cap max width
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    padding: '12px 8px' // Consistent padding
                   }} 
                   scope="col"
                 >
@@ -527,23 +630,27 @@ export default function Consignments() {
                       direction={orderBy === column.key ? order : 'asc'}
                       onClick={(e) => handleRequestSort(e, column.key)}
                       sx={{ 
-                        color: '#fff !important', 
-                        '&:hover': { color: '#fff !important' }, 
-                        '& .MuiTableSortLabel-icon': { color: '#fff !important' },
-                        '&:focus': { outline: '2px solid #fff' }
+                        color: 'inherit !important', 
+                        '&:hover': { color: 'inherit !important' }, 
+                        '& .MuiTableSortLabel-icon': { color: 'inherit !important' },
+                        '&:focus': { outline: '2px solid currentColor' }
                       }}
                       aria-label={`Sort by ${column.label}`}
                     >
-                      <Typography variant="body2" sx={{ lineHeight: 1.2 }}>{column.label}</Typography>
+                      <Typography variant="body2" sx={{ lineHeight: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {column.label}
+                      </Typography>
                     </TableSortLabel>
                   ) : (
-                    <Typography variant="body2" sx={{ lineHeight: 1.2 }}>{column.label}</Typography>
+                    <Typography variant="body2" sx={{ lineHeight: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {column.label}
+                    </Typography>
                   )}
-                </TableCell>
+                </StyledTableHeadCell>
               ))}
-              <TableCell sx={{ bgcolor: '#0d6c6a', color: '#fff', fontWeight: 'bold', p: 1.5, fontSize: '1rem', border: 0, minWidth: 120 }} scope="col">
-                <Typography variant="body2" sx={{ lineHeight: 1.2 }}>Actions</Typography>
-              </TableCell>
+              <StyledTableHeadCell sx={{ width: 80, padding: '12px 8px' }} scope="col"> {/* Fixed for actions */}
+                <Typography variant="body2" sx={{ lineHeight: 1 }}>Actions</Typography>
+              </StyledTableHeadCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -551,7 +658,7 @@ export default function Consignments() {
               visibleRows.map((row) => {
                 const isItemSelected = isSelected(row.id);
                 return (
-                  <TableRow
+                  <StyledTableRow
                     key={row.id}
                     onClick={() => handleClick(row.id)}
                     role="checkbox"
@@ -566,42 +673,51 @@ export default function Consignments() {
                       }
                     }}
                     sx={{ 
+                      py: 1,
                       cursor: 'pointer', 
-                      '&:hover': { bgcolor: 'rgba(13, 108, 106, 0.08)' },
-                      '& .MuiTableCell-root': { py: 1.5, px: 1.5, borderBottom: '1px solid rgba(224, 224, 224, 0.12)' },
+                      transition: 'all 0.2s ease',
                       '&:focus': { outline: '2px solid #0d6c6a', outlineOffset: -2 }
                     }}
                     aria-label={`Consignment ${row.consignment_id}`}
                   >
-                    <TableCell padding="checkbox" sx={{ p: 1.5 }}>
+                    <StyledTableCell padding="checkbox" sx={{ width: 50, padding: '12px 8px' }}>
                       <Checkbox
                         checked={isItemSelected}
                         onClick={(event) => {
                           handleClick(row.id);
                           event.stopPropagation();
                         }}
-                        size="medium"
+                        size="small"
                         inputProps={{
                           'aria-labelledby': `checkbox-${row.id}`,
                         }}
                         aria-label={`Select consignment ${row.consignment_id}`}
                       />
-                    </TableCell>
+                    </StyledTableCell>
                     {columns.map((column) => (
-                      <TableCell key={column.key} sx={{ p: 1.5, minWidth: 100 }}>
-                        {column.render(row)}
-                      </TableCell>
+                      <StyledTableCell key={column.key} sx={{ width: `${100 / (columns.length + 2)}%`, maxWidth: 150 }}>
+                        <Tooltip title={typeof column.render(row) === 'string' ? column.render(row) : ''} arrow placement="top">
+                          <Typography variant="body2" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {column.render(row)}
+                          </Typography>
+                        </Tooltip>
+                      </StyledTableCell>
                     ))}
-                    <TableCell sx={{ p: 1.5 }}>
+                    <StyledTableCell sx={{ width: 80, padding: '12px 8px' }}>
                       <Stack direction="row" spacing={0.5} justifyContent="center">
                         <Tooltip title="View Details">
                           <IconButton 
                             size="small" 
                             onClick={(e) => { e.stopPropagation(); handleView(row.id); }}
                             aria-label={`View details for consignment ${row.consignment_id}`}
-                            sx={{ '&:focus': { outline: '2px solid #0d6c6a' } }}
+                            sx={{ 
+                              color: '#0d6c6a',
+                              '&:hover': { backgroundColor: 'rgba(13, 108, 106, 0.08)', transform: 'scale(1.1)' },
+                              transition: 'all 0.2s ease',
+                              '&:focus': { outline: '2px solid #0d6c6a' }
+                            }}
                           >
-                            <VisibilityIcon fontSize="medium" />
+                            <VisibilityIcon fontSize="small" />
                           </IconButton>
                         </Tooltip>
                         <Tooltip title="Edit">
@@ -609,28 +725,40 @@ export default function Consignments() {
                             size="small" 
                             onClick={(e) => { e.stopPropagation(); handleEdit(row.id); }}
                             aria-label={`Edit consignment ${row.consignment_id}`}
-                            sx={{ '&:focus': { outline: '2px solid #0d6c6a' } }}
+                            sx={{ 
+                              color: '#0d6c6a',
+                              '&:hover': { backgroundColor: 'rgba(13, 108, 106, 0.08)', transform: 'scale(1.1)' },
+                              transition: 'all 0.2s ease',
+                              '&:focus': { outline: '2px solid #0d6c6a' }
+                            }}
                           >
-                            <EditIcon fontSize="medium" />
+                            <EditIcon fontSize="small" />
                           </IconButton>
                         </Tooltip>
                       </Stack>
-                    </TableCell>
-                  </TableRow>
+                    </StyledTableCell>
+                  </StyledTableRow>
                 );
               })
             ) : (
-              <TableRow>
-                <TableCell colSpan={columns.length + 2} align="center" sx={{ py: 4 }}>
-                  <Typography variant="body1" color="text.secondary">
-                    No consignments found. Try adjusting your filters.
-                  </Typography>
-                </TableCell>
-              </TableRow>
+              <StyledTableRow>
+                <StyledTableCell colSpan={columns.length + 2} align="center" sx={{ py: 4, border: 0 }}>
+                  <Stack spacing={1} alignItems="center">
+                    <Typography variant="h6" color="text.secondary" sx={{ fontSize: '1.125rem' }}>
+                      No consignments found
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Try adjusting your filters or create a new one.
+                    </Typography>
+                  </Stack>
+                </StyledTableCell>
+              </StyledTableRow>
             )}
           </TableBody>
         </Table>
       </TableContainer>
+
+      {/* Pagination - Enhanced Styling */}
       <TablePagination
         rowsPerPageOptions={[5, 10, 25]}
         component="div"
@@ -650,17 +778,20 @@ export default function Consignments() {
           },
           '& .MuiTablePagination-select, & .MuiTablePagination-input': {
             fontSize: '0.875rem',
+            borderRadius: 1,
+            '&:focus': { borderColor: '#0d6c6a' }
           },
           '& .MuiTablePagination-actions button': {
             color: '#0d6c6a',
             '& svg': { fontSize: '1.125rem' },
+            '&:hover': { backgroundColor: 'rgba(13, 108, 106, 0.08)' },
             '&:focus': { outline: '2px solid #0d6c6a' }
           }
         }}
         aria-label="Consignments table pagination"
       />
 
-      {/* Status Update Dialog - Compact */}
+      {/* Status Update Dialog - Compact & Polished */}
       <Dialog
         open={openStatusDialog}
         onClose={handleCloseStatusDialog}
@@ -668,8 +799,9 @@ export default function Consignments() {
         fullWidth
         aria-labelledby="status-dialog-title"
         aria-describedby="status-dialog-description"
+        sx={{ '& .MuiDialog-paper': { borderRadius: 3, boxShadow: 4 } }}
       >
-        <DialogTitle id="status-dialog-title" sx={{ fontSize: '1.25rem', p: 2 }}>
+        <DialogTitle id="status-dialog-title" sx={{ fontSize: '1.25rem', p: 2, bgcolor: '#f8f9fa', borderBottom: 1, borderColor: 'divider' }}>
           Update Status
         </DialogTitle>
         <DialogContent sx={{ p: 2 }}>
@@ -684,6 +816,10 @@ export default function Consignments() {
               label="Status"
               onChange={handleStatusChange}
               aria-label="Select status"
+              sx={{
+                borderRadius: 2,
+                '& .MuiOutlinedInput-notchedOutline': { borderColor: '#0d6c6a' }
+              }}
             >
               {statuses.map((status) => (
                 <MenuItem key={status} value={status}>
@@ -693,23 +829,35 @@ export default function Consignments() {
             </Select>
           </FormControl>
         </DialogContent>
-        <DialogActions sx={{ p: 2, pt: 0 }}>
-          <Button onClick={handleCloseStatusDialog} size="medium">Cancel</Button>
-          <Button onClick={handleConfirmStatusUpdate} variant="contained" size="medium">
+        <DialogActions sx={{ p: 2, pt: 0, bgcolor: '#f8f9fa', borderTop: 1, borderColor: 'divider' }}>
+          <Button onClick={handleCloseStatusDialog} size="small" variant="outlined">Cancel</Button>
+          <Button onClick={handleConfirmStatusUpdate} variant="contained" size="small" sx={{ backgroundColor: '#0d6c6a', '&:hover': { backgroundColor: '#0a5a59' } }}>
             Update
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Snackbar for notifications */}
+      {/* Snackbar for notifications - Enhanced */}
       <Snackbar
         open={snackbar.open}
         autoHideDuration={4000}
         onClose={handleCloseSnackbar}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
         aria-live="polite"
+        sx={{ '& .MuiSnackbarContent-root': { borderRadius: 2 } }}
       >
-        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%', fontSize: '1rem' }}>
+        <Alert 
+          onClose={handleCloseSnackbar} 
+          severity={snackbar.severity} 
+          sx={{ 
+            width: '100%', 
+            fontSize: '1rem',
+            borderRadius: 2,
+            animation: 'slideInUp 0.3s ease',
+            boxShadow: 2
+          }}
+          variant="filled"
+        >
           {snackbar.message}
         </Alert>
       </Snackbar>
