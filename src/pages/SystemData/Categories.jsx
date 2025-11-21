@@ -7,7 +7,7 @@ import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import IconButton from '@mui/material/IconButton';
-import MenuItem from '@mui/material/MenuItem';
+import MenuItem from '@mui/material/MenuItem';    
 const Categories = () => {
   const [openDialog, setOpenDialog] = useState(false);
   const [editMode, setEditMode] = useState(false);

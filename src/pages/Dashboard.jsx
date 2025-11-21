@@ -2,7 +2,7 @@ import { Outlet, Link, useLocation } from "react-router-dom";
 import {
   AppBar, Toolbar, Typography, Drawer, List, ListItemButton,
   ListItemIcon, ListItemText, CssBaseline, Box, IconButton, Divider, Container,
-  Collapse, ListSubheader, Tooltip, Fade
+  Collapse, ListSubheader, Tooltip, Fade, Slide
 } from "@mui/material";
 
 import PeopleIcon from "@mui/icons-material/People";
@@ -407,11 +407,11 @@ export default function DashboardLayout() {
         <Toolbar sx={{ minHeight: 72 }} /> {/* Offset for AppBar */}
         <Container maxWidth="xl" sx={{ py: 4, px: { xs: 2, sm: 3 } }}>
           <div> {/* Wrapper for stable ref */}
-            <Fade in timeout={800} mountOnEnter unmountOnExit>
+            <Slide in direction="up" timeout={1000} mountOnEnter unmountOnExit>
               <div>
                 <Outlet />
               </div>
-            </Fade>
+            </Slide>
           </div>
         </Container>
       </Box>

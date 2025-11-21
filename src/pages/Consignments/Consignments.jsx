@@ -30,7 +30,8 @@ import {
   Alert,
   CircularProgress,
   Card,
-  CardContent
+  CardContent,
+  Slide
 } from "@mui/material";
 import {
   Add as AddIcon,
@@ -157,64 +158,66 @@ export default function Consignments() {
   const columns = [
     { 
       key: "consignment_id", 
-      label: "Consignment #",
+      label: "Consignment",
       sortable: true,
-      render: (item) => <Typography variant="body1" fontWeight="bold" noWrap>{item.consignment_id || "N/A"}</Typography>
+      render: (item) => <Typography variant="body1" sx={{ fontSize: '0.875rem' }} noWrap>{item.consignment_id || "N/A"}</Typography>
     },
-    { 
-      key: "created_at", 
-      label: "Created At", 
-      sortable: true,
-      render: (item) => <Typography variant="body1" noWrap>{renderDate(item.created_at)}</Typography>
-    },
+    
     { 
       key: "shippers", 
       label: "Shippers", 
       sortable: true,
-      render: (item) => <Typography variant="body1" noWrap sx={{ maxWidth: 140 }}>{item.shippers || "N/A"}</Typography>
+      render: (item) => <Typography variant="body1" noWrap sx={{ maxWidth: 140, fontSize: '0.875rem' }}>{item.shippers || "N/A"}</Typography>
     },
     { 
       key: "consignee", 
       label: "Consignee", 
       sortable: true,
-      render: (item) => <Typography variant="body1" noWrap sx={{ maxWidth: 140 }}>{item.consignee || "N/A"}</Typography>
+      render: (item) => <Typography variant="body1" noWrap sx={{ maxWidth: 140, fontSize: '0.875rem'   }}>{item.consignee || "N/A"}</Typography>
+    },
+{ 
+      key: "eta", 
+      label: "ETA", 
+      sortable: true,
+      render: (item) => <Typography variant="body1" sx={{ fontSize: '0.875rem' }} noWrap>{renderDate(item.eta)}</Typography>
     },
     { 
-      key: "num_orders", 
-      label: "Orders", 
+      key: "created_at", 
+      label: "Created At", 
       sortable: true,
-      render: (item) => <Typography variant="body1">{item.num_orders || 0}</Typography>
+      render: (item) => <Typography variant="body1" sx={{ fontSize: '0.875rem' }} noWrap>{renderDate(item.created_at)}</Typography>
     },
     { 
       key: "total_weight_kg", 
       label: "Weight (kg)", 
       sortable: true,
-      render: (item) => <Typography variant="body1">{(item.total_weight_kg || 0).toLocaleString()}</Typography>
+      render: (item) => <Typography variant="body1" sx={{ fontSize: '0.875rem' }}>{(item.total_weight_kg || 0).toLocaleString()}</Typography>
     },
     { 
       key: "total_pieces", 
       label: "Pieces", 
       sortable: true,
-      render: (item) => <Typography variant="body1">{item.total_pieces || 0}</Typography>
+      render: (item) => <Typography variant="body1" sx={{ fontSize: '0.875rem' }}>{item.total_pieces || 0}</Typography>
+    },
+        { 
+      key: "num_orders", 
+      label: "Orders", 
+      sortable: true,
+      render: (item) => <Typography variant="body1" sx={{ fontSize: '0.875rem' }}>{item.num_orders || 0}</Typography>
     },
     { 
       key: "delivered", 
       label: "Delivered", 
       sortable: true,
-      render: (item) => <Typography variant="body1" fontWeight="bold" color="success.main">{item.delivered || 0}</Typography>
+      render: (item) => <Typography variant="body1" sx={{ fontWeight: 'bold',  color: 'success.main' }}>{item.delivered || 0}</Typography>
     },
     { 
       key: "pending", 
       label: "Pending", 
       sortable: true,
-      render: (item) => <Typography variant="body1" fontWeight="bold" color="warning.main">{item.pending || 0}</Typography>
+      render: (item) => <Typography variant="body1" sx={{fontSize: '0.875rem', fontWeight: 'bold', color: 'warning.main' }}>{item.pending || 0}</Typography>
     },
-    { 
-      key: "eta", 
-      label: "ETA", 
-      sortable: true,
-      render: (item) => <Typography variant="body1" noWrap>{renderDate(item.eta)}</Typography>
-    },
+    
     { 
       key: "status", 
       label: "Status",
@@ -379,7 +382,7 @@ export default function Consignments() {
   const total = filteredConsignments.length;
   const totalWeight = filteredConsignments.reduce((sum, item) => sum + (item.total_weight_kg || 0), 0);
   const totalOrders = filteredConsignments.reduce((sum, item) => sum + (item.num_orders || 0), 0);
-  const StyledTableRow = styled(TableRow)(({ theme }) => ({
+     const StyledTableRow = styled(TableRow)(({ theme }) => ({
         '&:nth-of-type(odd)': {
             backgroundColor: theme.palette.action.hover,
         },
@@ -406,16 +409,10 @@ export default function Consignments() {
         padding: theme.spacing(1.5, 2),
         borderBottom: `2px solid ${theme.palette.primary.dark}`,
     }));
+  
   return (
     <Paper 
-      sx={{ 
-        p: { xs: 2, md: 3 }, 
-        borderRadius: 3, 
-        boxShadow: 3,
-        overflowX: 'hidden', // Prevent horizontal scroll on Paper
-        backgroundColor: 'background.default',
-        maxWidth: '100vw', // Ensure it doesn't exceed viewport
-      }}
+      sx={{ p: 3, borderRadius: 3, boxShadow: 3, bgcolor: "#fafafa" }}
     >
       {/* Summary Card - Responsive Stack */}
       <Card sx={{ mb: 3, borderRadius: 2, boxShadow: 1, transition: 'box-shadow 0.2s ease' }} onMouseEnter={(e) => e.currentTarget.style.boxShadow = '0 4px 12px rgba(13, 108, 106, 0.15)'} onMouseLeave={(e) => e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.12)'}>
@@ -601,7 +598,7 @@ export default function Consignments() {
         <Table stickyHeader size="small" aria-label="Consignments table" sx={{ tableLayout: 'fixed' }}> {/* fixed layout for column control */}
           <TableHead>
             <TableRow>
-              <StyledTableHeadCell padding="checkbox" sx={{ width: 50, padding: '12px 8px' }}> {/* Adjusted padding for checkbox */}
+              <StyledTableHeadCell padding="checkbox" sx={{ width: 50, padding: '12px 8px',backgroundColor:'#0d6c6a',color:'#fff' }}> {/* Adjusted padding for checkbox */}
                 <Checkbox
                   color="primary"
                   indeterminate={numSelected > 0 && numSelected < rowCount}
@@ -620,7 +617,10 @@ export default function Consignments() {
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap',
-                    padding: '12px 8px' // Consistent padding
+                    padding: '12px 8px', // Consistent padding
+                    backgroundColor: '#0d6c6a',
+                    color: '#fff',
+                    textAlign:'center'
                   }} 
                   scope="col"
                 >
@@ -630,6 +630,7 @@ export default function Consignments() {
                       direction={orderBy === column.key ? order : 'asc'}
                       onClick={(e) => handleRequestSort(e, column.key)}
                       sx={{ 
+                        backgroundColor:'#0d6c6a',
                         color: 'inherit !important', 
                         '&:hover': { color: 'inherit !important' }, 
                         '& .MuiTableSortLabel-icon': { color: 'inherit !important' },
@@ -648,7 +649,7 @@ export default function Consignments() {
                   )}
                 </StyledTableHeadCell>
               ))}
-              <StyledTableHeadCell sx={{ width: 80, padding: '12px 8px' }} scope="col"> {/* Fixed for actions */}
+              <StyledTableHeadCell sx={{ width: 50,textAlign:'center',marginRight:20, padding: '12px 8px',backgroundColor:'#0d6c6a',color:'#fff' }} scope="col"> {/* Fixed for actions */}
                 <Typography variant="body2" sx={{ lineHeight: 1 }}>Actions</Typography>
               </StyledTableHeadCell>
             </TableRow>
@@ -696,8 +697,8 @@ export default function Consignments() {
                     </StyledTableCell>
                     {columns.map((column) => (
                       <StyledTableCell key={column.key} sx={{ width: `${100 / (columns.length + 2)}%`, maxWidth: 150 }}>
-                        <Tooltip title={typeof column.render(row) === 'string' ? column.render(row) : ''} arrow placement="top">
-                          <Typography variant="body2" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <Tooltip sx={{ width: '100%' }} title={typeof column.render(row) === 'string' ? column.render(row) : ''} arrow placement="top">
+                          <Typography  variant="body2" sx={{width: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {column.render(row)}
                           </Typography>
                         </Tooltip>
@@ -711,7 +712,7 @@ export default function Consignments() {
                             onClick={(e) => { e.stopPropagation(); handleView(row.id); }}
                             aria-label={`View details for consignment ${row.consignment_id}`}
                             sx={{ 
-                              color: '#0d6c6a',
+                              color: '#f58220',
                               '&:hover': { backgroundColor: 'rgba(13, 108, 106, 0.08)', transform: 'scale(1.1)' },
                               transition: 'all 0.2s ease',
                               '&:focus': { outline: '2px solid #0d6c6a' }
@@ -726,7 +727,7 @@ export default function Consignments() {
                             onClick={(e) => { e.stopPropagation(); handleEdit(row.id); }}
                             aria-label={`Edit consignment ${row.consignment_id}`}
                             sx={{ 
-                              color: '#0d6c6a',
+                              color: '#f58220',
                               '&:hover': { backgroundColor: 'rgba(13, 108, 106, 0.08)', transform: 'scale(1.1)' },
                               transition: 'all 0.2s ease',
                               '&:focus': { outline: '2px solid #0d6c6a' }
@@ -861,6 +862,7 @@ export default function Consignments() {
           {snackbar.message}
         </Alert>
       </Snackbar>
+
     </Paper>
   );
 }

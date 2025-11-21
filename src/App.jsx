@@ -22,6 +22,7 @@ import Places from "./pages/SystemData/Places";
 import Banks from "./pages/SystemData/Banks";
 import ThirdParties from "./pages/SystemData/ThirdParties";
 import BarcodePrintTest from "./pages/SystemData/BarcodePrintTest";
+import Slide from "@mui/material/Slide"; // Add this import for MUI Slide
 
 function ProtectedRoute() {
   const { user, loading } = useAuth();
@@ -30,49 +31,49 @@ function ProtectedRoute() {
   return <Outlet />;
 }
 
+// Simple inline wrapper for demonstration (or import your AnimatedSlideWrapper from earlier)
+const AnimatedSlideWrapper = ({ children, direction = "up", timeout = 1000 }) => (
+  <Slide direction={direction} in={true} timeout={timeout}>
+    {children}
+  </Slide>
+);
+
 export default function App() {
   return (
     <LocalizationProvider dateAdapter={AdapterDayjs}>
-  <DatePicker
-    label="Date Hired"
-    value={dateHired}
-    onChange={(newValue) => setDateHired(newValue)}
-  />
-    <BrowserRouter>
-      <Routes>
-        {/* Public routes */}
-        <Route path="/login" element={<Login />} />
+      <BrowserRouter>
+        <Routes>
+          {/* Public routes */}
+          <Route path="/login" element={<Login />} />
 
-        {/* Protected routes */}
-        <Route element={<ProtectedRoute />}>
-          <Route path="/" element={<DashboardLayout />}>
-            <Route index element={<DashboardCharts />} />
-            <Route path="customers" element={<Customers />} />
-            <Route path="vendors" element={<Vendors />} />
-              <Route path="orders" element={<Orders />} />
-               <Route path="/orders/add" element={<OrderForm mode="add" />} />
-            <Route path="/customers/add" element={<AddCustomer mode="add" />} />
-            <Route path="/customers/:id/edit" element={<AddCustomer mode="edit" />} />
-            <Route path="/vendors/add" element={<AddVendor mode="add" />} />
-            <Route path="/vendors/:id/edit" element={<AddVendor mode="edit" />} />
+          {/* Protected routes */}
+          <Route element={<ProtectedRoute />}>
+            <Route path="/" element={<DashboardLayout />}>
+              <Route index element={<AnimatedSlideWrapper><DashboardCharts /></AnimatedSlideWrapper>} />
+              <Route path="customers" element={<AnimatedSlideWrapper><Customers /></AnimatedSlideWrapper>} />
+              <Route path="vendors" element={<AnimatedSlideWrapper><Vendors /></AnimatedSlideWrapper>} />
+              <Route path="orders" element={<AnimatedSlideWrapper><Orders /></AnimatedSlideWrapper>} />
+              <Route path="/orders/add" element={<AnimatedSlideWrapper><OrderForm mode="add" /></AnimatedSlideWrapper>} />
+              <Route path="/customers/add" element={<AnimatedSlideWrapper><AddCustomer mode="add" /></AnimatedSlideWrapper>} />
+              <Route path="/customers/:id/edit" element={<AnimatedSlideWrapper><AddCustomer mode="edit" /></AnimatedSlideWrapper>} />
+              <Route path="/vendors/add" element={<AnimatedSlideWrapper><AddVendor mode="add" /></AnimatedSlideWrapper>} />
+              <Route path="/vendors/:id/edit" element={<AnimatedSlideWrapper><AddVendor mode="edit" /></AnimatedSlideWrapper>} />
               {/* <Route path="/containers" element={<Containers mode="edit" />} /> */}
-            <Route path="/containers" element={<AddContainers />} />
-            <Route path="/tracking" element={<TrackingPage />} />
-            <Route path="/consignments" element={<Consignments />} /> 
-            <Route path="/admin/payment-types" element={<PaymentTypes />} />
-  <Route path="/admin/categories" element={<Categories />} />
-  <Route path="/admin/vessels" element={<Vessels />} />
-  <Route path="/admin/places" element={<Places />} />
-  <Route path="/admin/banks" element={<Banks />} />
-  <Route path="/admin/third-parties" element={<ThirdParties />} />
-  <Route path="/admin/barcode-print" element={<BarcodePrintTest />} />
-            
-             {/* <Route path="/containers/add" element={<AddContainers />} /> */}
+              <Route path="/containers" element={<AnimatedSlideWrapper><AddContainers /></AnimatedSlideWrapper>} />
+              <Route path="/tracking" element={<AnimatedSlideWrapper><TrackingPage /></AnimatedSlideWrapper>} />
+              <Route path="/consignments" element={<AnimatedSlideWrapper><Consignments /></AnimatedSlideWrapper>} /> 
+              <Route path="/admin/payment-types" element={<AnimatedSlideWrapper><PaymentTypes /></AnimatedSlideWrapper>} />
+              <Route path="/admin/categories" element={<AnimatedSlideWrapper><Categories /></AnimatedSlideWrapper>} />
+              <Route path="/admin/vessels" element={<AnimatedSlideWrapper><Vessels /></AnimatedSlideWrapper>} />
+              <Route path="/admin/places" element={<AnimatedSlideWrapper><Places /></AnimatedSlideWrapper>} />
+              <Route path="/admin/banks" element={<AnimatedSlideWrapper><Banks /></AnimatedSlideWrapper>} />
+              <Route path="/admin/third-parties" element={<AnimatedSlideWrapper><ThirdParties /></AnimatedSlideWrapper>} />
+              <Route path="/admin/barcode-print" element={<AnimatedSlideWrapper><BarcodePrintTest /></AnimatedSlideWrapper>} />
+              {/* <Route path="/containers/add" element={<AddContainers />} /> */}
+            </Route>
           </Route>
-        </Route>
-      </Routes>
-    </BrowserRouter>
-    
+        </Routes>
+      </BrowserRouter>
     </LocalizationProvider>
   );
 }

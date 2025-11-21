@@ -1,10 +1,9 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
-
 import Login from "./pages/Login";
 import Register from "./pages/Register";
-import DashboardLayout from "./pages/Dashboard";   // 👈 renamed App -> DashboardLayout
+import DashboardLayout from "./pages/Dashboard";
 import DashboardCharts from "./pages/DashboardCharts";
 import Customers from "./pages/Customers/Customers";
 import ContainerForm from "./pages/Containers/AddContainer";
@@ -19,17 +18,16 @@ import CustomerAdd from "./pages/Customers/AddCustomer";
 import Consignments from "./pages/Consignments/Consignments";
 import AddConsignment from "./pages/Consignments/AddConsignment";
 import VendorsForm from "./pages/Vendors/AddVendors";
-import Containers from "./pages/Containers/Containers";
 import OrderForm from "./pages/Orders/AddOrder";
 import TrackingPage from "./pages/Orders/TrackingPage";
 import PaymentTypes from "./pages/SystemData/PaymentTypes";
 import Categories from "./pages/SystemData/Categories";
-import Vessels from "./pages/SystemData/Vessels";  
+import Vessels from "./pages/SystemData/Vessels";
 import Places from "./pages/SystemData/Places";
 import Banks from "./pages/SystemData/Banks";
 import ThirdParties from "./pages/SystemData/ThirdParties";
 import BarcodePrintTest from "./pages/SystemData/BarcodePrintTest";
-// ✅ Theming wrapper
+
 function ThemedApp({ children }) {
   const { mode } = useThemeContext();
   const theme = createTheme({
@@ -67,11 +65,10 @@ const router = createBrowserRouter([
       { index: true, element: <DashboardCharts /> },
       { path: "customers", element: <Customers /> },
       { path: "vendors", element: <Vendors /> },
-      // { path: "containers", element: <Containers /> },
       { path: "/containers", element: <ContainerForm /> },
       { path: "orders", element: <Orders /> },
-      { path: "/orders/add", element: <OrderForm mode='add' /> },
- { path: "/orders/:id/edit", element: <OrderForm mode='edit' /> },
+      { path: "/orders/add", element: <OrderForm mode="add" /> },
+      { path: "/orders/:id/edit", element: <OrderForm mode="edit" /> },
       { path: "/tracking", element: <TrackingPage /> },
       { path: "consignments", element: <Consignments /> },
       { path: "/customers/add", element: <CustomerAdd mode="add" /> },
@@ -87,19 +84,17 @@ const router = createBrowserRouter([
       { path: "/admin/banks", element: <Banks /> },
       { path: "/admin/third-parties", element: <ThirdParties /> },
       { path: "/admin/barcode-print", element: <BarcodePrintTest /> },
-
     ],
   },
 ]);
 
+// 🟢 Removed StrictMode wrapper
 ReactDOM.createRoot(document.getElementById("root")).render(
-  <React.StrictMode>
-    <AuthProvider>
-      <CustomThemeProvider>
-        <ThemedApp>
-          <RouterProvider router={router} />
-        </ThemedApp>
-      </CustomThemeProvider>
-    </AuthProvider>
-  </React.StrictMode>
+  <AuthProvider>
+    <CustomThemeProvider>
+      <ThemedApp>
+        <RouterProvider router={router} />
+      </ThemedApp>
+    </CustomThemeProvider>
+  </AuthProvider>
 );
