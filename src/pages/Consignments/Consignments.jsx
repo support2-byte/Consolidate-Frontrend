@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Box,
   Chip,
@@ -44,12 +44,13 @@ import {
 } from "@mui/icons-material";
 import { useNavigate } from "react-router-dom"; // Assuming React Router is used
   import { styled } from '@mui/material/styles';
-
+import {api} from "../../api"; // Assuming api
+// Assuming other imports are present: api, styled, MUI components (Paper, Table, etc.), icons, etc.
 export default function Consignments() {
   const navigate = useNavigate();
   const [consignments, setConsignments] = useState([]);
   const [orderBy, setOrderBy] = useState('created_at');
-  const [order, setOrder] = useState('desc'); // Default to desc for recent first
+  const [order, setOrder] = useState('desc');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [filters, setFilters] = useState({ consignment_id: '', status: '' });
@@ -62,89 +63,50 @@ export default function Consignments() {
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
   const [exporting, setExporting] = useState(false);
   const [loading, setLoading] = useState(false);
-  const statuses = ["Draft", "In Transit", "Under Processing", "Delivered"];
 
-  // Dummy data for consignments
-  const dummyConsignments = [
-    {
-      id: 1,
-      consignment_id: "CON-001",
-      created_at: "2025-10-20T10:00:00Z",
-      shippers: "ABC Shipping Ltd",
-      consignee: "XYZ Logistics Inc",
-      num_orders: 5,
-      total_weight_kg: 18450,
-      total_pieces: 120,
-      delivered: 3,
-      pending: 2,
-      vessel: "MV Ocean Star",
-      voyage: "VOY-2025-001",
-      eta: "2025-11-03T00:00:00Z",
-      status: "In Transit"
-    },
-    {
-      id: 2,
-      consignment_id: "CON-002",
-      created_at: "2025-10-22T14:30:00Z",
-      shippers: "Test Customer",
-      consignee: "ABC LOGISTICS",
-      num_orders: 3,
-      total_weight_kg: 1200,
-      total_pieces: 45,
-      delivered: 0,
-      pending: 3,
-      vessel: "MV Sea Voyager",
-      voyage: "VOY-2025-002",
-      eta: "2025-11-05T00:00:00Z",
-      status: "Under Processing"
-    },
-    {
-      id: 3,
-      consignment_id: "CON-003",
-      created_at: "2025-10-25T09:15:00Z",
-      shippers: "Global Freight Co",
-      consignee: "Pacific Traders",
-      num_orders: 8,
-      total_weight_kg: 25000,
-      total_pieces: 200,
-      delivered: 8,
-      pending: 0,
-      vessel: "MV Gulf Breeze",
-      voyage: "VOY-2025-003",
-      eta: "2025-10-28T00:00:00Z",
-      status: "Delivered"
-    },
-    {
-      id: 4,
-      consignment_id: "CON-004",
-      created_at: "2025-10-26T16:45:00Z",
-      shippers: "Karachi Exporters",
-      consignee: "Dubai Importers Ltd",
-      num_orders: 2,
-      total_weight_kg: 8000,
-      total_pieces: 50,
-      delivered: 1,
-      pending: 1,
-      vessel: "MV Royal Gulf",
-      voyage: "VOY-2025-004",
-      eta: "2025-11-01T00:00:00Z",
-      status: "Draft"
-    }
-  ];
+  const statuses = ["Draft", "In Transit", "Under Processing", "Delivered"];
+  const [error, setError] = useState(null); 
+
+  // Compute params for API
+  const params = useMemo(() => ({
+    page: page + 1, // API likely 1-indexed
+    limit: rowsPerPage,
+    order_by: orderBy,
+    order: order,
+    consignment_id: filters.consignment_id,
+    status: filters.status,
+  }), [page, rowsPerPage, orderBy, order, filters]);
 
   useEffect(() => {
-    // Set dummy data for UI demo
-    setConsignments(dummyConsignments);
-    setRowCount(dummyConsignments.length);
-  }, []);
+    const getConsignments = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await api.get(`/api/consignments`, { params });
+        console.log('Fetched consignments:', response.data);
+        setConsignments(response.data.data || []);
+        setRowCount(response.data.total || 0); // Fixed: setRowCount
+      } catch (err) {
+        console.error("Error fetching consignments:", err);
+        setError("Failed to fetch consignments");
+        setSnackbar({
+          open: true,
+          message: err.response?.data?.error || err.message || 'Failed to fetch consignments',
+          severity: 'error',
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+    getConsignments();
+  }, [params]); // Depend on params for re-fetch on changes
 
-  // Custom renderer for dates
+  // Custom renderers (unchanged)
   const renderDate = (dateStr) => {
     if (!dateStr) return "N/A";
     return new Date(dateStr).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
   };
 
-  // Custom renderer for status
   const renderStatus = (status) => (
     <Chip 
       label={status} 
@@ -154,28 +116,78 @@ export default function Consignments() {
     />
   );
 
-  // Define columns for the table (excluding checkbox and actions) - Hiding "Vessel" and "Voyage"
+  useEffect(() => {
+    if (consignments.some(c => c && (!c.shipperName || !c.consigneeName))) {
+      console.log('Fetching shippers and consignees for consignments');
+      const fetchAndUpdate = async () => {
+        try {
+          const [shippersRes, consigneesRes] = await Promise.all([
+            api.get(`api/options/shippers`),
+            api.get(`api/options/consignees`), // Assuming a similar endpoint for consignees
+          ]);
+
+          const shippers = shippersRes.data; // Assume { shipperOptions: array of {value, label} objects }
+          const consignees = consigneesRes.data; // Assume { consigneeOptions: array of {value, label} objects }
+          console.log('Fetched shippers:', shippers.shipperOptions);
+          console.log('Fetched consignees:', consignees.consigneeOptions);
+
+          setConsignments(prev => prev.map(consignment => {
+            if (!consignment) return consignment;
+            console.log('Updating consignment:', consignment);
+
+            // Filter shipper by ID (convert to number for strict equality)
+            const shipperName = shippers.shipperOptions.find(s => {
+              const shipperId = Number(consignment.shipper);
+              console.log('Comparing shipper IDs:', s.value, shipperId);
+              return s.value === shipperId;
+            })?.label;
+
+            // Filter consignee by ID (convert to number for strict equality)
+            const consigneeName = consignees.consigneeOptions.find(c => {
+              const consigneeId = Number(consignment.consignee);
+              console.log('Comparing consignee IDs:', c.value, consigneeId);
+              return c.value === consigneeId;
+            })?.label;
+
+            console.log('Updated shipper name:', shipperName);
+            console.log('Updated consignee name:', consigneeName);
+
+            return {
+              ...consignment,
+              shipperName,
+              consigneeName,
+            };
+          }));
+        } catch (error) {
+          console.error('Error fetching shippers/consignees:', error);
+        }
+      };
+
+      fetchAndUpdate();
+    }
+  }, [consignments]);
+
+  // Columns (removed duplicate "Orders")
   const columns = [
     { 
-      key: "consignment_id", 
+      key: "consignment_number", 
       label: "Consignment",
       sortable: true,
-      render: (item) => <Typography variant="body1" sx={{ fontSize: '0.875rem' }} noWrap>{item.consignment_id || "N/A"}</Typography>
+      render: (item) => <Typography variant="body1" sx={{ fontSize: '0.875rem' }} noWrap>{item.consignment_number || "N/A"}</Typography>
     },
-    
     { 
-      key: "shippers", 
+      key: "shipper", 
       label: "Shippers", 
       sortable: true,
-      render: (item) => <Typography variant="body1" noWrap sx={{ maxWidth: 140, fontSize: '0.875rem' }}>{item.shippers || "N/A"}</Typography>
+      render: (item) => <Typography variant="body1" noWrap sx={{ maxWidth: 140, fontSize: '0.875rem' }}>{item.shipperName || "N/A"}</Typography>
     },
     { 
       key: "consignee", 
       label: "Consignee", 
       sortable: true,
-      render: (item) => <Typography variant="body1" noWrap sx={{ maxWidth: 140, fontSize: '0.875rem'   }}>{item.consignee || "N/A"}</Typography>
+      render: (item) => <Typography variant="body1" noWrap sx={{ maxWidth: 140, fontSize: '0.875rem'   }}>{item.consigneeName || "N/A"}</Typography>
     },
-{ 
+    { 
       key: "eta", 
       label: "ETA", 
       sortable: true,
@@ -188,23 +200,17 @@ export default function Consignments() {
       render: (item) => <Typography variant="body1" sx={{ fontSize: '0.875rem' }} noWrap>{renderDate(item.created_at)}</Typography>
     },
     { 
-      key: "total_weight_kg", 
+      key: "gross_weight", 
       label: "Weight (kg)", 
       sortable: true,
-      render: (item) => <Typography variant="body1" sx={{ fontSize: '0.875rem' }}>{(item.total_weight_kg || 0).toLocaleString()}</Typography>
+      render: (item) => <Typography variant="body1" sx={{ fontSize: '0.875rem' }}>{(item.gross_weight || 0).toLocaleString('en-GB')}</Typography> // Added locale
     },
-    { 
-      key: "total_pieces", 
-      label: "Pieces", 
-      sortable: true,
-      render: (item) => <Typography variant="body1" sx={{ fontSize: '0.875rem' }}>{item.total_pieces || 0}</Typography>
-    },
-        { 
-      key: "num_orders", 
-      label: "Orders", 
-      sortable: true,
-      render: (item) => <Typography variant="body1" sx={{ fontSize: '0.875rem' }}>{item.num_orders || 0}</Typography>
-    },
+{ 
+  key: "orders", 
+  label: "Pieces", 
+  sortable: true,
+  render: (item) => <Typography variant="body1" sx={{ fontSize: '0.875rem' }}>{safeParseOrders(item.orders).length}</Typography>
+},
     { 
       key: "delivered", 
       label: "Delivered", 
@@ -216,16 +222,16 @@ export default function Consignments() {
       label: "Pending", 
       sortable: true,
       render: (item) => <Typography variant="body1" sx={{fontSize: '0.875rem', fontWeight: 'bold', color: 'warning.main' }}>{item.pending || 0}</Typography>
-    },
-    
-    { 
-      key: "status", 
-      label: "Status",
-      sortable: true,
-      render: (item) => renderStatus(item.status)
-    },
+    },{ 
+    key: "status", 
+    label: "Status",
+    sortable: true,
+    render: (item) => renderStatus(item.status) // No Typography wrapper here
+  },
+
   ];
 
+  // Sorting functions (unchanged)
   function descendingComparator(a, b, orderBy) {
     if (b[orderBy] < a[orderBy]) {
       return -1;
@@ -242,18 +248,19 @@ export default function Consignments() {
       : (a, b) => -descendingComparator(a, b, orderBy);
   }
 
-  // Handle numeric and date sorting
-  function getSortableValue(item, key) {
-    const value = item[key];
-    if (key === 'created_at' || key === 'eta') {
-      return value ? new Date(value).getTime() : 0;
-    }
-    if (typeof value === 'number') {
-      return value;
-    }
-    return value || '';
+function getSortableValue(item, key) {
+  const value = item[key];
+  if (key === 'created_at' || key === 'eta') {
+    return value ? new Date(value).getTime() : 0;
   }
-
+  if (key === 'orders') { // New: For Pieces column
+    return safeParseOrders(value).length;
+  }
+  if (typeof value === 'number') {
+    return value;
+  }
+  return value || '';
+}
   function stableSort(array, comparator) {
     const stabilizedThis = array.map((el, index) => [el, index]);
     stabilizedThis.sort((a, b) => {
@@ -278,21 +285,29 @@ export default function Consignments() {
     setPage(0);
   };
 
-  const filteredConsignments = consignments.filter(item => {
-    const matchesId = !filters.consignment_id || item.consignment_id.toLowerCase().includes(filters.consignment_id.toLowerCase());
-    const matchesStatus = !filters.status || item.status === filters.status;
-    return matchesId && matchesStatus;
-  });
+  // Memoized filtered and sorted
+  const filteredConsignments = useMemo(() => 
+    consignments.filter(item => {
+      const matchesId = !filters.consignment_id || item.consignment_number?.toLowerCase().includes(filters.consignment_id.toLowerCase());
+      const matchesStatus = !filters.status || item.status === filters.status;
+      return matchesId && matchesStatus;
+    }), [consignments, filters]
+  );
 
-  const sortedConsignments = stableSort(filteredConsignments, getComparator(order, orderBy));
+  const sortedConsignments = useMemo(() => 
+    stableSort(filteredConsignments, getComparator(order, orderBy)), 
+    [filteredConsignments, order, orderBy]
+  );
 
   const handleSelectAllClick = (event) => {
     if (event.target.checked) {
       const newSelected = sortedConsignments.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((n) => n.id);
       setSelected(newSelected);
+      setNumSelected(newSelected.length); // Added
       return;
     }
     setSelected([]);
+    setNumSelected(0); // Added
   };
 
   const isSelected = (id) => selected.indexOf(id) !== -1;
@@ -314,6 +329,7 @@ export default function Consignments() {
       );
     }
     setSelected(newSelected);
+    setNumSelected(newSelected.length); // Added
   };
 
   const handleChangePage = (event, newPage) => {
@@ -327,7 +343,6 @@ export default function Consignments() {
 
   const handleExport = () => {
     setExporting(true);
-    // Dummy export logic
     setTimeout(() => {
       setExporting(false);
       setSnackbar({ open: true, message: 'Exported successfully!', severity: 'success' });
@@ -341,17 +356,15 @@ export default function Consignments() {
   };
 
   const handleView = (id) => {
-    // Dummy view logic - Navigate to details page
-    navigate(`/consignments/${id}/edit`);
+        navigate(`/consignments/${id}/edit`,{ state: { mode: 'edit', consignmentId: id  } });
+
   };
 
   const handleEdit = (id) => {
-    // Dummy edit logic
-    navigate(`/consignments/${id}/edit`);
+    navigate(`/consignments/${id}/edit`, { state: { mode: 'edit', consignmentId: id } });
   };
 
   const handleDelete = (id) => {
-    // Dummy delete logic with confirmation
     if (window.confirm('Are you sure you want to delete this consignment?')) {
       console.log('Delete consignment', id);
       setSnackbar({ open: true, message: 'Consignment deleted successfully!', severity: 'success' });
@@ -363,7 +376,6 @@ export default function Consignments() {
   };
 
   const handleConfirmStatusUpdate = () => {
-    // Dummy update logic
     setOpenStatusDialog(false);
     setSnackbar({ open: true, message: 'Status updated successfully!', severity: 'success' });
   };
@@ -377,49 +389,71 @@ export default function Consignments() {
   const handleCloseSnackbar = () => {
     setSnackbar({ ...snackbar, open: false });
   };
+  // Safe JSON parse helper to avoid errors
+  const safeParseOrders = (orders) => {
+  if (!orders) return [];
+  if (Array.isArray(orders) || (typeof orders === 'object' && orders !== null)) {
+    return orders; // Already parsed (from DB JSONB)
+  }
+  if (orders === '[]') return [];
+  try {
+    return JSON.parse(orders);
+  } catch (e) {
+    console.warn('Invalid orders JSON:', orders, e);
+    return [];
+  }
+};
 
   const visibleRows = sortedConsignments.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
-  const total = filteredConsignments.length;
-  const totalWeight = filteredConsignments.reduce((sum, item) => sum + (item.total_weight_kg || 0), 0);
-  const totalOrders = filteredConsignments.reduce((sum, item) => sum + (item.num_orders || 0), 0);
-     const StyledTableRow = styled(TableRow)(({ theme }) => ({
-        '&:nth-of-type(odd)': {
-            backgroundColor: theme.palette.action.hover,
-        },
-        // hide last border
-        '&:last-child td, &:last-child th': {
-            border: 0,
-        },
-        '&:hover': {
-            backgroundColor: theme.palette.action.selected,
-        },
-    }));
+  const total = rowCount || filteredConsignments.length; // Use rowCount for server-side
 
-    const StyledTableCell = styled(TableCell)(({ theme }) => ({
-        borderBottom: `1px solid ${theme.palette.divider}`,
-        fontSize: '0.875rem',
-        padding: theme.spacing(1.5, 2),
-    }));
+  // For accurate totals in server-side pagination, fetch from API (see backend update suggestion below)
+  // Client-side fallback for small datasets
+  const totalWeight = useMemo(() => 
+    filteredConsignments.reduce((sum, item) => sum + (item.gross_weight || 0), 0), 
+    [filteredConsignments]
+  );
+const totalOrders = useMemo(() => 
+  filteredConsignments.reduce((sum, item) => sum + safeParseOrders(item.orders).length, 0), 
+  [filteredConsignments]
+);
+  // Styled components (unchanged)
+  const StyledTableRow = styled(TableRow)(({ theme }) => ({
+    '&:nth-of-type(odd)': {
+      backgroundColor: theme.palette.action.hover,
+    },
+    '&:last-child td, &:last-child th': {
+      border: 0,
+    },
+    '&:hover': {
+      backgroundColor: theme.palette.action.selected,
+    },
+  }));
+  const StyledTableCell = styled(TableCell)(({ theme }) => ({
+    borderBottom: `1px solid ${theme.palette.divider}`,
+    fontSize: '0.875rem',
+    padding: theme.spacing(1.5, 2),
+  }));
 
-    const StyledTableHeadCell = styled(TableCell)(({ theme }) => ({
-        backgroundColor: theme.palette.primary.main,
-        color: theme.palette.primary.contrastText,
-        fontWeight: 'bold',
-        fontSize: '0.875rem',
-        padding: theme.spacing(1.5, 2),
-        borderBottom: `2px solid ${theme.palette.primary.dark}`,
-    }));
-  
-  return (
+  const StyledTableHeadCell = styled(TableCell)(({ theme }) => ({
+    backgroundColor: theme.palette.primary.main,
+    color: theme.palette.primary.contrastText,
+    fontWeight: 'bold',
+    fontSize: '0.875rem',
+    padding: theme.spacing(1.5, 2),
+    borderBottom: `2px solid ${theme.palette.primary.dark}`,
+  }));
+
+  return ( 
     <Paper 
       sx={{ p: 3, borderRadius: 3, boxShadow: 3, bgcolor: "#fafafa" }}
     >
-      {/* Summary Card - Responsive Stack */}
+      {/* Summary Card (unchanged) */}
       <Card sx={{ mb: 3, borderRadius: 2, boxShadow: 1, transition: 'box-shadow 0.2s ease' }} onMouseEnter={(e) => e.currentTarget.style.boxShadow = '0 4px 12px rgba(13, 108, 106, 0.15)'} onMouseLeave={(e) => e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.12)'}>
         <CardContent sx={{ p: 2 }}>
           <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={2}>
             <Typography variant="body1" color="text.secondary" sx={{ fontSize: { xs: '0.875rem', md: '1rem' } }}>
-              Showing <strong>{total}</strong> consignments • Total Orders: <strong>{totalOrders}</strong> • Total Weight: <strong>{totalWeight.toLocaleString()} kg</strong>
+              Showing <strong>{total}</strong> consignments • Total Orders: <strong>{totalOrders}</strong> • Total Weight: <strong>{totalWeight.toLocaleString('en-GB')} kg</strong>
             </Typography>
             <Chip 
               icon={<InfoIcon fontSize="small" />} 
@@ -440,7 +474,7 @@ export default function Consignments() {
         </CardContent>
       </Card>
 
-      {/* Header - Responsive with Stacked Buttons on Mobile */}
+      {/* Header (unchanged) */}
       <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={{ xs: 2, sm: 0 }} mb={2}>
         <Typography 
           variant="h4" 
@@ -457,14 +491,14 @@ export default function Consignments() {
         </Typography>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ width: { xs: '100%', sm: 'auto' } }}>
           <Tooltip title={numSelected === 0 ? "Select items to add to vessel" : ""}>
-            <span>
-              <Button
-                variant="contained"
-                disabled={numSelected === 0}
-                onClick={() => console.log('Add selected to vessel')}
-                startIcon={<AddIcon />}
-                size="medium"
-                fullWidth={true} // Full width on mobile
+  <span> {/* Wrapper for disabled state */}
+    <Button
+      variant="contained"
+      disabled={numSelected === 0}
+      onClick={() => console.log('Add selected to vessel')}
+      startIcon={<AddIcon />}
+      size="medium"
+     fullWidth={true}
                 sx={{
                   borderRadius: 2,
                   backgroundColor: "#0d6c6a",
@@ -477,11 +511,11 @@ export default function Consignments() {
                   width: 200,
                   '&:disabled': { backgroundColor: 'grey.400' }
                 }}
-              >
-              Vessel ({numSelected})
-              </Button>
-            </span>
-          </Tooltip>
+    >
+      Vessel ({numSelected})
+    </Button>
+  </span>
+</Tooltip>
           <Tooltip title="Export to CSV/PDF">
             <Button
               variant="outlined"
@@ -489,7 +523,7 @@ export default function Consignments() {
               onClick={handleExport}
               disabled={loading || exporting || total === 0}
               size="small"
-              fullWidth={true} // Full width on mobile
+              fullWidth={true}
               sx={{
                 borderRadius: 2,
                 borderColor: "#0d6c6a",
@@ -512,7 +546,7 @@ export default function Consignments() {
               startIcon={<AddIcon />}
               onClick={() => navigate("/consignments/add")}
               size="small"
-              fullWidth={true} // Full width on mobile
+              fullWidth={true}
               sx={{
                 borderRadius: 2,
                 backgroundColor: "#0d6c6a",
@@ -531,7 +565,7 @@ export default function Consignments() {
         </Stack>
       </Stack>
 
-      {/* Filters - Compact and Responsive */}
+      {/* Filters (unchanged) */}
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} mb={2} alignItems="center">
         <TextField
           label="Search Consignment #"
@@ -576,10 +610,10 @@ export default function Consignments() {
         </FormControl>
       </Stack>
 
-      {/* Table - Full Width, No Horizontal Scroll, Responsive Columns */}
+      {/* Table - FIXED: No whitespace between <TableHead> and <TableBody> */}
       <TableContainer sx={{ 
         borderRadius: 2, 
-        overflow: 'hidden', // Hidden instead of auto to prevent scroll
+        overflow: 'hidden',
         boxShadow: 2, 
         maxHeight: 600,
         width: '100%',
@@ -595,10 +629,10 @@ export default function Consignments() {
           borderRadius: 3,
         }
       }}>
-        <Table stickyHeader size="small" aria-label="Consignments table" sx={{ tableLayout: 'fixed' }}> {/* fixed layout for column control */}
-          <TableHead>
+        <Table stickyHeader size="small" aria-label="Consignments table" sx={{ tableLayout: 'fixed' }}>
+          <TableHead>{/* Inline to avoid text nodes */}
             <TableRow>
-              <StyledTableHeadCell padding="checkbox" sx={{ width: 50, padding: '12px 8px',backgroundColor:'#0d6c6a',color:'#fff' }}> {/* Adjusted padding for checkbox */}
+              <StyledTableHeadCell padding="checkbox" sx={{ width: 50, padding: '12px 8px',backgroundColor:'#0d6c6a',color:'#fff' }}>
                 <Checkbox
                   color="primary"
                   indeterminate={numSelected > 0 && numSelected < rowCount}
@@ -612,12 +646,12 @@ export default function Consignments() {
                 <StyledTableHeadCell 
                   key={column.key} 
                   sx={{ 
-                    width: `${100 / (columns.length + 2)}%`, // Distribute width evenly
-                    maxWidth: 150, // Cap max width
+                    width: `${100 / (columns.length + 2)}%`,
+                    maxWidth: 150,
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap',
-                    padding: '12px 8px', // Consistent padding
+                    padding: '12px 8px',
                     backgroundColor: '#0d6c6a',
                     color: '#fff',
                     textAlign:'center'
@@ -649,13 +683,19 @@ export default function Consignments() {
                   )}
                 </StyledTableHeadCell>
               ))}
-              <StyledTableHeadCell sx={{ width: 50,textAlign:'center',marginRight:20, padding: '12px 8px',backgroundColor:'#0d6c6a',color:'#fff' }} scope="col"> {/* Fixed for actions */}
+              <StyledTableHeadCell sx={{ width: 50,textAlign:'center',marginRight:20, padding: '12px 8px',backgroundColor:'#0d6c6a',color:'#fff' }} scope="col">
                 <Typography variant="body2" sx={{ lineHeight: 1 }}>Actions</Typography>
               </StyledTableHeadCell>
             </TableRow>
-          </TableHead>
-          <TableBody>
-            {visibleRows.length > 0 ? (
+          </TableHead><TableBody>{/* No newline/whitespace here - key fix */} {/* Inline closing/opening to prevent text node */}
+            {loading ? (
+              <TableRow>
+                <TableCell colSpan={columns.length + 2} align="center" sx={{ py: 4 }}>
+                  <CircularProgress />
+                  <Typography variant="body2" sx={{ mt: 1, color: 'text.secondary' }}>Loading consignments...</Typography>
+                </TableCell>
+              </TableRow>
+            ) : visibleRows.length > 0 ? (
               visibleRows.map((row) => {
                 const isItemSelected = isSelected(row.id);
                 return (
@@ -679,7 +719,7 @@ export default function Consignments() {
                       transition: 'all 0.2s ease',
                       '&:focus': { outline: '2px solid #0d6c6a', outlineOffset: -2 }
                     }}
-                    aria-label={`Consignment ${row.consignment_id}`}
+                    aria-label={`Consignment ${row.consignment_number}`}
                   >
                     <StyledTableCell padding="checkbox" sx={{ width: 50, padding: '12px 8px' }}>
                       <Checkbox
@@ -692,25 +732,39 @@ export default function Consignments() {
                         inputProps={{
                           'aria-labelledby': `checkbox-${row.id}`,
                         }}
-                        aria-label={`Select consignment ${row.consignment_id}`}
+                        aria-label={`Select consignment ${row.consignment_number}`}
                       />
                     </StyledTableCell>
-                    {columns.map((column) => (
-                      <StyledTableCell key={column.key} sx={{ width: `${100 / (columns.length + 2)}%`, maxWidth: 150 }}>
-                        <Tooltip sx={{ width: '100%' }} title={typeof column.render(row) === 'string' ? column.render(row) : ''} arrow placement="top">
-                          <Typography  variant="body2" sx={{width: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {column.render(row)}
-                          </Typography>
-                        </Tooltip>
-                      </StyledTableCell>
-                    ))}
+                    {columns.map((column) => {
+  const cellContent = column.render(row);
+  const isChip = column.key === 'status'; // Or check if React.isValidElement(cellContent) && cellContent.type === Chip
+  return (
+    <StyledTableCell key={column.key} sx={{ width: `${100 / (columns.length + 2)}%`, maxWidth: 150 }}>
+      <Tooltip 
+        sx={{ width: '100%' }} 
+        title={typeof cellContent === 'string' ? cellContent : ''} 
+        arrow 
+        placement="top"
+        disableHoverListener={isChip} // Disable for Chip (self-tooltips unnecessary)
+      >
+        <span> {/* Forwarding wrapper for Tooltip */}
+          {isChip ? cellContent : (
+            <Typography variant="body2" sx={{width: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {cellContent}
+            </Typography>
+          )}
+        </span>
+      </Tooltip>
+    </StyledTableCell>
+  );
+})}
                     <StyledTableCell sx={{ width: 80, padding: '12px 8px' }}>
                       <Stack direction="row" spacing={0.5} justifyContent="center">
                         <Tooltip title="View Details">
                           <IconButton 
                             size="small" 
                             onClick={(e) => { e.stopPropagation(); handleView(row.id); }}
-                            aria-label={`View details for consignment ${row.consignment_id}`}
+                            aria-label={`View details for consignment ${row.consignment_number}`}
                             sx={{ 
                               color: '#f58220',
                               '&:hover': { backgroundColor: 'rgba(13, 108, 106, 0.08)', transform: 'scale(1.1)' },
@@ -725,7 +779,7 @@ export default function Consignments() {
                           <IconButton 
                             size="small" 
                             onClick={(e) => { e.stopPropagation(); handleEdit(row.id); }}
-                            aria-label={`Edit consignment ${row.consignment_id}`}
+                            aria-label={`Edit consignment ${row.consignment_number}`}
                             sx={{ 
                               color: '#f58220',
                               '&:hover': { backgroundColor: 'rgba(13, 108, 106, 0.08)', transform: 'scale(1.1)' },
@@ -759,7 +813,7 @@ export default function Consignments() {
         </Table>
       </TableContainer>
 
-      {/* Pagination - Enhanced Styling */}
+      {/* Pagination (unchanged, but uses fixed total) */}
       <TablePagination
         rowsPerPageOptions={[5, 10, 25]}
         component="div"
@@ -792,7 +846,7 @@ export default function Consignments() {
         aria-label="Consignments table pagination"
       />
 
-      {/* Status Update Dialog - Compact & Polished */}
+      {/* Dialog & Snackbar (unchanged) */}
       <Dialog
         open={openStatusDialog}
         onClose={handleCloseStatusDialog}
@@ -807,7 +861,7 @@ export default function Consignments() {
         </DialogTitle>
         <DialogContent sx={{ p: 2 }}>
           <Typography id="status-dialog-description" variant="body1" color="text.secondary" mb={2} sx={{ fontSize: '1rem' }}>
-            Update status for <strong>{selectedConsignmentForUpdate?.consignment_id}</strong>
+            Update status for <strong>{selectedConsignmentForUpdate?.consignment_number}</strong>
           </Typography>
           <FormControl fullWidth margin="dense" size="small">
             <InputLabel id="status-select-label">Status</InputLabel>
@@ -838,7 +892,6 @@ export default function Consignments() {
         </DialogActions>
       </Dialog>
 
-      {/* Snackbar for notifications - Enhanced */}
       <Snackbar
         open={snackbar.open}
         autoHideDuration={4000}
@@ -863,6 +916,11 @@ export default function Consignments() {
         </Alert>
       </Snackbar>
 
+      {error && (
+        <Alert severity="error" sx={{ mt: 2 }}>
+          {error}
+        </Alert>
+      )}
     </Paper>
   );
 }

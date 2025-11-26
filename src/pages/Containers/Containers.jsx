@@ -1,1063 +1,1422 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import {
-  Tabs,
-  Tab,
-  Box,
-  Table,
-  TableHead,
-  TableBody,
-  TableRow,
-  TableCell,
-  TableContainer,
-  Paper,
-  Typography,
-  Button,
-  TextField,
-  Stack,
-  Chip,
-  Divider,
-  Slide,
-  TableSortLabel,
-  IconButton,
-  Tooltip,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Snackbar,
-  Alert,
-  CircularProgress,
-  Card,
-  CardContent
-} from "@mui/material";
-import {
-  Add as AddIcon,
-  Download as DownloadIcon,
-  Clear as ClearIcon,
-  Search as SearchIcon,
-  Visibility as VisibilityIcon,
-  Info as InfoIcon
-} from "@mui/icons-material";
-import { useNavigate } from "react-router-dom";
-import { api } from "../../api";
-import dayjs from "dayjs";
-import { styled } from '@mui/material/styles';
-
-// --- Status Colors --- //
-const statusColors = {
-  Available: "success",
-  Occupied: "warning",
-  Hired: "info",
+  Box, Button, TextField, Select, MenuItem, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
+  Paper, Chip, IconButton, Typography, Modal, FormControl, InputLabel, Radio, RadioGroup, FormControlLabel, Tooltip, Divider,
+  Snackbar, Alert, CircularProgress, Backdrop, Pagination, TablePagination, Checkbox
+} from '@mui/material';
+import AddCircleIcon from '@mui/icons-material/AddCircle';
+import EditIcon from '@mui/icons-material/Edit';
+import HistoryIcon from '@mui/icons-material/History';
+import CloseIcon from '@mui/icons-material/Close';
+import { api } from '../../api'; // Assuming api is configured with baseURL
+import SaveIcon from '@mui/icons-material/Save'
+const modalStyle = {
+  position: 'absolute',
+  top: '50%',
+  left: '50%',
+  transform: 'translate(-50%, -50%)',
+  bgcolor: 'background.paper',
+  boxShadow: 24,
+  p: 4,
+  borderRadius: 2,
+  maxWidth: '90vw',
+  maxHeight: '90vh',
+  overflow: 'auto',
+  width: { xs: '90%', sm: 600 }
 };
 
-// --- Helper to derive status --- //
-function getStatus(c) {
-  const now = dayjs();
+const ContainerModule = ({ containers: propContainers = [], selectedContainers = [], onToggle }) => {
+  // State for filters
+  const [filters, setFilters] = useState({
+    container_number: '',
+    container_size: '',
+    container_type: '',
+    owner_type: '',
+    status: '',
+    location: ''
+  });
 
-  if (!c.date_hired) return "Available"; // never hired
-  if (c.return_date && dayjs(c.return_date).isBefore(now)) return "Available"; // already returned
-  if (c.return_date && dayjs(c.return_date).isAfter(now)) return "Occupied"; // still occupied
-  if (c.date_hired && !c.return_date) return "Hired"; // hired out, no return yet
-  return "Available";
-}
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(50);
+  const [totalCount, setTotalCount] = useState(0);
 
-const UsageDialog = ({ open, onClose, container }) => {
-  if (!container) return null;
+  // Dynamic options from API
+  const [statuses, setStatuses] = useState([]);
+  const [locations, setLocations] = useState([]);
+  const [sizes, setSizes] = useState([]);
+  const [types, setTypes] = useState([]);
+  const [ownershipTypes, setOwnershipTypes] = useState([]);
 
-  // Dummy usage history
-  const usageHistory = [
-    {
-      job_no: "JOB-1001",
-      client_name: "Client A",
-      pol: "Singapore",
-      pod: "Rotterdam",
-      job_date: "2025-09-01",
-      returned: true,
-      remarks: "Delivered successfully",
-    },
-    {
-      job_no: "JOB-1002",
-      client_name: "Client B",
-      pol: "Dubai",
-      pod: "Hamburg",
-      job_date: "2025-09-12",
-      returned: false,
-      remarks: "Still in transit",
-    },
-  ];
+  // State for modals
+  const [openAddModal, setOpenAddModal] = useState(false);
+  const [openHistoryModal, setOpenHistoryModal] = useState(false);
+  const [selectedContainerNo, setSelectedContainerNo] = useState(null);
 
-  return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      maxWidth="md"
-      fullWidth
-      aria-labelledby="usage-dialog-title"
-      sx={{ '& .MuiDialog-paper': { borderRadius: 3, boxShadow: 4 } }}
-    >
-      <DialogTitle id="usage-dialog-title" sx={{ fontSize: '1.25rem', p: 2, bgcolor: '#f8f9fa', borderBottom: 1, borderColor: 'divider' }}>
-        Usage History – {container.container_no}
-      </DialogTitle>
-      <DialogContent sx={{ p: 2 }}>
-        <Table size="small">
-          <TableHead sx={{ bgcolor: "#f5f5f5" }}>
-            <TableRow>
-              <TableCell sx={{ fontWeight: "bold" }}>Job No</TableCell>
-              <TableCell sx={{ fontWeight: "bold" }}>Client</TableCell>
-              <TableCell sx={{ fontWeight: "bold" }}>POL → POD</TableCell>
-              <TableCell sx={{ fontWeight: "bold" }}>Job Date</TableCell>
-              <TableCell sx={{ fontWeight: "bold" }}>Returned?</TableCell>
-              <TableCell sx={{ fontWeight: "bold" }}>Remarks</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {usageHistory.map((u, i) => (
-              <TableRow key={i}>
-                <TableCell>
-                  <Button variant="text" color="primary" size="small">
-                    {u.job_no}
-                  </Button>
-                </TableCell>
-                <TableCell>{u.client_name}</TableCell>
-                <TableCell sx={{ width: 200 }}>
-                  {u.pol} → {u.pod}
-                </TableCell>
-                <TableCell>{dayjs(u.job_date).format("YYYY-MM-DD")}</TableCell>
-                <TableCell>{u.returned ? "Yes" : "No"}</TableCell>
-                <TableCell>{u.remarks}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </DialogContent>
-      <DialogActions sx={{ p: 2, pt: 0, bgcolor: '#f8f9fa', borderTop: 1, borderColor: 'divider' }}>
-        <Button onClick={onClose} size="small" variant="outlined">Close</Button>
-      </DialogActions>
-    </Dialog>
-  );
-};
+  // State for edit mode
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingContainer, setEditingContainer] = useState(null);
 
-// --- Table Component with Filters & CSV --- //
-const CustomTable = ({ columns, rows, filters, setFilters, tabLabel }) => {
-  const [orderBy, setOrderBy] = useState('container_no');
-  const [order, setOrder] = useState('asc');
-  const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
-  const [selected, setSelected] = useState([]);
-  const [usageOpen, setUsageOpen] = useState(false);
-  const [selectedContainer, setSelectedContainer] = useState(null);
-  const [exporting, setExporting] = useState(false);
+  // State for quick edit
+  const [editingId, setEditingId] = useState(null);
+  const [tempData, setTempData] = useState({ status: '', location: '' });
+  const [loadingUpdate, setLoadingUpdate] = useState(false);
+
+  // State for containers and history (displayed after filter/paginate)
+  const [containers, setContainers] = useState([]);
+  const [usageHistory, setUsageHistory] = useState([]);
+
+  // Loading states
+  const [loadingContainers, setContainersLoading] = useState(false);
+  const [loadingForm, setLoadingForm] = useState(false);
+  const [loadingReturned, setLoadingReturned] = useState({});
+  const [loadingOptions, setLoadingOptions] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
+  // Error states
+  const [error, setError] = useState(null);
+
+  // Snackbar state
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
 
-  const filteredRows = rows.filter((row) =>
-    Object.keys(filters).every(
-      (key) =>
-        !filters[key] ||
-        row[key]?.toString().toLowerCase().includes(filters[key].toLowerCase())
-    )
-  );
+  // State for Add Container form
+  const [formData, setFormData] = useState({
+    ownership: 'soc',
+    containerNo: '',
+    size: '',
+    type: '',
+    derived_status: '', // Default to empty string
+    dateAdded: new Date().toISOString().split('T')[0],
+    dateOfManufacture: new Date().toISOString().split('T')[0],
+    purchaseDate: new Date().toISOString().split('T')[0],
+    purchasePrice: '',
+    purchaseFrom: '', // Default to empty string
+    ownershipDetails: 'Self-Owned',
+    availableAt: '',
+    currency: 'USD',
+    hireStartDate: new Date().toISOString().split('T')[0],
+    hireEndDate: new Date().toISOString().split('T')[0],
+    vendor: '',
+    return_date: new Date().toISOString().split('T')[0],
+    freeDays: '',
+    placeOfLoading: '',
+    placeOfDelivery: ''
+  });
 
-  const total = filteredRows.length;
-  const numSelected = selected.length;
-
-  function descendingComparator(a, b, orderBy) {
-    if (b[orderBy] < a[orderBy]) {
-      return -1;
-    }
-    if (b[orderBy] > a[orderBy]) {
-      return 1;
-    }
-    return 0;
-  }
-
-  function getComparator(order, orderBy) {
-    return order === 'desc'
-      ? (a, b) => descendingComparator(a, b, orderBy)
-      : (a, b) => -descendingComparator(a, b, orderBy);
-  }
-
-  function getSortableValue(item, key) {
-    const value = item[key];
-    if (typeof value === 'number') {
-      return value;
-    }
-    return value || '';
-  }
-
-  function stableSort(array, comparator) {
-    const stabilizedThis = array.map((el, index) => [el, index]);
-    stabilizedThis.sort((a, b) => {
-      const order = comparator(a[0], b[0]);
-      if (order !== 0) {
-        return order;
-      }
-      return a[1] - b[1];
-    });
-    return stabilizedThis.map((el) => el[0]);
-  }
-
-  const handleRequestSort = (event, property) => {
-    const isAsc = orderBy === property && order === 'asc';
-    setOrder(isAsc ? 'desc' : 'asc');
-    setOrderBy(property);
-  };
-
-  const handleFilterChange = (e) => {
-    const { name, value } = e.target;
-    setFilters(prev => ({ ...prev, [name]: value }));
-    setPage(0);
-  };
-
-  const sortedConsignments = stableSort(filteredRows, getComparator(order, orderBy));
-  const visibleRows = sortedConsignments.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
-
-  const handleSelectAllClick = (event) => {
-    if (event.target.checked) {
-      const newSelected = filteredRows.map((n) => n.id);
-      setSelected(newSelected);
-      return;
-    }
-    setSelected([]);
-  };
-
-  const isSelected = (id) => selected.indexOf(id) !== -1;
-
-  const handleClick = (id) => {
-    const selectedIndex = selected.indexOf(id);
-    let newSelected = [];
-
-    if (selectedIndex === -1) {
-      newSelected = newSelected.concat(selected, id);
-    } else if (selectedIndex === 0) {
-      newSelected = newSelected.concat(selected.slice(1));
-    } else if (selectedIndex === selected.length - 1) {
-      newSelected = newSelected.concat(selected.slice(0, -1));
-    } else if (selectedIndex > 0) {
-      newSelected = newSelected.concat(
-        selected.slice(0, selectedIndex),
-        selected.slice(selectedIndex + 1),
-      );
-    }
-    setSelected(newSelected);
-  };
-
-  const handleChangePage = (event, newPage) => {
-    setPage(newPage);
-  };
-
-  const handleChangeRowsPerPage = (event) => {
-    setRowsPerPage(parseInt(event.target.value, 10));
-    setPage(0);
-  };
-
-  const handleExport = () => {
-    setExporting(true);
-    // Dummy export logic
-    setTimeout(() => {
-      setExporting(false);
-      setSnackbar({ open: true, message: 'Exported successfully!', severity: 'success' });
-    }, 2000);
-  };
-
-  const handleViewUsage = (row) => {
-    setSelectedContainer(row);
-    setUsageOpen(true);
-  };
-
-  const handleCloseSnackbar = () => {
+  const handleSnackbarClose = () => {
     setSnackbar({ ...snackbar, open: false });
   };
-    const StyledTableRow = styled(TableRow)(({ theme }) => ({
-        '&:nth-of-type(odd)': {
-            backgroundColor: theme.palette.action.hover,
-        },
-        // hide last border
-        '&:last-child td, &:last-child th': {
-            border: 0,
-        },
-        '&:hover': {
-            backgroundColor: theme.palette.action.selected,
-        },
-    }));
 
-    const StyledTableCell = styled(TableCell)(({ theme }) => ({
-        borderBottom: `1px solid ${theme.palette.divider}`,
-        fontSize: '0.875rem',
-        padding: theme.spacing(1.5, 2),
-    }));
+  const showToast = (message, severity = 'info') => {
+    setSnackbar({ open: true, message, severity });
+    setError(null); // Clear any existing error on new toast
+  };
 
-    const StyledTableHeadCell = styled(TableCell)(({ theme }) => ({
-        backgroundColor: theme.palette.primary.main,
-        color: theme.palette.primary.contrastText,
-        fontWeight: 'bold',
-        fontSize: '0.875rem',
-        padding: theme.spacing(1.5, 2),
-        borderBottom: `2px solid ${theme.palette.primary.dark}`,
-    }));
+  const handleError = (error, defaultMessage = 'An unexpected error occurred') => {
+    console.error('Error:', error);
+    const message = error.response?.data?.error || error.message || defaultMessage;
+    setError(message);
+    showToast(message, 'error');
+  };
 
-  if (total === 0) {
-    return (
-      <Box sx={{ p: 3 }}>
-        <Typography variant="h6" color="text.secondary" align="center" sx={{ py: 4 }}>
-          No containers available
-        </Typography>
-      </Box>
-    );
-  }
+  // Fetch dynamic options from backend
+  const fetchOptions = async () => {
+    setLoadingOptions(true);
+    try {
+      const [statusRes, locationRes, sizeRes, typeRes, ownershipRes] = await Promise.all([
+        api.get('/api/containers/statuses'),
+        api.get('/api/containers/locations'),
+        api.get('/api/containers/sizes'),
+        api.get('/api/containers/types'),
+        api.get('/api/containers/ownership-types')
+      ]);
+      setStatuses(statusRes.data || []);
+      setLocations(locationRes.data || []);
+      setSizes(sizeRes.data || []);
+      setTypes(typeRes.data || []);
+      setOwnershipTypes(ownershipRes.data || []);
+    } catch (error) {
+      handleError(error, 'Error fetching options');
+    } finally {
+      setLoadingOptions(false);
+    }
+  };
 
-  return (
-    <Box  sx={{ p: 3, borderRadius: 3, boxShadow: 3, bgcolor: "#fafafa" }}>
-      {/* Summary Card */}
-      <Card  sx={{ p: 3, borderRadius: 3, boxShadow: 3, bgcolor: "#fafafa" }} onMouseEnter={(e) => e.currentTarget.style.boxShadow = '0 4px 12px rgba(13, 108, 106, 0.15)'} onMouseLeave={(e) => e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.12)'}>
-        <CardContent sx={{ p: 2 }}>
-          <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={2}>
-            <Typography variant="body1" color="text.secondary" sx={{ fontSize: { xs: '0.875rem', md: '1rem' } }}>
-              Showing <strong>{total}</strong> {tabLabel.toLowerCase()} containers
-            </Typography>
-            <Chip 
-              icon={<InfoIcon fontSize="small" />} 
-              label={`${numSelected} selected`} 
-              color={numSelected > 0 ? "primary" : "default"}
-              size="small"
-              variant="outlined"
-              sx={{ 
-                borderRadius: 1.5,
-                fontWeight: 'medium',
-                minWidth: 120,
-                justifyContent: 'center',
-                transition: 'all 0.2s ease',
-                '&:hover': { transform: 'scale(1.02)' }
-              }}
-            />
-          </Stack>
-        </CardContent>
-      </Card>
+  // Validate container number format
+  const validateContainerNumber = (containerNo) => {
+    const regex = /^[A-Z]{4}\d{7}$/;
+    return regex.test(containerNo);
+  };
 
-      {/* Header */}
-      <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={{ xs: 2, sm: 0 }} mb={2}>
-        <Typography 
-          variant="h4" 
-          fontWeight="bold" 
-          color="#f58220" 
-          sx={{ 
-            fontSize: { xs: '1.5rem', md: '1.75rem' },
-            mb: { xs: 1, sm: 0 },
-            transition: 'transform 0.2s ease',
-            '&:hover': { transform: 'scale(1.01)' }
-          }}
-        >
-          {tabLabel}
-        </Typography>
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ width: { xs: '100%', sm: 'auto' } }}>
-          <Tooltip title={numSelected === 0 ? "Select items to hire" : ""}>
-            <span>
-              <Button
-                variant="contained"
-                disabled={numSelected === 0}
-                onClick={() => console.log('Hire selected containers', selected)}
-                startIcon={<AddIcon />}
-                size="medium"
-                fullWidth
-                sx={{
-                  borderRadius: 2,
-                  backgroundColor: "#0d6c6a",
-                  color: "#fff",
-                  "&:hover": { backgroundColor: "#0a5a59" },
-                  fontSize: '0.875rem',
-                  fontWeight: 'medium',
-                  transition: 'all 0.2s ease',
-                  minHeight: 40,
-                  width: 200,
-                  '&:disabled': { backgroundColor: 'grey.400' }
-                }}
-              >
-                Hire ({numSelected})
-              </Button>
-            </span>
-          </Tooltip>
-          <Tooltip title="Export to CSV">
-            <Button
-              variant="outlined"
-              startIcon={<DownloadIcon />}
-              onClick={handleExport}
-              disabled={exporting || total === 0}
-              size="small"
-              fullWidth
-              sx={{
-                borderRadius: 2,
-                borderColor: "#0d6c6a",
-                color: "#0d6c6a",
-                "&:hover": { borderColor: "#0d6c6a", backgroundColor: "#0d6c6a", color: "#fff" },
-                fontSize: '0.875rem',
-                fontWeight: 'medium',
-                transition: 'all 0.2s ease',
-                minHeight: 40,
-                width: 120,
-                '&:disabled': { borderColor: 'grey.400', color: 'grey.400' }
-              }}
-            >
-              {exporting ? <CircularProgress size={16} color="inherit" /> : "Export"}
-            </Button>
-          </Tooltip>
-        </Stack>
-      </Stack>
+  // Validate date
+  const validateDate = (dateString) => {
+    const date = new Date(dateString);
+    return date instanceof Date && !isNaN(date);
+  };
 
-      {/* Filters */}
-      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} mb={2} alignItems="center" flexWrap="wrap">
-        {Object.keys(filters).map((key) => (
-          <TextField
-            key={key}
-            name={key}
-            label={key.replace("_", " ")}
-            value={filters[key]}
-            onChange={handleFilterChange}
-            size="small"
-            sx={{ 
-              width: { xs: '100%', sm: 200 },
-              '& .MuiOutlinedInput-root': {
-                borderRadius: 2,
-                backgroundColor: 'background.paper',
-                transition: 'box-shadow 0.2s ease',
-                '&:focus': { boxShadow: '0 0 0 2px rgba(13, 108, 106, 0.25)' }
-              },
-              '& .MuiInputLabel-root': {
-                letterSpacing: 0.5,
-                textTransform: "capitalize",
-                color: "rgba(180, 174, 174, 1)",
-              },
-            }}
-            placeholder={`Search ${key.replace("_", " ")}`}
-          />
-        ))}
-        <Button
-          variant="outlined"
-          startIcon={<ClearIcon />}
-          onClick={() =>
-            setFilters(Object.fromEntries(Object.keys(filters).map((k) => [k, ""])))
-          }
-          sx={{ 
-            borderRadius: 2,
-            borderColor: "#0d6c6a",
-            color: "#0d6c6a",
-            "&:hover": { borderColor: "#0d6c6a", backgroundColor: "#0d6c6a", color: "#fff" },
-            fontSize: '0.875rem',
-            fontWeight: 'medium',
-            minHeight: 40,
-          }}
-        >
-          Reset
-        </Button>
-      </Stack>
+  // Validate number
+  const validateNumber = (value, fieldName) => {
+    if (value === '' || value === null || value === undefined) return true; // Allow empty for optional
+    const num = parseFloat(value);
+    if (isNaN(num) || num < 0) {
+      throw new Error(`${fieldName} must be a valid non-negative number`);
+    }
+    return true;
+  };
 
-      {/* Table */}
-      <TableContainer sx={{ 
-        borderRadius: 2, 
-        overflow: 'hidden', 
-        boxShadow: 2, 
-        maxHeight: 600,
-        width: '100%',
-        '&::-webkit-scrollbar': {
-          height: 6,
-          width: 6,
-        },
-        '&::-webkit-scrollbar-track': {
-          background: 'background.paper',
-        },
-        '&::-webkit-scrollbar-thumb': {
-          background: '#0d6c6a',
-          borderRadius: 3,
-        }
-      }}>
-        <Table stickyHeader size="small" aria-label={`${tabLabel} table`} sx={{ tableLayout: 'fixed' }}>
-          <TableHead>
-            <TableRow>
-              <StyledTableHeadCell padding="checkbox" sx={{ width: 50, padding: '12px 8px' }}>
-                <Checkbox
-                  color="primary"
-                  indeterminate={numSelected > 0 && numSelected < total}
-                  checked={total > 0 && numSelected === total}
-                  onChange={handleSelectAllClick}
-                  size="small"
-                  aria-label="Select all containers"
-                />
-              </StyledTableHeadCell>
-              {columns.map((column) => (
-                <StyledTableHeadCell 
-                  key={column.key} 
-                  sx={{ 
-                    width: `${100 / (columns.length + 1)}%`, 
-                    maxWidth: 150, 
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                    padding: '12px 8px'
-                  }} 
-                  scope="col"
-                >
-                  {column.sortable ? (
-                    <TableSortLabel
-                      active={orderBy === column.key}
-                      direction={orderBy === column.key ? order : 'asc'}
-                      onClick={(e) => handleRequestSort(e, column.key)}
-                      sx={{ 
-                        color: 'inherit !important', 
-                        '&:hover': { color: 'inherit !important' }, 
-                        '& .MuiTableSortLabel-icon': { color: 'inherit !important' },
-                        '&:focus': { outline: '2px solid currentColor' }
-                      }}
-                      aria-label={`Sort by ${column.label}`}
-                    >
-                      <Typography variant="body2" sx={{ lineHeight: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {column.label}
-                      </Typography>
-                    </TableSortLabel>
-                  ) : (
-                    <Typography variant="body2" sx={{ lineHeight: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {column.label}
-                    </Typography>
-                  )}
-                </StyledTableHeadCell>
-              ))}
-              <StyledTableHeadCell sx={{ width: 80, padding: '12px 8px' }} scope="col">
-                <Typography variant="body2" sx={{ lineHeight: 1 }}>Actions</Typography>
-              </StyledTableHeadCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {visibleRows.length > 0 ? (
-              visibleRows.map((row) => {
-                const isItemSelected = isSelected(row.id);
-                return (
-                  <StyledTableRow
-                    key={row.id}
-                    onClick={() => handleClick(row.id)}
-                    role="checkbox"
-                    aria-checked={isItemSelected}
-                    selected={isItemSelected}
-                    hover
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        handleClick(row.id);
-                      }
-                    }}
-                    sx={{ 
-                      py: 1,
-                      cursor: 'pointer', 
-                      transition: 'all 0.2s ease',
-                      '&:focus': { outline: '2px solid #0d6c6a', outlineOffset: -2 }
-                    }}
-                    aria-label={`Container ${row.container_no}`}
-                  >
-                    <StyledTableCell padding="checkbox" sx={{ width: 50, padding: '12px 8px' }}>
-                      <Checkbox
-                        checked={isItemSelected}
-                        onClick={(event) => {
-                          handleClick(row.id);
-                          event.stopPropagation();
-                        }}
-                        size="small"
-                        inputProps={{
-                          'aria-labelledby': `checkbox-${row.id}`,
-                        }}
-                        aria-label={`Select container ${row.container_no}`}
-                      />
-                    </StyledTableCell>
-                    {columns.map((column) => (
-                      <StyledTableCell key={column.key} sx={{ width: `${100 / (columns.length + 1)}%`, maxWidth: 150 }}>
-                        <Tooltip title={typeof column.render(row) === 'string' ? column.render(row) : ''} arrow placement="top">
-                          <Typography variant="body2" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {column.render ? column.render(row) : row[column.key]}
-                          </Typography>
-                        </Tooltip>
-                      </StyledTableCell>
-                    ))}
-                    <StyledTableCell sx={{ width: 80, padding: '12px 8px' }}>
-                      <Stack direction="row" spacing={0.5} justifyContent="center">
-                        <Tooltip title="View Usage">
-                          <IconButton 
-                            size="small" 
-                            onClick={(e) => { e.stopPropagation(); handleViewUsage(row); }}
-                            aria-label={`View usage for container ${row.container_no}`}
-                            sx={{ 
-                              color: '#0d6c6a',
-                              '&:hover': { backgroundColor: 'rgba(13, 108, 106, 0.08)', transform: 'scale(1.1)' },
-                              transition: 'all 0.2s ease',
-                              '&:focus': { outline: '2px solid #0d6c6a' }
-                            }}
-                          >
-                            <VisibilityIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      </Stack>
-                    </StyledTableCell>
-                  </StyledTableRow>
-                );
-              })
-            ) : (
-              <StyledTableRow>
-                <StyledTableCell colSpan={columns.length + 2} align="center" sx={{ py: 4, border: 0 }}>
-                  <Stack spacing={1} alignItems="center">
-                    <Typography variant="h6" color="text.secondary" sx={{ fontSize: '1.125rem' }}>
-                      No containers found
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Try adjusting your filters.
-                    </Typography>
-                  </Stack>
-                </StyledTableCell>
-              </StyledTableRow>
-            )}
-          </TableBody>
-        </Table>
-      </TableContainer>
+  // Client-side filtering and pagination using propContainers
+  useEffect(() => {
+    if (!propContainers || propContainers.length === 0) {
+      setContainers([]);
+      setTotalCount(0);
+      return;
+    }
 
-      {/* Pagination */}
-      <TablePagination
-        rowsPerPageOptions={[5, 10, 25]}
-        component="div"
-        count={total}
-        rowsPerPage={rowsPerPage}
-        page={page}
-        onPageChange={handleChangePage}
-        onRowsPerPageChange={handleChangeRowsPerPage}
-        labelRowsPerPage="Rows per page:"
-        labelDisplayedRows={({ from, to, count }) => `${from}-${to} of ${count}`}
-        sx={{
-          borderTop: '1px solid rgba(224, 224, 224, 1)',
-          '& .MuiTablePagination-selectLabel, & .MuiTablePagination-displayedRows': {
-            color: '#f58220',
-            fontWeight: 'medium',
-            fontSize: '0.875rem',
-          },
-          '& .MuiTablePagination-select, & .MuiTablePagination-input': {
-            fontSize: '0.875rem',
-            borderRadius: 1,
-            '&:focus': { borderColor: '#0d6c6a' }
-          },
-          '& .MuiTablePagination-actions button': {
-            color: '#0d6c6a',
-            '& svg': { fontSize: '1.125rem' },
-            '&:hover': { backgroundColor: 'rgba(13, 108, 106, 0.08)' },
-            '&:focus': { outline: '2px solid #0d6c6a' }
-          }
-        }}
-        aria-label={`${tabLabel} table pagination`}
-      />
+    let filtered = [...propContainers];
 
-      {/* Usage Dialog */}
-      <UsageDialog
-        open={usageOpen}
-        onClose={() => setUsageOpen(false)}
-        container={selectedContainer}
-      />
+    // Apply filters
+    if (filters.container_number) {
+      filtered = filtered.filter(c => c.container_number?.toUpperCase().includes(filters.container_number.toUpperCase()));
+    }
+    if (filters.container_size) {
+      filtered = filtered.filter(c => c.container_size === filters.container_size);
+    }
+    if (filters.container_type) {
+      filtered = filtered.filter(c => c.container_type === filters.container_type);
+    }
+    if (filters.owner_type) {
+      filtered = filtered.filter(c => c.owner_type === filters.owner_type);
+    }
+    if (filters.status) {
+      filtered = filtered.filter(c => c.derived_status === filters.status);
+    }
+    if (filters.location) {
+      filtered = filtered.filter(c => c.location === filters.location);
+    }
 
-      {/* Snackbar */}
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={4000}
-        onClose={handleCloseSnackbar}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-        aria-live="polite"
-        sx={{ '& .MuiSnackbarContent-root': { borderRadius: 2 } }}
-      >
-        <Alert 
-          onClose={handleCloseSnackbar} 
-          severity={snackbar.severity} 
-          sx={{ 
-            width: '100%', 
-            fontSize: '1rem',
-            borderRadius: 2,
-            animation: 'slideInUp 0.3s ease',
-            boxShadow: 2
-          }}
-          variant="filled"
-        >
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
-    </Box>
-  );
-};
+    setTotalCount(filtered.length);
 
-export default function ContainersTabs() {
-  const [tab, setTab] = useState(0);
-  const navigate = useNavigate();
-  const [containers, setContainers] = useState([]);
-  const [slideIn, setSlideIn] = useState(false);
+    // Paginate
+    const startIndex = (currentPage - 1) * rowsPerPage;
+    const endIndex = startIndex + rowsPerPage;
+    setContainers(filtered.slice(startIndex, endIndex));
+  }, []);
 
-  // ✅ Fetch containers
+  // Fetch container by ID with usage history from backend
+  const fetchContainerById = async (cid) => {
+    setLoadingHistory(true);
+    if (!cid) {
+      handleError(new Error('Invalid container ID'));
+      return;
+    }
+    try {
+      const [containerRes, historyRes] = await Promise.all([
+        api.get(`/api/containers/${cid}`),
+        api.get(`/api/containers/${cid}/usage-history`)
+      ]);
+      if (containerRes.status !== 200) {
+        throw new Error(`Unexpected response status: ${containerRes.status}`);
+      }
+      if (historyRes.status !== 200) {
+        throw new Error(`Unexpected response status: ${historyRes.status}`);
+      }
+      const data = containerRes.data;
+      console.log('Fetched container:', data);
+      setUsageHistory(historyRes.data || []);
+      setSelectedContainerNo(data.container_number || cid);
+    } catch (error) {
+      console.error('Error fetching container details:', error);
+      setUsageHistory([]);
+      setSelectedContainerNo(cid);
+      handleError(error, 'Error fetching container details');
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  // Handle quick edit
+  const handleQuickEdit = (container) => {
+    setEditingId(container.cid);
+    setTempData({ status: container.derived_status || '', location: container.location || '' });
+  };
+
+  // Handle quick save (updates DB via API)
+  const handleQuickSave = async (cid) => {
+    if (!tempData.status || !tempData.location) {
+      showToast('Status and Location are required', 'error');
+      return;
+    }
+    setLoadingUpdate(true);
+    try {
+      const payload = {
+        derived_status: tempData.status,
+        location: tempData.location,
+        availability: tempData.status  // Sync with backend logic
+      };
+      const response = await api.put(`/api/containers/${cid}`, payload);
+      if (response.status !== 200) {
+        throw new Error(`Unexpected response status: ${response.status}`);
+      }
+      showToast('Container updated successfully', 'success');
+      setEditingId(null);
+      // Note: In selection modal, parent would need to refresh if needed, but for now, toast only
+    } catch (error) {
+      handleError(error, 'Failed to update container');
+    } finally {
+      setLoadingUpdate(false);
+    }
+  };
+
+  // Handle quick cancel
+  const handleQuickCancel = () => {
+    setEditingId(null);
+    setTempData({ status: '', location: '' });
+  };
+
+  // Handle edit container (full modal)
+  const handleEdit = async (container) => {
+    if (!container) {
+      handleError(new Error('Invalid container data'));
+      return;
+    }
+    try {
+      setEditingContainer(container);
+      setFormData({
+        ownership: container.owner_type || 'soc',
+        containerNo: container.container_number || '',
+        size: container.container_size || '',
+        type: container.container_type || '',
+        derived_status: container.derived_status || '',
+        dateAdded: new Date().toISOString().split('T')[0],
+        dateOfManufacture: container.manufacture_date ? new Date(container.manufacture_date).toISOString().split('T')[0] : '',
+        purchaseDate: container.purchase_date ? new Date(container.purchase_date).toISOString().split('T')[0] : '',
+        purchasePrice: container.purchase_price || '',
+        purchaseFrom: container.purchase_from || '',
+        ownershipDetails: container.owned_by || 'Self-Owned',
+        availableAt: container.available_at || container.location || '',
+        currency: container.currency || 'USD',
+        hireStartDate: container.hire_start_date ? new Date(container.hire_start_date).toISOString().split('T')[0] : '',
+        hireEndDate: container.hire_end_date ? new Date(container.hire_end_date).toISOString().split('T')[0] : '',
+        vendor: container.hired_by || '',
+        return_date: container.return_date ? new Date(container.return_date).toISOString().split('T')[0] : '',
+        freeDays: container.free_days || '',
+        placeOfLoading: container.place_of_loading || '',
+        placeOfDelivery: container.place_of_destination || ''
+      });
+      setIsEditing(true);
+      setOpenAddModal(true);
+    } catch (error) {
+      handleError(error, 'Error preparing to edit container');
+    }
+  };
+
+  useEffect(() => {
+    fetchOptions();
+  }, []);
+
+  // Handle history modal open
+  const openHistory = (cid) => {
+    if (!cid) {
+      handleError(new Error('Invalid container ID'));
+      return;
+    }
+    setSelectedContainerNo(cid);
+    fetchContainerById(cid);
+    setOpenHistoryModal(true);
+  };
   useEffect(() => {
     const fetchContainers = async () => {
+      setContainersLoading(true);
       try {
         const res = await api.get("/api/containers");
         setContainers(res.data.data || []);
       } catch (err) {
         console.error("❌ Error fetching containers:", err);
+      } finally {
+        setContainersLoading(false);
       }
     };
     fetchContainers();
   }, []);
+  // Handle filter changes
+  const handleFilterChange = (e) => {
+    if (!e || !e.target) return;
+    setFilters({ ...filters, [e.target.name]: e.target.value });
+    setCurrentPage(1); // Reset to first page on filter change
+  };
 
-  useEffect(() => {
-    const timer = setTimeout(() => setSlideIn(true), 100);
-    return () => clearTimeout(timer);
-  }, []);
+  // Clear filters
+  const handleClearFilters = () => {
+    setFilters({
+      container_number: '',
+      container_size: '',
+      container_type: '',
+      owner_type: '',
+      status: '',
+      location: ''
+    });
+    setCurrentPage(1);
+  };
 
-  // Filters
-  const [aboutFilters, setAboutFilters] = useState({
-    container_no: "",
-    container_size: "",
-    date_hired: "",
-    date_reached: "",
-    free_days: "",
-    return_date: "",
-    ownership: "",
-  });
-  const [occupiedFilters, setOccupiedFilters] = useState({
-    container_no: "",
-    container_size: "",
-    shipper: "",
-    pol: "",
-    pod: "",
-    associated_date: "",
-    days_till_today: "",
-  });
-  const [availableFilters, setAvailableFilters] = useState({
-    container_no: "",
-    container_size: "",
-    location: "",
-    condition: "",
-    ownership: "",
-  });
-  const [hiredFilters, setHiredFilters] = useState({
-    container_no: "",
-    container_size: "",
-    shipper: "",
-    pol: "",
-    pod: "",
-    associated_date: "",
-    days_till_today: "",
-  });
+  // Handle form changes
+  const handleFormChange = (e) => {
+    if (!e || !e.target) return;
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
 
-  const startAdd = () => navigate("/containers/add");
+  // Comprehensive form validation
+  const validateForm = () => {
+    const errors = [];
 
-  // --- Split Data --- //
-  const aboutData = containers.map((c) => ({
-    id: c.id,
-    container_no: c.container_no,
-    container_size: c.container_size,
-    date_hired: c.date_hired ? dayjs(c.date_hired).format("YYYY-MM-DD") : "-",
-    date_reached: c.date_reached ? dayjs(c.date_reached).format("YYYY-MM-DD") : "-",
-    free_days: c.free_days || "-",
-    return_date: c.return_date ? dayjs(c.return_date).format("YYYY-MM-DD") : "-",
-    ownership: c.ownership_type || "-",
-    status: getStatus(c),
-  }));
+    // Container Number
+    if (!formData.containerNo.trim()) {
+      errors.push('Container Number is required');
+    } else if (!validateContainerNumber(formData.containerNo)) {
+      errors.push('Container Number must be 4 letters followed by 7 digits (e.g., ABCD1234567)');
+    }
 
-  const occupiedData = containers
-    .filter((c) => getStatus(c) === "Occupied")
-    .map((c) => ({
-      id: c.id,
-      container_no: c.container_no,
-      container_size: c.container_size,
-      shipper: c.shipper || "-",
-      pol: c.place_of_loading || "-",
-      pod: c.place_of_delivery || "-",
-      associated_date: c.date_hired ? dayjs(c.date_hired).format("YYYY-MM-DD") : "-",
-      days_till_today: c.date_hired ? dayjs().diff(dayjs(c.date_hired), "day") : 0,
-      status: "Occupied",
-    }));
+    // Size and Type
+    if (!formData.size) {
+      errors.push('Size is required');
+    }
+    if (!formData.type) {
+      errors.push('Type is required');
+    }
 
-  const availableData = containers
-    .filter((c) => getStatus(c) === "Available")
-    .map((c) => ({
-      id: c.id,
-      container_no: c.container_no,
-      container_size: c.container_size,
-      location: c.place_of_delivery || "-",
-      condition: "Good",
-      ownership: c.ownership_type || "-",
-      status: "Available",
-    }));
+    // Ownership specific
+    if (formData.ownership === 'soc') {
+      if (!formData.dateOfManufacture || !validateDate(formData.dateOfManufacture)) {
+        errors.push('Valid Date of Manufacture is required');
+      }
+      if (!formData.purchaseDate || !validateDate(formData.purchaseDate)) {
+        errors.push('Valid Purchase Date is required');
+      }
+      if (!formData.purchasePrice || !validateNumber(formData.purchasePrice, 'Purchase Price')) {
+        errors.push('Valid Purchase Price is required');
+      }
+      if (!formData.purchaseFrom) {
+        errors.push('Purchase From is required');
+      }
+      if (!formData.ownershipDetails.trim()) {
+        errors.push('Owned By is required');
+      }
+      if (!formData.availableAt) {
+        errors.push('Available At is required');
+      }
+      if (formData.currency && !/^[A-Z]{3}$/.test(formData.currency)) {
+        errors.push('Currency must be a 3-letter code (e.g., USD)');
+      }
+    }
 
-  const hiredData = containers
-    .filter((c) => getStatus(c) === "Hired")
-    .map((c) => ({
-      id: c.id,
-      container_no: c.container_no,
-      container_size: c.container_size,
-      shipper: c.shipper || "-",
-      pol: c.place_of_loading || "-",
-      pod: c.place_of_delivery || "-",
-      associated_date: c.date_hired ? dayjs(c.date_hired).format("YYYY-MM-DD") : "-",
-      days_till_today: c.date_hired ? dayjs().diff(dayjs(c.date_hired), "day") : 0,
-      status: "Hired",
-    }));
+    if (formData.ownership === 'coc') {
+      if (!formData.hireStartDate || !validateDate(formData.hireStartDate)) {
+        errors.push('Valid Hire Start Date is required');
+      }
+      if (!formData.hireEndDate || !validateDate(formData.hireEndDate)) {
+        errors.push('Valid Hire End Date is required');
+      }
+      if (!formData.vendor.trim()) {
+        errors.push('Vendor is required');
+      }
+      if (!formData.freeDays || !validateNumber(formData.freeDays, 'Free Days')) {
+        errors.push('Valid Free Days is required');
+      }
+      if (!formData.placeOfLoading.trim()) {
+        errors.push('Place of Loading is required');
+      }
+      if (!formData.placeOfDelivery.trim()) {
+        errors.push('Place of Delivery is required');
+      }
+      if (formData.return_date && !validateDate(formData.return_date)) {
+        errors.push('Valid Return Date is required');
+      }
+    }
 
-  const aboutColumns = [
-    { 
-      key: "container_no", 
-      label: "Container No",
-      sortable: true,
-      render: (item) => <Typography variant="body1" fontWeight="bold" noWrap>{item.container_no || "N/A"}</Typography>
-    },
-    { 
-      key: "container_size", 
-      label: "Size", 
-      sortable: true,
-      render: (item) => <Typography variant="body1" noWrap>{item.container_size || "N/A"}</Typography>
-    },
-    { 
-      key: "date_hired", 
-      label: "Date Hired", 
-      sortable: true,
-      render: (item) => <Typography variant="body1" noWrap>{item.date_hired}</Typography>
-    },
-    { 
-      key: "date_reached", 
-      label: "Date Reached", 
-      sortable: true,
-      render: (item) => <Typography variant="body1" noWrap>{item.date_reached}</Typography>
-    },
-    { 
-      key: "free_days", 
-      label: "Free Days", 
-      sortable: true,
-      render: (item) => <Typography variant="body1">{item.free_days || 0}</Typography>
-    },
-    { 
-      key: "return_date", 
-      label: "Return Date", 
-      sortable: true,
-      render: (item) => <Typography variant="body1" noWrap>{item.return_date}</Typography>
-    },
-    { 
-      key: "ownership", 
-      label: "Ownership", 
-      sortable: true,
-      render: (item) => <Typography variant="body1" noWrap sx={{ maxWidth: 140 }}>{item.ownership || "N/A"}</Typography>
-    },
-    { 
-      key: "status", 
-      label: "Status",
-      sortable: false,
-      render: (item) => <Chip label={item.status} color={statusColors[item.status] || "default"} size="small" sx={{ fontSize: '0.875rem' }} />
-    },
-  ];
+    if (errors.length > 0) {
+      throw new Error(errors.join('; '));
+    }
+    return true;
+  };
 
-  const occupiedColumns = [
-    { 
-      key: "container_no", 
-      label: "Container No",
-      sortable: true,
-      render: (item) => <Typography variant="body1" fontWeight="bold" noWrap>{item.container_no || "N/A"}</Typography>
-    },
-    { 
-      key: "container_size", 
-      label: "Size", 
-      sortable: true,
-      render: (item) => <Typography variant="body1" noWrap>{item.container_size || "N/A"}</Typography>
-    },
-    { 
-      key: "shipper", 
-      label: "Shipper", 
-      sortable: true,
-      render: (item) => <Typography variant="body1" noWrap sx={{ maxWidth: 140 }}>{item.shipper || "N/A"}</Typography>
-    },
-    { 
-      key: "pol", 
-      label: "POL", 
-      sortable: true,
-      render: (item) => <Typography variant="body1" noWrap sx={{ maxWidth: 140 }}>{item.pol || "N/A"}</Typography>
-    },
-    { 
-      key: "pod", 
-      label: "POD", 
-      sortable: true,
-      render: (item) => <Typography variant="body1" noWrap>{item.pod || "N/A"}</Typography>
-    },
-    { 
-      key: "associated_date", 
-      label: "Associated Date", 
-      sortable: true,
-      render: (item) => <Typography variant="body1" noWrap>{item.associated_date}</Typography>
-    },
-    { 
-      key: "days_till_today", 
-      label: "Days Associated", 
-      sortable: true,
-      render: (item) => <Typography variant="body1">{item.days_till_today || 0}</Typography>
-    },
-    { 
-      key: "status", 
-      label: "Status",
-      sortable: false,
-      render: (item) => <Chip label={item.status} color={statusColors[item.status] || "default"} size="small" sx={{ fontSize: '0.875rem' }} />
-    },
-  ];
+  // Handle form submission (updates DB via API)
+  const handleFormSubmit = async () => {
+    try {
+      validateForm();
+    } catch (validationError) {
+      handleError(validationError);
+      return;
+    }
 
-  const availableColumns = [
-    { 
-      key: "container_no", 
-      label: "Container No",
-      sortable: true,
-      render: (item) => <Typography variant="body1" fontWeight="bold" noWrap>{item.container_no || "N/A"}</Typography>
-    },
-    { 
-      key: "container_size", 
-      label: "Size", 
-      sortable: true,
-      render: (item) => <Typography variant="body1" noWrap>{item.container_size || "N/A"}</Typography>
-    },
-    { 
-      key: "location", 
-      label: "Location", 
-      sortable: true,
-      render: (item) => <Typography variant="body1" noWrap sx={{ maxWidth: 140 }}>{item.location || "N/A"}</Typography>
-    },
-    { 
-      key: "condition", 
-      label: "Condition", 
-      sortable: true,
-      render: (item) => <Typography variant="body1">{item.condition || "N/A"}</Typography>
-    },
-    { 
-      key: "ownership", 
-      label: "Ownership", 
-      sortable: true,
-      render: (item) => <Typography variant="body1" noWrap sx={{ maxWidth: 140 }}>{item.ownership || "N/A"}</Typography>
-    },
-    { 
-      key: "status", 
-      label: "Status",
-      sortable: false,
-      render: (item) => <Chip label={item.status} color={statusColors[item.status] || "default"} size="small" sx={{ fontSize: '0.875rem' }} />
-    },
-  ];
+    if (!navigator.onLine) {
+      handleError(new Error('You are offline. Please check your connection.'), 'Network error');
+      return;
+    }
 
-  const hiredColumns = [
-    { 
-      key: "container_no", 
-      label: "Container No",
-      sortable: true,
-      render: (item) => <Typography variant="body1" fontWeight="bold" noWrap>{item.container_no || "N/A"}</Typography>
-    },
-    { 
-      key: "container_size", 
-      label: "Size", 
-      sortable: true,
-      render: (item) => <Typography variant="body1" noWrap>{item.container_size || "N/A"}</Typography>
-    },
-    { 
-      key: "shipper", 
-      label: "Shipper", 
-      sortable: true,
-      render: (item) => <Typography variant="body1" noWrap sx={{ maxWidth: 140 }}>{item.shipper || "N/A"}</Typography>
-    },
-    { 
-      key: "pol", 
-      label: "POL", 
-      sortable: true,
-      render: (item) => <Typography variant="body1" noWrap sx={{ maxWidth: 140 }}>{item.pol || "N/A"}</Typography>
-    },
-    { 
-      key: "pod", 
-      label: "POD", 
-      sortable: true,
-      render: (item) => <Typography variant="body1" noWrap>{item.pod || "N/A"}</Typography>
-    },
-    { 
-      key: "associated_date", 
-      label: "Associated Date", 
-      sortable: true,
-      render: (item) => <Typography variant="body1" noWrap>{item.associated_date}</Typography>
-    },
-    { 
-      key: "days_till_today", 
-      label: "Days Associated", 
-      sortable: true,
-      render: (item) => <Typography variant="body1">{item.days_till_today || 0}</Typography>
-    },
-    { 
-      key: "status", 
-      label: "Status",
-      sortable: false,
-      render: (item) => <Chip label={item.status} color={statusColors[item.status] || "default"} size="small" sx={{ fontSize: '0.875rem' }} />
-    },
-  ];
+    const payload = {
+      container_number: formData.containerNo,
+      container_size: formData.size,
+      container_type: formData.type,
+      owner_type: formData.ownership,
+      derived_status: formData.derived_status,
+      remarks: 'Created/Updated via frontend', // Optional
+      created_by: 'system', // Replace with actual user
+      location: formData.availableAt,
+      availability: formData.derived_status,
+      manufacture_date: formData.dateOfManufacture,
+      purchase_date: formData.purchaseDate,
+      purchase_price: parseFloat(formData.purchasePrice) || 0,
+      purchase_from: formData.purchaseFrom,
+      owned_by: formData.ownershipDetails,
+      available_at: formData.availableAt,
+      currency: formData.currency,
+      hire_start_date: formData.hireStartDate,
+      hire_end_date: formData.hireEndDate,
+      hired_by: formData.vendor,
+      return_date: formData.return_date,
+      free_days: parseInt(formData.freeDays) || 0,
+      place_of_loading: formData.placeOfLoading,
+      place_of_destination: formData.placeOfDelivery
+    };
 
+    setLoadingForm(true);
+    setError(null);
+    try {
+      if (isEditing && editingContainer) {
+        console.log('Updating container:', editingContainer.cid);
+        if (!editingContainer.cid) {
+          throw new Error('Invalid container ID for update');
+        }
+        const response = await api.put(`/api/containers/${editingContainer.cid}`, payload);
+        if (response.status !== 200) {
+          throw new Error(`Unexpected response status: ${response.status}`);
+        }
+        showToast('Container updated successfully', 'success');
+      } else {
+        const response = await api.post('/api/containers', payload);
+        if (response.status !== 201) {
+          throw new Error(`Unexpected response status: ${response.status}`);
+        }
+        showToast('Container added successfully', 'success');
+      }
+      setOpenAddModal(false);
+      setIsEditing(false);
+      setEditingContainer(null);
+      setFormData({
+        ownership: 'soc',
+        containerNo: '',
+        size: '',
+        type: '',
+        derived_status: '',
+        dateAdded: new Date().toISOString().split('T')[0],
+        dateOfManufacture: '',
+        purchaseDate: '',
+        purchasePrice: '',
+        purchaseFrom: '',
+        ownershipDetails: 'Self-Owned',
+        availableAt: '',
+        currency: 'USD',
+        hireStartDate: '',
+        hireEndDate: '',
+        vendor: '',
+        return_date: '',
+        freeDays: '',
+        placeOfLoading: '',
+        placeOfDelivery: ''
+      });
+      // Note: In selection modal, parent would need to refresh if new container added
+    } catch (error) {
+      handleError(error, 'Failed to save container');
+    } finally {
+      setLoadingForm(false);
+    }
+  };
+
+  // Mark container as returned (updates DB via API)
+  const markReturned = async (cid) => {
+    if (!cid) {
+      handleError(new Error('Invalid container ID'));
+      return;
+    }
+    if (!navigator.onLine) {
+      handleError(new Error('You are offline. Please check your connection.'), 'Network error');
+      return;
+    }
+    setLoadingReturned(prev => ({ ...prev, [cid]: true }));
+    setError(null);
+    try {
+      const payload = {
+        availability: 'Returned',
+        derived_status: 'Returned',
+        remarks: 'Marked as returned via frontend'
+      };
+      const response = await api.put(`/api/containers/${cid}`, payload);
+      if (response.status !== 200) {
+        throw new Error(`Unexpected response status: ${response.status}`);
+      }
+      // Note: Refresh parent data if needed
+      showToast('Container marked as returned successfully', 'success');
+    } catch (error) {
+      handleError(error, 'Failed to mark as returned');
+    } finally {
+      setLoadingReturned(prev => ({ ...prev, [cid]: false }));
+    }
+  };
+
+  console.log('Containers state:', containers);
   return (
-    <Slide  sx={{ p: 3, borderRadius: 3, boxShadow: 3, bgcolor: "#fafafa" }} direction="up" in={slideIn} timeout={1000} mountOnEnter unmountOnExit>
-      <Paper  sx={{ p: 3, borderRadius: 3, boxShadow: 3, bgcolor: "#fafafa" }}>
-        <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
-          <Typography variant="h5" gutterBottom fontWeight="bold">
-            Containers
+    <Box sx={{ p: 3, borderRadius: 3, boxShadow: 3, bgcolor: "#fafafa" }}>
+      {/* Container Master Screen */}
+      <Box sx={{ maxWidth: 1440, mx: 0, flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Typography
+            variant="h4"
+            sx={{ fontWeight: 'bold', color: '#f58220' }}
+          >
+            Container Master
           </Typography>
           <Button
             variant="contained"
-            startIcon={<AddIcon />}
-            onClick={startAdd}
-            sx={{ 
+            startIcon={<AddCircleIcon />}
+            onClick={() => {
+              setIsEditing(false);
+              setEditingContainer(null);
+              setOpenAddModal(true);
+            }}
+            sx={{
+              bgcolor: 'linear-gradient(45deg, #0d6c6a 30%, #21CBF3 90%)',
               borderRadius: 2,
-              backgroundColor: "#0d6c6a",
-              color: "#fff",
-              "&:hover": { backgroundColor: "#0a5a59" },
-              fontSize: '0.875rem',
-              fontWeight: 'medium',
-              transition: 'all 0.2s ease',
-              minHeight: 40,
+              textTransform: 'none',
+              px: 5,
+              py: 1,
+              fontSize: '1rem',
+              background: "#0d6c6a",
+              color: "#fff"
             }}
           >
             Add Container
           </Button>
-        </Stack>
+        </Box>
+        <Divider sx={{ mb: 3 }} />
 
-        <Tabs value={tab} onChange={(e, newVal) => setTab(newVal)} sx={{ mb: 2 }}>
-          <Tab label="About" />
-          <Tab label="Occupied" />
-          <Tab label="Available" />
-          <Tab label="Hired" />
-        </Tabs>
+        {/* Filters with Dynamic Options */}
+        <Box sx={{ display: 'flex', flexWrap: 'nowrap', justifyContent: "space-between", mb: 2, gap: 1 }}>
+          <Box sx={{ minWidth: 150 }}>
+            <TextField
+              label="Container No."
+              name="container_number"
+              value={filters.container_number || ''}
+              onChange={handleFilterChange}
+              size="small"
+              fullWidth
+              variant="outlined"
+              sx={{
+                "& .MuiOutlinedInput-root": {
+                  borderRadius: 1,
+                  transition: "all 0.3s ease",
+                  backgroundColor: "#fff",
+                  "& fieldset": { borderColor: "#ddd" },
+                  "&:hover fieldset": { borderColor: "primary.main" },
+                  "&.Mui-focused fieldset": {
+                    borderColor: "primary.main",
+                    boxShadow: "0 0 8px rgba(25, 118, 210, 0.3)",
+                  },
+                },
+                "& .MuiInputLabel-root": {
+                  letterSpacing: 0.5,
+                  textTransform: "capitalize",
+                  color: "rgba(180, 174, 174, 1)",
+                },
+              }}
+            />
+          </Box>
+          <Box sx={{ minWidth: 170 }}>
+            <FormControl fullWidth size="small" sx={{
+              "& .MuiOutlinedInput-root": {
+                borderRadius: 1,
+                transition: "all 0.3s ease",
+                backgroundColor: "#fff",
+                "& fieldset": { borderColor: "#ddd" },
+                "&:hover fieldset": { borderColor: "primary.main" },
+                "&.Mui-focused fieldset": {
+                  borderColor: "primary.main",
+                  boxShadow: "0 0 8px rgba(25, 118, 210, 0.3)",
+                },
+              },
+              "& .MuiInputLabel-root": {
+                letterSpacing: 0.5,
+                textTransform: "capitalize",
+                color: "rgba(180, 174, 174, 1)",
+              },
+            }}>
+              <InputLabel>Size</InputLabel>
+              <Select name="container_size" label='Size' value={filters.container_size || ''} onChange={handleFilterChange}>
+                <MenuItem value="">All Sizes</MenuItem>
+                {sizes.map((size) => (
+                  <MenuItem key={size.value} value={size.value}>{size.label}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
+          <Box sx={{ minWidth: 170 }}>
+            <FormControl fullWidth size="small" sx={{
+              "& .MuiOutlinedInput-root": {
+                borderRadius: 1,
+                transition: "all 0.3s ease",
+                backgroundColor: "#fff",
+                "& fieldset": { borderColor: "#ddd" },
+                "&:hover fieldset": { borderColor: "primary.main" },
+                "&.Mui-focused fieldset": {
+                  borderColor: "primary.main",
+                  boxShadow: "0 0 8px rgba(25, 118, 210, 0.3)",
+                },
+              },
+              "& .MuiInputLabel-root": {
+                letterSpacing: 0.5,
+                textTransform: "capitalize",
+                color: "rgba(180, 174, 174, 1)",
+              },
+            }}>
+              <InputLabel>Type</InputLabel>
+              <Select name="container_type" label="Type" value={filters.container_type || ''} onChange={handleFilterChange}>
+                <MenuItem value="">All Types</MenuItem>
+                {types.map((type) => (
+                  <MenuItem key={type.value} value={type.value}>{type.label}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
+          <Box sx={{ minWidth: 170 }}>
+            <FormControl fullWidth size="small" sx={{
+              "& .MuiOutlinedInput-root": {
+                borderRadius: 1,
+                transition: "all 0.3s ease",
+                backgroundColor: "#fff",
+                "& fieldset": { borderColor: "#ddd" },
+                "&:hover fieldset": { borderColor: "primary.main" },
+                "&.Mui-focused fieldset": {
+                  borderColor: "primary.main",
+                  boxShadow: "0 0 8px rgba(25, 118, 210, 0.3)",
+                },
+              },
+              "& .MuiInputLabel-root": {
+                letterSpacing: 0.5,
+                textTransform: "capitalize",
+                color: "rgba(180, 174, 174, 1)",
+              },
+            }}>
+              <InputLabel>Ownership</InputLabel>
+              <Select name="owner_type" label="Ownership" value={filters.owner_type || ''} onChange={handleFilterChange}>
+                <MenuItem value="">All Ownership</MenuItem>
+                {ownershipTypes.map((own) => (
+                  <MenuItem key={own.value} value={own.value}>{own.label}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
+          <Box sx={{ minWidth: 170 }}>
+            <FormControl fullWidth size="small" sx={{
+              "& .MuiOutlinedInput-root": {
+                borderRadius: 1,
+                transition: "all 0.3s ease",
+                backgroundColor: "#fff",
+                "& fieldset": { borderColor: "#ddd" },
+                "&:hover fieldset": { borderColor: "primary.main" },
+                "&.Mui-focused fieldset": {
+                  borderColor: "primary.main",
+                  boxShadow: "0 0 8px rgba(25, 118, 210, 0.3)",
+                },
+              },
+              "& .MuiInputLabel-root": {
+                letterSpacing: 0.5,
+                textTransform: "capitalize",
+                color: "rgba(180, 174, 174, 1)",
+              },
+            }}>
+              <InputLabel>Status</InputLabel>
+              <Select name="status" label="Status" value={filters.status || ''} onChange={handleFilterChange}>
+                <MenuItem value="">All Statuses</MenuItem>
+                {statuses.map((status) => (
+                  <MenuItem key={status.value} value={status.value}>{status.label}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
+          <Box sx={{ minWidth: 170 }}>
+            <FormControl fullWidth size="small" sx={{
+              "& .MuiOutlinedInput-root": {
+                borderRadius: 1,
+                transition: "all 0.3s ease",
+                backgroundColor: "#fff",
+                "& fieldset": { borderColor: "#ddd" },
+                "&:hover fieldset": { borderColor: "primary.main" },
+                "&.Mui-focused fieldset": {
+                  borderColor: "primary.main",
+                  boxShadow: "0 0 8px rgba(25, 118, 210, 0.3)",
+                },
+              },
+              "& .MuiInputLabel-root": {
+                letterSpacing: 0.5,
+                textTransform: "capitalize",
+                color: "rgba(180, 174, 174, 1)",
+              },
+            }}>
+              <InputLabel>Location</InputLabel>
+              <Select name="location" label="Location" value={filters.location || ''} onChange={handleFilterChange}>
+                <MenuItem value="">All Locations</MenuItem>
+                {locations.map((loc) => (
+                  <MenuItem key={loc.value} value={loc.value}>{loc.label}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
+          <Box sx={{ minWidth: 100 }}>
+            <Button
+              variant="outlined"
+              onClick={handleClearFilters}
+              fullWidth
+              sx={{ textTransform: 'none', borderColor: '#0d6c6a', color: '#0d6c6a', height: '100%' }}
+            >
+              Clear
+            </Button>
+          </Box>
+        </Box>
 
-        {tab === 0 && (
-          <CustomTable
-            columns={aboutColumns}
-            rows={aboutData}
-            filters={aboutFilters}
-            setFilters={setAboutFilters}
-            tabLabel="About"
-          />
-        )}
-        {tab === 1 && (
-          <CustomTable
-            columns={occupiedColumns}
-            rows={occupiedData}
-            filters={occupiedFilters}
-            setFilters={setOccupiedFilters}
-            tabLabel="Occupied"
-          />
-        )}
-        {tab === 2 && (
-          <CustomTable
-            columns={availableColumns}
-            rows={availableData}
-            filters={availableFilters}
-            setFilters={setAvailableFilters}
-            tabLabel="Available"
-          />
-        )}
-        {tab === 3 && (
-          <CustomTable
-            columns={hiredColumns}
-            rows={hiredData}
-            filters={hiredFilters}
-            setFilters={setHiredFilters}
-            tabLabel="Hired"
-          />
-        )}
-      </Paper>
-    </Slide>
+        {/* Scrollable Table Area */}
+        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <TableContainer component={Paper} sx={{ flex: 1, overflow: 'auto', boxShadow: 3, borderRadius: 2 }}>
+            <Table stickyHeader>
+            <TableHead>
+  <TableRow>
+    {onToggle ? (
+      <TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>
+        Select
+      </TableCell>
+    ) : null}
+    <TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>
+      Container No.
+    </TableCell>
+    <TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>
+      Size
+    </TableCell>
+    <TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>
+      Type
+    </TableCell>
+        <TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>
+      Location
+    </TableCell>
+    <TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>
+      Last Used
+    </TableCell>
+    <TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>
+      Ownership
+    </TableCell>
+    <TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>
+      Status
+    </TableCell>
+
+    <TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>
+      Actions
+    </TableCell>
+  </TableRow>
+</TableHead>
+     <TableBody>
+  {containers.length === 0 ? (
+    <TableRow>
+      <TableCell colSpan={9} align="center" sx={{ py: 4 }}>
+        <Typography variant="body2">No containers found</Typography>
+      </TableCell>
+    </TableRow>
+  ) : (
+    containers.map((container, index) => {
+      const isEditing = editingId === container.cid;
+      const currentStatus = isEditing ? tempData.status : (container.derived_status || 'N/A');
+      const currentLocation = isEditing ? tempData.location : (container.location || 'N/A');
+      const statusColor = statuses.find(s => s.value === currentStatus)?.color || 'default';
+
+      return (
+        <TableRow
+          key={container.cid || index}
+          sx={{
+            bgcolor: index % 2 === 0 ? '#f9f9f9' : 'white',
+            '&:hover': { bgcolor: '#e3f2fd' }
+          }}
+        >
+          {onToggle ? (
+          <TableCell>
+            
+              <Checkbox
+                checked={selectedContainers.includes(container.cid)}
+                onChange={onToggle(container.cid)}
+                size="small"
+              />
+      
+          </TableCell>
+                ) : null}
+          <TableCell
+            sx={{
+              cursor: 'pointer',
+              color: '#0d6c6a',
+              '&:hover': { textDecoration: 'underline' }
+            }}
+            onClick={() => openHistory(container.cid)}
+          >
+            {container.container_number || 'N/A'}
+          </TableCell>
+          <TableCell>{container.container_size || 'N/A'}</TableCell>
+          <TableCell>{container.container_type || 'N/A'}</TableCell>
+   
+      <TableCell>
+            {isEditing ? (
+              <FormControl size="small" sx={{ minWidth: 120 }}>
+                <Select
+                  value={currentLocation}
+                  onChange={(e) => setTempData({ ...tempData, location: e.target.value })}
+                  displayEmpty
+                >
+                  <MenuItem value="">Select Location</MenuItem>
+                  {locations.map((loc) => (
+                    <MenuItem key={loc.value} value={loc.value}>
+                      {loc.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            ) : (
+              currentLocation
+            )}
+          </TableCell>
+          <TableCell>
+            {container.created_time
+              ? new Date(container.created_time).toLocaleDateString()
+              : '–'}
+          </TableCell>
+           <TableCell>
+            <Chip
+              label={container.owner_type === 'soc' ? 'Own' : 'Hired'}
+              color={container.owner_type === 'soc' ? 'success' : 'info'}
+              size="small"
+              sx={{ fontWeight: 'bold' }}
+            />
+          </TableCell>
+          <TableCell>
+            {isEditing ? (
+              <FormControl size="small" sx={{ minWidth: 120 }}>
+                <Select
+                  value={currentStatus}
+                  onChange={(e) => setTempData({ ...tempData, status: e.target.value })}
+                  displayEmpty
+                >
+                  {statuses.map((status) => (
+                    <MenuItem key={status.value} value={status.value}>
+                      {status.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            ) : (
+              <Chip
+                label={currentStatus}
+                color={statusColor}
+                size="small"
+                sx={{ fontWeight: 'bold' }}
+              />
+            )}
+          </TableCell>
+            
+          <TableCell>
+            {isEditing ? (
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <Tooltip title="Save">
+                  <IconButton
+                    onClick={() => handleQuickSave(container.cid)}
+                    disabled={loadingUpdate}
+                    size="small"
+                  >
+                    {loadingUpdate ? (
+                      <CircularProgress size={16} />
+                    ) : (
+                      <SaveIcon />
+                    )}
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Cancel">
+                  <IconButton onClick={handleQuickCancel} size="small">
+                    <CloseIcon />
+                  </IconButton>
+                </Tooltip>
+              </Box>
+            ) : (
+              <>
+                <Tooltip title="Quick Update Status & Location">
+                  <IconButton
+                    onClick={() => handleQuickEdit(container)}
+                    sx={{ color: '#f58220' }}
+                    size="small"
+                  >
+                    <EditIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="View History">
+                  <IconButton
+                    onClick={() => openHistory(container.cid)}
+                    sx={{ color: '#0d6c6a' }}
+                    disabled={loadingHistory}
+                  >
+                    {loadingHistory ? (
+                      <CircularProgress size={16} />
+                    ) : (
+                      <HistoryIcon />
+                    )}
+                  </IconButton>
+                </Tooltip>
+                <Tooltip
+                  title={
+                    container.availability !== 'Cleared'
+                      ? 'Container must be Cleared to mark Returned'
+                      : 'Mark as Returned'
+                  }
+                >
+                  <span>
+                    <Button
+                      disabled={container.availability !== 'Cleared' || loadingReturned[container.cid]}
+                      onClick={() => markReturned(container.cid)}
+                      size="small"
+                      startIcon={
+                        loadingReturned[container.cid] ? (
+                          <CircularProgress size={16} />
+                        ) : null
+                      }
+                      sx={{ textTransform: 'none', color: '#f58220' }}
+                    >
+                      Mark Returned
+                    </Button>
+                  </span>
+                </Tooltip>
+              </>
+            )}
+          </TableCell>
+        </TableRow>
+      );
+    })
+  )}
+</TableBody>
+            </Table>
+          </TableContainer>
+
+          {totalCount > 0 && (
+            <TablePagination
+              rowsPerPageOptions={[10, 25, 50]}
+              component="div"
+              count={totalCount}
+              rowsPerPage={rowsPerPage}
+              page={currentPage - 1}
+              onPageChange={(event, newPage) => {
+                setCurrentPage(newPage + 1);
+              }}
+              onRowsPerPageChange={(event) => {
+                setRowsPerPage(parseInt(event.target.value, 10));
+                setCurrentPage(1);
+              }}
+              sx={{ flexShrink: 0, mt: 1 }}
+            />
+          )}
+        </Box>
+
+        {/* Add Container Modal with Dynamic Options */}
+        <Modal open={openAddModal} onClose={() => {
+          setOpenAddModal(false);
+          setIsEditing(false);
+          setEditingContainer(null);
+        }}>
+          <Box sx={{ ...modalStyle, width: { xs: '90%', sm: 1100 } }}>
+            <Typography
+              variant="h5"
+              gutterBottom
+              sx={{ fontWeight: 'bold', color: '#0d6c6a', mb: 1 }}
+            >
+              {isEditing ? 'Edit Container' : 'Add New Container'}
+            </Typography>
+            <Divider sx={{ mb: 1 }} />
+            <FormControl component="fieldset" sx={{ mb: 1 }}>
+              <RadioGroup
+                row
+                name="ownership"
+                value={formData.ownership || 'soc'}
+                onChange={handleFormChange}
+              >
+                {ownershipTypes.slice().reverse().map((own) => (
+                  <FormControlLabel
+                    key={own.value}
+                    value={own.value}
+                    control={<Radio disabled={isEditing} />}
+                    label={own.label}
+                  />
+                ))}
+              </RadioGroup>
+            </FormControl>
+            <Box sx={{ display: 'flex', }}>
+              <Box sx={{ flex: 1, mx: 0.5 }}>
+                <TextField
+                  label="Container Number"
+                  name="containerNo"
+                  value={formData.containerNo || ''}
+                  onChange={handleFormChange}
+                  fullWidth
+                  required
+                  helperText="Format: 4 letters + 7 digits (e.g., RGSLU1234567)"
+                  variant="outlined"
+                  disabled={isEditing}
+                  sx={{ bgcolor: 'white', mb: 1 }}
+                />
+              </Box>
+              <Box sx={{ flex: 1, mx: 0.5 }}>
+                <FormControl fullWidth variant="outlined" sx={{ bgcolor: 'white' }}>
+                  <InputLabel>Derived Status</InputLabel>
+                  <Select name="derived_status" label="Derived Status" value={formData.derived_status || ''} onChange={handleFormChange}>
+                    {statuses.map((status) => (
+                      <MenuItem key={status.value} value={status.value}>{status.label}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Box>
+            </Box>
+            <Box sx={{ display: 'flex', mb: 1 }}>
+              <Box sx={{ flex: 1, mx: 0.5 }}>
+                <FormControl fullWidth variant="outlined" sx={{ bgcolor: 'white' }}>
+                  <InputLabel>Size</InputLabel>
+                  <Select name="size" label='Size' value={formData.size || ''} onChange={handleFormChange} disabled={isEditing}>
+                    {sizes.map((size) => (
+                      <MenuItem key={size.value} value={size.value}>{size.label}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Box>
+              <Box sx={{ flex: 1, mx: 0.5 }}>
+                <FormControl fullWidth variant="outlined" sx={{ bgcolor: 'white' }}>
+                  <InputLabel>Type</InputLabel>
+                  <Select name="type" label='Type' value={formData.type || ''} onChange={handleFormChange} disabled={isEditing}>
+                    {types.map((type) => (
+                      <MenuItem key={type.value} value={type.value}>{type.label}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Box>
+            </Box>
+            <Box sx={{ mb: 1 }}>
+              <FormControl fullWidth variant="outlined" sx={{ bgcolor: 'white' }}>
+                <InputLabel>Available At</InputLabel>
+                <Select name="availableAt" label="Available At" value={formData.availableAt || ''} onChange={handleFormChange}>
+                  {locations.map((loc) => (
+                    <MenuItem key={loc.value} value={loc.value}>{loc.label}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              {/* <TextField
+                    label="Available At"
+                    name="availableAt"
+                    type="text"
+                    value={formData.availableAt || ''}
+                    onChange={handleFormChange}
+                    fullWidth
+                    required
+                    variant="outlined"
+                    // disabled={isEditing}
+                    sx={{ bgcolor: 'white' }}
+                  /> */}
+            </Box>
+            {formData.ownership === 'soc' && (
+              <>
+                <Box sx={{ mb: 1 }}>
+                  <TextField
+                    label="Date of Manufacture"
+                    name="dateOfManufacture"
+                    type="date"
+                    value={formData.dateOfManufacture || ''}
+                    onChange={handleFormChange}
+                    fullWidth
+                    required
+                    variant="outlined"
+                    disabled={isEditing}
+                    sx={{ bgcolor: 'white' }}
+                  />
+                </Box>
+                <Box sx={{ display: 'flex', mb: 1 }}>
+                  <Box sx={{ flex: 1, mx: 0.5 }}>
+                    <TextField
+                      label="Purchase Date"
+                      name="purchaseDate"
+                      type="date"
+                      value={formData.purchaseDate || ''}
+                      onChange={handleFormChange}
+                      fullWidth
+                      required
+                      variant="outlined"
+                      disabled={isEditing}
+                      sx={{ bgcolor: 'white' }}
+                    />
+                  </Box>
+                  <Box sx={{ flex: 1, display: "flex", flexDirection: "row", mx: 0.5 }}>
+                    <TextField
+                      label="Purchase Price"
+                      name="purchasePrice"
+                      type="number"
+                      value={formData.purchasePrice || ''}
+                      onChange={handleFormChange}
+                      fullWidth
+                      required
+                      variant="outlined"
+                      disabled={isEditing}
+                      sx={{ bgcolor: 'white', marginRight: 2 }}
+                    />
+                    <FormControl fullWidth variant="outlined" sx={{ bgcolor: 'white', width: 100 }} disabled={isEditing}>
+                      <InputLabel>Currency</InputLabel>
+                      <Select name="currency" label="Currency" value={formData.currency || 'USD'} onChange={handleFormChange}>
+                        {['USD', 'EUR', 'GBP', 'AED', 'PKR', 'SAR', 'INR'].map((curr) => (
+                          <MenuItem key={curr} value={curr}>{curr}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Box>
+                </Box>
+                <Box sx={{ display: 'flex', mb: 1 }}>
+                  <Box sx={{ flex: 1, mx: 0.5 }}>
+                    <FormControl fullWidth variant="outlined" sx={{ bgcolor: 'white' }}>
+                      <TextField
+                        label="Purchase From"
+                        name="purchaseFrom"
+                        type="text"
+                        value={formData.purchaseFrom || ''}
+                        onChange={handleFormChange}
+                        fullWidth
+                        required
+                        variant="outlined"
+                        disabled={isEditing}
+                        sx={{ bgcolor: 'white' }}
+                      />
+
+                      {/* <InputLabel>Purchase From</InputLabel>
+                      <Select name="purchaseFrom" label="Purchase From" value={formData.purchaseFrom || ''} onChange={handleFormChange} disabled={isEditing}>
+                        {locations.map((loc) => (
+                          <MenuItem key={loc.value} value={loc.value}>{loc.label}</MenuItem>
+                        ))}
+                      </Select> */}
+                    </FormControl>
+                  </Box>
+                  <Box sx={{ flex: 1, mx: 0.5 }}>
+                    <TextField
+                      label="Owned By"
+                      name="ownershipDetails"
+                      value={formData.ownershipDetails || ''}
+                      onChange={handleFormChange}
+                      fullWidth
+                      required
+                      variant="outlined"
+                      disabled={isEditing}
+                      sx={{ bgcolor: 'white' }}
+                    />
+                  </Box>
+                </Box>
+                <Box sx={{ display: 'flex', mb: 1 }}>
+                  <Box sx={{ flex: 1, mx: 0.5 }}></Box>
+                  <Box sx={{ flex: 1, mx: 0.5 }} />
+                </Box>
+              </>
+            )}
+            {formData.ownership === 'coc' && (
+              <>
+                <Box sx={{ display: 'flex', mb: 1 }}>
+                  <Box sx={{ flex: 1, mx: 0.5 }}>
+                    <TextField
+                      label="Hire Start Date"
+                      name="hireStartDate"
+                      type="date"
+                      value={formData.hireStartDate || ''}
+                      onChange={handleFormChange}
+                      fullWidth
+                      required
+                      variant="outlined"
+                      disabled={isEditing}
+                      sx={{ bgcolor: 'white' }}
+                    />
+                  </Box>
+                  <Box sx={{ flex: 1, mx: 0.5 }}>
+                    <TextField
+                      label="Hire End Date"
+                      name="hireEndDate"
+                      type="date"
+                      value={formData.hireEndDate || ''}
+                      onChange={handleFormChange}
+                      fullWidth
+                      required
+                      variant="outlined"
+                      disabled={isEditing}
+                      sx={{ bgcolor: 'white' }}
+                    />
+                  </Box>
+                </Box>
+                <Box sx={{ display: 'flex', mb: 1 }}>
+                  <Box sx={{ flex: 1, mx: 0.5 }}>
+                    <TextField
+                      label="Return Date"
+                      name="return_date"
+                      type="date"
+                      value={formData.return_date || ''}
+                      onChange={handleFormChange}
+                      fullWidth
+                      variant="outlined"
+                      disabled={isEditing}
+                      sx={{ bgcolor: 'white' }}
+                    />
+                  </Box>
+                  <Box sx={{ flex: 1, mx: 0.5 }}>
+                    <TextField
+                      label="Vendor"
+                      name="vendor"
+                      value={formData.vendor || ''}
+                      onChange={handleFormChange}
+                      fullWidth
+                      required
+                      variant="outlined"
+                      disabled={isEditing}
+                      sx={{ bgcolor: 'white' }}
+                    />
+                  </Box>
+                </Box>
+                <Box sx={{ display: 'flex', mb: 1 }}></Box>
+                <Box sx={{ display: 'flex', mb: 1 }}>
+                  <Box sx={{ flex: 1, mx: 0.5 }}>
+                    <TextField
+                      label="Place of Loading"
+                      name="placeOfLoading"
+                      value={formData.placeOfLoading || ''}
+                      onChange={handleFormChange}
+                      fullWidth
+                      required
+                      variant="outlined"
+                      disabled={isEditing}
+                      sx={{ bgcolor: 'white' }}
+                    />
+                  </Box>
+                  <Box sx={{ flex: 1, mx: 0.5 }}>
+                    <TextField
+                      label="Place of Delivery"
+                      name="placeOfDelivery"
+                      value={formData.placeOfDelivery || ''}
+                      onChange={handleFormChange}
+                      fullWidth
+                      required
+                      variant="outlined"
+                      disabled={isEditing}
+                      sx={{ bgcolor: 'white' }}
+                    />
+                  </Box>
+                  <Box sx={{ flex: 1, mx: 0.5 }}>
+                    <TextField
+                      label="Free Days"
+                      name="freeDays"
+                      type="number"
+                      value={formData.freeDays || ''}
+                      onChange={handleFormChange}
+                      fullWidth
+                      required
+                      variant="outlined"
+                      disabled={isEditing}
+                      sx={{ bgcolor: 'white' }}
+                    />
+                  </Box>
+                </Box>
+              </>
+            )}
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 1 }}>
+              <Button
+                variant="outlined"
+                onClick={() => {
+                  setOpenAddModal(false);
+                  setIsEditing(false);
+                  setEditingContainer(null);
+                }}
+                disabled={loadingForm}
+                sx={{ textTransform: 'none', borderColor: '#0d6c6a', color: '#0d6c6a' }}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="contained"
+                onClick={handleFormSubmit}
+                disabled={loadingForm}
+                startIcon={loadingForm ? <CircularProgress size={20} /> : null}
+                sx={{ color: "#fff", textTransform: 'none', bgcolor: "#f58220", '&:hover': { bgcolor: '#1b5e20' } }}
+              >
+                {isEditing ? 'Update' : 'Save'}
+              </Button>
+            </Box>
+          </Box>
+        </Modal>
+
+        {/* Usage History Modal with Loading */}
+        <Modal open={openHistoryModal} onClose={() => setOpenHistoryModal(false)}>
+          <Box sx={{ ...modalStyle, width: { xs: '90%', sm: 1100 } }}>
+            <Typography
+              variant="h5"
+              gutterBottom
+              sx={{ fontWeight: 'bold', color: '#0d6c6a', mb: 2 }}
+            >
+              Usage History for Container {selectedContainerNo || 'N/A'}
+            </Typography>
+            <Divider sx={{ mb: 3 }} />
+            {loadingHistory ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                <CircularProgress />
+                <Typography variant="body2" sx={{ ml: 1 }}>Loading history...</Typography>
+              </Box>
+            ) : (
+              <TableContainer component={Paper} sx={{ boxShadow: 3, borderRadius: 2 }}>
+                <Table>
+                  <TableHead>
+                    <TableRow><TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>Job No.</TableCell><TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>POL → POD</TableCell><TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>Start Date</TableCell><TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>End Date</TableCell><TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>Status Progression</TableCell><TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>Linked Orders</TableCell><TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>Remarks</TableCell></TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {usageHistory.length === 0 ? (<TableRow><TableCell colSpan={7} align="center">No history available</TableCell></TableRow>) : (usageHistory.map((history, index) => (<TableRow key={history.jobNo || index} sx={{ bgcolor: index % 2 === 0 ? '#f9f9f9' : 'white', '&:hover': { bgcolor: '#e3f2fd' } }}><TableCell sx={{ cursor: 'pointer', color: '#0d6c6a', '&:hover': { textDecoration: 'underline' } }} onClick={() => alert(`Go to Job ${history.jobNo || 'N/A'}`)}>{history.jobNo || 'N/A'}</TableCell><TableCell>{`${history.pol || 'N/A'} → ${history.pod || 'N/A'}`}</TableCell><TableCell>{history.startDate || 'N/A'}</TableCell><TableCell>{history.endDate || 'N/A'}</TableCell><TableCell>{(history.statusProgression || []).join(' → ') || 'N/A'}</TableCell><TableCell>{history.linkedOrders || 'N/A'}</TableCell><TableCell>{history.remarks || 'N/A'}</TableCell></TableRow>)))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+            <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center' }}>
+              <Button
+                variant="contained"
+                startIcon={<CloseIcon />}
+                onClick={() => setOpenHistoryModal(false)}
+                sx={{ textTransform: 'none', color: "#fff", bgcolor: '#f58220', '&:hover': { bgcolor: '#1565c0' } }}
+              >
+                Close
+              </Button>
+            </Box>
+          </Box>
+        </Modal>
+
+        {/* Snackbar */}
+        <Snackbar
+          open={snackbar.open}
+          autoHideDuration={6000}
+          onClose={handleSnackbarClose}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        >
+          <Alert onClose={handleSnackbarClose} severity={snackbar.severity} sx={{ width: '100%' }}>
+            {snackbar.message}
+          </Alert>
+        </Snackbar>
+
+        {/* Backdrop for global loading */}
+        <Backdrop
+          sx={{ color: '#fff', zIndex: (theme) => theme.zIndex.drawer + 1 }}
+          open={loadingForm || loadingOptions || loadingHistory || loadingUpdate}
+        >
+          <CircularProgress color="inherit" />
+        </Backdrop>
+      </Box>
+    </Box>
   );
-}
+};
+
+export default ContainerModule;

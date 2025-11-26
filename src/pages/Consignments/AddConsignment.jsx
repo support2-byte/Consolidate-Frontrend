@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Box, Card, CardContent, Typography, Button, FormControl, Select, MenuItem, TextField, InputLabel,
   Table, TableBody, TableCell, TableHead, TableRow, IconButton, Divider, Tooltip as TooltipMui, Slide, Fade, Accordion, AccordionSummary, AccordionDetails, Alert, Snackbar, Alert as SnackbarAlert
@@ -35,12 +35,12 @@ import VisibilityIcon from '@mui/icons-material/Visibility';
 import EditIcon from '@mui/icons-material/Edit';
 import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import { api } from '../../api';
+import { useNavigate } from 'react-router-dom';
 import ContainersTabs from '../Containers/Containers';
-import ContainerModule from '../Containers/AddContainer';
+import ContainerModule from '../Containers/Containers';
+import { Navigate, useLocation } from 'react-router-dom';
 // Custom components (assuming these are defined elsewhere)
-
-
-
+// Custom TextField Component
 const CustomTextField = ({ name, value, onChange, onBlur, label, type = 'text', startAdornment, endAdornment, multiline, rows, readOnly, tooltip, required = false, error, helperText, ...props }) => (
   <TooltipMui title={tooltip || ''}>
     <TextField
@@ -65,28 +65,29 @@ const CustomTextField = ({ name, value, onChange, onBlur, label, type = 'text', 
     />
   </TooltipMui>
 );
-
 // Custom Select Component
 const CustomSelect = ({ name, value, onChange, onBlur, label, options, tooltip, required = false, error, helperText, ...props }) => {
-  const labelId = `${name}-label`;  // Unique ID per field (e.g., "paymentType-label")
-
+  const labelId = `${name}-label`; // Unique ID per field (e.g., "paymentType-label")
+  // Ensure valid value to avoid MUI warnings
+  const getSafeValue = (opt) => typeof opt === 'object' ? (opt.value ?? opt.label ?? opt.name ?? '') : opt;
+  const validValue = options.length > 0 && options.some(opt => getSafeValue(opt) === value) ? value ?? name : '';
   return (
     <TooltipMui title={tooltip || ''}>
       <FormControl fullWidth error={error}>
         <InputLabel id={labelId}>{`${label}${required ? '*' : ''}`}</InputLabel>
         <Select
           name={name}
-          value={value}
+          value={validValue}
           onChange={onChange}
           onBlur={onBlur}
-          labelId={labelId}  // Link to InputLabel's id
-          label={`${label}${required ? '*' : ''}`}  // Keep for shrink behavior
+          labelId={labelId} // Link to InputLabel's id
+          label={`${label}${required ? '*' : ''}`} // Keep for shrink behavior
           {...props}
         >
           {options.map((opt, index) => {
-            const safeKey = (typeof opt === 'object' ? (opt.value ?? opt.label ?? '') : opt) || index.toString();
-            const safeValue = typeof opt === 'object' ? (opt.value ?? opt.label ?? '') : opt;
-            const safeText = typeof opt === 'object' ? (opt.label ?? opt.value ?? '') : opt;
+            const safeKey = getSafeValue(opt) || index.toString();
+            const safeValue = getSafeValue(opt);
+            const safeText = typeof opt === 'object' ? (opt.label ?? opt.value ?? opt.name ?? '') : opt;
             return <MenuItem key={safeKey} value={safeValue}>{safeText}</MenuItem>;
           })}
         </Select>
@@ -114,21 +115,22 @@ const CustomDatePicker = ({ name, value, onChange, onBlur, label, tooltip, requi
     />
   </TooltipMui>
 );
-const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for edit mode
+const ConsignmentPage = ({ consignmentId, props }) => { // Optional prop for edit mode
   const currentDate = dayjs('2025-11-20'); // Fixed current date
-  const [mode, setMode] = useState(consignmentId ? 'edit' : 'add'); // add or edit
+  const [mode, setMode] = useState(props ? 'edit' : 'add'); // add or edit
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const location = useLocation();
   // Snackbar state for error/success messages
   const [snackbar, setSnackbar] = useState({
     open: false,
     message: "",
     severity: "info",
   });
-
+  // Updated values initial state (vessel as null for integer)
   const [values, setValues] = useState({
-    consignmentNumber: '',
-    status: 'Draft',
+    consignment_number: '',
+    status: '',
     remarks: '',
     shipper: '',
     shipperAddress: '',
@@ -137,40 +139,39 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
     origin: '',
     destination: '',
     eform: '',
-    eformDate: currentDate,
+    eform_date: currentDate,
     bank: '',
-    paymentType: 'Prepaid',
+    paymentType: '',
     voyage: '',
-    consignmentValue: 0,
-    currency: 'GBP',
+    consignment_value: 0,
+    currency_code: '',
     eta: currentDate,
-    vessel: '',
-    shippingLine: '',
+    vessel: '', // Changed to empty string for consistency
+    shippingLine: '', // Also for consistency
     delivered: 0,
     pending: 0,
-    sealNo: '',
+    seal_no: '',
     netWeight: 0,
-    grossWeight: 0,
+    gross_weight: 0,
     containers: [{ truckNo: '', containerNo: '', size: '', ownership: '', numberOfDays: 0, status: 'Pending' }],
-    orders: [{ itemName: '', quantity: 0, price: '' }]
+    orders: []
   });
-
   const [errors, setErrors] = useState({});
   const [touched, setTouched] = useState({});
   const [options, setOptions] = useState({
+    third_parties: [],
     shipperOptions: [],
     consigneeOptions: [],
     originOptions: [],
     destinationOptions: [],
     bankOptions: [],
-    paymentTypeOptions: ['Prepaid', 'Collect'], // Hardcoded enum
+    paymentTypeOptions: [], // Hardcoded enum removed, use fetched
     vesselOptions: [],
     shippingLineOptions: [],
-    currencyOptions: ['GBP', 'USD', 'EUR'],
+    currencyOptions: [],
     statusOptions: []
   });
   const [containerModalOpen, setContainerModalOpen] = useState(false);
-  const [orderModalOpen, setOrderModalOpen] = useState(false);
   const [selectedContainers, setSelectedContainers] = useState([]);
   const [selectedOrders, setSelectedOrders] = useState([]);
   const [containers, setContainers] = useState([]); // Fetched containers
@@ -179,11 +180,12 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [addedContainerIds, setAddedContainerIds] = useState([]);
   const [orderPage, setOrderPage] = useState(0);
-  const [orderRowsPerPage, setOrderRowsPerPage] = useState(10);
+  const [orderRowsPerPage, setOrderRowsPerPage] = useState(100); // High limit to fetch all
   const [orderTotal, setOrderTotal] = useState(0);
+  const navigate = useNavigate();
   const [filters, setFilters] = useState({
     status: "",
-    booking_ref: "",  // Updated: Use booking_ref for search
+    booking_ref: "", // Updated: Use booking_ref for search
   });
   // Fetch containers on mount
   useEffect(() => {
@@ -191,7 +193,7 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
       setContainersLoading(true);
       try {
         const res = await api.get("/api/containers");
-        setContainers(res.data.data || []);
+        setContainers(res.data?.data || []);
       } catch (err) {
         console.error("❌ Error fetching containers:", err);
       } finally {
@@ -200,25 +202,21 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
     };
     fetchContainers();
   }, []);
-
+  console.log('Added Container IDs:', location.state?.consignmentId || '');
   // Collect added container IDs whenever containers change
   useEffect(() => {
-    const ids = values.containers
-      .map(c => c.id || c.cid)
-      .filter(id => id);
+    const ids = (values.containers || []).map(c => c.id || c.cid).filter(id => id);
     setAddedContainerIds(ids);
   }, [values.containers]);
-
   // Fetch orders (adapt the provided function for modal - fetch first page with reasonable limit)
   useEffect(() => {
     const fetchOrders = async () => {
-      if (addedContainerIds.length === 0) {
+      if ((addedContainerIds || []).length === 0) {
         setOrders([]);
         setOrderTotal(0);
         setOrdersLoading(false);
         return;
       }
-
       setOrdersLoading(true);
       try {
         const params = {
@@ -231,8 +229,10 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
         };
         const response = await api.get(`/api/orders`, { params });
         console.log('Fetched orders:', response.data);
-        setOrders(response.data.data || []);
-        setOrderTotal(response.data.total || 0);
+        setOrders(response.data?.data || []);
+        setOrderTotal(response.data?.total || 0);
+        handleSelectAllClick({ target: { checked: true } });
+        // Removed: auto-set values.orders; now based on selection
       } catch (err) {
         console.error("Error fetching orders:", err);
       } finally {
@@ -241,14 +241,12 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
     };
     fetchOrders();
   }, [addedContainerIds, filters, orderPage, orderRowsPerPage]);
-
   // Order selection handlers
-  const isSelected = (id) => selectedOrders.indexOf(id) !== -1;
-
+  const isSelected = (id) => (selectedOrders || []).indexOf(id) !== -1;
   const handleOrderToggle = (orderId) => () => {
     console.log('toggle order', orderId)
-    const currentIndex = selectedOrders.indexOf(orderId);
-    const newSelected = [...selectedOrders];
+    const currentIndex = (selectedOrders || []).indexOf(orderId);
+    const newSelected = [...(selectedOrders || [])];
     if (currentIndex === -1) {
       newSelected.push(orderId);
     } else {
@@ -256,17 +254,24 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
     }
     setSelectedOrders(newSelected);
   };
-
   const handleClick = (id) => handleOrderToggle(id)();
-
   const handleSelectAllClick = (event) => {
     if (event.target.checked) {
-      const newSelecteds = orders.map((n) => n.id);
+      const newSelecteds = (orders || []).map((n) => n.id);
       setSelectedOrders(newSelecteds);
       return;
     }
     setSelectedOrders([]);
   };
+  // Compute included orders based on selection
+  const includedOrders = useMemo(() =>
+    (selectedOrders || []).map(id => (orders || []).find(o => o.id === id)).filter(Boolean),
+    [selectedOrders, orders]
+  );
+  // Update values.orders for validation (simple objects with id)
+  useEffect(() => {
+    setValues(prev => ({ ...prev, orders: (selectedOrders || []).map(id => ({ id })) }));
+  }, [selectedOrders]);
   // Improved theme colors for better visual appeal
   const themeColors = {
     primary: '#f58220',
@@ -280,19 +285,15 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
     warning: '#ff9800',
     error: '#f44336'
   };
-
   const handleChangeOrderPage = (event, newPage) => {
     setOrderPage(newPage);
   };
-
   const handleChangeOrderRowsPerPage = (event) => {
     setOrderRowsPerPage(parseInt(event.target.value, 10));
     setOrderPage(0);
   };
-
-  const numSelected = orders.filter((o) => isSelected(o.id)).length;
-  const rowCount = orders.length;
-
+  const numSelected = (orders || []).filter((o) => isSelected(o.id)).length;
+  const rowCount = (orders || []).length;
   const getStatusColors = (status) => {
     // Extend your existing getStatusColors function to handle new statuses
     const colorMap = {
@@ -318,41 +319,35 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
     };
     return colorMap[status] || colorMap.default;
   };
-
   const handleStatusUpdate = (id, order) => {
     console.log('Update status for order:', id, order);
     // Implement status update logic
   };
-
   const handleView = (id) => {
     console.log('View order:', id);
     // Implement view logic
   };
-
   const handleEdit = (id) => {
     console.log('Edit order:', id);
     // Implement edit logic
   };
-
   // Handler to toggle container selection
   const handleContainerToggle = (containerId) => () => {
-    const currentIndex = selectedContainers.indexOf(containerId);
-    const newSelected = [...selectedContainers];
+    const currentIndex = (selectedContainers || []).indexOf(containerId);
+    const newSelected = [...(selectedContainers || [])];
     if (currentIndex === -1) {
       newSelected.push(containerId);
     } else {
-      newSelected.splice(currentIndex, 0);
+      newSelected.splice(currentIndex, 1);
     }
     setSelectedContainers(newSelected);
   };
-
-  // Handler to add selected containers to form
+  console.log('Loading consignment for edit:', location.state);
   // Handler to add selected containers to form
   const addSelectedContainers = () => {
-    const selectedData = selectedContainers
-      .map(id => containers.find(c => c.cid === id))
+    const selectedData = (selectedContainers || [])
+      .map(id => (containers || []).find(c => c.cid === id))
       .filter(Boolean);
-
     if (selectedData.length === 0) {
       setSnackbar({
         open: true,
@@ -361,7 +356,6 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
       });
       return;
     }
-
     const newContainers = selectedData.map(container => ({
       // Map API fields to form fields (no truckNo, no days)
       containerNo: container.container_number || '',
@@ -369,51 +363,54 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
       size: container.container_size || '',
       containerType: container.container_type || '',
       ownership: container.owner_type === 'soc' ? 'Own' : (container.owner_type === 'coc' ? 'Hired' : container.owner_type),
-      status: container.derived_status || 'Pending',  // Use derived_status directly in TextField
-      id: container.cid,  // For backend reference
+      status: container.derived_status || 'Pending', // Use derived_status directly in TextField
+      id: container.cid, // For backend reference
     }));
-
     // Append immutably
     setValues(prev => ({
       ...prev,
-      containers: [...prev.containers, ...newContainers]
+      containers: [...(prev.containers || []), ...newContainers]
     }));
-
     markArrayTouched('containers');
     setSelectedContainers([]);
     setContainerModalOpen(false);
-
     setSnackbar({
       open: true,
       message: `${newContainers.length} container(s) added successfully!`,
       severity: 'success',
     });
   };
-
   // Updated validation schema (Yup for form-level)
   const validationSchema = Yup.object({
-    consignmentNumber: Yup.string().required('Consignment # is required'),
+    consignment_number: Yup.string().required('Consignment # is required'),
     shipper: Yup.string().required('Shipper is required'),
     consignee: Yup.string().required('Consignee is required'),
     origin: Yup.string().required('Origin is required'),
     destination: Yup.string().required('Destination is required'),
     eform: Yup.string().matches(/^[A-Z]{3}-\d{6}$/, 'Invalid format (e.g., ABC-123456)').required('Eform # is required'),
-    eformDate: Yup.date().required('Eform Date is required'),
+    eform_date: Yup.date().required('Eform Date is required'),
     bank: Yup.string().required('Bank is required'),
     paymentType: Yup.string().required('Payment Type is required'),
     voyage: Yup.string().min(3, 'Voyage must be at least 3 characters').required('Voyage is required'),
-    consignmentValue: Yup.number().min(0).required('Consignment Value is required'),
+    consignment_value: Yup.number().min(0).required('Consignment Value is required'),
     vessel: Yup.string().required('Vessel is required'),
     netWeight: Yup.number().min(0).required('Net Weight is required'),
-    grossWeight: Yup.number().min(0).required('Gross Weight is required'),
+    gross_weight: Yup.number().min(0).required('Gross Weight is required'),
     containers: Yup.array().of(
       Yup.object({
         containerNo: Yup.string().required('Container No. is required'),
-        size: Yup.string().required('Size is required')
+        size: Yup.string().oneOf(['20ft', '40ft']).required('Size is required'),
+        // ... other fields
       })
-    ).min(1, 'At least one container is required')
+    ).min(1, 'At least one container required'),
+    orders: Yup.array()
+      .of(
+        Yup.object({
+          id: Yup.number().required()
+        })
+      )
+      .min(1, 'At least one order is required'),
   });
-
   // Status transitions for "Next" button
   const statusTransitions = {
     'Draft': 'Submitted',
@@ -422,35 +419,88 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
     'Delivered': null,
     'Cancelled': null
   };
-
   useEffect(() => {
-    setOptions({
-      shipperOptions: ['SYNERGY FABRICATIONS', 'Shipper B', 'Shipper C'].map(opt => ({ value: opt, label: opt })),
-      consigneeOptions: ['THIRD PARTY #2', 'Consignee Y', 'Consignee Z'].map(opt => ({ value: opt, label: opt })),
-      originOptions: ['Port 1', 'Port 2', 'Port 3'].map(opt => ({ value: opt, label: opt })),
-      destinationOptions: ['Port A', 'Port B', 'Port C'].map(opt => ({ value: opt, label: opt })),
-      bankOptions: ['Bank 1', 'Bank 2', 'Bank 3'].map(opt => ({ value: opt, label: opt })),
-
-      paymentTypeOptions: ['Prepaid', 'Collect'].map(opt => ({ value: opt, label: opt })),  // Add .map here
-      vesselOptions: ['Vessel 1', 'Vessel 2', 'Vessel 3'].map(opt => ({ value: opt, label: opt })),
-      shippingLineOptions: ['Line Alpha', 'Line Beta', 'Line Gamma'].map(opt => ({ value: opt, label: opt })),
-      currencyOptions: ['GBP', 'USD', 'EUR'].map(opt => ({ value: opt, label: opt })),
-      // ... do this for bankOptions, vesselOptions, etc.
-      statusOptions: [
-        { value: 'Draft', label: 'Draft' },
-        { value: 'Submitted', label: 'Submitted' },
-        { value: 'In Transit', label: 'In Transit' },
-        { value: 'Delivered', label: 'Delivered' },
-        { value: 'Cancelled', label: 'Cancelled' }
-      ],
-      // Add this new one
-      containerStatusOptions: [
-        { value: 'Pending', label: 'Pending' },
-        { value: 'In Transit', label: 'In Transit' },
-        { value: 'Delivered', label: 'Delivered' },
-        { value: 'Cancelled', label: 'Cancelled' }
-      ]
-    });
+    const fetchOptions = async () => {
+      try {
+        // Fetch all in parallel for efficiency
+        const [thirdPartiesRes, originsRes, destinationsRes, banksRes, paymentTypesRes,
+          vesselsRes, shippingLinesRes, currenciesRes, statusesRes, containerStatusesRes] =
+          await Promise.all([
+            api.get('api/options/thirdParty/crud'), // Assume 'api' is your axios instance
+            api.get('api/options/origins'),
+            api.get('api/options/places/crud'),
+            api.get('api/options/banks/crud'),
+            api.get('api/options/payment-types/crud'),
+            api.get('api/options/vessels/crud'),
+            api.get('api/options/shipping-lines'),
+            api.get('api/options/currencies'),
+            api.get('api/options/statuses'),
+            api.get('api/options/container-statuses')
+          ]);
+        const third_parties = thirdPartiesRes?.data?.third_parties || [];
+        // Helper function to map options to {value, label} format
+        const mapOptions = (items, valueKey = 'id', labelKey = 'name') => 
+          (items || []).map(item => ({
+            value: (item[valueKey] || item.value)?.toString() || '',
+            label: item[labelKey] || item.label || item[valueKey] || ''
+          }));
+        setOptions({
+          third_parties,
+          shipperOptions: third_parties.filter(tp => tp.type === 'shipper').map(tp => ({ value: tp.id.toString(), label: tp.company_name })),
+          consigneeOptions: third_parties.filter(tp => tp.type === 'consignee').map(tp => ({ value: tp.id.toString(), label: tp.company_name })),
+          originOptions: mapOptions(originsRes?.data?.originOptions || destinationsRes?.data?.places || [], 'id', 'origin') || originsRes?.data?.originOptions || [],
+          destinationOptions: mapOptions(destinationsRes?.data?.places || [], 'id', 'place') || destinationsRes?.data?.places || [],
+          bankOptions: mapOptions(banksRes?.data?.banks || [], 'id', 'name'),
+          paymentTypeOptions: mapOptions(paymentTypesRes?.data?.paymentTypes || [], 'id', 'name'), // Or use code as value if enum
+          vesselOptions: mapOptions(vesselsRes?.data?.vessels || [], 'id', 'name'),
+          shippingLineOptions: mapOptions(shippingLinesRes?.data?.shippingLineOptions || [], 'id', 'name'),
+          currencyOptions: mapOptions(currenciesRes?.data?.currencyOptions || [], 'code', 'name'), // Assuming {code: 'GBP', name: 'British Pound'}
+          statusOptions: statusesRes?.data?.statusOptions || mapOptions(statusesRes?.data?.statuses || [], 'value', 'label'), // Enum strings or IDs
+          containerStatusOptions: containerStatusesRes?.data?.containerStatusOptions || []
+        });
+        console.log('Fetched options:', {
+          shipperOptions: third_parties.filter(tp => tp.type === 'shipper').map(tp => ({ value: tp.id.toString(), label: tp.company_name })),
+          consigneeOptions: third_parties.filter(tp => tp.type === 'consignee').map(tp => ({ value: tp.id.toString(), label: tp.company_name })),
+          originOptions: mapOptions(originsRes?.data?.originOptions || [], 'id', 'origin'),
+          destinationOptions: mapOptions(destinationsRes?.data?.places || [], 'id', 'place'),
+          bankOptions: mapOptions(banksRes?.data?.banks || [], 'id', 'name'),
+          paymentTypeOptions: mapOptions(paymentTypesRes?.data?.paymentTypes || [], 'id', 'name'),
+          vesselOptions: mapOptions(vesselsRes?.data?.vessels || [], 'id', 'name'),
+          shippingLineOptions: mapOptions(shippingLinesRes?.data?.shippingLineOptions || [], 'id', 'name'),
+          currencyOptions: mapOptions(currenciesRes?.data?.currencyOptions || [], 'code', 'name'),
+          statusOptions: statusesRes?.data?.statusOptions || [],
+          containerStatusOptions: containerStatusesRes?.data?.containerStatusOptions || []
+        });
+        console.log('Third parties full response:', thirdPartiesRes?.data);
+        console.log('Shipper options array:', third_parties.filter(tp => tp.type === 'shipper').map(tp => ({ value: tp.id.toString(), label: tp.company_name })));
+        console.log('Looking for shipper ID "2":', third_parties.find(opt => opt.id === 2));
+        // Set defaults for add mode after options are loaded to avoid out-of-range warnings
+        if (mode === 'add') {
+          const defaultStatus = (statusesRes?.data?.statusOptions || []).find(opt => opt.value === 'Draft')?.value || (statusesRes?.data?.statusOptions || [])[0]?.value || '';
+          const defaultPaymentType = (paymentTypesRes?.data?.paymentTypes || mapOptions(paymentTypesRes?.data?.paymentTypes || []))[0]?.value || '';
+          const defaultCurrency = (currenciesRes?.data?.currencyOptions || []).find(opt => opt.value === 'GBP')?.value || (currenciesRes?.data?.currencyOptions || [])[0]?.value || '';
+          const defaultBank = (banksRes?.data?.banks || mapOptions(banksRes?.data?.banks || []))[0]?.value || '';
+          const defaultVessel = (vesselsRes?.data?.vessels || mapOptions(vesselsRes?.data?.vessels || []))[0]?.value || '';
+          setValues(prev => ({
+            ...prev,
+            status: defaultStatus,
+            paymentType: defaultPaymentType,
+            currency_code: defaultCurrency,
+            bank: defaultBank,
+            vessel: defaultVessel,
+          }));
+        }
+      } catch (err) {
+        console.error('Error fetching options:', err);
+        setSnackbar({
+          open: true,
+          message: 'Failed to load options. Using defaults.',
+          severity: 'warning'
+        });
+        // Fallback to hardcoded if needed
+      }
+    };
+    fetchOptions();
   }, []);
   // Validation functions
   const validateField = async (name, value) => {
@@ -464,107 +514,129 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
   const loadConsignment = async () => {
     try {
       setLoading(true);
-      const res = await api.get(`/consignments/${consignmentId}`);
-      const { data } = res.data;
+      setMode(location.state?.mode || 'edit');
+      const res = await api.get(`/api/consignments/${location.state?.consignmentId}`);
+      const { data } = res.data || {};
+      console.log('Loaded consignment data:', data);
       // Assume backend uses camelCase
       const mappedData = {
         ...data,
-        eformDate: data.eformDate ? dayjs(data.eformDate) : null,
-        eta: data.eta ? dayjs(data.eta) : null,
-        containers: (data.containers || []).map(c => ({
-          truckNo: c.truckNo || '',
-          containerNo: c.containerNo || '',
-          size: c.size || '',
-          ownership: c.ownership || '',
-          numberOfDays: c.numberOfDays || 0,
-          status: c.status || 'Pending',
-          id: c.id || c.cid  // For backend reference (assume backend returns id or cid)
+        shipper: data?.shipper ? data.shipper.toString() : '',
+        consignee: data?.consignee ? data.consignee.toString() : '',
+        shipperAddress: data?.shipperAddress || '',
+        consigneeAddress: data?.consigneeAddress || '',
+        bank: data?.bank ? data.bank.toString() : '',
+        paymentType: data?.payment_type || '',
+        vessel: data?.vessel ? data.vessel.toString() : '',
+        shippingLine: data?.shipping_line ? data.shipping_line.toString() : '',
+        netWeight: data?.net_weight || 0,
+        gross_weight: data?.gross_weight || 0,
+        consignment_value: data?.consignment_value || 0,
+        currency_code: data?.currency_code || '',
+        origin: data?.origin || '',
+        destination: data?.destination || '',
+        eform_date: data?.eform_date ? dayjs(data.eform_date) : null,
+        eta: data?.eta ? dayjs(data.eta) : null,
+        containers: (data?.containers || []).map(c => ({
+          location: c?.location || '',
+          containerNo: c?.containerNo || '',
+          size: c?.size || '',
+          ownership: c?.ownership || '',
+          containerType: c?.containerType || 0,
+          status: c?.status || 'Pending',
+          id: c?.id || c?.cid // For backend reference (assume backend returns id or cid)
         })),
-        orders: (data.orders || []).map(o => ({
-          itemName: o.itemName || '',
-          quantity: o.quantity || 1,
-          price: o.price || ''
-        }))
+        // Removed orders mapping; handled via selection
       };
+      console.log('Mapped containers:', mappedData);
       setValues(mappedData);
+      // Pre-select existing orders
+      if (data?.orders && data.orders.length > 0) {
+        setSelectedOrders(data.orders.map(o => o.id));
+      }
     } catch (err) {
       console.error('Error loading consignment:', err);
     } finally {
       setLoading(false);
     }
   };
+  // Updated handleChange function to handle strings consistently for selects
   const handleChange = (e) => {
     console.log('handleee', e)
     const { name, value } = e.target;
     setValues(prev => ({ ...prev, [name]: value }));
     if (touched[name]) validateField(name, value);
   };
+  const handleChangeVessel = (e) => {
+    const { name, value, id } = e.target;
+    console.log('handleee vesse', id, e.target)
+    setValues(prev => ({ ...prev, [name]: value }));
+    if (touched[name]) validateField(name, value);
+  };
   // Load consignment for edit mode
   useEffect(() => {
-    if (mode === 'edit' && consignmentId) {
+    if (location.state?.consignmentId) {
       loadConsignment();
     } else {
       setLoading(false);
     }
-  }, [mode, consignmentId]);
-
-
+  }, [mode, location.state?.consignmentId]);
   const handleNumberChange = (e) => {
     const { name, value } = e.target;
     setValues(prev => ({ ...prev, [name]: parseFloat(value) || 0 }));
     if (touched[name]) validateField(name, parseFloat(value) || 0);
   };
-
   const handleDateChange = (e) => {
     const { name, value: newValue } = e.target;
     setValues(prev => ({ ...prev, [name]: newValue }));
     if (touched[name]) validateField(name, newValue);
   };
-
   const handleBlur = (e) => {
     const { name, value } = e.target;
     setTouched(prev => ({ ...prev, [name]: true }));
     validateField(name, value);
   };
-
   const handleDateBlur = (name) => {
     setTouched(prev => ({ ...prev, [name]: true }));
     validateField(name, values[name]);
   };
-
   const handleSelectBlur = (name) => {
     setTouched(prev => ({ ...prev, [name]: true }));
     validateField(name, values[name]);
   };
-
   // Handle party change to populate address (mock; in real, fetch from API)
   const handlePartyChange = (e) => {
     const { name, value } = e.target;
     handleChange(e);
-    // Mock address; replace with API call if needed
-    if (name === 'shipper') {
-      setValues(prev => ({ ...prev, shipperAddress: value ? `${value} Address\nLine 2\nCity, Country` : '' }));
+    // Populate address from third_parties
+    if ((name === 'shipper' || name === 'consignee') && options.third_parties.length > 0) {
+      const selectedTp = options.third_parties.find(tp => tp.id.toString() === value);
+      if (selectedTp) {
+        const addressField = name === 'shipper' ? 'shipperAddress' : 'consigneeAddress';
+        setValues(prev => ({ ...prev, [addressField]: selectedTp.address || '' }));
+      }
+    }
+    // Fallback mock if not found
+    else if (name === 'shipper') {
+      setValues(prev => ({ ...prev, shipperAddress: `Address Line 2 City, Country` }));
     } else if (name === 'consignee') {
-      setValues(prev => ({ ...prev, consigneeAddress: value ? `${value} Address\nLine 2\nCity, Country` : '' }));
+      setValues(prev => ({ ...prev, consigneeAddress: `Address Line 2 City, Country` }));
     }
   };
-
   const updateArrayField = (arrayName, index, fieldName, value) => {
-    const newArray = [...values[arrayName]];
+    const newArray = [...(values[arrayName] || [])];
     newArray[index][fieldName] = value;
     setValues(prev => ({ ...prev, [arrayName]: newArray }));
     if (touched[arrayName]) validateArray(arrayName);
   };
-
   const validateArray = async (arrayName) => {
     try {
-      await validationSchema.fields[arrayName].validate(values[arrayName]);
+      await validationSchema.fields[arrayName]?.validate(values[arrayName] || []);
       setErrors(prev => ({ ...prev, [arrayName]: undefined }));
     } catch (error) {
       setErrors(prev => ({ ...prev, [arrayName]: error.message }));
     }
   };
-
   const markArrayTouched = (arrayName) => {
     if (!touched[arrayName]) {
       setTouched(prev => ({ ...prev, [arrayName]: true }));
@@ -573,170 +645,166 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
   };
   // Update initial state (in useState for values)
   // Start empty
-
   // Updated addContainer
   const addContainer = () => {
     setValues(prev => ({
       ...prev,
-      containers: [...prev.containers, { containerNo: '', location: '', size: '', containerType: '', ownership: '', status: 'Pending' }]
+      containers: [...(prev.containers || []), { containerNo: '', location: '', size: '', containerType: '', ownership: '', status: 'Pending' }]
     }));
     markArrayTouched('containers');
+    // addOrder(); // Also add an order when a container is added - removed, as orders are selected separately
   };
-
   // Updated removeContainer (allow empty)
   const removeContainer = (index) => {
-    const newContainers = values.containers.filter((_, i) => i !== index);
-    setValues(prev => ({ ...prev, containers: newContainers }));  // No fallback to empty object
+    const newContainers = (values.containers || []).filter((_, i) => i !== index);
+    setValues(prev => ({ ...prev, containers: newContainers })); // No fallback to empty object
     markArrayTouched('containers');
   };
   // Update initial state (in useState for values)
-
-
-  // Updated addOrder
-  const addOrder = () => {
-    setValues(prev => ({
-      ...prev,
-      orders: [...prev.orders, { itemName: '', quantity: 1, price: '' }]
-    }));
-  };
-
-  // Updated removeOrder (allow empty)
-  const removeOrder = (index) => {
-    const newOrders = values.orders.filter((_, i) => i !== index);
-    setValues(prev => ({ ...prev, orders: newOrders }));  // No fallback to empty object
-  };
-
-  // Handler to add selected orders to form (adjust mappings based on your orders API response structure)
-  const addSelectedOrders = () => {
-    const selectedData = selectedOrders
-      .map(id => orders.find(o => o.id === id))  // Assuming orders have 'id'
-      .filter(Boolean);
-
-    if (selectedData.length === 0) {
+  // Updated addOrder - removed, as orders are selected
+  // Updated removeOrder (allow empty) - removed
+  // Advance status (calls API)
+  const advanceStatus = async () => {
+    try {
+      const res = await api.put(`/api/consignments/${location.state?.consignmentId}/next`);
+      const { message } = res.data || {};
+      console.log('Status advanced:', res);
+      loadConsignment(); // Reload consignment to get updated status
       setSnackbar({
         open: true,
-        message: 'No orders selected.',
-        severity: 'warning',
+        message: message || 'Status advanced successfully!',
+        severity: 'success',
       });
-      return;
-    }
-
-    const newOrders = selectedData.map(order => ({
-      // Map API fields to form fields (example based on common order structure; adjust as needed)
-      itemName: order.item_name || order.itemName || order.description || '',  // e.g., from order_items or main order
-      quantity: order.quantity || order.qty || 1,
-      price: order.price || order.unit_price || 0,
-      id: order.id,  // For backend reference
-    }));
-
-    // Append immutably
-    setValues(prev => ({
-      ...prev,
-      orders: [...prev.orders, ...newOrders]
-    }));
-
-    setSelectedOrders([]);
-    setOrderModalOpen(false);
-
-    setSnackbar({
-      open: true,
-      message: `${newOrders.length} order(s) added successfully!`,
-      severity: 'success',
-    });
-  };  // Advance status (calls API)
-  const advanceStatus = async () => {
-    if (mode === 'add' || !consignmentId) {
-      alert('Save the consignment first to advance status.');
-      return;
-    }
-    try {
-      const res = await api.patch(`/consignments/${consignmentId}/next`);
-      const { message } = res.data;
-      alert(message);
-      // Reload data
-      window.location.reload(); // Simple reload; use state update in prod
+      // window.location.reload(); // Simple reload; use state update in prod
     } catch (err) {
       console.error('Error advancing status:', err);
-      alert('Error advancing status');
+      setSnackbar({
+        open: true,
+        message: 'Failed to advance status.',
+        severity: 'error',
+      });
     }
   };
-  // Handle submit (POST for add, PUT for edit)
-  // Handle submit (POST for add, PUT for edit)
+  // Full form validation before submit
+  const validateForm = async () => {
+    try {
+      await validationSchema.validate(values, { abortEarly: false });
+      return true;
+    } catch (validationError) {
+      const fieldErrors = {};
+      validationError.inner.forEach(err => {
+        fieldErrors[err.path] = err.message;
+      });
+      setErrors(fieldErrors);
+      setSnackbar({
+        open: true,
+        message: 'Please fix the validation errors before submitting.',
+        severity: 'error',
+      });
+      return false;
+    }
+  };
+  // Updated handleSubmit - ensure vessel is integer in submitData
   const handleSubmit = async (e) => {
-    console.log('asdsadas', e)
+    console.log('asdsadas', e);
     if (e) {
       e.preventDefault();
     }
+    // Full validation before submit
+    const isValid = await validateForm();
+    if (!isValid) return;
     const allFields = Object.keys(validationSchema.fields);
     setTouched(prev => ({ ...prev, ...allFields.reduce((acc, f) => ({ ...acc, [f]: true }), {}) }));
-    try {
-      await validationSchema.validate(values, { abortEarly: false });
-    } catch (error) {
-      const validationErrors = {};
-      error.inner.forEach(err => validationErrors[err.path] = err.message);
-      setErrors(validationErrors);
-      setSnackbar({
-        open: true,
-        message: 'Please fix the errors in the form',
-        severity: 'error',
-      });
-      // return;
-    }
-    console.log('set submit', values, allFields)
-
-    setSaving(true);
-
+    console.log('Touched fields:', allFields);
+    console.log('set submit', values, allFields);
+    // Safeguard: Filter out invalid/empty containers and orders before submit.
+    const validContainers = (values.containers || []).filter(c =>
+      c.containerNo && c.size && c.containerNo.trim() !== ''
+    );
+    console.log('Valid containers:', validContainers);
+    // if (validContainers.length < 0 && values.containers?.length < 0) {
+    // setSnackbar({
+    // open: true,
+    // message: 'At least one valid container is required.',
+    // severity: 'error',
+    // });
+    // setSaving(false);
+    // return;
+    // }
+    // if ((selectedOrders || []).length === 0) {
+    // setSnackbar({
+    // open: true,
+    // message: 'At least one order is required.',
+    // severity: 'error',
+    // });
+    // setSaving(false);
+    // return;
+    // }
     // Prepare submit data with camelCase keys and formatted dates
+    // Ensure vessel and shippingLine are integers
     const submitData = {
       ...values,
-      eformDate: values.eformDate ? values.eformDate.format('YYYY-MM-DD') : null,
+      shipper: parseInt(values.shipper, 10) || null,
+      consignee: parseInt(values.consignee, 10) || null,
+      bank: parseInt(values.bank, 10) || null,
+      vessel: parseInt(values.vessel, 10) || null,
+      shippingLine: parseInt(values.shippingLine, 10) || null,
+      containers: validContainers, // Use filtered version
+      orders: selectedOrders || [], // Array of order IDs
+      eform_date: values.eform_date ? values.eform_date.format('YYYY-MM-DD') : null,
       eta: values.eta ? values.eta.format('YYYY-MM-DD') : null,
     };
-
+    // Exclude computed/non-DB fields like statusColor, id (for edit, use URL params instead)
+    delete submitData.statusColor;
+    delete submitData.status_color;
+    delete submitData.id; // Prevent sending id in body; backend uses params
     console.log('submitData', submitData);
-
     try {
       let res;
-      const endpoint = mode === 'add' ? '/api/consignments' : `/api/consignments/${consignmentId}`;
+      const endpoint = mode === 'add' ? '/api/consignments' : `/api/consignments/${values.id}`;
       const method = mode === 'add' ? 'post' : 'put';
       res = await api[method](endpoint, submitData);
-
       // Axios success: res.status is 2xx
-      const { data: responseData, message } = res.data; // Axios: res.data holds body
+      console.log('[handleSubmit] Success response:', res.data);
+      const { data: responseData, message } = res.data || {}; // Axios: res.data holds body
       setSnackbar({
         open: true,
         message: mode === 'add' ? 'Consignment created successfully!' : 'Consignment updated successfully!',
         severity: 'success',
       });
+      navigate(`/consignments`);
       // Redirect or reset; for now, log ID for "Next"
       if (mode === 'add') {
-        console.log('New ID:', responseData.id); // Use for edit mode
-        setMode('edit');
+        console.log('New ID:', responseData?.id); // Use for edit mode
+        // setMode('edit');
         // Map response back to camelCase (assume backend camelCase)
         const mappedResponse = {
           ...responseData,
-          eformDate: responseData.eformDate ? dayjs(responseData.eformDate) : null,
-          eta: responseData.eta ? dayjs(responseData.eta) : null,
-          containers: responseData.containers ? responseData.containers.map(c => ({
-            truckNo: c.truckNo,
-            containerNo: c.containerNo,
-            size: c.size,
-            ownership: c.ownership,
-            numberOfDays: c.numberOfDays,
-            status: c.status,
-            id: c.id || c.cid
+          eform_date: responseData?.eform_date ? dayjs(responseData.eform_date) : null,
+          eta: responseData?.eta ? dayjs(responseData.eta) : null,
+          // Ensure vessel and shippingLine are strings from response
+          vessel: responseData?.vessel ? responseData.vessel.toString() : '',
+          shippingLine: responseData?.shippingLine ? responseData.shippingLine.toString() : '',
+          containers: responseData?.containers ? responseData.containers.map(c => ({
+            truckNo: c?.truckNo,
+            containerNo: c?.containerNo,
+            size: c?.size,
+            ownership: c?.ownership,
+            numberOfDays: c?.numberOfDays,
+            status: c?.status,
+            id: c?.id || c?.cid
           })) : [],
-          orders: responseData.orders ? responseData.orders.map(o => ({
-            itemName: o.itemName,
-            quantity: o.quantity,
-            price: o.price
-          })) : []
+          // Orders handled via selection post-load
         };
         setValues(mappedResponse);
+        // Pre-select new orders if returned
+        if (responseData?.orders) {
+          setSelectedOrders(responseData.orders.map(o => o.id));
+        }
       } else {
         // For edit, reload data
-        if (consignmentId) {
-          await loadConsignment(); // Reuse existing load function
+        if (values.id) { // Use values.id instead of location.state?.consignmentId
+          await loadConsignment(); // Reuse existing load function (update loadConsignment to use values.id if needed)
         }
       }
     } catch (err) {
@@ -744,10 +812,20 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
       if (err.response) {
         // API error (4xx/5xx)
         const { error: apiError, details } = err.response.data || {};
+        // Parse backend errors (assuming format like your provided JSON)
+        let backendValidationErrors = {};
+        if (details && Array.isArray(details)) {
+          console.log('Backend validation details:', details);
+          details.forEach(field => {
+            backendValidationErrors[field] = `${field.charAt(0).toUpperCase() + field.slice(1)} is required`;
+          });
+        }
+        // Merge with any existing frontend errors
+        setErrors(prev => ({ ...prev, ...backendValidationErrors }));
         const backendMsg = apiError || err.message || 'Failed to save consignment';
         setSnackbar({
           open: true,
-          message: `Backend Error: ${backendMsg}${details ? `\nDetails: ${details.join(', ')}` : ''}`,
+          message: `Backend Error: ${backendMsg}${details ? `\nDetails: ${details.map(d => (d.errors || []).join(', ')).join('; ')}` : ''}`,
           severity: 'error',
         });
       } else {
@@ -764,8 +842,8 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
   };
   const resetForm = () => {
     setValues({
-      consignmentNumber: '',
-      status: 'Draft',
+      consignment_number: '',
+      status: '',
       remarks: '',
       shipper: '',
       shipperAddress: '',
@@ -774,31 +852,30 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
       origin: '',
       destination: '',
       eform: '',
-      eformDate: currentDate,
+      eform_date: currentDate,
       bank: '',
-      paymentType: 'Prepaid',
+      paymentType: '',
       voyage: '',
-      consignmentValue: 0,
-      currency: 'GBP',
+      consignment_value: 0,
+      currency_code: '',
       eta: currentDate,
       vessel: '',
       shippingLine: '',
       delivered: 0,
       pending: 0,
-      sealNo: '',
+      seal_no: '',
       netWeight: 0,
-      grossWeight: 0,
+      gross_weight: 0,
       containers: [{ truckNo: '', containerNo: '', size: '', ownership: '', numberOfDays: 0, status: 'Pending' }],
-      orders: [{ itemName: '', quantity: 1, price: '' }]
+      orders: []
     });
     setErrors({});
     setTouched({});
+    setSelectedOrders([]);
   };
-
   const getContainerError = () => errors.containers;
-
+  const hasErrors = Object.values(errors).some(Boolean);
   if (loading) return <div>Loading...</div>;
-
   const statuses = [
     'Created',
     'Received for Shipment',
@@ -818,7 +895,6 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
     'Cancelled',
     'Delivered'
   ];
-
   const StyledTooltip = styled(Tooltip)(({ theme }) => ({
     [`& .MuiTooltip-tooltip`]: {
       backgroundColor: theme.palette.common.white,
@@ -833,7 +909,6 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
       color: theme.palette.common.white,
     },
   }));
-
   const StyledList = styled(List)(({ theme }) => ({
     padding: theme.spacing(1),
     '& .MuiListItem-root': {
@@ -844,7 +919,6 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
       },
     },
   }));
-
   const normalizeContainers = (containers) => {
     if (!containers) return [];
     if (typeof containers === 'string') {
@@ -855,7 +929,6 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
     }
     return [];
   };
-
   const StatusChip = ({ status }) => {
     const colors = getStatusColors(status);
     return (
@@ -872,7 +945,6 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
       />
     );
   };
-
   // Updated helper: parse and enhance with icons/chips for better UX
   const parseSummaryToList = (receivers) => {
     // console.log('Parsing receivers:', receivers);
@@ -882,7 +954,6 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
       status: rec.status
     }));
   };
-
   // Enhanced PrettyList: Modern vertical card-based layout for receivers with improved alignment, avatars, and status badges
   const PrettyList = ({ items, title }) => (
     <Card
@@ -913,7 +984,7 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
             {title}
           </Typography>
           <Chip
-            label={`(${items.length})`}
+            label={`(${items?.length || 0})`}
             size="small"
             color="primary"
             variant="outlined"
@@ -924,11 +995,10 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
             }}
           />
         </Box>
-
         {/* Items List - Vertical stack with improved spacing */}
         <Stack spacing={1} sx={{ maxHeight: 200, overflow: 'auto' }}> {/* Add scrollable height for better UX in dense lists */}
-          {items.length > 0 ? (
-            items.map((item, index) => (
+          {(items || []).length > 0 ? (
+            (items || []).map((item, index) => (
               <Card
                 key={index}
                 variant="outlined"
@@ -962,7 +1032,6 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
                   >
                     {item.primary ? item.primary.charAt(0).toUpperCase() : '?'}
                   </Avatar>
-
                   {/* Content - Flexible box for text wrapping */}
                   <Box sx={{ flex: 1, minWidth: 0 }}>
                     <Typography
@@ -991,7 +1060,6 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
                       </Typography>
                     )}
                   </Box>
-
                   {/* Status Badge - Aligned to the right */}
                   {item.status && (
                     <StatusChip
@@ -1028,24 +1096,22 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
       </Box>
     </Card>
   );
-
   // Enhanced parse for containers: Simple string split
   const parseContainersToList = (containersStr) => {
     if (!containersStr) return [];
     return containersStr.split(', ').map(cont => ({ primary: cont.trim() }));
   };
-
   // Enhanced PrettyContainersList: Horizontal chips for compact, modern feel
   const PrettyContainersList = ({ items, title }) => {
     console.log('Containers items:', items);
     return (
       <Box sx={{ p: 1, maxWidth: 280 }}>
         <Typography variant="caption" sx={{ fontWeight: 'medium', color: 'text.secondary', mb: 1, display: 'block' }}>
-          {title} ({items.length})
+          {title} ({(items || []).length})
         </Typography>
         <Stack direction="row" flexWrap="wrap" spacing={0.75} useFlexGap>
-          {items.length > 0 ? (
-            items.map((item, index) => (
+          {(items || []).length > 0 ? (
+            (items || []).map((item, index) => (
               <Chip
                 key={index}
                 label={item.primary}
@@ -1094,13 +1160,11 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
       backgroundColor: theme.palette.action.selected,
     },
   }));
-
   const StyledTableCell = styled(TableCell)(({ theme }) => ({
     borderBottom: `1px solid ${theme.palette.divider}`,
     fontSize: '0.875rem',
     padding: theme.spacing(1.5, 2),
   }));
-
   const StyledTableHeadCell = styled(TableCell)(({ theme }) => ({
     backgroundColor: theme.palette.primary.main,
     color: theme.palette.primary.contrastText,
@@ -1109,9 +1173,13 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
     padding: theme.spacing(1.5, 2),
     borderBottom: `2px solid ${theme.palette.primary.dark}`,
   }));
-
   return (
     <LocalizationProvider dateAdapter={AdapterDayjs}>
+      <Snackbar open={snackbar.open} autoHideDuration={6000} onClose={() => setSnackbar({ ...snackbar, open: false })}>
+        <Alert onClose={() => setSnackbar({ ...snackbar, open: false })} severity={snackbar.severity} sx={{ width: '100%' }}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
       <Box sx={{ p: 3, backgroundColor: '#f5f7fa', minHeight: '100vh' }}>
         <Slide in timeout={1000}>
           <Card sx={{ boxShadow: 4, borderRadius: 3, overflow: 'hidden' }}>
@@ -1134,16 +1202,16 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
                       <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
                         <Box sx={{ flex: 1, minWidth: 250 }}>
                           <CustomTextField
-                            name="consignmentNumber"
-                            value={values.consignmentNumber}
+                            name="consignment_number"
+                            value={values.consignment_number}
                             onChange={handleChange}
                             onBlur={handleBlur}
                             label="Consignment #"
                             startAdornment={<DescriptionIcon sx={{ mr: 1, color: '#f58220' }} />}
-                            readOnly={mode === 'edit'} // Readonly in edit
+                            readOnly={mode === 'edit'} // Keep readOnly for consignment_number in edit mode
                             required
-                            error={touched.consignmentNumber && Boolean(errors.consignmentNumber)}
-                            helperText={touched.consignmentNumber && errors.consignmentNumber}
+                            error={touched.consignment_number && Boolean(errors.consignment_number)}
+                            helperText={touched.consignment_number && errors.consignment_number}
                           />
                         </Box>
                         <Box sx={{ flex: 1, minWidth: 250 }}>
@@ -1153,8 +1221,8 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
                               value={values.status}
                               onChange={handleChange}
                               label="Status"
-                              options={options.statusOptions}
-                              readOnly={mode === 'edit'} // Readonly, advance via Next
+                              options={options.statusOptions || []}
+                              // disabled={mode === 'edit'} // Keep disabled for status in edit mode (use Next button)
                               error={touched.status && Boolean(errors.status)}
                               helperText={touched.status && errors.status}
                             />
@@ -1182,7 +1250,6 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
                           />
                         </Box>
                       </Box>
-
                       {/* Eform Row */}
                       <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
                         <Box sx={{ flex: 1, minWidth: 250 }}>
@@ -1201,19 +1268,18 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
                         </Box>
                         <Box sx={{ flex: 1, minWidth: 250 }}>
                           <CustomDatePicker
-                            name="eformDate"
-                            value={values.eformDate}
+                            name="eform_date"
+                            value={values.eform_date}
                             onChange={handleDateChange}
-                            onBlur={() => handleDateBlur('eformDate')}
+                            onBlur={() => handleDateBlur('eform_date')}
                             label="Eform Date"
                             required
-                            error={touched.eformDate && Boolean(errors.eformDate)}
-                            helperText={touched.eformDate && errors.eformDate}
+                            error={touched.eform_date && Boolean(errors.eform_date)}
+                            helperText={touched.eform_date && errors.eform_date}
                             slotProps={{ textField: { InputProps: { startAdornment: <DateRangeIcon sx={{ mr: 1, color: '#f58220' }} /> } } }}
                           />
                         </Box>
                       </Box>
-
                       {/* Parties Row */}
                       <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
                         <Box sx={{ flex: 1, minWidth: 250 }}>
@@ -1223,7 +1289,7 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
                             onChange={handlePartyChange}
                             onBlur={() => handleSelectBlur('shipper')}
                             label="Shipper"
-                            options={options.shipperOptions}
+                            options={options.shipperOptions || []}
                             required
                             error={touched.shipper && Boolean(errors.shipper)}
                             helperText={touched.shipper && errors.shipper}
@@ -1235,7 +1301,6 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
                             label="Shipper Address"
                             multiline
                             rows={4}
-                            readOnly
                             sx={{ mt: 2 }}
                           />
                         </Box>
@@ -1246,7 +1311,7 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
                             onChange={handlePartyChange}
                             onBlur={() => handleSelectBlur('consignee')}
                             label="Consignee"
-                            options={options.consigneeOptions}
+                            options={options.consigneeOptions || []}
                             required
                             error={touched.consignee && Boolean(errors.consignee)}
                             helperText={touched.consignee && errors.consignee}
@@ -1258,12 +1323,10 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
                             label="Consignee Address"
                             multiline
                             rows={4}
-                            readOnly
                             sx={{ mt: 2 }}
                           />
                         </Box>
                       </Box>
-
                       {/* Locations Row */}
                       <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
                         <Box sx={{ flex: 1, minWidth: 250 }}>
@@ -1273,7 +1336,7 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
                             onChange={handleChange}
                             onBlur={() => handleSelectBlur('origin')}
                             label="Origin"
-                            options={options.originOptions}
+                            options={options.originOptions || []}
                             required
                             error={touched.origin && Boolean(errors.origin)}
                             helperText={touched.origin && errors.origin}
@@ -1287,7 +1350,7 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
                             onChange={handleChange}
                             onBlur={() => handleSelectBlur('destination')}
                             label="Destination"
-                            options={options.destinationOptions}
+                            options={options.destinationOptions || []}
                             required
                             error={touched.destination && Boolean(errors.destination)}
                             helperText={touched.destination && errors.destination}
@@ -1300,11 +1363,10 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
                             value={values.shippingLine}
                             onChange={handleChange}
                             label="Shipping Line"
-                            options={options.shippingLineOptions}
+                            options={options.shippingLineOptions || []}
                           />
                         </Box>
                       </Box>
-
                       {/* Payment & Value Row */}
                       <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
                         <Box sx={{ flex: 1, minWidth: 250 }}>
@@ -1314,7 +1376,7 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
                             onChange={handleChange}
                             onBlur={() => handleSelectBlur('paymentType')}
                             label="Payment Type"
-                            options={options.paymentTypeOptions}  // Remove .map(...) – now objects
+                            options={options.paymentTypeOptions || []}
                             required
                             error={touched.paymentType && Boolean(errors.paymentType)}
                             helperText={touched.paymentType && errors.paymentType}
@@ -1322,8 +1384,8 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
                         </Box>
                         <Box sx={{ flex: 1, minWidth: 250 }}>
                           <CustomTextField
-                            name="consignmentValue"
-                            value={values.consignmentValue}
+                            name="consignment_value"
+                            value={values.consignment_value}
                             onChange={handleNumberChange}
                             onBlur={handleBlur}
                             label="Consignment Value"
@@ -1332,16 +1394,19 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
                             startAdornment={<AttachFileIcon sx={{ mr: 1, color: '#f58220' }} />}
                             endAdornment={
                               <FormControl size="small" sx={{ minWidth: 60 }}>
-                                <Select name="currency" value={values.currency} onChange={handleChange}>
-                                  {options.currencyOptions.map(opt => (
+                                <Select
+                                  name="currency_code"
+                                  value={(options.currencyOptions || []).length > 0 && (options.currencyOptions || []).some(opt => opt.value === values.currency_code) ? values.currency_code : ''}
+                                  onChange={handleChange}
+                                >
+                                  {(options.currencyOptions || [])?.length > 0 ? (options.currencyOptions || []).map(opt => (
                                     <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
-                                  ))}
+                                  )) : <MenuItem value="">Select Currency</MenuItem>}
                                 </Select>
                               </FormControl>
-
                             }
-                            error={touched.consignmentValue && Boolean(errors.consignmentValue)}
-                            helperText={touched.consignmentValue && errors.consignmentValue}
+                            error={touched.consignment_value && Boolean(errors.consignment_value)}
+                            helperText={touched.consignment_value && errors.consignment_value}
                           />
                         </Box>
                         <Box sx={{ flex: 1, minWidth: 250 }}>
@@ -1351,7 +1416,7 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
                             onChange={handleChange}
                             onBlur={() => handleSelectBlur('bank')}
                             label="Bank"
-                            options={options.bankOptions}  // Remove .map(...)
+                            options={options.bankOptions || []}
                             required
                             error={touched.bank && Boolean(errors.bank)}
                             helperText={touched.bank && errors.bank}
@@ -1359,17 +1424,16 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
                           />
                         </Box>
                       </Box>
-
                       {/* Shipping Row */}
                       <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
                         <Box sx={{ flex: 1, minWidth: 250 }}>
                           <CustomSelect
                             name="vessel"
-                            value={values.vessel}
+                            value={values.vessel ?? ''} // Use ?? to handle null as empty string for display
                             onChange={handleChange}
                             onBlur={() => handleSelectBlur('vessel')}
                             label="Vessel"
-                            options={options.vesselOptions}
+                            options={options.vesselOptions || []}
                             required
                             error={touched.vessel && Boolean(errors.vessel)}
                             helperText={touched.vessel && errors.vessel}
@@ -1400,7 +1464,6 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
                           />
                         </Box>
                       </Box>
-
                       {/* Counts & Seal Row */}
                       <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
                         <Box sx={{ flex: 1, minWidth: 250 }}>
@@ -1425,24 +1488,23 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
                         </Box>
                         <Box sx={{ flex: 1, minWidth: 250 }}>
                           <CustomTextField
-                            name="sealNo"
-                            value={values.sealNo}
+                            name="seal_no"
+                            value={values.seal_no}
                             onChange={handleChange}
                             label="Seal No"
                             startAdornment={<LocalPrintshopIcon sx={{ mr: 1, color: '#f58220' }} />}
                           />
                         </Box>
                       </Box>
-
                       {/* Weights Row */}
                       <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
                         <Box sx={{ flex: 1, minWidth: 300 }}>
                           <CustomTextField
                             name="netWeight"
                             value={values.netWeight}
+                            onChange={handleNumberChange}
                             label="Net Weight"
                             type="number"
-                            readOnly
                             required
                             startAdornment={<LocalShippingIcon sx={{ mr: 1, color: '#f58220' }} />}
                             endAdornment={<Typography variant="body2" color="text.secondary">KGS</Typography>}
@@ -1452,8 +1514,8 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
                         </Box>
                         <Box sx={{ flex: 1, minWidth: 300 }}>
                           <CustomTextField
-                            name="grossWeight"
-                            value={values.grossWeight}
+                            name="gross_weight"
+                            value={values.gross_weight}
                             onChange={handleNumberChange}
                             onBlur={handleBlur}
                             label="Gross Weight"
@@ -1461,13 +1523,12 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
                             required
                             startAdornment={<LocalShippingIcon sx={{ mr: 1, color: '#f58220' }} />}
                             endAdornment={<Typography variant="body2" color="text.secondary">KGS</Typography>}
-                            error={touched.grossWeight && Boolean(errors.grossWeight)}
-                            helperText={touched.grossWeight && errors.grossWeight}
+                            error={touched.gross_weight && Boolean(errors.gross_weight)}
+                            helperText={touched.gross_weight && errors.gross_weight}
                           />
                         </Box>
                       </Box>
                     </Box>
-
                     {/* Print Buttons */}
                     <Fade in={true} timeout={800}>
                       <Box sx={{ mt: 3, display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap' }}>
@@ -1537,7 +1598,7 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {values.containers.length === 0 ? (
+                      {(values.containers || []).length === 0 ? (
                         <TableRow>
                           <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
                             <Typography variant="body2" color="text.secondary">
@@ -1546,14 +1607,14 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
                           </TableCell>
                         </TableRow>
                       ) : (
-                        values.containers.map((container, index) => (
+                        (values.containers || []).map((container, index) => (
                           <Fade in key={index} timeout={300 * index}>
                             <TableRow hover sx={{ transition: 'all 0.2s ease' }}>
                               <TableCell>
                                 <TextField
                                   size="small"
                                   fullWidth
-                                  value={container.containerNo}
+                                  value={container.containerNo || ''}
                                   onChange={(e) => updateArrayField('containers', index, 'containerNo', e.target.value)}
                                   onBlur={() => markArrayTouched('containers')}
                                   error={Boolean(getContainerError())}
@@ -1572,7 +1633,7 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
                                 <TextField
                                   size="small"
                                   fullWidth
-                                  value={container.size}
+                                  value={container.size || ''}
                                   onChange={(e) => updateArrayField('containers', index, 'size', e.target.value)}
                                   onBlur={() => markArrayTouched('containers')}
                                   error={Boolean(getContainerError())}
@@ -1591,7 +1652,7 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
                                 <TextField
                                   size="small"
                                   fullWidth
-                                  value={container.ownership}
+                                  value={container.ownership || ''}
                                   onChange={(e) => updateArrayField('containers', index, 'ownership', e.target.value)}
                                 />
                               </TableCell>
@@ -1643,32 +1704,32 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
                   {containersLoading ? (
                     <Typography>Loading containers...</Typography>
                   ) : (
-                    <ContainerModule containers={containers}
-                      selectedContainers={selectedContainers}
+                    <ContainerModule containers={containers || []}
+                      selectedContainers={selectedContainers || []}
                       onToggle={handleContainerToggle} />
                   )}
                 </DialogContent>
                 <DialogActions>
                   <Button onClick={() => setContainerModalOpen(false)}>Cancel</Button>
-                  <Button onClick={addSelectedContainers} disabled={selectedContainers.length === 0} variant="contained">
-                    Add Selected ({selectedContainers.length})
+                  <Button onClick={addSelectedContainers} disabled={(selectedContainers || []).length === 0} variant="contained">
+                    Add Selected ({(selectedContainers || []).length})
                   </Button>
                 </DialogActions>
               </Dialog>
               {/* Orders Section */}
-              <Accordion sx={{ boxShadow: 2, borderRadius: 2, '&:before': { display: 'none' } }}>
+              <Accordion sx={{ mt: 2, boxShadow: 2, borderRadius: 2, '&:before': { display: 'none' } }}>
                 <AccordionSummary
                   expandIcon={<ExpandMoreIconMui sx={{ color: '#fff', backgroundColor: '#f58220', borderRadius: '50%', p: 0.5 }} />}
                   sx={{ backgroundColor: '#f58220', color: 'white', borderRadius: 2 }}
                 >
-                  <Typography variant="h6" sx={{ fontWeight: 'bold' }}>🛒 Orders</Typography>
+                  <Typography variant="h6" sx={{ fontWeight: 'bold' }}>🛒 Orders ({numSelected} selected)</Typography>
                 </AccordionSummary>
                 <AccordionDetails sx={{ p: 3 }}>
                   <>
                     <Box sx={{ display: 'flex', gap: 2, mb: 2, alignItems: 'center' }}>
                       <TextField
                         label="Booking Ref"
-                        value={filters.booking_ref}
+                        value={filters.booking_ref || ''}
                         onChange={(e) => {
                           setFilters(prev => ({ ...prev, booking_ref: e.target.value }));
                           setOrderPage(0);
@@ -1679,7 +1740,7 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
                       <FormControl size="small" sx={{ minWidth: 150 }}>
                         <InputLabel>Status</InputLabel>
                         <Select
-                          value={filters.status}
+                          value={filters.status || ''}
                           label="Status"
                           onChange={(e) => {
                             setFilters(prev => ({ ...prev, status: e.target.value }));
@@ -1687,7 +1748,7 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
                           }}
                         >
                           <MenuItem value="">All</MenuItem>
-                          {statuses.map(status => (
+                          {(statuses || []).map(status => (
                             <MenuItem key={status} value={status}>{status}</MenuItem>
                           ))}
                         </Select>
@@ -1697,51 +1758,55 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
                       <Table stickyHeader>
                         <TableHead>
                           <TableRow sx={{ bgcolor: '#0d6c6a' }}>
-                            {[
-                              <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="ref">Booking Ref</StyledTableHeadCell>,
-                              <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="loading">POL</StyledTableHeadCell>,
-                              <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="dest">POD</StyledTableHeadCell>,
-                              <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="sender">Sender</StyledTableHeadCell>,
-                              <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="receivers">Receivers</StyledTableHeadCell>,
-                              <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="containers">Containers</StyledTableHeadCell>,
-                              <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="status">Status</StyledTableHeadCell>,
-                              <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="created">Created At</StyledTableHeadCell>,
-                              // <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="actions">Actions</StyledTableHeadCell>
-                            ]}
+                            <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} padding="checkbox">
+                              <Checkbox
+                                indeterminate={numSelected > 0 && numSelected < rowCount}
+                                checked={rowCount > 0 && numSelected === rowCount}
+                                onChange={handleSelectAllClick}
+                              />
+                            </StyledTableHeadCell>
+                            <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="ref">Booking Ref</StyledTableHeadCell>
+                            <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="loading">POL</StyledTableHeadCell>
+                            <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="dest">POD</StyledTableHeadCell>
+                            <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="sender">Sender</StyledTableHeadCell>
+                            <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="receivers">Receivers</StyledTableHeadCell>
+                            <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="containers">Containers</StyledTableHeadCell>
+                            <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="status">Status</StyledTableHeadCell>
+                            <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="created">Created At</StyledTableHeadCell>
+                            <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="actions">Actions</StyledTableHeadCell>
                           </TableRow>
                         </TableHead>
                         <TableBody>
-                          {orders.length === 0 ? (
+                          {(orders || []).length === 0 ? (
                             <TableRow>
                               <TableCell colSpan={10} align="center" sx={{ py: 4 }}>
                                 <Typography variant="body2" color="text.secondary">No orders found.</Typography>
                               </TableCell>
                             </TableRow>
                           ) : (
-                            orders.map((order) => {
+                            (orders || []).map((order) => {
                               const isItemSelected = isSelected(order.id);
-                              //  renderReceivers( order.receivers);
+                              // renderReceivers( order.receivers);
                               const containersList = order.receiver_containers_json ? order.receiver_containers_json.split(', ').map(cont => ({ primary: cont })) : []; // Simple for containers
                               const status = order.overall_status || order.status || 'Created';
                               const colors = getStatusColors(status);
-
                               return (
                                 <StyledTableRow
                                   key={order.id}
-                                  onClick={() => handleClick(order.id)}
-                                  role="checkbox"
-                                  aria-checked={isItemSelected}
-                                  selected={isItemSelected}
-                                  sx={{ cursor: 'pointer' }}
                                 >
-
-                                  <StyledTableCell>{order.booking_ref}</StyledTableCell>
-                                  <StyledTableCell>{order?.place_of_loading}</StyledTableCell>
-                                  <StyledTableCell>{order.place_of_discharge || order.place_of_loading}</StyledTableCell>
-                                  <StyledTableCell>{order.sender_name}</StyledTableCell>
+                                  <StyledTableCell padding="checkbox">
+                                    <Checkbox
+                                      checked={isItemSelected}
+                                      onChange={handleOrderToggle(order.id)}
+                                    />
+                                  </StyledTableCell>
+                                  <StyledTableCell>{order.booking_ref || ''}</StyledTableCell>
+                                  <StyledTableCell>{order?.place_of_loading || ''}</StyledTableCell>
+                                  <StyledTableCell>{order.place_of_discharge || order.place_of_loading || ''}</StyledTableCell>
+                                  <StyledTableCell>{order.sender_name || ''}</StyledTableCell>
                                   <StyledTableCell>
                                     <StyledTooltip
-                                      title={<PrettyList items={parseSummaryToList(order.receivers)} title="Receivers" />}
+                                      title={<PrettyList items={parseSummaryToList(order.receivers || [])} title="Receivers" />}
                                       arrow
                                       placement="top"
                                       PopperProps={{
@@ -1749,9 +1814,9 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
                                       }}
                                     >
                                       <Typography variant="body2" noWrap sx={{ maxWidth: 120, cursor: 'help', fontWeight: 'medium' }}>
-                                        {order.receivers && order.receivers.length > 0
-                                          ? <>{order.receivers.length > 1 && <sup style={{ padding: 4, borderRadius: 50, float: 'left', background: '#00695c', color: '#fff' }}>({order.receivers.length})</sup>}
-                                            <p style={{ padding: 0 }}>{order.receivers.map(r => r.receiver_name).join(', ').substring(0, 50)}...</p></>
+                                        {(order.receivers || []).length > 0
+                                          ? <>{(order.receivers || []).length > 1 && <sup style={{ padding: 4, borderRadius: 50, float: 'left', background: '#00695c', color: '#fff' }}>({order.receivers.length})</sup>}
+                                            <span style={{ padding: 0 }}>{(order.receivers || []).map(r => r.receiver_name || '').join(', ').substring(0, 50)}...</span></>
                                           : '-'
                                         }
                                       </Typography>
@@ -1759,22 +1824,20 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
                                   </StyledTableCell>
                                   <StyledTableCell>
                                     <StyledTooltip
-                                      title={<PrettyList items={parseContainersToList(order.receiver_containers_json)} title="Containers" />}
+                                      // title={<PrettyContainersList items={parseContainersToList(order.receiver_containers_json)} title="Containers" />}
+                                      title={<PrettyList items={parseContainersToList(order.receiver_containers_json || '')} title="Containers" />}
                                       arrow
                                       placement="top"
                                     >
                                       <Typography variant="body2" noWrap sx={{ maxWidth: 120, cursor: 'help', fontWeight: 'medium' }}>
-
                                         {order.receiver_containers_json
                                           ? <>{containersList.length > 1 && <sup style={{ padding: 4, borderRadius: 50, float: 'left', background: '#00695c', color: '#fff' }}>({containersList.length})</sup>}
-                                            <p style={{ padding: 0 }}>{containersList.map(c => c.primary).join(', ').substring(0, 25)}...</p></>
+                                            <span style={{ padding: 0 }}>{containersList.map(c => c.primary || '').join(', ').substring(0, 25)}...</span></>
                                           : '-'
                                         }
                                       </Typography>
                                     </StyledTooltip>
                                   </StyledTableCell>
-                                  <StyledTableCell>{new Date(order.created_at).toLocaleDateString()}</StyledTableCell>
-
                                   <StyledTableCell>
                                     <Chip
                                       label={`${status.substring(0, 15)}...`} // Internal status for admin
@@ -1786,7 +1849,18 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
                                       }}
                                     />
                                   </StyledTableCell>
-
+                                  <StyledTableCell>{new Date(order.created_at || Date.now()).toLocaleDateString()}</StyledTableCell>
+                                  <StyledTableCell>
+                                    <IconButton size="small" onClick={() => handleView(order.id)}>
+                                      <VisibilityIcon fontSize="small" />
+                                    </IconButton>
+                                    <IconButton size="small" onClick={() => handleEdit(order.id)}>
+                                      <EditIcon fontSize="small" />
+                                    </IconButton>
+                                    <IconButton size="small" onClick={() => handleStatusUpdate(order.id, order)}>
+                                      <UpdateIcon fontSize="small" />
+                                    </IconButton>
+                                  </StyledTableCell>
                                 </StyledTableRow>
                               );
                             })
@@ -1795,9 +1869,9 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
                       </Table>
                     </TableContainer>
                     <TablePagination
-                      rowsPerPageOptions={[5, 10, 25]}
+                      rowsPerPageOptions={[10, 25, 50, 100]}
                       component="div"
-                      count={orderTotal}
+                      count={orderTotal || 0}
                       rowsPerPage={orderRowsPerPage}
                       page={orderPage}
                       onPageChange={handleChangeOrderPage}
@@ -1816,12 +1890,6 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
                   </>
                 </AccordionDetails>
               </Accordion>
-
-              <Snackbar open={snackbar.open} autoHideDuration={6000} onClose={() => setSnackbar({ ...snackbar, open: false })}>
-                <SnackbarAlert onClose={() => setSnackbar({ ...snackbar, open: false })} severity={snackbar.severity} sx={{ width: '100%' }}>
-                  {snackbar.message}
-                </SnackbarAlert>
-              </Snackbar>
             </CardContent>
           </Card>
         </Slide>
@@ -1829,4 +1897,4 @@ const ConsignmentPage = ({ consignmentId = null }) => {  // Optional prop for ed
     </LocalizationProvider>
   );
 };
-export default ConsignmentPage;
+export default ConsignmentPage

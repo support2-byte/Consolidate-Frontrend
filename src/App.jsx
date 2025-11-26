@@ -8,6 +8,7 @@ import Vendors from "./pages/Vendors/Vendors";
 import Containers from "./pages/Containers/Containers";
 import AddContainers from "./pages/Containers/AddContainer";
 import Orders from "./pages/Orders/Orders";
+import AddConsignment from "./pages/Consignments/AddConsignment";
 import Consignments from "./pages/Consignments";
 import AddCustomer from "./pages/AddCustomer";
 import AddVendor from "./pages/AddVendor";  
@@ -62,6 +63,8 @@ export default function App() {
               <Route path="/containers" element={<AnimatedSlideWrapper><AddContainers /></AnimatedSlideWrapper>} />
               <Route path="/tracking" element={<AnimatedSlideWrapper><TrackingPage /></AnimatedSlideWrapper>} />
               <Route path="/consignments" element={<AnimatedSlideWrapper><Consignments /></AnimatedSlideWrapper>} /> 
+              <Route path="/consignments/add" element={<AnimatedSlideWrapper><AddConsignment mode="add" /></AnimatedSlideWrapper>} />
+              <Route path="/consignments/:id/edit" element={<AnimatedSlideWrapper><AddConsignment mode="edit" /></AnimatedSlideWrapper>} />
               <Route path="/admin/payment-types" element={<AnimatedSlideWrapper><PaymentTypes /></AnimatedSlideWrapper>} />
               <Route path="/admin/categories" element={<AnimatedSlideWrapper><Categories /></AnimatedSlideWrapper>} />
               <Route path="/admin/vessels" element={<AnimatedSlideWrapper><Vessels /></AnimatedSlideWrapper>} />
