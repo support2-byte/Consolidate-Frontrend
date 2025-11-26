@@ -4,6 +4,21 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script>
+  // Dynamic async load for optimal performance
+  function loadGoogleMaps() {
+    const script = document.createElement('script');
+    script.src = 'https://maps.googleapis.com/maps/api/js?key=AIzaSyBQWq4rj18IwPqknI7kUGQ9YoeNb74lpdU&libraries=places&loading=async';
+    script.async = true;
+    script.defer = true;
+    script.onload = () => {
+      console.log('Google Maps API loaded successfully');
+      // Trigger any post-load logic if needed (e.g., window.dispatchEvent(new Event('google-maps-loaded')))
+    };
+    document.head.appendChild(script);
+  }
+  loadGoogleMaps();
+</script>
     <title>Consolidate</title>
   </head>
   <body>
