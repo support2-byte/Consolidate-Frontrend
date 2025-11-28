@@ -179,122 +179,122 @@ const OrderModalView = ({ openModal, handleCloseModal, selectedOrder, modalLoadi
         return [];
     };
         // // Export to PDF function
-        // const exportToPDF = (order) => {
-        //     const doc = new jsPDF();
-        //     let yPosition = 20;
+        const exportToPDF = (order) => {
+            const doc = new jsPDF();
+            let yPosition = 20;
 
-        //     // Title
-        //     doc.setFontSize(20);
-        //     doc.text('Order Details', 20, yPosition);
-        //     yPosition += 15;
+            // Title
+            doc.setFontSize(20);
+            doc.text('Order Details', 20, yPosition);
+            yPosition += 15;
 
-        //     // Order Info Section
-        //     doc.setFontSize(14);
-        //     doc.text('Order Information', 20, yPosition);
-        //     yPosition += 10;
-        //     doc.setFontSize(10);
-        //     doc.text(`Booking Ref: ${order.booking_ref || 'N/A'}`, 20, yPosition);
-        //     yPosition += 7;
-        //     doc.text(`Status: ${order.overall_status || order.status || 'N/A'}`, 20, yPosition);
-        //     yPosition += 7;
-        //     doc.text(`RGL Booking Number: ${order.rgl_booking_number || 'N/A'}`, 20, yPosition);
-        //     yPosition += 7;
-        //     doc.text(`ETA: ${formatDate(order.eta)}`, 20, yPosition);
-        //     yPosition += 7;
-        //     doc.text(`ETD: ${formatDate(order.etd)}`, 20, yPosition);
-        //     yPosition += 7;
-        //     doc.text(`Shipping Line: ${order.shipping_line || 'N/A'}`, 20, yPosition);
-        //     yPosition += 10;
+            // Order Info Section
+            doc.setFontSize(14);
+            doc.text('Order Information', 20, yPosition);
+            yPosition += 10;
+            doc.setFontSize(10);
+            doc.text(`Booking Ref: ${order.booking_ref || 'N/A'}`, 20, yPosition);
+            yPosition += 7;
+            doc.text(`Status: ${order.overall_status || order.status || 'N/A'}`, 20, yPosition);
+            yPosition += 7;
+            doc.text(`RGL Booking Number: ${order.rgl_booking_number || 'N/A'}`, 20, yPosition);
+            yPosition += 7;
+            doc.text(`ETA: ${formatDate(order.eta)}`, 20, yPosition);
+            yPosition += 7;
+            doc.text(`ETD: ${formatDate(order.etd)}`, 20, yPosition);
+            yPosition += 7;
+            doc.text(`Shipping Line: ${order.shipping_line || 'N/A'}`, 20, yPosition);
+            yPosition += 10;
 
-        //     // Sender
-        //     doc.setFontSize(14);
-        //     doc.text('Sender Details', 20, yPosition);
-        //     yPosition += 10;
-        //     doc.setFontSize(10);
-        //     doc.text(`Name: ${order.sender_name || 'N/A'}`, 20, yPosition);
-        //     yPosition += 7;
-        //     doc.text(`Contact: ${order.sender_contact || 'N/A'}`, 20, yPosition);
-        //     yPosition += 7;
-        //     doc.text(`Email: ${order.sender_email || 'N/A'}`, 20, yPosition);
-        //     yPosition += 10;
+            // Sender
+            doc.setFontSize(14);
+            doc.text('Sender Details', 20, yPosition);
+            yPosition += 10;
+            doc.setFontSize(10);
+            doc.text(`Name: ${order.sender_name || 'N/A'}`, 20, yPosition);
+            yPosition += 7;
+            doc.text(`Contact: ${order.sender_contact || 'N/A'}`, 20, yPosition);
+            yPosition += 7;
+            doc.text(`Email: ${order.sender_email || 'N/A'}`, 20, yPosition);
+            yPosition += 10;
 
-        //     // Receivers
-        //     doc.setFontSize(14);
-        //     doc.text('Receiver Details', 20, yPosition);
-        //     yPosition += 10;
-        //     doc.setFontSize(10);
-        //     (order.receivers || []).forEach((rec, index) => {
-        //         const normContainers = normalizeContainers(rec.containers);
-        //         doc.text(`Receiver ${index + 1} Name: ${rec.receiver_name || 'N/A'}`, 20, yPosition);
-        //         yPosition += 7;
-        //         doc.text(`Receiver ${index + 1} Status: ${rec.status || 'Created'}`, 20, yPosition);
-        //         yPosition += 7;
-        //         doc.text(`Receiver ${index + 1} Contact: ${rec.receiver_contact || 'N/A'}`, 20, yPosition);
-        //         yPosition += 7;
-        //         doc.text(`Receiver ${index + 1} Email: ${rec.receiver_email || 'N/A'}`, 20, yPosition);
-        //         yPosition += 7;
-        //         doc.text(`Receiver ${index + 1} Consignment Number: ${rec.consignment_number || 'N/A'}`, 20, yPosition);
-        //         yPosition += 7;
-        //         doc.text(`Receiver ${index + 1} Total Weight: ${rec.total_weight || 'N/A'}`, 20, yPosition);
-        //         yPosition += 7;
-        //         doc.text(`Receiver ${index + 1} Containers: ${normContainers.join(', ') || 'N/A'}`, 20, yPosition);
-        //         yPosition += 10;
-        //     });
-        //     yPosition += 10;
+            // Receivers
+            doc.setFontSize(14);
+            doc.text('Receiver Details', 20, yPosition);
+            yPosition += 10;
+            doc.setFontSize(10);
+            (order.receivers || []).forEach((rec, index) => {
+                const normContainers = normalizeContainers(rec.containers);
+                doc.text(`Receiver ${index + 1} Name: ${rec.receiver_name || 'N/A'}`, 20, yPosition);
+                yPosition += 7;
+                doc.text(`Receiver ${index + 1} Status: ${rec.status || 'Created'}`, 20, yPosition);
+                yPosition += 7;
+                doc.text(`Receiver ${index + 1} Contact: ${rec.receiver_contact || 'N/A'}`, 20, yPosition);
+                yPosition += 7;
+                doc.text(`Receiver ${index + 1} Email: ${rec.receiver_email || 'N/A'}`, 20, yPosition);
+                yPosition += 7;
+                doc.text(`Receiver ${index + 1} Consignment Number: ${rec.consignment_number || 'N/A'}`, 20, yPosition);
+                yPosition += 7;
+                doc.text(`Receiver ${index + 1} Total Weight: ${rec.total_weight || 'N/A'}`, 20, yPosition);
+                yPosition += 7;
+                doc.text(`Receiver ${index + 1} Containers: ${normContainers.join(', ') || 'N/A'}`, 20, yPosition);
+                yPosition += 10;
+            });
+            yPosition += 10;
 
-        //     // Shipping
-        //     doc.setFontSize(14);
-        //     doc.text('Shipping Details', 20, yPosition);
-        //     yPosition += 10;
-        //     doc.setFontSize(10);
-        //     (order.order_items || []).forEach((item, index) => {
-        //         doc.text(`Item ${index + 1} Category: ${item.category || 'N/A'}`, 20, yPosition);
-        //         yPosition += 7;
-        //         doc.text(`Item ${index + 1} Weight: ${item.weight ? `${item.weight} kg` : 'N/A' }`, 20, yPosition);
-        //         yPosition += 7;
-        //     });
-        //     yPosition += 10;
+            // Shipping
+            doc.setFontSize(14);
+            doc.text('Shipping Details', 20, yPosition);
+            yPosition += 10;
+            doc.setFontSize(10);
+            (order.order_items || []).forEach((item, index) => {
+                doc.text(`Item ${index + 1} Category: ${item.category || 'N/A'}`, 20, yPosition);
+                yPosition += 7;
+                doc.text(`Item ${index + 1} Weight: ${item.weight ? `${item.weight} kg` : 'N/A' }`, 20, yPosition);
+                yPosition += 7;
+            });
+            yPosition += 10;
 
-        //     // Transport
-        //     doc.setFontSize(14);
-        //     doc.text('Transport Details', 20, yPosition);
-        //     yPosition += 10;
-        //     doc.setFontSize(10);
-        //     doc.text(`Driver Name: ${order.driver_name || 'N/A'}`, 20, yPosition);
-        //     yPosition += 7;
-        //     doc.text(`Truck Number: ${order.truck_number || 'N/A'}`, 20, yPosition);
-        //     yPosition += 10;
+            // Transport
+            doc.setFontSize(14);
+            doc.text('Transport Details', 20, yPosition);
+            yPosition += 10;
+            doc.setFontSize(10);
+            doc.text(`Driver Name: ${order.driver_name || 'N/A'}`, 20, yPosition);
+            yPosition += 7;
+            doc.text(`Truck Number: ${order.truck_number || 'N/A'}`, 20, yPosition);
+            yPosition += 10;
 
-        //     // Inbound/Outbound
-        //     doc.setFontSize(14);
-        //     doc.text('Inbound/Outbound Details', 20, yPosition);
-        //     yPosition += 10;
-        //     doc.setFontSize(10);
-        //     doc.text(`Drop Method: ${order.drop_method || 'N/A'}`, 20, yPosition);
-        //     yPosition += 7;
-        //     doc.text(`Drop Date: ${formatDate(order.drop_date)}`, 20, yPosition);
-        //     yPosition += 7;
-        //     doc.text(`Collection Method: ${order.collection_method || 'N/A'}`, 20, yPosition);
-        //     yPosition += 7;
-        //     doc.text(`Delivery Date: ${formatDate(order.delivery_date)}`, 20, yPosition);
-        //     yPosition += 10;
+            // Inbound/Outbound
+            doc.setFontSize(14);
+            doc.text('Inbound/Outbound Details', 20, yPosition);
+            yPosition += 10;
+            doc.setFontSize(10);
+            doc.text(`Drop Method: ${order.drop_method || 'N/A'}`, 20, yPosition);
+            yPosition += 7;
+            doc.text(`Drop Date: ${formatDate(order.drop_date)}`, 20, yPosition);
+            yPosition += 7;
+            doc.text(`Collection Method: ${order.collection_method || 'N/A'}`, 20, yPosition);
+            yPosition += 7;
+            doc.text(`Delivery Date: ${formatDate(order.delivery_date)}`, 20, yPosition);
+            yPosition += 10;
 
-        //     // Files
-        //     doc.setFontSize(14);
-        //     doc.text('Files', 20, yPosition);
-        //     yPosition += 10;
-        //     doc.setFontSize(10);
-        //     doc.text('Attachments:', 20, yPosition);
-        //     yPosition += 7;
-        //     doc.text(getFilesText(order.attachments), 20, yPosition);
-        //     yPosition += 20; // Approximate lines
-        //     doc.text('Gatepass:', 20, yPosition);
-        //     yPosition += 7;
-        //     doc.text(getFilesText(order.gatepass), 20, yPosition);
+            // Files
+            doc.setFontSize(14);
+            doc.text('Files', 20, yPosition);
+            yPosition += 10;
+            doc.setFontSize(10);
+            doc.text('Attachments:', 20, yPosition);
+            yPosition += 7;
+            doc.text(getFilesText(order.attachments), 20, yPosition);
+            yPosition += 20; // Approximate lines
+            doc.text('Gatepass:', 20, yPosition);
+            yPosition += 7;
+            doc.text(getFilesText(order.gatepass), 20, yPosition);
 
-        //     // Save the PDF
-        //     doc.save(`Order_${order.booking_ref || 'Unknown'}_${Date.now()}.pdf`);
-        // };
+            // Save the PDF
+            doc.save(`Order_${order.booking_ref || 'Unknown'}_${Date.now()}.pdf`);
+        };
 
     // Helper to format files list
     const renderFiles = (files) => {

@@ -26,7 +26,7 @@ const modalStyle = {
   width: { xs: '90%', sm: 600 }
 };
 
-const ContainerModule = ({ containers: propContainers = [], selectedContainers = [], onToggle }) => {
+ const ContainerModule = ({ containers: propContainers = [], selectedContainers = [], onToggle }) => {
   // State for filters
   const [filters, setFilters] = useState({
     container_number: '',
@@ -63,12 +63,12 @@ const ContainerModule = ({ containers: propContainers = [], selectedContainers =
   const [tempData, setTempData] = useState({ status: '', location: '' });
   const [loadingUpdate, setLoadingUpdate] = useState(false);
 
-  // State for containers and history (displayed after filter/paginate)
+  // State for containers and history
   const [containers, setContainers] = useState([]);
   const [usageHistory, setUsageHistory] = useState([]);
 
   // Loading states
-  const [loadingContainers, setContainersLoading] = useState(false);
+  const [loadingContainers, setLoadingContainers] = useState(false);
   const [loadingForm, setLoadingForm] = useState(false);
   const [loadingReturned, setLoadingReturned] = useState({});
   const [loadingOptions, setLoadingOptions] = useState(false);
@@ -165,8 +165,66 @@ const ContainerModule = ({ containers: propContainers = [], selectedContainers =
     return true;
   };
 
-  // Client-side filtering and pagination using propContainers
-  useEffect(() => {
+  // Fetch all containers from backend
+  const fetchContainers = async () => {
+    if (!navigator.onLine) {
+      handleError(new Error('You are offline. Please check your connection.'), 'Network error');
+      return;
+    }
+    setLoadingContainers(true);
+    setError(null);
+    try {
+      const params = {
+        ...filters,
+        page: currentPage,
+        limit: rowsPerPage
+      };
+      const response = await api.get('/api/containers', { params });
+      if (response.status !== 200) {
+        throw new Error(`Unexpected response status: ${response.status}`);
+      }
+      setContainers(response.data?.data || []);
+      setTotalCount(response.data?.total || 0);
+    } catch (error) {
+      handleError(error, 'Error fetching containers');
+    } finally {
+      setLoadingContainers(false);
+    }
+  };
+
+  // Fetch container by ID with usage history from backend
+  const fetchContainerById = async (cid) => {
+    setLoadingHistory(true);
+    if (!cid) {
+      handleError(new Error('Invalid container ID'));
+      return;
+    }
+    try {
+      const [containerRes, historyRes] = await Promise.all([
+        api.get(`/api/containers/${cid}`),
+        api.get(`/api/containers/${cid}/usage-history`)
+      ]);
+      if (containerRes.status !== 200) {
+        throw new Error(`Unexpected response status: ${containerRes.status}`);
+      }
+      if (historyRes.status !== 200) {
+        throw new Error(`Unexpected response status: ${historyRes.status}`);
+      }
+      const data = containerRes.data;
+      console.log('Fetched container:', data);
+      setUsageHistory(historyRes.data || []);
+      setSelectedContainerNo(data.container_number || cid);
+    } catch (error) {
+      console.error('Error fetching container details:', error);
+      setUsageHistory([]);
+      setSelectedContainerNo(cid);
+      handleError(error, 'Error fetching container details');
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+   useEffect(() => {
     if (!propContainers || propContainers.length === 0) {
       setContainers([]);
       setTotalCount(0);
@@ -203,38 +261,6 @@ const ContainerModule = ({ containers: propContainers = [], selectedContainers =
     setContainers(filtered.slice(startIndex, endIndex));
   }, []);
 
-  // Fetch container by ID with usage history from backend
-  const fetchContainerById = async (cid) => {
-    setLoadingHistory(true);
-    if (!cid) {
-      handleError(new Error('Invalid container ID'));
-      return;
-    }
-    try {
-      const [containerRes, historyRes] = await Promise.all([
-        api.get(`/api/containers/${cid}`),
-        api.get(`/api/containers/${cid}/usage-history`)
-      ]);
-      if (containerRes.status !== 200) {
-        throw new Error(`Unexpected response status: ${containerRes.status}`);
-      }
-      if (historyRes.status !== 200) {
-        throw new Error(`Unexpected response status: ${historyRes.status}`);
-      }
-      const data = containerRes.data;
-      console.log('Fetched container:', data);
-      setUsageHistory(historyRes.data || []);
-      setSelectedContainerNo(data.container_number || cid);
-    } catch (error) {
-      console.error('Error fetching container details:', error);
-      setUsageHistory([]);
-      setSelectedContainerNo(cid);
-      handleError(error, 'Error fetching container details');
-    } finally {
-      setLoadingHistory(false);
-    }
-  };
-
   // Handle quick edit
   const handleQuickEdit = (container) => {
     setEditingId(container.cid);
@@ -260,7 +286,7 @@ const ContainerModule = ({ containers: propContainers = [], selectedContainers =
       }
       showToast('Container updated successfully', 'success');
       setEditingId(null);
-      // Note: In selection modal, parent would need to refresh if needed, but for now, toast only
+      await fetchContainers(); // Refresh from DB
     } catch (error) {
       handleError(error, 'Failed to update container');
     } finally {
@@ -315,6 +341,10 @@ const ContainerModule = ({ containers: propContainers = [], selectedContainers =
     fetchOptions();
   }, []);
 
+  useEffect(() => {
+    fetchContainers();
+  }, [filters, currentPage, rowsPerPage]);
+
   // Handle history modal open
   const openHistory = (cid) => {
     if (!cid) {
@@ -325,20 +355,7 @@ const ContainerModule = ({ containers: propContainers = [], selectedContainers =
     fetchContainerById(cid);
     setOpenHistoryModal(true);
   };
-  useEffect(() => {
-    const fetchContainers = async () => {
-      setContainersLoading(true);
-      try {
-        const res = await api.get("/api/containers");
-        setContainers(res.data.data || []);
-      } catch (err) {
-        console.error("❌ Error fetching containers:", err);
-      } finally {
-        setContainersLoading(false);
-      }
-    };
-    fetchContainers();
-  }, []);
+
   // Handle filter changes
   const handleFilterChange = (e) => {
     if (!e || !e.target) return;
@@ -524,7 +541,7 @@ const ContainerModule = ({ containers: propContainers = [], selectedContainers =
         placeOfLoading: '',
         placeOfDelivery: ''
       });
-      // Note: In selection modal, parent would need to refresh if new container added
+      await fetchContainers(); // Refresh from DB after update
     } catch (error) {
       handleError(error, 'Failed to save container');
     } finally {
@@ -554,7 +571,7 @@ const ContainerModule = ({ containers: propContainers = [], selectedContainers =
       if (response.status !== 200) {
         throw new Error(`Unexpected response status: ${response.status}`);
       }
-      // Note: Refresh parent data if needed
+      await fetchContainers(); // Refresh from DB
       showToast('Container marked as returned successfully', 'success');
     } catch (error) {
       handleError(error, 'Failed to mark as returned');
@@ -563,7 +580,545 @@ const ContainerModule = ({ containers: propContainers = [], selectedContainers =
     }
   };
 
-  console.log('Containers state:', containers);
+
+// const ContainerModule = ({ containers: propContainers = [], selectedContainers = [], onToggle }) => {
+//   // State for filters
+//   const [filters, setFilters] = useState({
+//     container_number: '',
+//     container_size: '',
+//     container_type: '',
+//     owner_type: '',
+//     status: '',
+//     location: ''
+//   });
+
+//   // Pagination states
+//   const [currentPage, setCurrentPage] = useState(1);
+//   const [rowsPerPage, setRowsPerPage] = useState(50);
+//   const [totalCount, setTotalCount] = useState(0);
+
+//   // Dynamic options from API
+//   const [statuses, setStatuses] = useState([]);
+//   const [locations, setLocations] = useState([]);
+//   const [sizes, setSizes] = useState([]);
+//   const [types, setTypes] = useState([]);
+//   const [ownershipTypes, setOwnershipTypes] = useState([]);
+
+//   // State for modals
+//   const [openAddModal, setOpenAddModal] = useState(false);
+//   const [openHistoryModal, setOpenHistoryModal] = useState(false);
+//   const [selectedContainerNo, setSelectedContainerNo] = useState(null);
+
+//   // State for edit mode
+//   const [isEditing, setIsEditing] = useState(false);
+//   const [editingContainer, setEditingContainer] = useState(null);
+
+//   // State for quick edit
+//   const [editingId, setEditingId] = useState(null);
+//   const [tempData, setTempData] = useState({ status: '', location: '' });
+//   const [loadingUpdate, setLoadingUpdate] = useState(false);
+
+//   // State for containers and history (displayed after filter/paginate)
+//   const [containers, setContainers] = useState([]);
+//   const [usageHistory, setUsageHistory] = useState([]);
+
+//   // Loading states
+//   const [loadingContainers, setContainersLoading] = useState(false);
+//   const [loadingForm, setLoadingForm] = useState(false);
+//   const [loadingReturned, setLoadingReturned] = useState({});
+//   const [loadingOptions, setLoadingOptions] = useState(false);
+//   const [loadingHistory, setLoadingHistory] = useState(false);
+
+//   // Error states
+//   const [error, setError] = useState(null);
+
+//   // Snackbar state
+//   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
+
+//   // State for Add Container form
+//   const [formData, setFormData] = useState({
+//     ownership: 'soc',
+//     containerNo: '',
+//     size: '',
+//     type: '',
+//     derived_status: '', // Default to empty string
+//     dateAdded: new Date().toISOString().split('T')[0],
+//     dateOfManufacture: new Date().toISOString().split('T')[0],
+//     purchaseDate: new Date().toISOString().split('T')[0],
+//     purchasePrice: '',
+//     purchaseFrom: '', // Default to empty string
+//     ownershipDetails: 'Self-Owned',
+//     availableAt: '',
+//     currency: 'USD',
+//     hireStartDate: new Date().toISOString().split('T')[0],
+//     hireEndDate: new Date().toISOString().split('T')[0],
+//     vendor: '',
+//     return_date: new Date().toISOString().split('T')[0],
+//     freeDays: '',
+//     placeOfLoading: '',
+//     placeOfDelivery: ''
+//   });
+
+//   const handleSnackbarClose = () => {
+//     setSnackbar({ ...snackbar, open: false });
+//   };
+
+//   const showToast = (message, severity = 'info') => {
+//     setSnackbar({ open: true, message, severity });
+//     setError(null); // Clear any existing error on new toast
+//   };
+
+//   const handleError = (error, defaultMessage = 'An unexpected error occurred') => {
+//     console.error('Error:', error);
+//     const message = error.response?.data?.error || error.message || defaultMessage;
+//     setError(message);
+//     showToast(message, 'error');
+//   };
+
+//   // Fetch dynamic options from backend
+//   const fetchOptions = async () => {
+//     setLoadingOptions(true);
+//     try {
+//       const [statusRes, locationRes, sizeRes, typeRes, ownershipRes] = await Promise.all([
+//         api.get('/api/containers/statuses'),
+//         api.get('/api/containers/locations'),
+//         api.get('/api/containers/sizes'),
+//         api.get('/api/containers/types'),
+//         api.get('/api/containers/ownership-types')
+//       ]);
+//       setStatuses(statusRes.data || []);
+//       setLocations(locationRes.data || []);
+//       setSizes(sizeRes.data || []);
+//       setTypes(typeRes.data || []);
+//       setOwnershipTypes(ownershipRes.data || []);
+//     } catch (error) {
+//       handleError(error, 'Error fetching options');
+//     } finally {
+//       setLoadingOptions(false);
+//     }
+//   };
+
+//   // Validate container number format
+//   const validateContainerNumber = (containerNo) => {
+//     const regex = /^[A-Z]{4}\d{7}$/;
+//     return regex.test(containerNo);
+//   };
+
+//   // Validate date
+//   const validateDate = (dateString) => {
+//     const date = new Date(dateString);
+//     return date instanceof Date && !isNaN(date);
+//   };
+
+//   // Validate number
+//   const validateNumber = (value, fieldName) => {
+//     if (value === '' || value === null || value === undefined) return true; // Allow empty for optional
+//     const num = parseFloat(value);
+//     if (isNaN(num) || num < 0) {
+//       throw new Error(`${fieldName} must be a valid non-negative number`);
+//     }
+//     return true;
+//   };
+
+//   // Client-side filtering and pagination using propContainers
+//   useEffect(() => {
+//     if (!propContainers || propContainers.length === 0) {
+//       setContainers([]);
+//       setTotalCount(0);
+//       return;
+//     }
+
+//     let filtered = [...propContainers];
+
+//     // Apply filters
+//     if (filters.container_number) {
+//       filtered = filtered.filter(c => c.container_number?.toUpperCase().includes(filters.container_number.toUpperCase()));
+//     }
+//     if (filters.container_size) {
+//       filtered = filtered.filter(c => c.container_size === filters.container_size);
+//     }
+//     if (filters.container_type) {
+//       filtered = filtered.filter(c => c.container_type === filters.container_type);
+//     }
+//     if (filters.owner_type) {
+//       filtered = filtered.filter(c => c.owner_type === filters.owner_type);
+//     }
+//     if (filters.status) {
+//       filtered = filtered.filter(c => c.derived_status === filters.status);
+//     }
+//     if (filters.location) {
+//       filtered = filtered.filter(c => c.location === filters.location);
+//     }
+
+//     setTotalCount(filtered.length);
+
+//     // Paginate
+//     const startIndex = (currentPage - 1) * rowsPerPage;
+//     const endIndex = startIndex + rowsPerPage;
+//     setContainers(filtered.slice(startIndex, endIndex));
+//   }, []);
+
+//   // Fetch container by ID with usage history from backend
+//   const fetchContainerById = async (cid) => {
+//     setLoadingHistory(true);
+//     if (!cid) {
+//       handleError(new Error('Invalid container ID'));
+//       return;
+//     }
+//     try {
+//       const [containerRes, historyRes] = await Promise.all([
+//         api.get(`/api/containers/${cid}`),
+//         api.get(`/api/containers/${cid}/usage-history`)
+//       ]);
+//       if (containerRes.status !== 200) {
+//         throw new Error(`Unexpected response status: ${containerRes.status}`);
+//       }
+//       if (historyRes.status !== 200) {
+//         throw new Error(`Unexpected response status: ${historyRes.status}`);
+//       }
+//       const data = containerRes.data;
+//       console.log('Fetched container:', data);
+//       setUsageHistory(historyRes.data || []);
+//       setSelectedContainerNo(data.container_number || cid);
+//     } catch (error) {
+//       console.error('Error fetching container details:', error);
+//       setUsageHistory([]);
+//       setSelectedContainerNo(cid);
+//       handleError(error, 'Error fetching container details');
+//     } finally {
+//       setLoadingHistory(false);
+//     }
+//   };
+
+//   // Handle quick edit
+//   const handleQuickEdit = (container) => {
+//     setEditingId(container.cid);
+//     setTempData({ status: container.derived_status || '', location: container.location || '' });
+//   };
+
+//   // Handle quick save (updates DB via API)
+//   const handleQuickSave = async (cid) => {
+//     if (!tempData.status || !tempData.location) {
+//       showToast('Status and Location are required', 'error');
+//       return;
+//     }
+//     setLoadingUpdate(true);
+//     try {
+//       const payload = {
+//         derived_status: tempData.status,
+//         location: tempData.location,
+//         availability: tempData.status  // Sync with backend logic
+//       };
+//       const response = await api.put(`/api/containers/${cid}`, payload);
+//       if (response.status !== 200) {
+//         throw new Error(`Unexpected response status: ${response.status}`);
+//       }
+//       showToast('Container updated successfully', 'success');
+//       setEditingId(null);
+//       // Note: In selection modal, parent would need to refresh if needed, but for now, toast only
+//     } catch (error) {
+//       handleError(error, 'Failed to update container');
+//     } finally {
+//       setLoadingUpdate(false);
+//     }
+//   };
+
+//   // Handle quick cancel
+//   const handleQuickCancel = () => {
+//     setEditingId(null);
+//     setTempData({ status: '', location: '' });
+//   };
+
+//   // Handle edit container (full modal)
+//   const handleEdit = async (container) => {
+//     if (!container) {
+//       handleError(new Error('Invalid container data'));
+//       return;
+//     }
+//     try {
+//       setEditingContainer(container);
+//       setFormData({
+//         ownership: container.owner_type || 'soc',
+//         containerNo: container.container_number || '',
+//         size: container.container_size || '',
+//         type: container.container_type || '',
+//         derived_status: container.derived_status || '',
+//         dateAdded: new Date().toISOString().split('T')[0],
+//         dateOfManufacture: container.manufacture_date ? new Date(container.manufacture_date).toISOString().split('T')[0] : '',
+//         purchaseDate: container.purchase_date ? new Date(container.purchase_date).toISOString().split('T')[0] : '',
+//         purchasePrice: container.purchase_price || '',
+//         purchaseFrom: container.purchase_from || '',
+//         ownershipDetails: container.owned_by || 'Self-Owned',
+//         availableAt: container.available_at || container.location || '',
+//         currency: container.currency || 'USD',
+//         hireStartDate: container.hire_start_date ? new Date(container.hire_start_date).toISOString().split('T')[0] : '',
+//         hireEndDate: container.hire_end_date ? new Date(container.hire_end_date).toISOString().split('T')[0] : '',
+//         vendor: container.hired_by || '',
+//         return_date: container.return_date ? new Date(container.return_date).toISOString().split('T')[0] : '',
+//         freeDays: container.free_days || '',
+//         placeOfLoading: container.place_of_loading || '',
+//         placeOfDelivery: container.place_of_destination || ''
+//       });
+//       setIsEditing(true);
+//       setOpenAddModal(true);
+//     } catch (error) {
+//       handleError(error, 'Error preparing to edit container');
+//     }
+//   };
+
+//   useEffect(() => {
+//     fetchOptions();
+//   }, []);
+
+//   // Handle history modal open
+//   const openHistory = (cid) => {
+//     if (!cid) {
+//       handleError(new Error('Invalid container ID'));
+//       return;
+//     }
+//     setSelectedContainerNo(cid);
+//     fetchContainerById(cid);
+//     setOpenHistoryModal(true);
+//   };
+//   useEffect(() => {
+//     const fetchContainers = async () => {
+//       setContainersLoading(true);
+//       try {
+//         const res = await api.get("/api/containers");
+//         setContainers(res.data.data || []);
+//       } catch (err) {
+//         console.error("❌ Error fetching containers:", err);
+//       } finally {
+//         setContainersLoading(false);
+//       }
+//     };
+//     fetchContainers();
+//   }, []);
+//   // Handle filter changes
+//   const handleFilterChange = (e) => {
+//     if (!e || !e.target) return;
+//     setFilters({ ...filters, [e.target.name]: e.target.value });
+//     setCurrentPage(1); // Reset to first page on filter change
+//   };
+
+//   // Clear filters
+//   const handleClearFilters = () => {
+//     setFilters({
+//       container_number: '',
+//       container_size: '',
+//       container_type: '',
+//       owner_type: '',
+//       status: '',
+//       location: ''
+//     });
+//     setCurrentPage(1);
+//   };
+
+//   // Handle form changes
+//   const handleFormChange = (e) => {
+//     if (!e || !e.target) return;
+//     setFormData({ ...formData, [e.target.name]: e.target.value });
+//   };
+
+//   // Comprehensive form validation
+//   const validateForm = () => {
+//     const errors = [];
+
+//     // Container Number
+//     if (!formData.containerNo.trim()) {
+//       errors.push('Container Number is required');
+//     } else if (!validateContainerNumber(formData.containerNo)) {
+//       errors.push('Container Number must be 4 letters followed by 7 digits (e.g., ABCD1234567)');
+//     }
+
+//     // Size and Type
+//     if (!formData.size) {
+//       errors.push('Size is required');
+//     }
+//     if (!formData.type) {
+//       errors.push('Type is required');
+//     }
+
+//     // Ownership specific
+//     if (formData.ownership === 'soc') {
+//       if (!formData.dateOfManufacture || !validateDate(formData.dateOfManufacture)) {
+//         errors.push('Valid Date of Manufacture is required');
+//       }
+//       if (!formData.purchaseDate || !validateDate(formData.purchaseDate)) {
+//         errors.push('Valid Purchase Date is required');
+//       }
+//       if (!formData.purchasePrice || !validateNumber(formData.purchasePrice, 'Purchase Price')) {
+//         errors.push('Valid Purchase Price is required');
+//       }
+//       if (!formData.purchaseFrom) {
+//         errors.push('Purchase From is required');
+//       }
+//       if (!formData.ownershipDetails.trim()) {
+//         errors.push('Owned By is required');
+//       }
+//       if (!formData.availableAt) {
+//         errors.push('Available At is required');
+//       }
+//       if (formData.currency && !/^[A-Z]{3}$/.test(formData.currency)) {
+//         errors.push('Currency must be a 3-letter code (e.g., USD)');
+//       }
+//     }
+
+//     if (formData.ownership === 'coc') {
+//       if (!formData.hireStartDate || !validateDate(formData.hireStartDate)) {
+//         errors.push('Valid Hire Start Date is required');
+//       }
+//       if (!formData.hireEndDate || !validateDate(formData.hireEndDate)) {
+//         errors.push('Valid Hire End Date is required');
+//       }
+//       if (!formData.vendor.trim()) {
+//         errors.push('Vendor is required');
+//       }
+//       if (!formData.freeDays || !validateNumber(formData.freeDays, 'Free Days')) {
+//         errors.push('Valid Free Days is required');
+//       }
+//       if (!formData.placeOfLoading.trim()) {
+//         errors.push('Place of Loading is required');
+//       }
+//       if (!formData.placeOfDelivery.trim()) {
+//         errors.push('Place of Delivery is required');
+//       }
+//       if (formData.return_date && !validateDate(formData.return_date)) {
+//         errors.push('Valid Return Date is required');
+//       }
+//     }
+
+//     if (errors.length > 0) {
+//       throw new Error(errors.join('; '));
+//     }
+//     return true;
+//   };
+
+//   // Handle form submission (updates DB via API)
+//   const handleFormSubmit = async () => {
+//     try {
+//       validateForm();
+//     } catch (validationError) {
+//       handleError(validationError);
+//       return;
+//     }
+
+//     if (!navigator.onLine) {
+//       handleError(new Error('You are offline. Please check your connection.'), 'Network error');
+//       return;
+//     }
+
+//     const payload = {
+//       container_number: formData.containerNo,
+//       container_size: formData.size,
+//       container_type: formData.type,
+//       owner_type: formData.ownership,
+//       derived_status: formData.derived_status,
+//       remarks: 'Created/Updated via frontend', // Optional
+//       created_by: 'system', // Replace with actual user
+//       location: formData.availableAt,
+//       availability: formData.derived_status,
+//       manufacture_date: formData.dateOfManufacture,
+//       purchase_date: formData.purchaseDate,
+//       purchase_price: parseFloat(formData.purchasePrice) || 0,
+//       purchase_from: formData.purchaseFrom,
+//       owned_by: formData.ownershipDetails,
+//       available_at: formData.availableAt,
+//       currency: formData.currency,
+//       hire_start_date: formData.hireStartDate,
+//       hire_end_date: formData.hireEndDate,
+//       hired_by: formData.vendor,
+//       return_date: formData.return_date,
+//       free_days: parseInt(formData.freeDays) || 0,
+//       place_of_loading: formData.placeOfLoading,
+//       place_of_destination: formData.placeOfDelivery
+//     };
+
+//     setLoadingForm(true);
+//     setError(null);
+//     try {
+//       if (isEditing && editingContainer) {
+//         console.log('Updating container:', editingContainer.cid);
+//         if (!editingContainer.cid) {
+//           throw new Error('Invalid container ID for update');
+//         }
+//         const response = await api.put(`/api/containers/${editingContainer.cid}`, payload);
+//         if (response.status !== 200) {
+//           throw new Error(`Unexpected response status: ${response.status}`);
+//         }
+//         showToast('Container updated successfully', 'success');
+//       } else {
+//         const response = await api.post('/api/containers', payload);
+//         if (response.status !== 201) {
+//           throw new Error(`Unexpected response status: ${response.status}`);
+//         }
+//         showToast('Container added successfully', 'success');
+//       }
+//       setOpenAddModal(false);
+//       setIsEditing(false);
+//       setEditingContainer(null);
+//       setFormData({
+//         ownership: 'soc',
+//         containerNo: '',
+//         size: '',
+//         type: '',
+//         derived_status: '',
+//         dateAdded: new Date().toISOString().split('T')[0],
+//         dateOfManufacture: '',
+//         purchaseDate: '',
+//         purchasePrice: '',
+//         purchaseFrom: '',
+//         ownershipDetails: 'Self-Owned',
+//         availableAt: '',
+//         currency: 'USD',
+//         hireStartDate: '',
+//         hireEndDate: '',
+//         vendor: '',
+//         return_date: '',
+//         freeDays: '',
+//         placeOfLoading: '',
+//         placeOfDelivery: ''
+//       });
+//       // Note: In selection modal, parent would need to refresh if new container added
+//     } catch (error) {
+//       handleError(error, 'Failed to save container');
+//     } finally {
+//       setLoadingForm(false);
+//     }
+//   };
+
+//   // Mark container as returned (updates DB via API)
+//   const markReturned = async (cid) => {
+//     if (!cid) {
+//       handleError(new Error('Invalid container ID'));
+//       return;
+//     }
+//     if (!navigator.onLine) {
+//       handleError(new Error('You are offline. Please check your connection.'), 'Network error');
+//       return;
+//     }
+//     setLoadingReturned(prev => ({ ...prev, [cid]: true }));
+//     setError(null);
+//     try {
+//       const payload = {
+//         availability: 'Returned',
+//         derived_status: 'Returned',
+//         remarks: 'Marked as returned via frontend'
+//       };
+//       const response = await api.put(`/api/containers/${cid}`, payload);
+//       if (response.status !== 200) {
+//         throw new Error(`Unexpected response status: ${response.status}`);
+//       }
+//       // Note: Refresh parent data if needed
+//       showToast('Container marked as returned successfully', 'success');
+//     } catch (error) {
+//       handleError(error, 'Failed to mark as returned');
+//     } finally {
+//       setLoadingReturned(prev => ({ ...prev, [cid]: false }));
+//     }
+//   };
+
+//   console.log('Containers state:', containers);
   return (
     <Box sx={{ p: 3, borderRadius: 3, boxShadow: 3, bgcolor: "#fafafa" }}>
       {/* Container Master Screen */}
@@ -573,9 +1128,9 @@ const ContainerModule = ({ containers: propContainers = [], selectedContainers =
             variant="h4"
             sx={{ fontWeight: 'bold', color: '#f58220' }}
           >
-            Container Master
+            Select Container
           </Typography>
-          <Button
+          {/* <Button
             variant="contained"
             startIcon={<AddCircleIcon />}
             onClick={() => {
@@ -595,7 +1150,7 @@ const ContainerModule = ({ containers: propContainers = [], selectedContainers =
             }}
           >
             Add Container
-          </Button>
+          </Button> */}
         </Box>
         <Divider sx={{ mb: 3 }} />
 

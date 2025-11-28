@@ -99,7 +99,7 @@ export default function Consignments() {
       }
     };
     getConsignments();
-  }, [params]); // Depend on params for re-fetch on changes
+  }, []); // Depend on params for re-fetch on changes
 
   // Custom renderers (unchanged)
   const renderDate = (dateStr) => {
@@ -116,56 +116,56 @@ export default function Consignments() {
     />
   );
 
-  useEffect(() => {
-    if (consignments.some(c => c && (!c.shipperName || !c.consigneeName))) {
-      console.log('Fetching shippers and consignees for consignments');
-      const fetchAndUpdate = async () => {
-        try {
-          const [shippersRes, consigneesRes] = await Promise.all([
-            api.get(`api/options/shippers`),
-            api.get(`api/options/consignees`), // Assuming a similar endpoint for consignees
-          ]);
+  // useEffect(() => {
+  //   if (consignments.some(c => c && (!c.shipperName || !c.consigneeName))) {
+  //     console.log('Fetching shippers and consignees for consignments');
+  //     const fetchAndUpdate = async () => {
+  //       try {
+  //         const [shippersRes, consigneesRes] = await Promise.all([
+  //           api.get(`api/options/shippers`),
+  //           api.get(`api/options/consignees`), // Assuming a similar endpoint for consignees
+  //         ]);
 
-          const shippers = shippersRes.data; // Assume { shipperOptions: array of {value, label} objects }
-          const consignees = consigneesRes.data; // Assume { consigneeOptions: array of {value, label} objects }
-          console.log('Fetched shippers:', shippers.shipperOptions);
-          console.log('Fetched consignees:', consignees.consigneeOptions);
+  //         const shippers = shippersRes.data; // Assume { shipperOptions: array of {value, label} objects }
+  //         const consignees = consigneesRes.data; // Assume { consigneeOptions: array of {value, label} objects }
+  //         console.log('Fetched shippers:', shippers.shipperOptions);
+  //         console.log('Fetched consignees:', consignees.consigneeOptions);
 
-          setConsignments(prev => prev.map(consignment => {
-            if (!consignment) return consignment;
-            console.log('Updating consignment:', consignment);
+  //         setConsignments(prev => prev.map(consignment => {
+  //           if (!consignment) return consignment;
+  //           console.log('Updating consignment:', consignment);
 
-            // Filter shipper by ID (convert to number for strict equality)
-            const shipperName = shippers.shipperOptions.find(s => {
-              const shipperId = Number(consignment.shipper);
-              console.log('Comparing shipper IDs:', s.value, shipperId);
-              return s.value === shipperId;
-            })?.label;
+  //           // Filter shipper by ID (convert to number for strict equality)
+  //           const shipperName = shippers.shipperOptions.find(s => {
+  //             const shipperId = Number(consignment.shipper);
+  //             console.log('Comparing shipper IDs:', s.value, shipperId);
+  //             return s.value === shipperId;
+  //           })?.label;
 
-            // Filter consignee by ID (convert to number for strict equality)
-            const consigneeName = consignees.consigneeOptions.find(c => {
-              const consigneeId = Number(consignment.consignee);
-              console.log('Comparing consignee IDs:', c.value, consigneeId);
-              return c.value === consigneeId;
-            })?.label;
+  //           // Filter consignee by ID (convert to number for strict equality)
+  //           const consigneeName = consignees.consigneeOptions.find(c => {
+  //             const consigneeId = Number(consignment.consignee);
+  //             console.log('Comparing consignee IDs:', c.value, consigneeId);
+  //             return c.value === consigneeId;
+  //           })?.label;
 
-            console.log('Updated shipper name:', shipperName);
-            console.log('Updated consignee name:', consigneeName);
+  //           console.log('Updated shipper name:', shipperName);
+  //           console.log('Updated consignee name:', consigneeName);
 
-            return {
-              ...consignment,
-              shipperName,
-              consigneeName,
-            };
-          }));
-        } catch (error) {
-          console.error('Error fetching shippers/consignees:', error);
-        }
-      };
+  //           return {
+  //             ...consignment,
+  //             shipperName,
+  //             consigneeName,
+  //           };
+  //         }));
+  //       } catch (error) {
+  //         console.error('Error fetching shippers/consignees:', error);
+  //       }
+  //     };
 
-      fetchAndUpdate();
-    }
-  }, [consignments]);
+  //     fetchAndUpdate();
+  //   }
+  // }, []);
 
   // Columns (removed duplicate "Orders")
   const columns = [
@@ -179,13 +179,13 @@ export default function Consignments() {
       key: "shipper", 
       label: "Shippers", 
       sortable: true,
-      render: (item) => <Typography variant="body1" noWrap sx={{ maxWidth: 140, fontSize: '0.875rem' }}>{item.shipperName || "N/A"}</Typography>
+      render: (item) => <Typography variant="body1" noWrap sx={{ maxWidth: 140, fontSize: '0.875rem' }}>{item.shipper || "N/A"}</Typography>
     },
     { 
       key: "consignee", 
       label: "Consignee", 
       sortable: true,
-      render: (item) => <Typography variant="body1" noWrap sx={{ maxWidth: 140, fontSize: '0.875rem'   }}>{item.consigneeName || "N/A"}</Typography>
+      render: (item) => <Typography variant="body1" noWrap sx={{ maxWidth: 140, fontSize: '0.875rem'   }}>{item.consignee || "N/A"}</Typography>
     },
     { 
       key: "eta", 

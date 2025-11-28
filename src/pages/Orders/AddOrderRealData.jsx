@@ -124,6 +124,11 @@ const OrderForm = () => {
     const [loading, setLoading] = useState(false);
     const [loadingContainers, setLoadingContainers] = useState(false);
     const [categories, setCategories] = useState([]);
+    const [categorySubMap, setCategorySubMap] = useState({});
+    const [types, setTypes] = useState([]);
+    const [statuses, setStatuses] = useState([]);
+    const [places, setPlaces] = useState([]);
+    const [companies, setCompanies] = useState([]);
     const orderId = location.state?.orderId;
     const [isEditMode, setIsEditMode] = useState(!!orderId);
     // console.log('Order ID from state:', orderId);
@@ -198,9 +203,9 @@ const OrderForm = () => {
         receiverRef: "",
         receiverRemarks: "",
         // Senders array
-        senders: [{ ...initialSenderObject, shippingDetails: [], isNew: true }], // Updated: Init with one empty
+        senders: [],
         // Receivers array with nested shippingDetails
-        receivers: [{ ...initialReceiver, shippingDetails: [], isNew: true }], // Updated: Init with one empty
+        receivers: [{ ...initialReceiver, shippingDetails: [] }],
         // Computed globals
         globalTotalItems: 0,
         globalRemainingItems: 0,
@@ -243,17 +248,6 @@ const OrderForm = () => {
     const requiredFields = [
         'bookingRef', 'rglBookingNumber', 'placeOfLoading', 'pointOfOrigin', 'finalDestination', 'placeOfDelivery', 'transportType'
     ];
-    // Dummy data for categories and subcategories
-    const dummyCategories = ["Electronics", "Clothing", "Books"];
-    const categorySubMap = {
-        "Electronics": ["Smartphones", "Laptops", "Accessories"],
-        "Clothing": ["Men's Wear", "Women's Wear", "Kids Wear"],
-        "Books": ["Fiction", "Non-Fiction", "Technical"],
-    };
-    const types = ["Select Unit", "Unit 1", "Unit 2"];
-    const statuses = ["Created", "In Transit", "Delivered", "Cancelled"];
-    const places = ["Select Place", "Singapore", "Dubai", "Rotterdam", "Hamburg", "Karachi", "Dubai-Emirates"];
-    const companies = ["Select 3rd party company", "Company A", "Company B"];
     // Helper to convert snake_case to camelCase
     const snakeToCamel = (str) => str.replace(/(_[a-z])/g, g => g[1].toUpperCase());
     // Helper to convert camelCase to snake_case
@@ -347,12 +341,12 @@ const OrderForm = () => {
                 if (item[emailField] && !emailRegex.test(item[emailField])) {
                     newErrors[`${itemsKey}[${i}].${emailField}`] = `Invalid ${itemPrefix.toLowerCase()} ${i + 1} email format`;
                 }
-                // if (!item.eta?.trim()) {
-                //     newErrors[`${itemsKey}[${i}].eta`] = `ETA is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
-                // }
-                // if (!item.etd?.trim()) {
-                //     newErrors[`${itemsKey}[${i}].etd`] = `ETD is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
-                // }
+                if (!item.eta?.trim()) {
+                    newErrors[`${itemsKey}[${i}].eta`] = `ETA is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
+                }
+                if (!item.etd?.trim()) {
+                    newErrors[`${itemsKey}[${i}].etd`] = `ETD is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
+                }
                 // if (!item.shippingLine?.trim()) {
                 // newErrors[`${itemsKey}[${i}].shippingLine`] = `Shipping Line is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
                 // }
@@ -469,10 +463,66 @@ const OrderForm = () => {
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
     };
+    // Fetch options on mount (replaces dummies)
+    const fetchOptions = async () => {
+        try {
+            setLoading(true);
+            const [placesRes, companiesRes, categoriesRes, typesRes, statusesRes] = await Promise.all([
+                api.get('api/options/places/crud'),
+                api.get('api/options/thirdParty/crud'),
+                api.get('api/options/categories/crud'), // Assumed endpoint; adjust if different
+                api.get('api/options/subcategories/crud'), // Assumed for unit types; adjust if different
+                api.get('api/options/statuses'),
+            ]);
+            // Places: assume data.places = [{id, name, is_destination, ...}]
+console.log('optionssss',placesRes, companiesRes, categoriesRes, typesRes, statusesRes)
+
+            const allPlaces = placesRes?.data?.places || [];
+            setPlaces(allPlaces.map(p => ({ value: p.id.toString(), label: p.name })));
+
+            // Companies: third_parties for transport (filter if needed, e.g., type === 'transport')
+            const thirdParties = companiesRes?.data?.third_parties || [];
+            setCompanies(thirdParties.map(c => ({ value: c.id.toString(), label: c.company_name })));
+
+            // Categories: assume data.categories = [{id, name, subcategories: [{id, name}]}]
+            const fetchedCategories = categoriesRes?.data?.categories || [];
+            setCategories(fetchedCategories.map(c => c.name));
+            const subMap = fetchedCategories.reduce((map, c) => {
+                map[c.name] = (c.subcategories || []).map(s => s.name);
+                return map;
+            }, {});
+            setCategorySubMap(subMap);
+            // Types: assume data.types = [{id, name}]
+            setTypes(typesRes?.data?.types || []);
+
+            // Statuses: use statusOptions or statuses
+            setStatuses(statusesRes?.data?.statusOptions || statusesRes?.data?.statuses || []);
+        } catch (error) {
+            console.error('Error fetching options:', error);
+            setSnackbar({
+                open: true,
+                message: error.response?.data?.error || error.message || 'Failed to fetch options',
+                severity: 'error',
+            });
+            // Fallback to dummies if needed
+            setCategories(["Electronics", "Clothing", "Books"]);
+            setCategorySubMap({
+                "Electronics": ["Smartphones", "Laptops", "Accessories"],
+                "Clothing": ["Men's Wear", "Women's Wear", "Kids Wear"],
+                "Books": ["Fiction", "Non-Fiction", "Technical"],
+            });
+            setTypes(["Unit 1", "Unit 2"]);
+            setStatuses(["Created", "In Transit", "Delivered", "Cancelled"]);
+            setPlaces([{ value: '', label: 'Select Place' }, { value: 'Singapore', label: 'Singapore' }, { value: 'Dubai', label: 'Dubai' }]); // Minimal fallback
+            setCompanies([{ value: '', label: 'Select 3rd party company' }, { value: 'Company A', label: 'Company A' }]);
+        } finally {
+            setLoading(false);
+        }
+    };
     // Fetch containers on mount
     useEffect(() => {
+        fetchOptions();
         fetchContainers();
-        fetchCategories();
         if (orderId) {
             fetchOrder(orderId);
         }
@@ -489,9 +539,6 @@ const OrderForm = () => {
             setExpanded(prev => new Set([...prev, ...panelsToExpand]));
         }
     }, [errors]);
-    const fetchCategories = () => {
-        setCategories(dummyCategories);
-    };
     // Fetch all containers
     const fetchContainers = async () => {
         setLoadingContainers(true);
@@ -575,17 +622,6 @@ const OrderForm = () => {
                             camelRec[`${panel2Prefix}${camelKey.charAt(0).toUpperCase() + camelKey.slice(1)}`] = val;
                         } else {
                             camelRec[camelKey] = val;
-                        }
-                    });
-                    // NEW: Parse per-item dates (eta, etd) to YYYY-MM-DD
-                    ['eta', 'etd'].forEach(dateField => {
-                        if (rec[dateField]) {  // API snake_case
-                            const date = new Date(rec[dateField]);
-                            if (!isNaN(date.getTime())) {
-                                camelRec[dateField] = date.toISOString().split('T')[0];  // Set to camelRec.eta/etc.
-                            } else {
-                                camelRec[dateField] = '';  // Invalid date -> empty
-                            }
                         }
                     });
                     // Handle legacy shipping_detail to array
@@ -761,16 +797,6 @@ const OrderForm = () => {
                     const oldKey = `${oldPrefix}${key}`;
                     if (updated[oldKey]) updated[oldKey] = '';
                 });
-                // Updated: Clear opposite list and init active list with one empty item
-                const newPanel2Key = value === 'sender' ? 'receivers' : 'senders';
-                const otherKey = value === 'sender' ? 'senders' : 'receivers';
-                updated[otherKey] = [];  // Clear opposite (e.g., senders when switching to 'sender')
-
-                // Ensure active list has at least one empty item
-                const initItem = value === 'sender' ? initialReceiver : initialSenderObject;
-                if (!updated[newPanel2Key] || updated[newPanel2Key].length === 0) {
-                    updated[newPanel2Key] = [{ ...initItem, shippingDetails: [], isNew: true }];
-                }
             }
             return updated;
         });
@@ -778,7 +804,7 @@ const OrderForm = () => {
             setErrors((prev) => ({ ...prev, [name]: '' }));
         }
     };
-    // Receiver handlers (updated)
+    // Receiver handlers
     const addReceiver = () => {
         setFormData(prev => ({
             ...prev,
@@ -900,11 +926,142 @@ const OrderForm = () => {
             )
         }));
     };
-    // Sender handlers (updated for consistency)
+    // Frontend: handleSaveShipping function (add this to your AddOrder.jsx component)
+// This function saves/updates shipping details for a specific receiver index without full form submission
+// It can be called on the "Save" button click for shipping section
+const handleSaveShipping = async (index) => {
+  if (!validateShippingDetails(index)) {
+    setSnackbar({
+      open: true,
+      message: 'Please fix shipping detail errors',
+      severity: 'error',
+    });
+    return;
+  }
+  setLoading(true);
+  const formDataToSend = new FormData();
+  // Dynamic panel2
+  const panel2FieldPrefix = formData.senderType === 'sender' ? 'receiver' : 'sender';
+  const listKey = formData.senderType === 'sender' ? 'receivers' : 'senders';
+  const currentList = formData[listKey];
+  const itemData = currentList[index];
+  const snakeRec = {
+    [`${panel2FieldPrefix}_name`]: formData.senderType === 'sender' ? itemData.receiverName || '' : itemData.senderName || '',
+    [`${panel2FieldPrefix}_contact`]: formData.senderType === 'sender' ? itemData.receiverContact || '' : itemData.senderContact || '',
+    [`${panel2FieldPrefix}_address`]: formData.senderType === 'sender' ? itemData.receiverAddress || '' : itemData.senderAddress || '',
+    [`${panel2FieldPrefix}_email`]: formData.senderType === 'sender' ? itemData.receiverEmail || '' : itemData.senderEmail || '',
+    eta: itemData.eta || '',
+    etd: itemData.etd || '',
+    remarks: itemData.remarks || '',
+    shipping_line: itemData.shippingLine || ''
+  };
+  // Append panel2 data as JSON
+  formDataToSend.append( `${panel2FieldPrefix}s`, JSON.stringify([snakeRec]) );
+  // Append shipping details as order_items flat list for this item
+  const orderItemsToSend = (itemData.shippingDetails || []).map((sd, j) => {
+    const snakeItem = {};
+    Object.keys(sd).forEach(key => {
+      if (key !== 'remainingItems') {
+        const snakeKey = camelToSnake(key);
+        snakeItem[snakeKey] = sd[key] || '';
+      }
+    });
+    snakeItem.item_ref = `ORDER-ITEM-REF-${index + 1}-${j + 1}-${Date.now()}`;
+    return snakeItem;
+  });
+  formDataToSend.append('order_items', JSON.stringify(orderItemsToSend));
+  // Append order_id for update
+  formDataToSend.append('order_id', orderId);
+  try {
+    const response = await api.put(`/api/orders/${orderId}/shipping`, formDataToSend, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+    // Update local formData with response if needed
+    if (response.data.success) {
+      // Optionally refetch full order or update local state
+      await fetchOrder(orderId);
+      setSnackbar({
+        open: true,
+        message: 'Shipping details saved successfully',
+        severity: 'success',
+      });
+    }
+  } catch (err) {
+    console.error("[handleSaveShipping] Error:", err.response?.data || err.message);
+    const backendMsg = err.response?.data?.error || err.message || 'Failed to save shipping details';
+    setSnackbar({
+      open: true,
+      message: `Error: ${backendMsg}`,
+      severity: 'error',
+    });
+  } finally {
+    setLoading(false);
+  }
+};
+// Validation helper for shipping details (add this too)
+const validateShippingDetails = (index) => {
+  const panel2FieldPrefix = formData.senderType === 'sender' ? 'receiver' : 'sender';
+  const listKey = formData.senderType === 'sender' ? 'receivers' : 'senders';
+  const currentList = formData[listKey];
+  const itemData = currentList[index];
+  const shippingDetails = itemData.shippingDetails || [];
+  let isValid = true;
+  const newErrors = { ...errors };
+  // Validate item level
+  const nameField = formData.senderType === 'sender' ? 'receiverName' : 'senderName';
+  if (!itemData[nameField]?.trim()) {
+    newErrors[`${listKey}[${index}].${nameField}`] = `${panel2FieldPrefix} name required`;
+    isValid = false;
+  }
+  if (!itemData.eta) {
+    newErrors[`${listKey}[${index}].eta`] = 'ETA required';
+    isValid = false;
+  }
+  if (!itemData.etd) {
+    newErrors[`${listKey}[${index}].etd`] = 'ETD required';
+    isValid = false;
+  }
+  // Validate each shipping detail
+  shippingDetails.forEach((sd, j) => {
+    if (!sd.pickupLocation?.trim()) {
+      newErrors[`${listKey}[${index}].shippingDetails[${j}].pickupLocation`] = 'Pickup location required';
+      isValid = false;
+    }
+    if (!sd.category?.trim()) {
+      newErrors[`${listKey}[${index}].shippingDetails[${j}].category`] = 'Category required';
+      isValid = false;
+    }
+    if (!sd.subcategory?.trim()) {
+      newErrors[`${listKey}[${index}].shippingDetails[${j}].subcategory`] = 'Subcategory required';
+      isValid = false;
+    }
+    if (!sd.type?.trim()) {
+      newErrors[`${listKey}[${index}].shippingDetails[${j}].type`] = 'Type required';
+      isValid = false;
+    }
+    if (!sd.deliveryAddress?.trim()) {
+      newErrors[`${listKey}[${index}].shippingDetails[${j}].deliveryAddress`] = 'Delivery address required';
+      isValid = false;
+    }
+    const totalNum = parseInt(sd.totalNumber || 0);
+    if (!sd.totalNumber || totalNum <= 0) {
+      newErrors[`${listKey}[${index}].shippingDetails[${j}].totalNumber`] = 'Total number must be positive';
+      isValid = false;
+    }
+    const weight = parseFloat(sd.weight || 0);
+    if (!sd.weight || weight <= 0) {
+      newErrors[`${listKey}[${index}].shippingDetails[${j}].weight`] = 'Weight must be positive';
+      isValid = false;
+    }
+  });
+  setErrors(newErrors);
+  return isValid;
+};
+    // Sender handlers (similar)
     const addSender = useCallback(() => {
         setFormData((prev) => ({
             ...prev,
-            senders: [...prev.senders, { ...initialSenderObject, shippingDetails: [], isNew: true }],
+            senders: [...prev.senders, { ...initialSenderObject, shippingDetails: [] }],
         }));
     }, []);
     const removeSender = useCallback((index) => {
@@ -919,7 +1076,7 @@ const OrderForm = () => {
             ...prev,
             senders: [
                 ...prev.senders.slice(0, index + 1),
-                { ...toDuplicate, shippingDetails: toDuplicate.shippingDetails.map(sd => ({ ...sd })), isNew: true },
+                { ...toDuplicate, shippingDetails: toDuplicate.shippingDetails.map(sd => ({ ...sd })), id: Date.now() },
                 ...prev.senders.slice(index + 1),
             ],
         }));
@@ -1079,7 +1236,6 @@ const handleSave = async () => {
     });
     formDataToSend.append(panel2ArrayKey, JSON.stringify(panel2ToSend));
     // Append order_items from all shippingDetails flat
-    console.log('saveee response',panel2ArrayKey,panel2Items,panel2ToSend,panel2FieldPrefix,formData,formDataToSend)
     const orderItemsToSend = [];
     panel2Items.forEach((item, i) => {
         (item.shippingDetails || []).forEach((sd, j) => {
@@ -1169,139 +1325,6 @@ const handleSave = async () => {
         }
         return !editableInEdit.includes(name);
     };
-    // Validation helper for shipping details
-    const validateShippingDetails = (index) => {
-        const panel2FieldPrefix = formData.senderType === 'sender' ? 'receiver' : 'sender';
-        const listKey = formData.senderType === 'sender' ? 'receivers' : 'senders';
-        const currentList = formData[listKey];
-        const itemData = currentList[index];
-        const shippingDetails = itemData.shippingDetails || [];
-        let isValid = true;
-        const newErrors = { ...errors };
-        // Validate item level
-        const nameField = formData.senderType === 'sender' ? 'receiverName' : 'senderName';
-        if (!itemData[nameField]?.trim()) {
-            newErrors[`${listKey}[${index}].${nameField}`] = `${panel2FieldPrefix} name required`;
-            isValid = false;
-        }
-        // if (!itemData.eta) {
-        //     newErrors[`${listKey}[${index}].eta`] = 'ETA required';
-        //     isValid = false;
-        // }
-        // if (!itemData.etd) {
-        //     newErrors[`${listKey}[${index}].etd`] = 'ETD required';
-        //     isValid = false;
-        // }
-        // Validate each shipping detail
-        shippingDetails.forEach((sd, j) => {
-            if (!sd.pickupLocation?.trim()) {
-                newErrors[`${listKey}[${index}].shippingDetails[${j}].pickupLocation`] = 'Pickup location required';
-                isValid = false;
-            }
-            if (!sd.category?.trim()) {
-                newErrors[`${listKey}[${index}].shippingDetails[${j}].category`] = 'Category required';
-                isValid = false;
-            }
-            if (!sd.subcategory?.trim()) {
-                newErrors[`${listKey}[${index}].shippingDetails[${j}].subcategory`] = 'Subcategory required';
-                isValid = false;
-            }
-            if (!sd.type?.trim()) {
-                newErrors[`${listKey}[${index}].shippingDetails[${j}].type`] = 'Type required';
-                isValid = false;
-            }
-            if (!sd.deliveryAddress?.trim()) {
-                newErrors[`${listKey}[${index}].shippingDetails[${j}].deliveryAddress`] = 'Delivery address required';
-                isValid = false;
-            }
-            const totalNum = parseInt(sd.totalNumber || 0);
-            if (!sd.totalNumber || totalNum <= 0) {
-                newErrors[`${listKey}[${index}].shippingDetails[${j}].totalNumber`] = 'Total number must be positive';
-                isValid = false;
-            }
-            const weight = parseFloat(sd.weight || 0);
-            if (!sd.weight || weight <= 0) {
-                newErrors[`${listKey}[${index}].shippingDetails[${j}].weight`] = 'Weight must be positive';
-                isValid = false;
-            }
-        });
-        setErrors(newErrors);
-        return isValid;
-    };
-    // Updated handleSaveShipping (works for both senders/receivers)
-    const handleSaveShipping = async (index) => {
-        if (!validateShippingDetails(index)) {
-            setSnackbar({
-                open: true,
-                message: 'Please fix shipping detail errors',
-                severity: 'error',
-            });
-            return;
-        }
-        setLoading(true);
-        console.log('save rendering',index)
-        const formDataToSend = new FormData();
-        // Dynamic panel2
-        const panel2FieldPrefix = formData.senderType === 'sender' ? 'receiver' : 'sender';
-        const listKey = formData.senderType === 'sender' ? 'receivers' : 'senders';
-        const currentList = formData[listKey];
-        const itemData = currentList[index];
-        const snakeRec = {
-            [`${panel2FieldPrefix}_name`]: formData.senderType === 'sender' ? itemData.receiverName || '' : itemData.senderName || '',
-            [`${panel2FieldPrefix}_contact`]: formData.senderType === 'sender' ? itemData.receiverContact || '' : itemData.senderContact || '',
-            [`${panel2FieldPrefix}_address`]: formData.senderType === 'sender' ? itemData.receiverAddress || '' : itemData.senderAddress || '',
-            [`${panel2FieldPrefix}_email`]: formData.senderType === 'sender' ? itemData.receiverEmail || '' : itemData.senderEmail || '',
-            eta: itemData.eta || '',
-            etd: itemData.etd || '',
-            remarks: itemData.remarks || '',
-            shipping_line: itemData.shippingLine || ''
-        };
-        // Append panel2 data as JSON
-        formDataToSend.append( `${panel2FieldPrefix}s`, JSON.stringify([snakeRec]) );
-        // Append shipping details as order_items flat list for this item
-        const orderItemsToSend = (itemData.shippingDetails || []).map((sd, j) => {
-            const snakeItem = {};
-            Object.keys(sd).forEach(key => {
-                if (key !== 'remainingItems') {
-                    const snakeKey = camelToSnake(key);
-                    snakeItem[snakeKey] = sd[key] || '';
-                }
-            });
-            snakeItem.item_ref = `ORDER-ITEM-REF-${index + 1}-${j + 1}-${Date.now()}`;
-            return snakeItem;
-        });
-        formDataToSend.append('order_items', JSON.stringify(orderItemsToSend));
-        // Append order_id for update
-        formDataToSend.append('order_id', orderId);
-        try {
-            const response = await api.put(`/api/orders/${orderId}/shipping`, formDataToSend, {
-                headers: { 'Content-Type': 'multipart/form-data' }
-            });
-
-        console.log('save responseeeeee',response)
-
-            // Update local formData with response if needed
-            if (response.data.success) {
-                // Optionally refetch full order or update local state
-                await fetchOrder(orderId);
-                setSnackbar({
-                    open: true,
-                    message: 'Shipping details saved successfully',
-                    severity: 'success',
-                });
-            }
-        } catch (err) {
-            console.error("[handleSaveShipping] Error:", err.response?.data || err.message);
-            const backendMsg = err.response?.data?.error || err.message || 'Failed to save shipping details';
-            setSnackbar({
-                open: true,
-                message: `Error: ${backendMsg}`,
-                severity: 'error',
-            });
-        } finally {
-            setLoading(false);
-        }
-    };
     if (loading) {
         return (
             <Paper sx={{ p: 3, borderRadius: 3, boxShadow: 3, bgcolor: "#fafafa" }}>
@@ -1375,14 +1398,14 @@ const handleSave = async () => {
                             <CustomSelect
                                 label="Point of Origin"
                                 name="pointOfOrigin"
-                                value={formData.pointOfOrigin || "Karachi"}
+                                value={formData.pointOfOrigin || places.find(p => p.label === 'Karachi')?.value || ''}
                                 onChange={handleChange}
                                 error={!!errors.pointOfOrigin}
-                                renderValue={(selected) => selected || "Karachi"}
+                                renderValue={(selected) => places.find(p => p.value === selected)?.label || "Karachi"}
                             >
                                 {places.map((p) => (
-                                    <MenuItem key={p} value={p}>
-                                        {p}
+                                    <MenuItem key={p.value} value={p.value}>
+                                        {p.label}
                                     </MenuItem>
                                 ))}
                             </CustomSelect>
@@ -1392,11 +1415,11 @@ const handleSave = async () => {
                                 value={formData.placeOfLoading || ""}
                                 onChange={handleChange}
                                 error={!!errors.placeOfLoading}
-                                renderValue={(selected) => selected || "Select Place of Loading"}
+                                renderValue={(selected) => places.find(p => p.value === selected)?.label || "Select Place of Loading"}
                             >
                                 {places.map((p) => (
-                                    <MenuItem key={p} value={p}>
-                                        {p}
+                                    <MenuItem key={p.value} value={p.value}>
+                                        {p.label}
                                     </MenuItem>
                                 ))}
                             </CustomSelect>
@@ -1408,25 +1431,25 @@ const handleSave = async () => {
                                 value={formData.placeOfDelivery || ""}
                                 onChange={handleChange}
                                 error={!!errors.placeOfDelivery}
-                                renderValue={(selected) => selected || "Select Place of Delivery"}
+                                renderValue={(selected) => places.find(p => p.value === selected)?.label || "Select Place of Delivery"}
                             >
                                 {places.map((p) => (
-                                    <MenuItem key={p} value={p}>
-                                        {p}
+                                    <MenuItem key={p.value} value={p.value}>
+                                        {p.label}
                                     </MenuItem>
                                 ))}
                             </CustomSelect>
                             <CustomSelect
                                 label="Final Destination"
                                 name="finalDestination"
-                                value={formData.finalDestination || "Dubai"}
+                                value={formData.finalDestination || places.find(p => p.label === 'Dubai')?.value || ''}
                                 onChange={handleChange}
                                 error={!!errors.finalDestination}
-                                renderValue={(selected) => selected || "Dubai"}
+                                renderValue={(selected) => places.find(p => p.value === selected)?.label || "Dubai"}
                             >
                                 {places.map((p) => (
-                                    <MenuItem key={p} value={p}>
-                                        {p}
+                                    <MenuItem key={p.value} value={p.value}>
+                                        {p.label}
                                     </MenuItem>
                                 ))}
                             </CustomSelect>
@@ -1665,107 +1688,128 @@ const handleSave = async () => {
                                         </Stack>
                                     )}
                                     {(() => {
-    const currentList = formData.senderType === 'sender' ? formData.receivers : formData.senders;
-    const isSenderMode = formData.senderType === 'receiver';
-    const typePrefix = isSenderMode ? 'Sender' : 'Receiver';
-    const handleChangeFn = isSenderMode ? handleSenderChange : handleReceiverChange;
-    const handleShippingChangeFn = isSenderMode ? handleSenderShippingChange : handleReceiverShippingChange;
-    const handlePartialChangeFn = isSenderMode ? handleSenderPartialChange : handleReceiverPartialChange;
-    const addShippingFn = isSenderMode ? addSenderShipping : addReceiverShipping;
-    const duplicateShippingFn = isSenderMode ? duplicateSenderShipping : duplicateReceiverShipping;
-    const removeShippingFn = isSenderMode ? removeSenderShipping : removeReceiverShipping;
-    const listKey = isSenderMode ? 'senders' : 'receivers';
-    const addRecFn = isSenderMode ? addSender : addReceiver;
-    const duplicateRecFn = isSenderMode ? duplicateSender : duplicateReceiver;
-    const removeRecFn = isSenderMode ? removeSender : removeReceiver;
-
-    const renderRecForm = (rec, i) => {
-        const recErrorsPrefix = `${listKey}[${i}]`;
-        const recDisabledPrefix = `${listKey}[${i}]`;
-        const handleRecNameChange = handleChangeFn(i, isSenderMode ? 'senderName' : 'receiverName');
-        const handleRecContactChange = handleChangeFn(i, isSenderMode ? 'senderContact' : 'receiverContact');
-        const handleRecAddressChange = handleChangeFn(i, isSenderMode ? 'senderAddress' : 'receiverAddress');
-        const handleRecEmailChange = handleChangeFn(i, isSenderMode ? 'senderEmail' : 'receiverEmail');
-
-        const renderShippingSection = () => (
-            <Stack spacing={2}>
-                <Typography variant="subtitle1" color="primary" fontWeight="bold" mb={1}>
-                    Shipping Details
-                </Typography>
-                {/* ETA, ETD at receiver/sender level (if still needed; or move per sd as per prev advice) */}
-                <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                    {/* <CustomTextField
-                        label="ETA"
-                        type="date"
-                        value={rec.eta || ""}
-                        onChange={handleChangeFn(i, 'eta')}
-                        InputLabelProps={{ shrink: true }}
-                        error={!!errors[`${recErrorsPrefix}.eta`]}
-                        helperText={errors[`${recErrorsPrefix}.eta`]}
-                        required
-                        disabled={isFieldDisabled(`${recDisabledPrefix}.eta`)}
-                    />
-                    <CustomTextField
-                        label="ETD"
-                        type="date"
-                        value={rec.etd || ""}
-                        onChange={handleChangeFn(i, 'etd')}
-                        InputLabelProps={{ shrink: true }}
-                        error={!!errors[`${recErrorsPrefix}.etd`]}
-                        helperText={errors[`${recErrorsPrefix}.etd`]}
-                        required
-                        disabled={isFieldDisabled(`${recDisabledPrefix}.etd`)}
-                    /> */}
-                </Box>
-                {/* Shipping Details Forms */}
-                {(rec.shippingDetails || []).length === 0 ? (
-                    // Empty placeholder (unchanged, but icons now always visible)
-                    <Box sx={{ p: 1.5, border: 1, borderColor: "grey.200", borderRadius: 1 }}>
-                        <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
-                            <Typography variant="body2" color="primary" fontWeight="bold">
-                                Shipping Detail 1
-                            </Typography>
-                            <Stack direction="row" spacing={1}>
-                                {/* UPDATED: Remove !isEditMode - always show icons */}
-                                <IconButton
-                                    onClick={() => duplicateShippingFn(i, 0)}
-                                    size="small"
-                                    title="Duplicate"
-                                >
-                                    <CopyIcon />
-                                </IconButton>
-                                <IconButton
-                                    onClick={() => removeShippingFn(i, 0)}
-                                    size="small"
-                                    title="Delete"
-                                >
-                                    <DeleteIcon />
-                                </IconButton>
-                            </Stack>
-                        </Stack>
+                                        const currentList = formData.senderType === 'sender' ? formData.receivers : formData.senders;
+                                        const isSenderMode = formData.senderType === 'receiver';
+                                        const typePrefix = isSenderMode ? 'Sender' : 'Receiver';
+                                        const handleChangeFn = isSenderMode ? handleSenderChange : handleReceiverChange;
+                                        const handleShippingChangeFn = isSenderMode ? handleSenderShippingChange : handleReceiverShippingChange;
+                                        const handlePartialChangeFn = isSenderMode ? handleSenderPartialChange : handleReceiverPartialChange;
+                                        const addShippingFn = isSenderMode ? addSenderShipping : addReceiverShipping;
+                                        const duplicateShippingFn = isSenderMode ? duplicateSenderShipping : duplicateReceiverShipping;
+                                        const removeShippingFn = isSenderMode ? removeSenderShipping : removeReceiverShipping;
+                                        const listKey = isSenderMode ? 'senders' : 'receivers';
+                                        const errorsPrefix = isSenderMode ? `senders[${0}]` : `receivers[${0}]`;
+                                        const disabledPrefix = isSenderMode ? `senders[${0}]` : `receivers[${0}]`;
+                                        const addRecFn = isSenderMode ? addSender : addReceiver;
+                                        const renderRecForm = (rec, i) => {
+                                            const recErrorsPrefix = isSenderMode ? `senders[${i}]` : `receivers[${i}]`;
+                                            const recDisabledPrefix = isSenderMode ? `senders[${i}]` : `receivers[${i}]`;
+                                            const emptySd = {
+                                                pickupLocation: '',
+                                                category: '',
+                                                subcategory: '',
+                                                type: '',
+                                                totalNumber: '',
+                                                weight: '',
+                                                deliveryAddress: '',
+                                                itemRef: `REF-${i + 1}-1`
+                                            };
+                                            const handleEmptySdChange = (field, value) => {
+                                                addShippingFn(i);
+                                                handleShippingChangeFn(i, 0, field)({ target: { value } });
+                                            };
+                                            const renderShippingSection = () => (
+                                                <Stack spacing={2}>
+                                                    <Typography variant="subtitle1" color="primary" fontWeight={"bold"} mb={1}>
+                                                        Shipping Details
+                                                    </Typography>
+                                                    {/* ETA, ETD, Shipping Line at receiver/sender level */}
+                                                    <Box
+                                                        sx={{
+                                                            display: 'flex',
+                                                            flexDirection: { xs: 'column', sm: 'row' },
+                                                            gap: 2,
+                                                            alignItems: 'stretch',
+                                                        }}
+                                                    >
+                                                        <CustomTextField
+                                                            label="ETA"
+                                                            type="date"
+                                                            value={rec.eta || ""}
+                                                            onChange={(e) => handleChangeFn(i, 'eta')(e)}
+                                                            InputLabelProps={{ shrink: true }}
+                                                            error={!!errors[`${listKey}[${i}].eta`]}
+                                                            helperText={errors[`${listKey}[${i}].eta`]}
+                                                            required
+                                                            disabled={isFieldDisabled(`${recDisabledPrefix}.eta`)}
+                                                        />
+                                                        <CustomTextField
+                                                            label="ETD"
+                                                            type="date"
+                                                            value={rec.etd || ""}
+                                                            onChange={(e) => handleChangeFn(i, 'etd')(e)}
+                                                            InputLabelProps={{ shrink: true }}
+                                                            error={!!errors[`${listKey}[${i}].etd`]}
+                                                            helperText={errors[`${listKey}[${i}].etd`]}
+                                                            required
+                                                            disabled={isFieldDisabled(`${recDisabledPrefix}.etd`)}
+                                                        />
+                                                    </Box>
+                                                    {/* <CustomTextField
+                                label="Shipping Line"
+                                value={rec.shippingLine || ""}
+                                onChange={(e) => handleChangeFn(i, 'shippingLine')(e)}
+                                error={!!errors[`${listKey}[${i}].shippingLine`]}
+                                helperText={errors[`${listKey}[${i}].shippingLine`]}
+                                required
+                                fullWidth
+                                disabled={isFieldDisabled(`${recDisabledPrefix}.shippingLine`)}
+                            /> */}
+                                                    {/* Shipping Details Forms */}
+                                                    {(rec.shippingDetails || []).length === 0 ? (
+                                                        <Box sx={{ p: 1.5, border: 1, borderColor: "grey.200", borderRadius: 1 }}>
+                                                            <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
+                                                                <Typography variant="body2" color="primary" fontWeight="bold">
+                                                                    Shipping Detail 1
+                                                                </Typography>
+                                                                <Stack direction="row" spacing={1}>
+                                                                    {!isEditMode && (
+                                                                        <>
+                                                                            <IconButton
+                                                                                onClick={() => duplicateShippingFn(i, 0)}
+                                                                                size="small"
+                                                                                title="Duplicate"
+                                                                            >
+                                                                                <CopyIcon />
+                                                                            </IconButton>
+                                                                            <IconButton
+                                                                                onClick={() => removeShippingFn(i, 0)}
+                                                                                size="small"
+                                                                                title="Delete"
+                                                                            >
+                                                                                <DeleteIcon />
+                                                                            </IconButton>
+                                                                        </>
+                                                                    )}
+                                                                </Stack>
+                                                            </Stack>
                                                             <Stack spacing={1.5}>
                                                                 <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
                                                                     <CustomTextField
                                                                         label="Pickup Location"
-                                                                        value=""
-                                                                        onChange={(e) => {
-                                                                            addShippingFn(i);  // Add first if empty
-                                                                            handleShippingChangeFn(i, 0, 'pickupLocation')(e);
-                                                                        }}
-                                                                        error={!!errors[`${recErrorsPrefix}.shippingDetails[0].pickupLocation`]}
-                                                                        helperText={errors[`${recErrorsPrefix}.shippingDetails[0].pickupLocation`]}
+                                                                        value={emptySd.pickupLocation}
+                                                                        onChange={(e) => handleEmptySdChange('pickupLocation', e.target.value)}
+                                                                        error={!!errors[`${listKey}[${i}].shippingDetails[0].pickupLocation`]}
+                                                                        helperText={errors[`${listKey}[${i}].shippingDetails[0].pickupLocation`]}
                                                                         required
                                                                         disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].pickupLocation`)}
                                                                     />
                                                                     <CustomSelect
                                                                         label="Category"
-                                                                        value=""
-                                                                        onChange={(e) => {
-                                                                            addShippingFn(i);
-                                                                            handleShippingChangeFn(i, 0, 'category')(e);
-                                                                        }}
-                                                                        error={!!errors[`${recErrorsPrefix}.shippingDetails[0].category`]}
-                                                                        helperText={errors[`${recErrorsPrefix}.shippingDetails[0].category`]}
+                                                                        value={emptySd.category}
+                                                                        onChange={(e) => handleEmptySdChange('category', e.target.value)}
+                                                                        error={!!errors[`${listKey}[${i}].shippingDetails[0].category`]}
+                                                                        helperText={errors[`${listKey}[${i}].shippingDetails[0].category`]}
                                                                         required
                                                                         disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].category`)}
                                                                         renderValue={(selected) => selected || "Select Category"}
@@ -1781,19 +1825,16 @@ const handleSave = async () => {
                                                                 <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
                                                                     <CustomSelect
                                                                         label="Subcategory"
-                                                                        value=""
-                                                                        onChange={(e) => {
-                                                                            addShippingFn(i);
-                                                                            handleShippingChangeFn(i, 0, 'subcategory')(e);
-                                                                        }}
-                                                                        error={!!errors[`${recErrorsPrefix}.shippingDetails[0].subcategory`]}
-                                                                        helperText={errors[`${recErrorsPrefix}.shippingDetails[0].subcategory`]}
+                                                                        value={emptySd.subcategory}
+                                                                        onChange={(e) => handleEmptySdChange('subcategory', e.target.value)}
+                                                                        error={!!errors[`${listKey}[${i}].shippingDetails[0].subcategory`]}
+                                                                        helperText={errors[`${listKey}[${i}].shippingDetails[0].subcategory`]}
                                                                         required
                                                                         disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].subcategory`)}
                                                                         renderValue={(selected) => selected || "Select Subcategory"}
                                                                     >
                                                                         <MenuItem value="">Select Subcategory</MenuItem>
-                                                                        {(categorySubMap[''] || []).map((sc) => (
+                                                                        {(categorySubMap[emptySd.category] || []).map((sc) => (
                                                                             <MenuItem key={sc} value={sc}>
                                                                                 {sc}
                                                                             </MenuItem>
@@ -1801,19 +1842,16 @@ const handleSave = async () => {
                                                                     </CustomSelect>
                                                                     <CustomSelect
                                                                         label="Type"
-                                                                        value=""
-                                                                        onChange={(e) => {
-                                                                            addShippingFn(i);
-                                                                            handleShippingChangeFn(i, 0, 'type')(e);
-                                                                        }}
-                                                                        error={!!errors[`${recErrorsPrefix}.shippingDetails[0].type`]}
-                                                                        helperText={errors[`${recErrorsPrefix}.shippingDetails[0].type`]}
+                                                                        value={emptySd.type}
+                                                                        onChange={(e) => handleEmptySdChange('type', e.target.value)}
+                                                                        error={!!errors[`${listKey}[${i}].shippingDetails[0].type`]}
+                                                                        helperText={errors[`${listKey}[${i}].shippingDetails[0].type`]}
                                                                         required
                                                                         disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].type`)}
                                                                         renderValue={(selected) => selected || "Select Type"}
                                                                     >
                                                                         <MenuItem value="">Select Unit</MenuItem>
-                                                                        {types.slice(1).map((t) => (
+                                                                        {types.map((t) => (
                                                                             <MenuItem key={t} value={t}>
                                                                                 {t}
                                                                             </MenuItem>
@@ -1823,25 +1861,19 @@ const handleSave = async () => {
                                                                 <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
                                                                     <CustomTextField
                                                                         label="Total Number"
-                                                                        value=""
-                                                                        onChange={(e) => {
-                                                                            addShippingFn(i);
-                                                                            handleShippingChangeFn(i, 0, 'totalNumber')(e);
-                                                                        }}
-                                                                        error={!!errors[`${recErrorsPrefix}.shippingDetails[0].totalNumber`]}
-                                                                        helperText={errors[`${recErrorsPrefix}.shippingDetails[0].totalNumber`]}
+                                                                        value={emptySd.totalNumber}
+                                                                        onChange={(e) => handleEmptySdChange('totalNumber', e.target.value)}
+                                                                        error={!!errors[`${listKey}[${i}].shippingDetails[0].totalNumber`]}
+                                                                        helperText={errors[`${listKey}[${i}].shippingDetails[0].totalNumber`]}
                                                                         required
                                                                         disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].totalNumber`)}
                                                                     />
                                                                     <CustomTextField
                                                                         label="Weight"
-                                                                        value=""
-                                                                        onChange={(e) => {
-                                                                            addShippingFn(i);
-                                                                            handleShippingChangeFn(i, 0, 'weight')(e);
-                                                                        }}
-                                                                        error={!!errors[`${recErrorsPrefix}.shippingDetails[0].weight`]}
-                                                                        helperText={errors[`${recErrorsPrefix}.shippingDetails[0].weight`]}
+                                                                        value={emptySd.weight}
+                                                                        onChange={(e) => handleEmptySdChange('weight', e.target.value)}
+                                                                        error={!!errors[`${listKey}[${i}].shippingDetails[0].weight`]}
+                                                                        helperText={errors[`${listKey}[${i}].shippingDetails[0].weight`]}
                                                                         required
                                                                         disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].weight`)}
                                                                     />
@@ -1849,64 +1881,66 @@ const handleSave = async () => {
                                                                 <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
                                                                     <CustomTextField
                                                                         label="Delivery Address"
-                                                                        value=""
-                                                                        onChange={(e) => {
-                                                                            addShippingFn(i);
-                                                                            handleShippingChangeFn(i, 0, 'deliveryAddress')(e);
-                                                                        }}
-                                                                        error={!!errors[`${recErrorsPrefix}.shippingDetails[0].deliveryAddress`]}
-                                                                        helperText={errors[`${recErrorsPrefix}.shippingDetails[0].deliveryAddress`]}
+                                                                        value={emptySd.deliveryAddress}
+                                                                        onChange={(e) => handleEmptySdChange('deliveryAddress', e.target.value)}
+                                                                        error={!!errors[`${listKey}[${i}].shippingDetails[0].deliveryAddress`]}
+                                                                        helperText={errors[`${listKey}[${i}].shippingDetails[0].deliveryAddress`]}
                                                                         fullWidth
                                                                         disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].deliveryAddress`)}
                                                                     />
-                                                                    <CustomTextField label="Ref Number" value={`REF-${i + 1}-1`} disabled={true} />
+                                                                    <CustomTextField label="Ref Number" value={emptySd.itemRef} disabled={true} />
                                                                 </Box>
                                                             </Stack>
                                                         </Box>
                                                     ) : (
-                    (rec.shippingDetails || []).map((sd, j) => (
-                        <Box key={j} sx={{ p: 1.5, border: 1, borderColor: "grey.200", borderRadius: 1 }}>
-                            <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
-                                <Typography variant="body2" color="primary" fontWeight="bold">
-                                    Shipping Detail {j + 1}
-                                </Typography>
-                                <Stack direction="row" spacing={1}>
-                                    {/* UPDATED: Remove !isEditMode - always show icons; length guard on delete */}
-                                    <IconButton
-                                        onClick={() => duplicateShippingFn(i, j)}
-                                        size="small"
-                                        title="Duplicate"
-                                    >
-                                        <CopyIcon />
-                                    </IconButton>
-                                    {(rec.shippingDetails || []).length > 1 && (
-                                        <IconButton
-                                            onClick={() => removeShippingFn(i, j)}
-                                            size="small"
-                                            title="Delete"
-                                        >
-                                            <DeleteIcon />
-                                        </IconButton>
-                                    )}
-                                </Stack>
-                            </Stack>
+                                                        (rec.shippingDetails || []).map((sd, j) => (
+                                                            <Box key={j} sx={{ p: 1.5, border: 1, borderColor: "grey.200", borderRadius: 1 }}>
+                                                                <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
+                                                                    <Typography variant="body2" color="primary" fontWeight="bold">
+                                                                        Shipping Detail {j + 1}
+                                                                    </Typography>
+                                                                    <Stack direction="row" spacing={1}>
+                                                                        {!isEditMode && (
+                                                                            <>
+                                                                                <IconButton
+                                                                                    onClick={() => duplicateShippingFn(i, j)}
+                                                                                    size="small"
+                                                                                    title="Duplicate"
+                                                                                >
+                                                                                    <CopyIcon />
+                                                                                </IconButton>
+                                                                                {(rec.shippingDetails || []).length > 1 && (
+                                                                                    <IconButton
+                                                                                        onClick={() => removeShippingFn(i, j)}
+                                                                                        size="small"
+                                                                                        title="Delete"
+                                                                                    >
+                                                                                        <DeleteIcon />
+                                                                                    </IconButton>
+                                                                                )}
+                                                                            </>
+                                                                        )}
+                                                                    </Stack>
+                                                                </Stack>
                                                                 <Stack spacing={1.5}>
                                                                     <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
                                                                         <CustomTextField
                                                                             label="Pickup Location"
                                                                             value={sd.pickupLocation || ""}
                                                                             onChange={(e) => handleShippingChangeFn(i, j, 'pickupLocation')(e)}
-                                                                            error={!!errors[`${recErrorsPrefix}.shippingDetails[${j}].pickupLocation`]}
-                                                                            helperText={errors[`${recErrorsPrefix}.shippingDetails[${j}].pickupLocation`]}
+                                                                            error={!!errors[`${listKey}[${i}].shippingDetails[${j}].pickupLocation`]}
+                                                                            helperText={errors[`${listKey}[${i}].shippingDetails[${j}].pickupLocation`]}
                                                                             required
+                                                                            // disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[${j}].pickupLocation`)}
                                                                         />
                                                                         <CustomSelect
                                                                             label="Category"
                                                                             value={sd.category || ""}
                                                                             onChange={(e) => handleShippingChangeFn(i, j, 'category')(e)}
-                                                                            error={!!errors[`${recErrorsPrefix}.shippingDetails[${j}].category`]}
-                                                                            helperText={errors[`${recErrorsPrefix}.shippingDetails[${j}].category`]}
+                                                                            error={!!errors[`${listKey}[${i}].shippingDetails[${j}].category`]}
+                                                                            helperText={errors[`${listKey}[${i}].shippingDetails[${j}].category`]}
                                                                             required
+                                                                            // disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[${j}].category`)}
                                                                             renderValue={(selected) => selected || "Select Category"}
                                                                         >
                                                                             <MenuItem value="">Select Category</MenuItem>
@@ -1922,9 +1956,10 @@ const handleSave = async () => {
                                                                             label="Subcategory"
                                                                             value={sd.subcategory || ""}
                                                                             onChange={(e) => handleShippingChangeFn(i, j, 'subcategory')(e)}
-                                                                            error={!!errors[`${recErrorsPrefix}.shippingDetails[${j}].subcategory`]}
-                                                                            helperText={errors[`${recErrorsPrefix}.shippingDetails[${j}].subcategory`]}
+                                                                            error={!!errors[`${listKey}[${i}].shippingDetails[${j}].subcategory`]}
+                                                                            helperText={errors[`${listKey}[${i}].shippingDetails[${j}].subcategory`]}
                                                                             required
+                                                                            // disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[${j}].subcategory`)}
                                                                             renderValue={(selected) => selected || "Select Subcategory"}
                                                                         >
                                                                             <MenuItem value="">Select Subcategory</MenuItem>
@@ -1938,13 +1973,14 @@ const handleSave = async () => {
                                                                             label="Type"
                                                                             value={sd.type || ""}
                                                                             onChange={(e) => handleShippingChangeFn(i, j, 'type')(e)}
-                                                                            error={!!errors[`${recErrorsPrefix}.shippingDetails[${j}].type`]}
-                                                                            helperText={errors[`${recErrorsPrefix}.shippingDetails[${j}].type`]}
+                                                                            error={!!errors[`${listKey}[${i}].shippingDetails[${j}].type`]}
+                                                                            helperText={errors[`${listKey}[${i}].shippingDetails[${j}].type`]}
                                                                             required
+                                                                            // disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[${j}].type`)}
                                                                             renderValue={(selected) => selected || "Select Type"}
                                                                         >
                                                                             <MenuItem value="">Select Unit</MenuItem>
-                                                                            {types.slice(1).map((t) => (
+                                                                            {types.map((t) => (
                                                                                 <MenuItem key={t} value={t}>
                                                                                     {t}
                                                                                 </MenuItem>
@@ -1956,17 +1992,19 @@ const handleSave = async () => {
                                                                             label="Total Number"
                                                                             value={sd.totalNumber || ""}
                                                                             onChange={(e) => handleShippingChangeFn(i, j, 'totalNumber')(e)}
-                                                                            error={!!errors[`${recErrorsPrefix}.shippingDetails[${j}].totalNumber`]}
-                                                                            helperText={errors[`${recErrorsPrefix}.shippingDetails[${j}].totalNumber`]}
+                                                                            error={!!errors[`${listKey}[${i}].shippingDetails[${j}].totalNumber`]}
+                                                                            helperText={errors[`${listKey}[${i}].shippingDetails[${j}].totalNumber`]}
                                                                             required
+                                                                            // disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[${j}].totalNumber`)}
                                                                         />
                                                                         <CustomTextField
                                                                             label="Weight"
                                                                             value={sd.weight || ""}
                                                                             onChange={(e) => handleShippingChangeFn(i, j, 'weight')(e)}
-                                                                            error={!!errors[`${recErrorsPrefix}.shippingDetails[${j}].weight`]}
-                                                                            helperText={errors[`${recErrorsPrefix}.shippingDetails[${j}].weight`]}
+                                                                            error={!!errors[`${listKey}[${i}].shippingDetails[${j}].weight`]}
+                                                                            helperText={errors[`${listKey}[${i}].shippingDetails[${j}].weight`]}
                                                                             required
+                                                                            // disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[${j}].weight`)}
                                                                         />
                                                                     </Box>
                                                                     <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
@@ -1974,9 +2012,10 @@ const handleSave = async () => {
                                                                             label="Delivery Address"
                                                                             value={sd.deliveryAddress || ""}
                                                                             onChange={(e) => handleShippingChangeFn(i, j, 'deliveryAddress')(e)}
-                                                                            error={!!errors[`${recErrorsPrefix}.shippingDetails[${j}].deliveryAddress`]}
-                                                                            helperText={errors[`${recErrorsPrefix}.shippingDetails[${j}].deliveryAddress`]}
+                                                                            error={!!errors[`${listKey}[${i}].shippingDetails[${j}].deliveryAddress`]}
+                                                                            helperText={errors[`${listKey}[${i}].shippingDetails[${j}].deliveryAddress`]}
                                                                             fullWidth
+                                                                            // disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[${j}].deliveryAddress`)}s
                                                                         />
                                                                         <CustomTextField label="Ref Number" value={sd.itemRef || `REF-${i + 1}-${j + 1}`} disabled={true} />
                                                                     </Box>
@@ -2001,7 +2040,6 @@ const handleSave = async () => {
                                                     </Stack>
                                                 </Stack>
                                             );
-
                                             return (
                                                 <Box key={i} sx={{ p: 2, border: 1, borderColor: "grey.300", borderRadius: 2 }}>
                                                     <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
@@ -2009,10 +2047,10 @@ const handleSave = async () => {
                                                             {typePrefix} {i + 1}
                                                         </Typography>
                                                         <Stack direction="row" spacing={1}>
-                                            
+                                                            {!isEditMode && (
                                                                 <>
                                                                     <IconButton
-                                                                        onClick={() => duplicateRecFn(i)}
+                                                                        onClick={() => (isSenderMode ? duplicateSender : duplicateReceiver)(i)}
                                                                         size="small"
                                                                         title="Duplicate"
                                                                     >
@@ -2020,7 +2058,7 @@ const handleSave = async () => {
                                                                     </IconButton>
                                                                     {currentList.length > 1 && (
                                                                         <IconButton
-                                                                            onClick={() => removeRecFn(i)}
+                                                                            onClick={() => (isSenderMode ? removeSender : removeReceiver)(i)}
                                                                             size="small"
                                                                             title="Delete"
                                                                         >
@@ -2028,7 +2066,7 @@ const handleSave = async () => {
                                                                         </IconButton>
                                                                     )}
                                                                 </>
-                                                        
+                                                            )}
                                                         </Stack>
                                                     </Stack>
                                                     {/* Show validation warnings if present */}
@@ -2051,18 +2089,18 @@ const handleSave = async () => {
                                                         <CustomTextField
                                                             label={`${typePrefix} Name`}
                                                             value={isSenderMode ? rec.senderName : rec.receiverName}
-                                                            onChange={handleRecNameChange}
-                                                            error={!!errors[`${recErrorsPrefix}.${isSenderMode ? 'senderName' : 'receiverName'}`]}
-                                                            helperText={errors[`${recErrorsPrefix}.${isSenderMode ? 'senderName' : 'receiverName'}`]}
+                                                            onChange={handleChangeFn(i, isSenderMode ? 'senderName' : 'receiverName')}
+                                                            error={!!errors[`${listKey}[${i}].${isSenderMode ? 'senderName' : 'receiverName'}`]}
+                                                            helperText={errors[`${listKey}[${i}].${isSenderMode ? 'senderName' : 'receiverName'}`]}
                                                             required
                                                             disabled={isFieldDisabled(`${recDisabledPrefix}.${isSenderMode ? 'senderName' : 'receiverName'}`)}
                                                         />
                                                         <CustomTextField
                                                             label={`${typePrefix} Contact`}
                                                             value={isSenderMode ? rec.senderContact : rec.receiverContact}
-                                                            onChange={handleRecContactChange}
-                                                            error={!!errors[`${recErrorsPrefix}.${isSenderMode ? 'senderContact' : 'receiverContact'}`]}
-                                                            helperText={errors[`${recErrorsPrefix}.${isSenderMode ? 'senderContact' : 'receiverContact'}`]}
+                                                            onChange={handleChangeFn(i, isSenderMode ? 'senderContact' : 'receiverContact')}
+                                                            error={!!errors[`${listKey}[${i}].${isSenderMode ? 'senderContact' : 'receiverContact'}`]}
+                                                            helperText={errors[`${listKey}[${i}].${isSenderMode ? 'senderContact' : 'receiverContact'}`]}
                                                             disabled={isFieldDisabled(`${recDisabledPrefix}.${isSenderMode ? 'senderContact' : 'receiverContact'}`)}
                                                         />
                                                     </Box>
@@ -2078,27 +2116,55 @@ const handleSave = async () => {
                                                         <CustomTextField
                                                             label={`${typePrefix} Address`}
                                                             value={isSenderMode ? rec.senderAddress : rec.receiverAddress}
-                                                            onChange={handleRecAddressChange}
-                                                            error={!!errors[`${recErrorsPrefix}.${isSenderMode ? 'senderAddress' : 'receiverAddress'}`]}
-                                                            helperText={errors[`${recErrorsPrefix}.${isSenderMode ? 'senderAddress' : 'receiverAddress'}`]}
+                                                            onChange={handleChangeFn(i, isSenderMode ? 'senderAddress' : 'receiverAddress')}
+                                                            error={!!errors[`${listKey}[${i}].${isSenderMode ? 'senderAddress' : 'receiverAddress'}`]}
+                                                            helperText={errors[`${listKey}[${i}].${isSenderMode ? 'senderAddress' : 'receiverAddress'}`]}
                                                             disabled={isFieldDisabled(`${recDisabledPrefix}.${isSenderMode ? 'senderAddress' : 'receiverAddress'}`)}
                                                         />
                                                         <CustomTextField
                                                             label={`${typePrefix} Email`}
                                                             value={isSenderMode ? rec.senderEmail : rec.receiverEmail}
-                                                            onChange={handleRecEmailChange}
-                                                            error={!!errors[`${recErrorsPrefix}.${isSenderMode ? 'senderEmail' : 'receiverEmail'}`]}
-                                                            helperText={errors[`${recErrorsPrefix}.${isSenderMode ? 'senderEmail' : 'receiverEmail'}`]}
+                                                            onChange={handleChangeFn(i, isSenderMode ? 'senderEmail' : 'receiverEmail')}
+                                                            error={!!errors[`${listKey}[${i}].${isSenderMode ? 'senderEmail' : 'receiverEmail'}`]}
+                                                            helperText={errors[`${listKey}[${i}].${isSenderMode ? 'senderEmail' : 'receiverEmail'}`]}
                                                             disabled={isFieldDisabled(`${recDisabledPrefix}.${isSenderMode ? 'senderEmail' : 'receiverEmail'}`)}
                                                         />
                                                     </Box>
                                                     {renderShippingSection()}
+                                                    {/* <CustomTextField
+                                label="Remarks"
+                                value={rec.remarks || ""}
+                                onChange={handleChangeFn(i, 'remarks')}
+                                multiline
+                                rows={2}
+                                fullWidth
+                                disabled={isFieldDisabled(`${recDisabledPrefix}.remarks`)}
+                            /> */}
                                                 </Box>
                                             );
                                         };
-
-                                        // Always render the list (assumes >=1 items via state enforcement)
-                                        return currentList.map((rec, i) => renderRecForm(rec, i));
+                                        const handleEmptyRecChange = (field, value) => {
+                                            addRecFn();
+                                            const fn = isSenderMode ? handleSenderChange : handleReceiverChange;
+                                            fn(0, field)({ target: { value } });
+                                        };
+                                        const emptyRec = {
+                                            [isSenderMode ? 'senderName' : 'receiverName']: '',
+                                            [isSenderMode ? 'senderContact' : 'receiverContact']: '',
+                                            [isSenderMode ? 'senderAddress' : 'receiverAddress']: '',
+                                            [isSenderMode ? 'senderEmail' : 'receiverEmail']: '',
+                                            eta: '',
+                                            etd: '',
+                                            shippingLine: '',
+                                            shippingDetails: []
+                                        };
+                                        if (currentList.length === 0) {
+                                            // Render empty receiver/sender form
+                                            const emptyI = 0;
+                                            return renderRecForm(emptyRec, emptyI);
+                                        } else {
+                                            return currentList.map((rec, i) => renderRecForm(rec, i));
+                                        }
                                     })()}
                                     <Button
                                         variant="outlined"
@@ -2352,11 +2418,11 @@ const handleSave = async () => {
                                                 onChange={handleChange}
                                                 error={!!errors.thirdPartyTransport}
                                                 helperText={errors.thirdPartyTransport}
-                                                renderValue={(selected) => selected || "Select Company"}
+                                                renderValue={(selected) => companies.find(c => c.value === selected)?.label || "Select Company"}
                                             >
                                                 {companies.map((c) => (
-                                                    <MenuItem key={c} value={c}>
-                                                        {c}
+                                                    <MenuItem key={c.value} value={c.value}>
+                                                        {c.label}
                                                     </MenuItem>
                                                 ))}
                                             </CustomSelect>
@@ -2442,15 +2508,15 @@ const handleSave = async () => {
                                     </Stack>
                                     <Stack direction="row" justifyContent="space-between" alignItems="center">
                                         <Typography variant="body1" fontWeight="medium">Point of Origin:</Typography>
-                                        <Typography variant="body1">{formData.pointOfOrigin || "-"}</Typography>
+                                        <Typography variant="body1">{places.find(p => p.value === formData.pointOfOrigin)?.label || "-"}</Typography>
                                     </Stack>
                                     <Stack direction="row" justifyContent="space-between" alignItems="center">
                                         <Typography variant="body1" fontWeight="medium">Place of Loading:</Typography>
-                                        <Typography variant="body1">{formData.placeOfLoading || "-"}</Typography>
+                                        <Typography variant="body1">{places.find(p => p.value === formData.placeOfLoading)?.label || "-"}</Typography>
                                     </Stack>
                                     <Stack direction="row" justifyContent="space-between" alignItems="center">
                                         <Typography variant="body1" fontWeight="medium">Final Destination:</Typography>
-                                        <Typography variant="body1">{formData.finalDestination || "-"}</Typography>
+                                        <Typography variant="body1">{places.find(p => p.value === formData.finalDestination)?.label || "-"}</Typography>
                                     </Stack>
                                     <Stack direction="row" justifyContent="space-between" alignItems="center">
                                         <Typography variant="body1" fontWeight="medium">Owner:</Typography>
@@ -2483,6 +2549,12 @@ const handleSave = async () => {
                                         <Typography variant="body1" fontWeight="medium">Total Items (All {formData.senderType === 'sender' ? 'Receivers' : 'Senders'}):</Typography>
                                         <Chip label={formData.globalTotalItems || "-"} variant="outlined" color="success" />
                                     </Stack>
+                                    {/* {formData.globalRemainingItems < formData.globalTotalItems && (
+                                        <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                            <Typography variant="body1" fontWeight="medium">Remaining Items (Partials):</Typography>
+                                            <Chip label={formData.globalRemainingItems} variant="filled" color="warning" />
+                                        </Stack>
+                                    )} */}
                                     <Stack direction="row" justifyContent="space-between" alignItems="center">
                                         <Typography variant="body1" fontWeight="medium">Shipping Line:</Typography>
                                         <Typography variant="body1">{firstPanel2Item.shippingLine || "-"}</Typography>
