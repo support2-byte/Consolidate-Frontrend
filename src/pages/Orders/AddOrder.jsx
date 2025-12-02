@@ -39,7 +39,8 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import CopyIcon from "@mui/icons-material/ContentCopy"; // For duplicate button
 import { useNavigate, useLocation } from "react-router-dom";
 import { api } from "../../api";
-
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 // Custom TextField with error support
 const CustomTextField = ({ disabled, ...props }) => (
     <TextField
@@ -125,6 +126,7 @@ const OrderForm = () => {
     const [loadingContainers, setLoadingContainers] = useState(false);
     const [categories, setCategories] = useState([]);
     const orderId = location.state?.orderId;
+    const [selectedOrder, setSelectedOrder] = useState(null);
     const [isEditMode, setIsEditMode] = useState(!!orderId);
     // console.log('Order ID from state:', orderId);
     // Snackbar state for error/success messages
@@ -521,6 +523,7 @@ const OrderForm = () => {
                 throw new Error('Invalid response data');
             }
              console.log('Fetched order data:', response.data);
+             setSelectedOrder(response.data);
             // Map snake_case to camelCase for core fields
             const camelData = {};
             Object.keys(response.data).forEach(apiKey => {
@@ -1145,6 +1148,280 @@ const handleSave = async () => {
         setLoading(false);
     }
 };
+
+
+// Helper to load images as Base64
+const loadImageAsBase64 = (url) => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'Anonymous';
+    img.src = url;
+
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      resolve(canvas.toDataURL('image/png'));
+    };
+
+    img.onerror = () => resolve(null);
+  });
+};
+
+const generateOrderPDF = async (selectedOrder) => {
+  if (!selectedOrder) return;
+
+  const doc = new jsPDF('p', 'mm', 'a4');
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const margin = 8;
+  const brandPrimary = [13, 108, 106];  // #0D6C6A
+  const brandLight = [220, 245, 243];
+  const yStart = 30;
+
+  //---------------------------------------------------
+  // HEADER
+  //---------------------------------------------------
+const drawHeader = async () => {
+  const headerHeight = 28;
+
+  doc.setFillColor(...brandPrimary);
+  doc.rect(0, 0, pageWidth, headerHeight, 'F');
+  const logoBase64 = await loadImageAsBase64("/logo.png");
+
+  if (logoBase64) {
+    doc.addImage(logoBase64, 'PNG', margin, 4, 60, 20);
+  } else {
+    console.warn("Logo failed to load.");
+  }
+    doc.setTextColor(255, 255, 255);
+  doc.setFontSize(9).setFont('helvetica', 'normal');
+  doc.text(`Booking Ref: ${selectedOrder.booking_ref || "N/A"}`, pageWidth - margin, 12, { align: 'right' });
+  doc.text(`Generated: ${new Date().toLocaleString()}`, pageWidth - margin, 17, { align: 'right' });
+};
+
+  //---------------------------------------------------
+  // SUMMARY CARDS
+  //---------------------------------------------------
+  const drawSummary = (y) => {
+    const cards = [
+      ["Order ID", selectedOrder.id || 'N/A'],
+      ["Receivers", selectedOrder.receivers?.length || 0],
+      ["Status", selectedOrder.status || "Created"],
+      ["Total Assigned Qty", selectedOrder.total_assigned_qty || 0],
+    ];
+
+    const cardWidth = (pageWidth - margin * 2 - 6) / 2;
+    const cardHeight = 16;
+
+    cards.forEach((item, i) => {
+      const col = i % 2;
+      const row = Math.floor(i / 2);
+      const x = margin + (col * (cardWidth + 6));
+      const cardY = y + row * (cardHeight + 6);
+
+      // Card box
+      doc.setDrawColor(220, 220, 220);
+      doc.setFillColor(...brandLight);
+      doc.roundedRect(x, cardY, cardWidth, cardHeight, 2, 2, 'FD');
+
+      // Title bar
+      doc.setFillColor(...brandPrimary);
+      doc.rect(x, cardY, cardWidth, 5, 'F');
+      doc.setFont('helvetica', 'bold').setFontSize(9);
+      doc.setTextColor(255, 255, 255);
+      doc.text(item[0], x + 2, cardY + 4);
+
+      // Value
+      doc.setTextColor(50, 50, 50);
+      doc.setFont('helvetica', 'normal');
+      doc.text(String(item[1]), x + 3, cardY + 11);
+    });
+
+    return y + Math.ceil(cards.length / 2) * (cardHeight + 6) + 5;
+  };
+
+  //---------------------------------------------------
+  // KEY-VALUE DETAILS SECTION
+  //---------------------------------------------------
+  const drawDetails = (y, title, details) => {
+    doc.setFont('helvetica', 'bold').setFontSize(14);
+    doc.setTextColor(...brandPrimary);
+    doc.text(title, margin, y);
+
+    y += 4;
+
+    // Underline
+    doc.setDrawColor(...brandPrimary);
+    doc.setLineWidth(0.6);
+    doc.line(margin, y, pageWidth - margin, y);
+    y += 6;
+
+    const colWidth = (pageWidth - margin * 2 - 10) / 2;
+    const rowHeight = 8;
+
+    details.forEach((pair, index) => {
+      const col = index % 2;
+      const row = Math.floor(index / 2);
+      const x = margin + col * (colWidth + 10);
+      const dy = y + row * rowHeight;
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.setTextColor(...brandPrimary);
+      doc.text(pair[0], x, dy);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(50, 50, 50);
+      doc.text(String(pair[1] || 'N/A'), x, dy + 4);
+    });
+
+    return y + Math.ceil(details.length / 2) * rowHeight + 6;
+  };
+
+  //---------------------------------------------------
+  // REMARKS & ATTACHMENTS BOX
+  //---------------------------------------------------
+  const drawBoxText = (y, title, text) => {
+    if (!text) return y;
+
+    const boxHeight = 20;
+    doc.setFillColor(248, 249, 250);
+    doc.roundedRect(margin, y, pageWidth - margin * 2, boxHeight, 2, 2, 'F');
+
+    doc.setFont('helvetica', 'bold').setFontSize(10);
+    doc.setTextColor(...brandPrimary);
+    doc.text(title, margin + 3, y + 6);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(50, 50, 50);
+    const wrapped = doc.splitTextToSize(text, pageWidth - margin * 2 - 6);
+    doc.text(wrapped, margin + 3, y + 11);
+
+    return y + boxHeight + 6;
+  };
+
+  //---------------------------------------------------
+  // RECEIVERS TABLE
+  //---------------------------------------------------
+  const drawReceivers = (y) => {
+    if (!selectedOrder.receivers?.length) return y;
+
+    doc.setFont('helvetica', 'bold').setFontSize(14);
+    doc.setTextColor(...brandPrimary);
+    doc.text("Receivers & Shipping Details", margin, y);
+    y += 6;
+
+    const headers = ['Receiver', 'Status', 'Consignment #', 'Qty', 'Weight', 'Contact', 'Address'];
+    const colWidths = [30, 30, 50, 20, 25, 30, 30];
+
+    autoTable(doc, {
+      startY: y,
+      head: [headers],
+      body: selectedOrder.receivers.map(r => [
+        r.receiver_name || 'N/A',
+        r.status || 'N/A',
+        r.consignment_number || 'N/A',
+        r.total_number ?? 'N/A',
+        r.total_weight ?? 'N/A',
+        r.receiver_contact || 'N/A',
+        r.receiver_address || 'N/A'
+      ]),
+      headStyles: { fillColor: brandPrimary, textColor: 255, fontStyle: 'bold' },
+      bodyStyles: { fontSize: 9, cellPadding: 3 },
+      columnStyles: {
+        0: { cellWidth: 30 },
+        1: { cellWidth: 35 },
+        2: { cellWidth: 30 },
+        3: { cellWidth: 25 },
+        4: { cellWidth: 25 },
+        5: { cellWidth: 25 },
+        6: { cellWidth: 25 },
+      },
+      margin: { left: margin, right: margin },
+    });
+
+    return doc.lastAutoTable.finalY + 6;
+  };
+
+  //---------------------------------------------------
+  // FOOTER
+  //---------------------------------------------------
+  const drawFooter = () => {
+    const y = 280;
+    doc.setDrawColor(...brandPrimary);
+    doc.line(margin, y, pageWidth - margin, y);
+
+    doc.setFont('helvetica', 'normal').setFontSize(9);
+    doc.setTextColor(80, 80, 80);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, margin, y + 6);
+    doc.text(`Page ${doc.getCurrentPageInfo().pageNumber}`, pageWidth - margin, y + 6, { align: 'right' });
+  };
+
+  //---------------------------------------------------
+  // BUILD PDF
+  //---------------------------------------------------
+  await drawHeader();
+
+  let y = yStart;
+
+  // Summary cards
+  y = drawSummary(y);
+
+  // Order Information
+  const orderDetails = [
+    ["Booking Ref", selectedOrder.booking_ref],
+    ["Overall Status", selectedOrder.status],
+    ["RGL Booking #", selectedOrder.rgl_booking_number],
+    ["Place of Loading", selectedOrder.place_of_loading],
+    ["Final Destination", selectedOrder.final_destination],
+    ["Place of Delivery", selectedOrder.place_of_delivery],
+    ["ETA", selectedOrder.eta || 'N/A'],
+    ["ETD", selectedOrder.etd || 'N/A'],
+    ["Shipping Line", selectedOrder.shipping_line],
+    ["Point of Origin", selectedOrder.point_of_origin],
+  ];
+  y = drawDetails(y, "ORDER INFORMATION", orderDetails);
+
+  // Sender Information
+  const senderDetails = [
+    ["Sender Name", selectedOrder.sender_name],
+    ["Contact Number", selectedOrder.sender_contact],
+    ["Address", selectedOrder.sender_address],
+    ["Email", selectedOrder.sender_email],
+    ["Sender Reference", selectedOrder.sender_ref],
+  ];
+  y = drawDetails(y, "SENDER INFORMATION", senderDetails);
+
+  // Remarks
+  y = drawBoxText(y, "Order Remarks", selectedOrder.order_remarks);
+  y = drawBoxText(y, "Consignment Remarks", selectedOrder.consignment_remarks);
+
+  // Receivers Table
+  y = drawReceivers(y);
+
+  // Attachments
+  const attachmentsText = selectedOrder.attachments?.length > 0
+    ? selectedOrder.attachments.join(", ")
+    : "None";
+  y = drawBoxText(y, "Attachments", attachmentsText);
+
+  // Footer
+  drawFooter();
+
+  //---------------------------------------------------
+  // SAVE PDF
+  //---------------------------------------------------
+  doc.save(`RGS_Order_${selectedOrder.booking_ref || "Unknown"}.pdf`);
+};
+
+
+
+
+
+
     const handleCancel = () => {
         navigate(-1);
     };
@@ -1315,598 +1592,459 @@ const handleSave = async () => {
     const firstPanel2Item = (formData.senderType === 'sender' ? formData.receivers : formData.senders)[0] || {};
     const ownerName = formData.senderType === 'sender' ? formData.senderName : formData.receiverName;
     return (
-        <>
-            <Paper sx={{ p: 3, borderRadius: 3, boxShadow: 3, bgcolor: "#fafafa" }}>
-                <Box sx={{ p: 3 }}>
-                    <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}>
-                        <Typography variant="h4" fontWeight="bold" color="#f58220">
-                            {isEditMode ? "Edit" : "New"} Order Details
-                        </Typography>
-                        <Stack direction="row" gap={1}>
-                            <Button
-                                variant="outlined"
-                                onClick={handleCancel}
-                                sx={{ borderRadius: 2, borderColor: "#f58220", color: "#f58220", px: 3 }}
-                                disabled={loading}
-                            >
-                                CANCEL
-                            </Button>
-                            <Button
-                                variant="contained"
-                                onClick={handleSave}
-                                sx={{
-                                    borderRadius: 2,
-                                    backgroundColor: "#0d6c6a",
-                                    color: "#fff",
-                                    px: 3,
-                                    "&:hover": { backgroundColor: "#0d6c6a" },
-                                }}
-                                disabled={loading}
-                            >
-                                {loading ? "Saving..." : "SAVE"}
-                            </Button>
-                        </Stack>
-                    </Stack>
-                    {/* Top Order Fields */}
-                    <Stack spacing={3} mb={4}>
-                        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                            <CustomTextField
-                                label="Booking Ref"
-                                name="bookingRef"
-                                value={formData.bookingRef}
-                                onChange={handleChange}
-                                error={!!errors.bookingRef}
-                                helperText={errors.bookingRef}
-                                required
-                                disabled={isFieldDisabled('bookingRef')}
-                            />
-                            <CustomTextField
-                                label="RGL Booking Number"
-                                name="rglBookingNumber"
-                                value={formData.rglBookingNumber}
-                                onChange={handleChange}
-                                error={!!errors.rglBookingNumber}
-                                helperText={errors.rglBookingNumber}
-                                required
-                                disabled={isFieldDisabled('rglBookingNumber')}
-                            />
-                        </Box>
-                        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                            <CustomSelect
-                                label="Point of Origin"
-                                name="pointOfOrigin"
-                                value={formData.pointOfOrigin || "Karachi"}
-                                onChange={handleChange}
-                                error={!!errors.pointOfOrigin}
-                                renderValue={(selected) => selected || "Karachi"}
-                            >
-                                {places.map((p) => (
-                                    <MenuItem key={p} value={p}>
-                                        {p}
-                                    </MenuItem>
-                                ))}
-                            </CustomSelect>
-                            <CustomSelect
-                                label="Place of Loading"
-                                name="placeOfLoading"
-                                value={formData.placeOfLoading || ""}
-                                onChange={handleChange}
-                                error={!!errors.placeOfLoading}
-                                renderValue={(selected) => selected || "Select Place of Loading"}
-                            >
-                                {places.map((p) => (
-                                    <MenuItem key={p} value={p}>
-                                        {p}
-                                    </MenuItem>
-                                ))}
-                            </CustomSelect>
-                        </Box>
-                        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                            <CustomSelect
-                                label="Place of Delivery"
-                                name="placeOfDelivery"
-                                value={formData.placeOfDelivery || ""}
-                                onChange={handleChange}
-                                error={!!errors.placeOfDelivery}
-                                renderValue={(selected) => selected || "Select Place of Delivery"}
-                            >
-                                {places.map((p) => (
-                                    <MenuItem key={p} value={p}>
-                                        {p}
-                                    </MenuItem>
-                                ))}
-                            </CustomSelect>
-                            <CustomSelect
-                                label="Final Destination"
-                                name="finalDestination"
-                                value={formData.finalDestination || "Dubai"}
-                                onChange={handleChange}
-                                error={!!errors.finalDestination}
-                                renderValue={(selected) => selected || "Dubai"}
-                            >
-                                {places.map((p) => (
-                                    <MenuItem key={p} value={p}>
-                                        {p}
-                                    </MenuItem>
-                                ))}
-                            </CustomSelect>
-                        </Box>
-                        <CustomTextField
-                            label="Order Remarks"
-                            name="orderRemarks"
-                            value={formData.orderRemarks}
-                            onChange={handleChange}
-                            error={!!errors.orderRemarks}
-                            helperText={errors.orderRemarks}
-                            fullWidth
-                            multiline
-                            rows={2}
-                            disabled={isFieldDisabled('orderRemarks')}
-                        />
-                    </Stack>
-                    <Divider sx={{ my: 3, borderColor: "#e0e0e0" }} />
-                    {/* Accordion Sections */}
-                    <Stack spacing={2}>
-                        <Accordion
-                            expanded={expanded.has("panel1")}
-                            onChange={handleAccordionChange("panel1")}
-                            sx={{
-                                borderRadius: 2,
-                                boxShadow: "none",
-                                "&:before": { display: "none" },
-                                "&.Mui-expanded": { boxShadow: "0 2px 8px rgba(0,0,0,0.1)" },
-                            }}
-                        >
-                            <AccordionSummary
-                                expandIcon={<ExpandMoreIcon />}
-                                sx={{
-                                    bgcolor: expanded.has("panel1") ? "#0d6c6a" : "#fff3e0",
-                                    borderRadius: 2,
-                                    "& .MuiAccordionSummary-content": { fontWeight: "bold", color: expanded.has("panel1") ? "#fff" : "#f58220" },
-                                }}
-                            >
-                                1. Owner Details
-                            </AccordionSummary>
-                            <AccordionDetails sx={{ p: 3, bgcolor: "#fff" }}>
-                                <Stack spacing={2}>
-                                    {(() => {
-                                        const sendersList = [
-                                            { id: 1, name: 'John Doe Sender', contact: '+1-234-5678', address: '123 Sender St, City', email: 'john.sender@example.com', ref: 'SREF001', remarks: 'Preferred sender' },
-                                            { id: 2, name: 'Jane Smith Sender', contact: '+1-876-5432', address: '456 Sender Ave, Town', email: 'jane.sender@example.com', ref: 'SREF002', remarks: 'Regular sender' }
-                                        ];
-                                        const receiversList = [
-                                            { id: 1, name: 'Alice Receiver', contact: '+1-111-2222', address: '789 Receiver Blvd, Village', email: 'alice.receiver@example.com', ref: 'RREF001', remarks: 'Main receiver' },
-                                            { id: 2, name: 'Bob Receiver', contact: '+1-333-4444', address: '101 Receiver Rd, Hamlet', email: 'bob.receiver@example.com', ref: 'RREF002', remarks: 'Secondary receiver' }
-                                        ];
-                                        const typePrefix = formData.senderType === 'receiver' ? 'Receiver' : 'Sender';
-                                        const fieldPrefix = formData.senderType === 'sender' ? 'sender' : 'receiver';
-                                        return (
-                                            <>
-                                                <FormControl component="fieldset" error={!!errors.senderType}>
-                                                    <Typography variant="subtitle1" fontWeight="bold" color="#f58220" gutterBottom>
-                                                        Select Type
-                                                    </Typography>
-                                                    <RadioGroup
-                                                        name="senderType"
-                                                        value={formData.senderType}
-                                                        onChange={handleChange}
-                                                        sx={{ flexDirection: 'row', gap: 3, mb: 1 }}
-                                                        defaultValue="sender"
-                                                    >
-                                                        <FormControlLabel value="sender" control={<Radio />} label="Sender Details" />
-                                                        <FormControlLabel value="receiver" control={<Radio />} label="Receiver Details" />
-                                                    </RadioGroup>
-                                                    {errors.senderType && <Typography variant="caption" color="error">{errors.senderType}</Typography>}
-                                                </FormControl>
-                                                <CustomSelect
-                                                    label={`Select ${typePrefix}`}
-                                                    name="selectedSenderOwner"
-                                                    value={formData.selectedSenderOwner || ""}
-                                                    onChange={(e) => {
-                                                        const value = e.target.value;
-                                                        handleChange(e);
-                                                        if (value) {
-                                                            const list = formData.senderType === 'sender' ? sendersList : receiversList;
-                                                            const item = list.find(l => l.id.toString() === value);
-                                                            if (item) {
-                                                                setFormData(prev => ({
-                                                                    ...prev,
-                                                                    [`${fieldPrefix}Name`]: item.name || '',
-                                                                    [`${fieldPrefix}Contact`]: item.contact || '',
-                                                                    [`${fieldPrefix}Address`]: item.address || '',
-                                                                    [`${fieldPrefix}Email`]: item.email || '',
-                                                                    [`${fieldPrefix}Ref`]: item.ref || '',
-                                                                    [`${fieldPrefix}Remarks`]: item.remarks || '',
-                                                                }));
-                                                            }
-                                                        } else {
-                                                            setFormData(prev => ({
-                                                                ...prev,
-                                                                [`${fieldPrefix}Name`]: '',
-                                                                [`${fieldPrefix}Contact`]: '',
-                                                                [`${fieldPrefix}Address`]: '',
-                                                                [`${fieldPrefix}Email`]: '',
-                                                                [`${fieldPrefix}Ref`]: '',
-                                                                [`${fieldPrefix}Remarks`]: '',
-                                                            }));
-                                                        }
-                                                    }}
-                                                    renderValue={(selected) => {
-                                                        if (!selected) return `Select ${typePrefix}`;
-                                                        const list = formData.senderType === 'sender' ? sendersList : receiversList;
-                                                        const item = list.find(l => l.id.toString() === selected);
-                                                        return item ? item.name : `Select ${typePrefix}`;
-                                                    }}
-                                                >
-                                                    <MenuItem value="">Select from List</MenuItem>
-                                                    {(formData.senderType === 'sender' ? sendersList : receiversList).map((item) => (
-                                                        <MenuItem key={item.id} value={item.id.toString()}>
-                                                            {item.name}
-                                                        </MenuItem>
-                                                    ))}
-                                                </CustomSelect>
-                                                <Stack spacing={2}>
-                                                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                                        <CustomTextField
-                                                            label={`${typePrefix} Name`}
-                                                            name={`${fieldPrefix}Name`}
-                                                            value={formData[`${fieldPrefix}Name`] || ""}
-                                                            onChange={handleChange}
-                                                            error={!!errors[`${fieldPrefix}Name`]}
-                                                            helperText={errors[`${fieldPrefix}Name`]}
-                                                            required
-                                                        />
-                                                        <CustomTextField
-                                                            label={`${typePrefix} Contact`}
-                                                            name={`${fieldPrefix}Contact`}
-                                                            value={formData[`${fieldPrefix}Contact`] || ""}
-                                                            onChange={handleChange}
-                                                            error={!!errors[`${fieldPrefix}Contact`]}
-                                                            helperText={errors[`${fieldPrefix}Contact`]}
-                                                        />
-                                                    </Box>
-                                                    <CustomTextField
-                                                        label={`${typePrefix} Address`}
-                                                        name={`${fieldPrefix}Address`}
-                                                        value={formData[`${fieldPrefix}Address`] || ""}
-                                                        onChange={handleChange}
-                                                        error={!!errors[`${fieldPrefix}Address`]}
-                                                        helperText={errors[`${fieldPrefix}Address`]}
-                                                        multiline
-                                                        rows={2}
-                                                    />
-                                                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                                        <CustomTextField
-                                                            label={`${typePrefix} Email`}
-                                                            name={`${fieldPrefix}Email`}
-                                                            value={formData[`${fieldPrefix}Email`] || ""}
-                                                            onChange={handleChange}
-                                                            error={!!errors[`${fieldPrefix}Email`]}
-                                                            helperText={errors[`${fieldPrefix}Email`]}
-                                                        />
-                                                        <CustomTextField
-                                                            label={`${typePrefix} Ref`}
-                                                            name={`${fieldPrefix}Ref`}
-                                                            value={formData[`${fieldPrefix}Ref`] || ""}
-                                                            onChange={handleChange}
-                                                            error={!!errors[`${fieldPrefix}Ref`]}
-                                                            helperText={errors[`${fieldPrefix}Ref`]}
-                                                        />
-                                                    </Box>
-                                                    <CustomTextField
-                                                        label={`${typePrefix} Remarks`}
-                                                        name={`${fieldPrefix}Remarks`}
-                                                        value={formData[`${fieldPrefix}Remarks`] || ""}
-                                                        onChange={handleChange}
-                                                        error={!!errors[`${fieldPrefix}Remarks`]}
-                                                        helperText={errors[`${fieldPrefix}Remarks`]}
-                                                        multiline
-                                                        rows={2}
-                                                    />
-                                                </Stack>
-                                            </>
-                                        );
-                                    })()}
-                                </Stack>
-                            </AccordionDetails>
-                        </Accordion>
-                        <Accordion
-                            expanded={expanded.has("panel2")}
-                            onChange={handleAccordionChange("panel2")}
-                            sx={{
-                                borderRadius: 2,
-                                boxShadow: "none",
-                                "&:before": { display: "none" },
-                                "&.Mui-expanded": { boxShadow: "0 2px 8px rgba(0,0,0,0.1)" },
-                            }}
-                        >
-                            <AccordionSummary
-                                expandIcon={<ExpandMoreIcon />}
-                                sx={{
-                                    bgcolor: expanded.has("panel2") ? "#0d6c6a" : "#fff3e0",
-                                    borderRadius: 2,
-                                    "& .MuiAccordionSummary-content": {
-                                        fontWeight: "bold",
-                                        color: expanded.has("panel2") ? "#fff" : "#f58220",
-                                    },
-                                }}
-                            >
-                                2. {formData.senderType === 'receiver' ? 'Sender Details (with Shipping)' : 'Receiver Details (with Shipping)'}
-                            </AccordionSummary>
-                            <AccordionDetails sx={{ p: 3, bgcolor: "#fff" }}>
-                                <Stack spacing={2}>
-                                    {formData.senderType === 'sender' ? (
-                                        errors.receivers && <Alert severity="error">{errors.receivers}</Alert>
-                                    ) : (
-                                        errors.senders && <Alert severity="error">{errors.senders}</Alert>
-                                    )}
-                                    {/* Dynamic: Summary Table for multiples */}
-                                    {(formData.senderType === 'sender' ? formData.receivers : formData.senders).length > 1 && (
-                                        <Stack spacing={1}>
-                                            <Typography variant="subtitle2" color="primary">
-                                                {formData.senderType === 'sender' ? 'Receivers' : 'Senders'} Overview
-                                            </Typography>
-                                            <Stack direction="row" spacing={2} sx={{ overflowX: 'auto' }}>
-                                                {(formData.senderType === 'sender' ? formData.receivers : formData.senders).map((rec, i) => {
-                                                    const totalItems = (rec.shippingDetails || []).reduce((sum, sd) => sum + (parseInt(sd.totalNumber || 0) || 0), 0);
-                                                    const remainingItems = (rec.shippingDetails || []).reduce((sum, sd) => sum + (parseInt(sd.remainingItems || 0) || 0), 0);
-                                                    return (
-                                                        <Chip
-                                                            key={i}
-                                                            label={`${(formData.senderType === 'sender' ? rec.receiverName : rec.senderName) ||
-                                                                (formData.senderType === 'sender' ? `Receiver ${i + 1}` : `Sender ${i + 1}`)
-                                                                } (Items: ${totalItems} / Remaining: ${remainingItems})`}
-                                                            variant={rec.fullPartial === 'Partial' ? "filled" : "outlined"}
-                                                            color={rec.fullPartial === 'Partial' ? "warning" : "primary"}
-                                                        />
-                                                    );
-                                                })}
-                                            </Stack>
-                                        </Stack>
-                                    )}
-                                    {(() => {
-    const currentList = formData.senderType === 'sender' ? formData.receivers : formData.senders;
-    const isSenderMode = formData.senderType === 'receiver';
-    const typePrefix = isSenderMode ? 'Sender' : 'Receiver';
-    const handleChangeFn = isSenderMode ? handleSenderChange : handleReceiverChange;
-    const handleShippingChangeFn = isSenderMode ? handleSenderShippingChange : handleReceiverShippingChange;
-    const handlePartialChangeFn = isSenderMode ? handleSenderPartialChange : handleReceiverPartialChange;
-    const addShippingFn = isSenderMode ? addSenderShipping : addReceiverShipping;
-    const duplicateShippingFn = isSenderMode ? duplicateSenderShipping : duplicateReceiverShipping;
-    const removeShippingFn = isSenderMode ? removeSenderShipping : removeReceiverShipping;
-    const listKey = isSenderMode ? 'senders' : 'receivers';
-    const addRecFn = isSenderMode ? addSender : addReceiver;
-    const duplicateRecFn = isSenderMode ? duplicateSender : duplicateReceiver;
-    const removeRecFn = isSenderMode ? removeSender : removeReceiver;
-
-    const renderRecForm = (rec, i) => {
-        const recErrorsPrefix = `${listKey}[${i}]`;
-        const recDisabledPrefix = `${listKey}[${i}]`;
-        const handleRecNameChange = handleChangeFn(i, isSenderMode ? 'senderName' : 'receiverName');
-        const handleRecContactChange = handleChangeFn(i, isSenderMode ? 'senderContact' : 'receiverContact');
-        const handleRecAddressChange = handleChangeFn(i, isSenderMode ? 'senderAddress' : 'receiverAddress');
-        const handleRecEmailChange = handleChangeFn(i, isSenderMode ? 'senderEmail' : 'receiverEmail');
-
-        const renderShippingSection = () => (
-            <Stack spacing={2}>
-                <Typography variant="subtitle1" color="primary" fontWeight="bold" mb={1}>
-                    Shipping Details
-                </Typography>
-                {/* ETA, ETD at receiver/sender level (if still needed; or move per sd as per prev advice) */}
-                <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                    {/* <CustomTextField
-                        label="ETA"
-                        type="date"
-                        value={rec.eta || ""}
-                        onChange={handleChangeFn(i, 'eta')}
-                        InputLabelProps={{ shrink: true }}
-                        error={!!errors[`${recErrorsPrefix}.eta`]}
-                        helperText={errors[`${recErrorsPrefix}.eta`]}
-                        required
-                        disabled={isFieldDisabled(`${recDisabledPrefix}.eta`)}
-                    />
-                    <CustomTextField
-                        label="ETD"
-                        type="date"
-                        value={rec.etd || ""}
-                        onChange={handleChangeFn(i, 'etd')}
-                        InputLabelProps={{ shrink: true }}
-                        error={!!errors[`${recErrorsPrefix}.etd`]}
-                        helperText={errors[`${recErrorsPrefix}.etd`]}
-                        required
-                        disabled={isFieldDisabled(`${recDisabledPrefix}.etd`)}
-                    /> */}
-                </Box>
-                {/* Shipping Details Forms */}
-                {(rec.shippingDetails || []).length === 0 ? (
-                    // Empty placeholder (unchanged, but icons now always visible)
-                    <Box sx={{ p: 1.5, border: 1, borderColor: "grey.200", borderRadius: 1 }}>
-                        <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
-                            <Typography variant="body2" color="primary" fontWeight="bold">
-                                Shipping Detail 1
+            <>
+                <Paper sx={{ p: 3, borderRadius: 3, boxShadow: 3, bgcolor: "#fafafa" }}>
+                    <Box sx={{ p: 3 }}>
+                        <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}>
+                            <Typography variant="h4" fontWeight="bold" color="#f58220">
+                                {isEditMode ? "Edit" : "New"} Order Details
                             </Typography>
-                            <Stack direction="row" spacing={1}>
-                                {/* UPDATED: Remove !isEditMode - always show icons */}
-                                <IconButton
-                                    onClick={() => duplicateShippingFn(i, 0)}
-                                    size="small"
-                                    title="Duplicate"
+                            <Stack direction="row" gap={1}>
+                                <Button
+                                    variant="outlined"
+                                    onClick={handleCancel}
+                                    sx={{ borderRadius: 2, borderColor: "#f58220", color: "#f58220", px: 3 }}
+                                    disabled={loading}
                                 >
-                                    <CopyIcon />
-                                </IconButton>
-                                <IconButton
-                                    onClick={() => removeShippingFn(i, 0)}
-                                    size="small"
-                                    title="Delete"
+                                    CANCEL
+                                </Button>
+                                <Button
+                                    variant="contained"
+                                    onClick={handleSave}
+                                    sx={{
+                                        borderRadius: 2,
+                                        backgroundColor: "#0d6c6a",
+                                        color: "#fff",
+                                        px: 3,
+                                        "&:hover": { backgroundColor: "#0d6c6a" },
+                                    }}
+                                    disabled={loading}
                                 >
-                                    <DeleteIcon />
-                                </IconButton>
+                                    {loading ? "Saving..." : "SAVE"}
+                                </Button>
                             </Stack>
                         </Stack>
-                                                            <Stack spacing={1.5}>
-                                                                <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                                                    <CustomTextField
-                                                                        label="Pickup Location"
-                                                                        value=""
-                                                                        onChange={(e) => {
-                                                                            addShippingFn(i);  // Add first if empty
-                                                                            handleShippingChangeFn(i, 0, 'pickupLocation')(e);
-                                                                        }}
-                                                                        error={!!errors[`${recErrorsPrefix}.shippingDetails[0].pickupLocation`]}
-                                                                        helperText={errors[`${recErrorsPrefix}.shippingDetails[0].pickupLocation`]}
-                                                                        required
-                                                                        disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].pickupLocation`)}
-                                                                    />
-                                                                    <CustomSelect
-                                                                        label="Category"
-                                                                        value=""
-                                                                        onChange={(e) => {
-                                                                            addShippingFn(i);
-                                                                            handleShippingChangeFn(i, 0, 'category')(e);
-                                                                        }}
-                                                                        error={!!errors[`${recErrorsPrefix}.shippingDetails[0].category`]}
-                                                                        helperText={errors[`${recErrorsPrefix}.shippingDetails[0].category`]}
-                                                                        required
-                                                                        disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].category`)}
-                                                                        renderValue={(selected) => selected || "Select Category"}
-                                                                    >
-                                                                        <MenuItem value="">Select Category</MenuItem>
-                                                                        {categories.map((c) => (
-                                                                            <MenuItem key={c} value={c}>
-                                                                                {c}
-                                                                            </MenuItem>
-                                                                        ))}
-                                                                    </CustomSelect>
-                                                                </Box>
-                                                                <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                                                    <CustomSelect
-                                                                        label="Subcategory"
-                                                                        value=""
-                                                                        onChange={(e) => {
-                                                                            addShippingFn(i);
-                                                                            handleShippingChangeFn(i, 0, 'subcategory')(e);
-                                                                        }}
-                                                                        error={!!errors[`${recErrorsPrefix}.shippingDetails[0].subcategory`]}
-                                                                        helperText={errors[`${recErrorsPrefix}.shippingDetails[0].subcategory`]}
-                                                                        required
-                                                                        disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].subcategory`)}
-                                                                        renderValue={(selected) => selected || "Select Subcategory"}
-                                                                    >
-                                                                        <MenuItem value="">Select Subcategory</MenuItem>
-                                                                        {(categorySubMap[''] || []).map((sc) => (
-                                                                            <MenuItem key={sc} value={sc}>
-                                                                                {sc}
-                                                                            </MenuItem>
-                                                                        ))}
-                                                                    </CustomSelect>
-                                                                    <CustomSelect
-                                                                        label="Type"
-                                                                        value=""
-                                                                        onChange={(e) => {
-                                                                            addShippingFn(i);
-                                                                            handleShippingChangeFn(i, 0, 'type')(e);
-                                                                        }}
-                                                                        error={!!errors[`${recErrorsPrefix}.shippingDetails[0].type`]}
-                                                                        helperText={errors[`${recErrorsPrefix}.shippingDetails[0].type`]}
-                                                                        required
-                                                                        disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].type`)}
-                                                                        renderValue={(selected) => selected || "Select Type"}
-                                                                    >
-                                                                        <MenuItem value="">Select Unit</MenuItem>
-                                                                        {types.slice(1).map((t) => (
-                                                                            <MenuItem key={t} value={t}>
-                                                                                {t}
-                                                                            </MenuItem>
-                                                                        ))}
-                                                                    </CustomSelect>
-                                                                </Box>
-                                                                <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                                                    <CustomTextField
-                                                                        label="Total Number"
-                                                                        value=""
-                                                                        onChange={(e) => {
-                                                                            addShippingFn(i);
-                                                                            handleShippingChangeFn(i, 0, 'totalNumber')(e);
-                                                                        }}
-                                                                        error={!!errors[`${recErrorsPrefix}.shippingDetails[0].totalNumber`]}
-                                                                        helperText={errors[`${recErrorsPrefix}.shippingDetails[0].totalNumber`]}
-                                                                        required
-                                                                        disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].totalNumber`)}
-                                                                    />
-                                                                    <CustomTextField
-                                                                        label="Weight"
-                                                                        value=""
-                                                                        onChange={(e) => {
-                                                                            addShippingFn(i);
-                                                                            handleShippingChangeFn(i, 0, 'weight')(e);
-                                                                        }}
-                                                                        error={!!errors[`${recErrorsPrefix}.shippingDetails[0].weight`]}
-                                                                        helperText={errors[`${recErrorsPrefix}.shippingDetails[0].weight`]}
-                                                                        required
-                                                                        disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].weight`)}
-                                                                    />
-                                                                </Box>
-                                                                <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                                                    <CustomTextField
-                                                                        label="Delivery Address"
-                                                                        value=""
-                                                                        onChange={(e) => {
-                                                                            addShippingFn(i);
-                                                                            handleShippingChangeFn(i, 0, 'deliveryAddress')(e);
-                                                                        }}
-                                                                        error={!!errors[`${recErrorsPrefix}.shippingDetails[0].deliveryAddress`]}
-                                                                        helperText={errors[`${recErrorsPrefix}.shippingDetails[0].deliveryAddress`]}
-                                                                        fullWidth
-                                                                        disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].deliveryAddress`)}
-                                                                    />
-                                                                    <CustomTextField label="Ref Number" value={`REF-${i + 1}-1`} disabled={true} />
-                                                                </Box>
-                                                            </Stack>
+                        {/* Top Order Fields */}
+                        <Stack spacing={3} mb={4}>
+                            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                <CustomTextField
+                                    label="Booking Ref"
+                                    name="bookingRef"
+                                    value={formData.bookingRef}
+                                    onChange={handleChange}
+                                    error={!!errors.bookingRef}
+                                    helperText={errors.bookingRef}
+                                    required
+                                    disabled={isFieldDisabled('bookingRef')}
+                                />
+                                <CustomTextField
+                                    label="RGL Booking Number"
+                                    name="rglBookingNumber"
+                                    value={formData.rglBookingNumber}
+                                    onChange={handleChange}
+                                    error={!!errors.rglBookingNumber}
+                                    helperText={errors.rglBookingNumber}
+                                    required
+                                    disabled={isFieldDisabled('rglBookingNumber')}
+                                />
+                            </Box>
+                            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                <CustomSelect
+                                    label="Point of Origin"
+                                    name="pointOfOrigin"
+                                    value={formData.pointOfOrigin || "Karachi"}
+                                    onChange={handleChange}
+                                    error={!!errors.pointOfOrigin}
+                                    renderValue={(selected) => selected || "Karachi"}
+                                >
+                                    {places.map((p) => (
+                                        <MenuItem key={p} value={p}>
+                                            {p}
+                                        </MenuItem>
+                                    ))}
+                                </CustomSelect>
+                                <CustomSelect
+                                    label="Place of Loading"
+                                    name="placeOfLoading"
+                                    value={formData.placeOfLoading || ""}
+                                    onChange={handleChange}
+                                    error={!!errors.placeOfLoading}
+                                    renderValue={(selected) => selected || "Select Place of Loading"}
+                                >
+                                    {places.map((p) => (
+                                        <MenuItem key={p} value={p}>
+                                            {p}
+                                        </MenuItem>
+                                    ))}
+                                </CustomSelect>
+                            </Box>
+                            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                <CustomSelect
+                                    label="Place of Delivery"
+                                    name="placeOfDelivery"
+                                    value={formData.placeOfDelivery || ""}
+                                    onChange={handleChange}
+                                    error={!!errors.placeOfDelivery}
+                                    renderValue={(selected) => selected || "Select Place of Delivery"}
+                                >
+                                    {places.map((p) => (
+                                        <MenuItem key={p} value={p}>
+                                            {p}
+                                        </MenuItem>
+                                    ))}
+                                </CustomSelect>
+                                <CustomSelect
+                                    label="Final Destination"
+                                    name="finalDestination"
+                                    value={formData.finalDestination || "Dubai"}
+                                    onChange={handleChange}
+                                    error={!!errors.finalDestination}
+                                    renderValue={(selected) => selected || "Dubai"}
+                                >
+                                    {places.map((p) => (
+                                        <MenuItem key={p} value={p}>
+                                            {p}
+                                        </MenuItem>
+                                    ))}
+                                </CustomSelect>
+                            </Box>
+                            <CustomTextField
+                                label="Order Remarks"
+                                name="orderRemarks"
+                                value={formData.orderRemarks}
+                                onChange={handleChange}
+                                error={!!errors.orderRemarks}
+                                helperText={errors.orderRemarks}
+                                fullWidth
+                                multiline
+                                rows={2}
+                                disabled={isFieldDisabled('orderRemarks')}
+                            />
+                        </Stack>
+                        <Divider sx={{ my: 3, borderColor: "#e0e0e0" }} />
+                        {/* Accordion Sections */}
+                        <Stack spacing={2}>
+                            <Accordion
+                                expanded={expanded.has("panel1")}
+                                onChange={handleAccordionChange("panel1")}
+                                sx={{
+                                    borderRadius: 2,
+                                    boxShadow: "none",
+                                    "&:before": { display: "none" },
+                                    "&.Mui-expanded": { boxShadow: "0 2px 8px rgba(0,0,0,0.1)" },
+                                }}
+                            >
+                                <AccordionSummary
+                                    expandIcon={<ExpandMoreIcon />}
+                                    sx={{
+                                        bgcolor: expanded.has("panel1") ? "#0d6c6a" : "#fff3e0",
+                                        borderRadius: 2,
+                                        "& .MuiAccordionSummary-content": { fontWeight: "bold", color: expanded.has("panel1") ? "#fff" : "#f58220" },
+                                    }}
+                                >
+                                    1. Owner Details
+                                </AccordionSummary>
+                                <AccordionDetails sx={{ p: 3, bgcolor: "#fff" }}>
+                                    <Stack spacing={2}>
+                                        {(() => {
+                                            const sendersList = [
+                                                { id: 1, name: 'John Doe Sender', contact: '+1-234-5678', address: '123 Sender St, City', email: 'john.sender@example.com', ref: 'SREF001', remarks: 'Preferred sender' },
+                                                { id: 2, name: 'Jane Smith Sender', contact: '+1-876-5432', address: '456 Sender Ave, Town', email: 'jane.sender@example.com', ref: 'SREF002', remarks: 'Regular sender' }
+                                            ];
+                                            const receiversList = [
+                                                { id: 1, name: 'Alice Receiver', contact: '+1-111-2222', address: '789 Receiver Blvd, Village', email: 'alice.receiver@example.com', ref: 'RREF001', remarks: 'Main receiver' },
+                                                { id: 2, name: 'Bob Receiver', contact: '+1-333-4444', address: '101 Receiver Rd, Hamlet', email: 'bob.receiver@example.com', ref: 'RREF002', remarks: 'Secondary receiver' }
+                                            ];
+                                            const typePrefix = formData.senderType === 'receiver' ? 'Receiver' : 'Sender';
+                                            const fieldPrefix = formData.senderType === 'sender' ? 'sender' : 'receiver';
+                                            return (
+                                                <>
+                                                    <FormControl component="fieldset" error={!!errors.senderType}>
+                                                        <Typography variant="subtitle1" fontWeight="bold" color="#f58220" gutterBottom>
+                                                            Select Type
+                                                        </Typography>
+                                                        <RadioGroup
+                                                            name="senderType"
+                                                            value={formData.senderType}
+                                                            onChange={handleChange}
+                                                            sx={{ flexDirection: 'row', gap: 3, mb: 1 }}
+                                                            defaultValue="sender"
+                                                        >
+                                                            <FormControlLabel value="sender" control={<Radio />} label="Sender Details" />
+                                                            <FormControlLabel value="receiver" control={<Radio />} label="Receiver Details" />
+                                                        </RadioGroup>
+                                                        {errors.senderType && <Typography variant="caption" color="error">{errors.senderType}</Typography>}
+                                                    </FormControl>
+                                                    <CustomSelect
+                                                        label={`Select ${typePrefix}`}
+                                                        name="selectedSenderOwner"
+                                                        value={formData.selectedSenderOwner || ""}
+                                                        onChange={(e) => {
+                                                            const value = e.target.value;
+                                                            handleChange(e);
+                                                            if (value) {
+                                                                const list = formData.senderType === 'sender' ? sendersList : receiversList;
+                                                                const item = list.find(l => l.id.toString() === value);
+                                                                if (item) {
+                                                                    setFormData(prev => ({
+                                                                        ...prev,
+                                                                        [`${fieldPrefix}Name`]: item.name || '',
+                                                                        [`${fieldPrefix}Contact`]: item.contact || '',
+                                                                        [`${fieldPrefix}Address`]: item.address || '',
+                                                                        [`${fieldPrefix}Email`]: item.email || '',
+                                                                        [`${fieldPrefix}Ref`]: item.ref || '',
+                                                                        [`${fieldPrefix}Remarks`]: item.remarks || '',
+                                                                    }));
+                                                                }
+                                                            } else {
+                                                                setFormData(prev => ({
+                                                                    ...prev,
+                                                                    [`${fieldPrefix}Name`]: '',
+                                                                    [`${fieldPrefix}Contact`]: '',
+                                                                    [`${fieldPrefix}Address`]: '',
+                                                                    [`${fieldPrefix}Email`]: '',
+                                                                    [`${fieldPrefix}Ref`]: '',
+                                                                    [`${fieldPrefix}Remarks`]: '',
+                                                                }));
+                                                            }
+                                                        }}
+                                                        renderValue={(selected) => {
+                                                            if (!selected) return `Select ${typePrefix}`;
+                                                            const list = formData.senderType === 'sender' ? sendersList : receiversList;
+                                                            const item = list.find(l => l.id.toString() === selected);
+                                                            return item ? item.name : `Select ${typePrefix}`;
+                                                        }}
+                                                    >
+                                                        <MenuItem value="">Select from List</MenuItem>
+                                                        {(formData.senderType === 'sender' ? sendersList : receiversList).map((item) => (
+                                                            <MenuItem key={item.id} value={item.id.toString()}>
+                                                                {item.name}
+                                                            </MenuItem>
+                                                        ))}
+                                                    </CustomSelect>
+                                                    <Stack spacing={2}>
+                                                        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                            <CustomTextField
+                                                                label={`${typePrefix} Name`}
+                                                                name={`${fieldPrefix}Name`}
+                                                                value={formData[`${fieldPrefix}Name`] || ""}
+                                                                onChange={handleChange}
+                                                                error={!!errors[`${fieldPrefix}Name`]}
+                                                                helperText={errors[`${fieldPrefix}Name`]}
+                                                                required
+                                                            />
+                                                            <CustomTextField
+                                                                label={`${typePrefix} Contact`}
+                                                                name={`${fieldPrefix}Contact`}
+                                                                value={formData[`${fieldPrefix}Contact`] || ""}
+                                                                onChange={handleChange}
+                                                                error={!!errors[`${fieldPrefix}Contact`]}
+                                                                helperText={errors[`${fieldPrefix}Contact`]}
+                                                            />
                                                         </Box>
-                                                    ) : (
-                    (rec.shippingDetails || []).map((sd, j) => (
-                        <Box key={j} sx={{ p: 1.5, border: 1, borderColor: "grey.200", borderRadius: 1 }}>
+                                                        <CustomTextField
+                                                            label={`${typePrefix} Address`}
+                                                            name={`${fieldPrefix}Address`}
+                                                            value={formData[`${fieldPrefix}Address`] || ""}
+                                                            onChange={handleChange}
+                                                            error={!!errors[`${fieldPrefix}Address`]}
+                                                            helperText={errors[`${fieldPrefix}Address`]}
+                                                            multiline
+                                                            rows={2}
+                                                        />
+                                                        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                            <CustomTextField
+                                                                label={`${typePrefix} Email`}
+                                                                name={`${fieldPrefix}Email`}
+                                                                value={formData[`${fieldPrefix}Email`] || ""}
+                                                                onChange={handleChange}
+                                                                error={!!errors[`${fieldPrefix}Email`]}
+                                                                helperText={errors[`${fieldPrefix}Email`]}
+                                                            />
+                                                            <CustomTextField
+                                                                label={`${typePrefix} Ref`}
+                                                                name={`${fieldPrefix}Ref`}
+                                                                value={formData[`${fieldPrefix}Ref`] || ""}
+                                                                onChange={handleChange}
+                                                                error={!!errors[`${fieldPrefix}Ref`]}
+                                                                helperText={errors[`${fieldPrefix}Ref`]}
+                                                            />
+                                                        </Box>
+                                                        <CustomTextField
+                                                            label={`${typePrefix} Remarks`}
+                                                            name={`${fieldPrefix}Remarks`}
+                                                            value={formData[`${fieldPrefix}Remarks`] || ""}
+                                                            onChange={handleChange}
+                                                            error={!!errors[`${fieldPrefix}Remarks`]}
+                                                            helperText={errors[`${fieldPrefix}Remarks`]}
+                                                            multiline
+                                                            rows={2}
+                                                        />
+                                                    </Stack>
+                                                </>
+                                            );
+                                        })()}
+                                    </Stack>
+                                </AccordionDetails>
+                            </Accordion>
+                            <Accordion
+                                expanded={expanded.has("panel2")}
+                                onChange={handleAccordionChange("panel2")}
+                                sx={{
+                                    borderRadius: 2,
+                                    boxShadow: "none",
+                                    "&:before": { display: "none" },
+                                    "&.Mui-expanded": { boxShadow: "0 2px 8px rgba(0,0,0,0.1)" },
+                                }}
+                            >
+                                <AccordionSummary
+                                    expandIcon={<ExpandMoreIcon />}
+                                    sx={{
+                                        bgcolor: expanded.has("panel2") ? "#0d6c6a" : "#fff3e0",
+                                        borderRadius: 2,
+                                        "& .MuiAccordionSummary-content": {
+                                            fontWeight: "bold",
+                                            color: expanded.has("panel2") ? "#fff" : "#f58220",
+                                        },
+                                    }}
+                                >
+                                    2. {formData.senderType === 'receiver' ? 'Sender Details (with Shipping)' : 'Receiver Details (with Shipping)'}
+                                </AccordionSummary>
+                                <AccordionDetails sx={{ p: 3, bgcolor: "#fff" }}>
+                                    <Stack spacing={2}>
+                                        {formData.senderType === 'sender' ? (
+                                            errors.receivers && <Alert severity="error">{errors.receivers}</Alert>
+                                        ) : (
+                                            errors.senders && <Alert severity="error">{errors.senders}</Alert>
+                                        )}
+                                        {/* Dynamic: Summary Table for multiples */}
+                                        {(formData.senderType === 'sender' ? formData.receivers : formData.senders).length > 1 && (
+                                            <Stack spacing={1}>
+                                                <Typography variant="subtitle2" color="primary">
+                                                    {formData.senderType === 'sender' ? 'Receivers' : 'Senders'} Overview
+                                                </Typography>
+                                                <Stack direction="row" spacing={2} sx={{ overflowX: 'auto' }}>
+                                                    {(formData.senderType === 'sender' ? formData.receivers : formData.senders).map((rec, i) => {
+                                                        const totalItems = (rec.shippingDetails || []).reduce((sum, sd) => sum + (parseInt(sd.totalNumber || 0) || 0), 0);
+                                                        const remainingItems = (rec.shippingDetails || []).reduce((sum, sd) => sum + (parseInt(sd.remainingItems || 0) || 0), 0);
+                                                        return (
+                                                            <Chip
+                                                                key={i}
+                                                                label={`${(formData.senderType === 'sender' ? rec.receiverName : rec.senderName) ||
+                                                                    (formData.senderType === 'sender' ? `Receiver ${i + 1}` : `Sender ${i + 1}`)
+                                                                    } (Items: ${totalItems} / Remaining: ${remainingItems})`}
+                                                                variant={rec.fullPartial === 'Partial' ? "filled" : "outlined"}
+                                                                color={rec.fullPartial === 'Partial' ? "warning" : "primary"}
+                                                            />
+                                                        );
+                                                    })}
+                                                </Stack>
+                                            </Stack>
+                                        )}
+                                        {(() => {
+        const currentList = formData.senderType === 'sender' ? formData.receivers : formData.senders;
+        const isSenderMode = formData.senderType === 'receiver';
+        const typePrefix = isSenderMode ? 'Sender' : 'Receiver';
+        const handleChangeFn = isSenderMode ? handleSenderChange : handleReceiverChange;
+        const handleShippingChangeFn = isSenderMode ? handleSenderShippingChange : handleReceiverShippingChange;
+        const handlePartialChangeFn = isSenderMode ? handleSenderPartialChange : handleReceiverPartialChange;
+        const addShippingFn = isSenderMode ? addSenderShipping : addReceiverShipping;
+        const duplicateShippingFn = isSenderMode ? duplicateSenderShipping : duplicateReceiverShipping;
+        const removeShippingFn = isSenderMode ? removeSenderShipping : removeReceiverShipping;
+        const listKey = isSenderMode ? 'senders' : 'receivers';
+        const addRecFn = isSenderMode ? addSender : addReceiver;
+        const duplicateRecFn = isSenderMode ? duplicateSender : duplicateReceiver;
+        const removeRecFn = isSenderMode ? removeSender : removeReceiver;
+
+        const renderRecForm = (rec, i) => {
+            const recErrorsPrefix = `${listKey}[${i}]`;
+            const recDisabledPrefix = `${listKey}[${i}]`;
+            const handleRecNameChange = handleChangeFn(i, isSenderMode ? 'senderName' : 'receiverName');
+            const handleRecContactChange = handleChangeFn(i, isSenderMode ? 'senderContact' : 'receiverContact');
+            const handleRecAddressChange = handleChangeFn(i, isSenderMode ? 'senderAddress' : 'receiverAddress');
+            const handleRecEmailChange = handleChangeFn(i, isSenderMode ? 'senderEmail' : 'receiverEmail');
+
+            const renderShippingSection = () => (
+                <Stack spacing={2}>
+                    <Typography variant="subtitle1" color="primary" fontWeight="bold" mb={1}>
+                        Shipping Details
+                    </Typography>
+                    {/* ETA, ETD at receiver/sender level (if still needed; or move per sd as per prev advice) */}
+                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                        {/* <CustomTextField
+                            label="ETA"
+                            type="date"
+                            value={rec.eta || ""}
+                            onChange={handleChangeFn(i, 'eta')}
+                            InputLabelProps={{ shrink: true }}
+                            error={!!errors[`${recErrorsPrefix}.eta`]}
+                            helperText={errors[`${recErrorsPrefix}.eta`]}
+                            required
+                            disabled={isFieldDisabled(`${recDisabledPrefix}.eta`)}
+                        />
+                        <CustomTextField
+                            label="ETD"
+                            type="date"
+                            value={rec.etd || ""}
+                            onChange={handleChangeFn(i, 'etd')}
+                            InputLabelProps={{ shrink: true }}
+                            error={!!errors[`${recErrorsPrefix}.etd`]}
+                            helperText={errors[`${recErrorsPrefix}.etd`]}
+                            required
+                            disabled={isFieldDisabled(`${recDisabledPrefix}.etd`)}
+                        /> */}
+                    </Box>
+                    {/* Shipping Details Forms */}
+                    {(rec.shippingDetails || []).length === 0 ? (
+                        // Empty placeholder (unchanged, but icons now always visible)
+                        <Box sx={{ p: 1.5, border: 1, borderColor: "grey.200", borderRadius: 1 }}>
                             <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
                                 <Typography variant="body2" color="primary" fontWeight="bold">
-                                    Shipping Detail {j + 1}
+                                    Shipping Detail 1
                                 </Typography>
                                 <Stack direction="row" spacing={1}>
-                                    {/* UPDATED: Remove !isEditMode - always show icons; length guard on delete */}
+                                    {/* UPDATED: Remove !isEditMode - always show icons */}
                                     <IconButton
-                                        onClick={() => duplicateShippingFn(i, j)}
+                                        onClick={() => duplicateShippingFn(i, 0)}
                                         size="small"
                                         title="Duplicate"
                                     >
                                         <CopyIcon />
                                     </IconButton>
-                                    {(rec.shippingDetails || []).length > 1 && (
-                                        <IconButton
-                                            onClick={() => removeShippingFn(i, j)}
-                                            size="small"
-                                            title="Delete"
-                                        >
-                                            <DeleteIcon />
-                                        </IconButton>
-                                    )}
+                                    <IconButton
+                                        onClick={() => removeShippingFn(i, 0)}
+                                        size="small"
+                                        title="Delete"
+                                    >
+                                        <DeleteIcon />
+                                    </IconButton>
                                 </Stack>
                             </Stack>
                                                                 <Stack spacing={1.5}>
                                                                     <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
                                                                         <CustomTextField
                                                                             label="Pickup Location"
-                                                                            value={sd.pickupLocation || ""}
-                                                                            onChange={(e) => handleShippingChangeFn(i, j, 'pickupLocation')(e)}
-                                                                            error={!!errors[`${recErrorsPrefix}.shippingDetails[${j}].pickupLocation`]}
-                                                                            helperText={errors[`${recErrorsPrefix}.shippingDetails[${j}].pickupLocation`]}
+                                                                            value=""
+                                                                            onChange={(e) => {
+                                                                                addShippingFn(i);  // Add first if empty
+                                                                                handleShippingChangeFn(i, 0, 'pickupLocation')(e);
+                                                                            }}
+                                                                            error={!!errors[`${recErrorsPrefix}.shippingDetails[0].pickupLocation`]}
+                                                                            helperText={errors[`${recErrorsPrefix}.shippingDetails[0].pickupLocation`]}
                                                                             required
+                                                                            disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].pickupLocation`)}
                                                                         />
                                                                         <CustomSelect
                                                                             label="Category"
-                                                                            value={sd.category || ""}
-                                                                            onChange={(e) => handleShippingChangeFn(i, j, 'category')(e)}
-                                                                            error={!!errors[`${recErrorsPrefix}.shippingDetails[${j}].category`]}
-                                                                            helperText={errors[`${recErrorsPrefix}.shippingDetails[${j}].category`]}
+                                                                            value=""
+                                                                            onChange={(e) => {
+                                                                                addShippingFn(i);
+                                                                                handleShippingChangeFn(i, 0, 'category')(e);
+                                                                            }}
+                                                                            error={!!errors[`${recErrorsPrefix}.shippingDetails[0].category`]}
+                                                                            helperText={errors[`${recErrorsPrefix}.shippingDetails[0].category`]}
                                                                             required
+                                                                            disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].category`)}
                                                                             renderValue={(selected) => selected || "Select Category"}
                                                                         >
                                                                             <MenuItem value="">Select Category</MenuItem>
@@ -1920,15 +2058,19 @@ const handleSave = async () => {
                                                                     <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
                                                                         <CustomSelect
                                                                             label="Subcategory"
-                                                                            value={sd.subcategory || ""}
-                                                                            onChange={(e) => handleShippingChangeFn(i, j, 'subcategory')(e)}
-                                                                            error={!!errors[`${recErrorsPrefix}.shippingDetails[${j}].subcategory`]}
-                                                                            helperText={errors[`${recErrorsPrefix}.shippingDetails[${j}].subcategory`]}
+                                                                            value=""
+                                                                            onChange={(e) => {
+                                                                                addShippingFn(i);
+                                                                                handleShippingChangeFn(i, 0, 'subcategory')(e);
+                                                                            }}
+                                                                            error={!!errors[`${recErrorsPrefix}.shippingDetails[0].subcategory`]}
+                                                                            helperText={errors[`${recErrorsPrefix}.shippingDetails[0].subcategory`]}
                                                                             required
+                                                                            disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].subcategory`)}
                                                                             renderValue={(selected) => selected || "Select Subcategory"}
                                                                         >
                                                                             <MenuItem value="">Select Subcategory</MenuItem>
-                                                                            {(categorySubMap[sd.category] || []).map((sc) => (
+                                                                            {(categorySubMap[''] || []).map((sc) => (
                                                                                 <MenuItem key={sc} value={sc}>
                                                                                     {sc}
                                                                                 </MenuItem>
@@ -1936,11 +2078,15 @@ const handleSave = async () => {
                                                                         </CustomSelect>
                                                                         <CustomSelect
                                                                             label="Type"
-                                                                            value={sd.type || ""}
-                                                                            onChange={(e) => handleShippingChangeFn(i, j, 'type')(e)}
-                                                                            error={!!errors[`${recErrorsPrefix}.shippingDetails[${j}].type`]}
-                                                                            helperText={errors[`${recErrorsPrefix}.shippingDetails[${j}].type`]}
+                                                                            value=""
+                                                                            onChange={(e) => {
+                                                                                addShippingFn(i);
+                                                                                handleShippingChangeFn(i, 0, 'type')(e);
+                                                                            }}
+                                                                            error={!!errors[`${recErrorsPrefix}.shippingDetails[0].type`]}
+                                                                            helperText={errors[`${recErrorsPrefix}.shippingDetails[0].type`]}
                                                                             required
+                                                                            disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].type`)}
                                                                             renderValue={(selected) => selected || "Select Type"}
                                                                         >
                                                                             <MenuItem value="">Select Unit</MenuItem>
@@ -1954,340 +2100,380 @@ const handleSave = async () => {
                                                                     <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
                                                                         <CustomTextField
                                                                             label="Total Number"
-                                                                            value={sd.totalNumber || ""}
-                                                                            onChange={(e) => handleShippingChangeFn(i, j, 'totalNumber')(e)}
-                                                                            error={!!errors[`${recErrorsPrefix}.shippingDetails[${j}].totalNumber`]}
-                                                                            helperText={errors[`${recErrorsPrefix}.shippingDetails[${j}].totalNumber`]}
+                                                                            value=""
+                                                                            onChange={(e) => {
+                                                                                addShippingFn(i);
+                                                                                handleShippingChangeFn(i, 0, 'totalNumber')(e);
+                                                                            }}
+                                                                            error={!!errors[`${recErrorsPrefix}.shippingDetails[0].totalNumber`]}
+                                                                            helperText={errors[`${recErrorsPrefix}.shippingDetails[0].totalNumber`]}
                                                                             required
+                                                                            disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].totalNumber`)}
                                                                         />
                                                                         <CustomTextField
                                                                             label="Weight"
-                                                                            value={sd.weight || ""}
-                                                                            onChange={(e) => handleShippingChangeFn(i, j, 'weight')(e)}
-                                                                            error={!!errors[`${recErrorsPrefix}.shippingDetails[${j}].weight`]}
-                                                                            helperText={errors[`${recErrorsPrefix}.shippingDetails[${j}].weight`]}
+                                                                            value=""
+                                                                            onChange={(e) => {
+                                                                                addShippingFn(i);
+                                                                                handleShippingChangeFn(i, 0, 'weight')(e);
+                                                                            }}
+                                                                            error={!!errors[`${recErrorsPrefix}.shippingDetails[0].weight`]}
+                                                                            helperText={errors[`${recErrorsPrefix}.shippingDetails[0].weight`]}
                                                                             required
+                                                                            disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].weight`)}
                                                                         />
                                                                     </Box>
                                                                     <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
                                                                         <CustomTextField
                                                                             label="Delivery Address"
-                                                                            value={sd.deliveryAddress || ""}
-                                                                            onChange={(e) => handleShippingChangeFn(i, j, 'deliveryAddress')(e)}
-                                                                            error={!!errors[`${recErrorsPrefix}.shippingDetails[${j}].deliveryAddress`]}
-                                                                            helperText={errors[`${recErrorsPrefix}.shippingDetails[${j}].deliveryAddress`]}
+                                                                            value=""
+                                                                            onChange={(e) => {
+                                                                                addShippingFn(i);
+                                                                                handleShippingChangeFn(i, 0, 'deliveryAddress')(e);
+                                                                            }}
+                                                                            error={!!errors[`${recErrorsPrefix}.shippingDetails[0].deliveryAddress`]}
+                                                                            helperText={errors[`${recErrorsPrefix}.shippingDetails[0].deliveryAddress`]}
                                                                             fullWidth
+                                                                            disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].deliveryAddress`)}
                                                                         />
-                                                                        <CustomTextField label="Ref Number" value={sd.itemRef || `REF-${i + 1}-${j + 1}`} disabled={true} />
+                                                                        <CustomTextField label="Ref Number" value={`REF-${i + 1}-1`} disabled={true} />
                                                                     </Box>
                                                                 </Stack>
                                                             </Box>
-                                                        ))
-                                                    )}
-                                                    <Stack direction="row" spacing={1} sx={{ justifyContent: 'space-between' }}>
-                                                        <Button
-                                                            variant="outlined"
-                                                            startIcon={<AddIcon />}
-                                                            onClick={() => addShippingFn(i)}
-                                                        >
-                                                            Add Shipping Detail
-                                                        </Button>
-                                                        <Button
-                                                            variant="contained"
-                                                            onClick={() => handleSaveShipping(i)}
-                                                        >
-                                                            Save
-                                                        </Button>
-                                                    </Stack>
-                                                </Stack>
-                                            );
-
-                                            return (
-                                                <Box key={i} sx={{ p: 2, border: 1, borderColor: "grey.300", borderRadius: 2 }}>
-                                                    <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
-                                                        <Typography variant="subtitle1" color="primary" fontWeight={"bold"}>
-                                                            {typePrefix} {i + 1}
-                                                        </Typography>
-                                                        <Stack direction="row" spacing={1}>
-                                            
-                                                                <>
-                                                                    <IconButton
-                                                                        onClick={() => duplicateRecFn(i)}
-                                                                        size="small"
-                                                                        title="Duplicate"
-                                                                    >
-                                                                        <CopyIcon />
-                                                                    </IconButton>
-                                                                    {currentList.length > 1 && (
-                                                                        <IconButton
-                                                                            onClick={() => removeRecFn(i)}
-                                                                            size="small"
-                                                                            title="Delete"
-                                                                        >
-                                                                            <DeleteIcon />
-                                                                        </IconButton>
-                                                                    )}
-                                                                </>
-                                                        
+                                                        ) : (
+                        (rec.shippingDetails || []).map((sd, j) => (
+                            <Box key={j} sx={{ p: 1.5, border: 1, borderColor: "grey.200", borderRadius: 1 }}>
+                                <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
+                                    <Typography variant="body2" color="primary" fontWeight="bold">
+                                        Shipping Detail {j + 1}
+                                    </Typography>
+                                    <Stack direction="row" spacing={1}>
+                                        {/* UPDATED: Remove !isEditMode - always show icons; length guard on delete */}
+                                        <IconButton
+                                            onClick={() => duplicateShippingFn(i, j)}
+                                            size="small"
+                                            title="Duplicate"
+                                        >
+                                            <CopyIcon />
+                                        </IconButton>
+                                        {(rec.shippingDetails || []).length > 1 && (
+                                            <IconButton
+                                                onClick={() => removeShippingFn(i, j)}
+                                                size="small"
+                                                title="Delete"
+                                            >
+                                                <DeleteIcon />
+                                            </IconButton>
+                                        )}
+                                    </Stack>
+                                </Stack>
+                                                                    <Stack spacing={1.5}>
+                                                                        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                                            <CustomTextField
+                                                                                label="Pickup Location"
+                                                                                value={sd.pickupLocation || ""}
+                                                                                onChange={(e) => handleShippingChangeFn(i, j, 'pickupLocation')(e)}
+                                                                                error={!!errors[`${recErrorsPrefix}.shippingDetails[${j}].pickupLocation`]}
+                                                                                helperText={errors[`${recErrorsPrefix}.shippingDetails[${j}].pickupLocation`]}
+                                                                                required
+                                                                            />
+                                                                            <CustomSelect
+                                                                                label="Category"
+                                                                                value={sd.category || ""}
+                                                                                onChange={(e) => handleShippingChangeFn(i, j, 'category')(e)}
+                                                                                error={!!errors[`${recErrorsPrefix}.shippingDetails[${j}].category`]}
+                                                                                helperText={errors[`${recErrorsPrefix}.shippingDetails[${j}].category`]}
+                                                                                required
+                                                                                renderValue={(selected) => selected || "Select Category"}
+                                                                            >
+                                                                                <MenuItem value="">Select Category</MenuItem>
+                                                                                {categories.map((c) => (
+                                                                                    <MenuItem key={c} value={c}>
+                                                                                        {c}
+                                                                                    </MenuItem>
+                                                                                ))}
+                                                                            </CustomSelect>
+                                                                        </Box>
+                                                                        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                                            <CustomSelect
+                                                                                label="Subcategory"
+                                                                                value={sd.subcategory || ""}
+                                                                                onChange={(e) => handleShippingChangeFn(i, j, 'subcategory')(e)}
+                                                                                error={!!errors[`${recErrorsPrefix}.shippingDetails[${j}].subcategory`]}
+                                                                                helperText={errors[`${recErrorsPrefix}.shippingDetails[${j}].subcategory`]}
+                                                                                required
+                                                                                renderValue={(selected) => selected || "Select Subcategory"}
+                                                                            >
+                                                                                <MenuItem value="">Select Subcategory</MenuItem>
+                                                                                {(categorySubMap[sd.category] || []).map((sc) => (
+                                                                                    <MenuItem key={sc} value={sc}>
+                                                                                        {sc}
+                                                                                    </MenuItem>
+                                                                                ))}
+                                                                            </CustomSelect>
+                                                                            <CustomSelect
+                                                                                label="Type"
+                                                                                value={sd.type || ""}
+                                                                                onChange={(e) => handleShippingChangeFn(i, j, 'type')(e)}
+                                                                                error={!!errors[`${recErrorsPrefix}.shippingDetails[${j}].type`]}
+                                                                                helperText={errors[`${recErrorsPrefix}.shippingDetails[${j}].type`]}
+                                                                                required
+                                                                                renderValue={(selected) => selected || "Select Type"}
+                                                                            >
+                                                                                <MenuItem value="">Select Unit</MenuItem>
+                                                                                {types.slice(1).map((t) => (
+                                                                                    <MenuItem key={t} value={t}>
+                                                                                        {t}
+                                                                                    </MenuItem>
+                                                                                ))}
+                                                                            </CustomSelect>
+                                                                        </Box>
+                                                                        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                                            <CustomTextField
+                                                                                label="Total Number"
+                                                                                value={sd.totalNumber || ""}
+                                                                                onChange={(e) => handleShippingChangeFn(i, j, 'totalNumber')(e)}
+                                                                                error={!!errors[`${recErrorsPrefix}.shippingDetails[${j}].totalNumber`]}
+                                                                                helperText={errors[`${recErrorsPrefix}.shippingDetails[${j}].totalNumber`]}
+                                                                                required
+                                                                            />
+                                                                            <CustomTextField
+                                                                                label="Weight"
+                                                                                value={sd.weight || ""}
+                                                                                onChange={(e) => handleShippingChangeFn(i, j, 'weight')(e)}
+                                                                                error={!!errors[`${recErrorsPrefix}.shippingDetails[${j}].weight`]}
+                                                                                helperText={errors[`${recErrorsPrefix}.shippingDetails[${j}].weight`]}
+                                                                                required
+                                                                            />
+                                                                        </Box>
+                                                                        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                                            <CustomTextField
+                                                                                label="Delivery Address"
+                                                                                value={sd.deliveryAddress || ""}
+                                                                                onChange={(e) => handleShippingChangeFn(i, j, 'deliveryAddress')(e)}
+                                                                                error={!!errors[`${recErrorsPrefix}.shippingDetails[${j}].deliveryAddress`]}
+                                                                                helperText={errors[`${recErrorsPrefix}.shippingDetails[${j}].deliveryAddress`]}
+                                                                                fullWidth
+                                                                            />
+                                                                            <CustomTextField label="Ref Number" value={sd.itemRef || `REF-${i + 1}-${j + 1}`} disabled={true} />
+                                                                        </Box>
+                                                                    </Stack>
+                                                                </Box>
+                                                            ))
+                                                        )}
+                                                        <Stack direction="row" spacing={1} sx={{ justifyContent: 'space-between' }}>
+                                                            <Button
+                                                                variant="outlined"
+                                                                startIcon={<AddIcon />}
+                                                                onClick={() => addShippingFn(i)}
+                                                            >
+                                                                Add Shipping Detail
+                                                            </Button>
+                                                            <Button
+                                                                variant="contained"
+                                                                onClick={() => handleSaveShipping(i)}
+                                                            >
+                                                                Save
+                                                            </Button>
                                                         </Stack>
                                                     </Stack>
-                                                    {/* Show validation warnings if present */}
-                                                    {rec.validationWarnings && (
-                                                        <Alert severity="warning" sx={{ mb: 2 }}>
-                                                            {Object.entries(rec.validationWarnings)
-                                                                .map(([key, msg]) => `${snakeToCamel(key).replace(/([A-Z])/g, ' $1').trim()}: ${msg}`)
-                                                                .join('; ')}
-                                                        </Alert>
-                                                    )}
-                                                    {/* Dynamic: Basic Info */}
-                                                    <Box
-                                                        sx={{
-                                                            display: 'flex',
-                                                            flexDirection: { xs: 'column', sm: 'row' },
-                                                            gap: 2,
-                                                            alignItems: 'stretch',
-                                                        }}
-                                                    >
-                                                        <CustomTextField
-                                                            label={`${typePrefix} Name`}
-                                                            value={isSenderMode ? rec.senderName : rec.receiverName}
-                                                            onChange={handleRecNameChange}
-                                                            error={!!errors[`${recErrorsPrefix}.${isSenderMode ? 'senderName' : 'receiverName'}`]}
-                                                            helperText={errors[`${recErrorsPrefix}.${isSenderMode ? 'senderName' : 'receiverName'}`]}
-                                                            required
-                                                            disabled={isFieldDisabled(`${recDisabledPrefix}.${isSenderMode ? 'senderName' : 'receiverName'}`)}
-                                                        />
-                                                        <CustomTextField
-                                                            label={`${typePrefix} Contact`}
-                                                            value={isSenderMode ? rec.senderContact : rec.receiverContact}
-                                                            onChange={handleRecContactChange}
-                                                            error={!!errors[`${recErrorsPrefix}.${isSenderMode ? 'senderContact' : 'receiverContact'}`]}
-                                                            helperText={errors[`${recErrorsPrefix}.${isSenderMode ? 'senderContact' : 'receiverContact'}`]}
-                                                            disabled={isFieldDisabled(`${recDisabledPrefix}.${isSenderMode ? 'senderContact' : 'receiverContact'}`)}
-                                                        />
-                                                    </Box>
-                                                    <Box
-                                                        sx={{
-                                                            display: 'flex',
-                                                            py: 2,
-                                                            flexDirection: { xs: 'column', sm: 'row' },
-                                                            gap: 2,
-                                                            alignItems: 'stretch',
-                                                        }}
-                                                    >
-                                                        <CustomTextField
-                                                            label={`${typePrefix} Address`}
-                                                            value={isSenderMode ? rec.senderAddress : rec.receiverAddress}
-                                                            onChange={handleRecAddressChange}
-                                                            error={!!errors[`${recErrorsPrefix}.${isSenderMode ? 'senderAddress' : 'receiverAddress'}`]}
-                                                            helperText={errors[`${recErrorsPrefix}.${isSenderMode ? 'senderAddress' : 'receiverAddress'}`]}
-                                                            disabled={isFieldDisabled(`${recDisabledPrefix}.${isSenderMode ? 'senderAddress' : 'receiverAddress'}`)}
-                                                        />
-                                                        <CustomTextField
-                                                            label={`${typePrefix} Email`}
-                                                            value={isSenderMode ? rec.senderEmail : rec.receiverEmail}
-                                                            onChange={handleRecEmailChange}
-                                                            error={!!errors[`${recErrorsPrefix}.${isSenderMode ? 'senderEmail' : 'receiverEmail'}`]}
-                                                            helperText={errors[`${recErrorsPrefix}.${isSenderMode ? 'senderEmail' : 'receiverEmail'}`]}
-                                                            disabled={isFieldDisabled(`${recDisabledPrefix}.${isSenderMode ? 'senderEmail' : 'receiverEmail'}`)}
-                                                        />
-                                                    </Box>
-                                                    {renderShippingSection()}
-                                                </Box>
-                                            );
-                                        };
+                                                );
 
-                                        // Always render the list (assumes >=1 items via state enforcement)
-                                        return currentList.map((rec, i) => renderRecForm(rec, i));
-                                    })()}
-                                    <Button
-                                        variant="outlined"
-                                        startIcon={<AddIcon />}
-                                        onClick={formData.senderType === 'receiver' ? addSender : addReceiver}
-                                        sx={{ alignSelf: 'flex-start' }}
-                                    >
-                                        {formData.senderType === 'receiver' ? 'Add Sender' : 'Add Receiver'}
-                                    </Button>
-                                </Stack>
-                            </AccordionDetails>
-                        </Accordion>
-                        <Accordion
-                            expanded={expanded.has("panel3")}
-                            onChange={handleAccordionChange("panel3")}
-                            sx={{
-                                borderRadius: 2,
-                                boxShadow: "none",
-                                "&:before": { display: "none" },
-                                "&.Mui-expanded": { boxShadow: "0 2px 8px rgba(0,0,0,0.1)" },
-                            }}
-                        >
-                            <AccordionSummary
-                                expandIcon={<ExpandMoreIcon />}
+                                                return (
+                                                    <Box key={i} sx={{ p: 2, border: 1, borderColor: "grey.300", borderRadius: 2 }}>
+                                                        <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
+                                                            <Typography variant="subtitle1" color="primary" fontWeight={"bold"}>
+                                                                {typePrefix} {i + 1}
+                                                            </Typography>
+                                                            <Stack direction="row" spacing={1}>
+                                                
+                                                                    <>
+                                                                        <IconButton
+                                                                            onClick={() => duplicateRecFn(i)}
+                                                                            size="small"
+                                                                            title="Duplicate"
+                                                                        >
+                                                                            <CopyIcon />
+                                                                        </IconButton>
+                                                                        {currentList.length > 1 && (
+                                                                            <IconButton
+                                                                                onClick={() => removeRecFn(i)}
+                                                                                size="small"
+                                                                                title="Delete"
+                                                                            >
+                                                                                <DeleteIcon />
+                                                                            </IconButton>
+                                                                        )}
+                                                                    </>
+                                                            
+                                                            </Stack>
+                                                        </Stack>
+                                                        {/* Show validation warnings if present */}
+                                                        {rec.validationWarnings && (
+                                                            <Alert severity="warning" sx={{ mb: 2 }}>
+                                                                {Object.entries(rec.validationWarnings)
+                                                                    .map(([key, msg]) => `${snakeToCamel(key).replace(/([A-Z])/g, ' $1').trim()}: ${msg}`)
+                                                                    .join('; ')}
+                                                            </Alert>
+                                                        )}
+                                                        {/* Dynamic: Basic Info */}
+                                                        <Box
+                                                            sx={{
+                                                                display: 'flex',
+                                                                flexDirection: { xs: 'column', sm: 'row' },
+                                                                gap: 2,
+                                                                alignItems: 'stretch',
+                                                            }}
+                                                        >
+                                                            <CustomTextField
+                                                                label={`${typePrefix} Name`}
+                                                                value={isSenderMode ? rec.senderName : rec.receiverName}
+                                                                onChange={handleRecNameChange}
+                                                                error={!!errors[`${recErrorsPrefix}.${isSenderMode ? 'senderName' : 'receiverName'}`]}
+                                                                helperText={errors[`${recErrorsPrefix}.${isSenderMode ? 'senderName' : 'receiverName'}`]}
+                                                                required
+                                                                disabled={isFieldDisabled(`${recDisabledPrefix}.${isSenderMode ? 'senderName' : 'receiverName'}`)}
+                                                            />
+                                                            <CustomTextField
+                                                                label={`${typePrefix} Contact`}
+                                                                value={isSenderMode ? rec.senderContact : rec.receiverContact}
+                                                                onChange={handleRecContactChange}
+                                                                error={!!errors[`${recErrorsPrefix}.${isSenderMode ? 'senderContact' : 'receiverContact'}`]}
+                                                                helperText={errors[`${recErrorsPrefix}.${isSenderMode ? 'senderContact' : 'receiverContact'}`]}
+                                                                disabled={isFieldDisabled(`${recDisabledPrefix}.${isSenderMode ? 'senderContact' : 'receiverContact'}`)}
+                                                            />
+                                                        </Box>
+                                                        <Box
+                                                            sx={{
+                                                                display: 'flex',
+                                                                py: 2,
+                                                                flexDirection: { xs: 'column', sm: 'row' },
+                                                                gap: 2,
+                                                                alignItems: 'stretch',
+                                                            }}
+                                                        >
+                                                            <CustomTextField
+                                                                label={`${typePrefix} Address`}
+                                                                value={isSenderMode ? rec.senderAddress : rec.receiverAddress}
+                                                                onChange={handleRecAddressChange}
+                                                                error={!!errors[`${recErrorsPrefix}.${isSenderMode ? 'senderAddress' : 'receiverAddress'}`]}
+                                                                helperText={errors[`${recErrorsPrefix}.${isSenderMode ? 'senderAddress' : 'receiverAddress'}`]}
+                                                                disabled={isFieldDisabled(`${recDisabledPrefix}.${isSenderMode ? 'senderAddress' : 'receiverAddress'}`)}
+                                                            />
+                                                            <CustomTextField
+                                                                label={`${typePrefix} Email`}
+                                                                value={isSenderMode ? rec.senderEmail : rec.receiverEmail}
+                                                                onChange={handleRecEmailChange}
+                                                                error={!!errors[`${recErrorsPrefix}.${isSenderMode ? 'senderEmail' : 'receiverEmail'}`]}
+                                                                helperText={errors[`${recErrorsPrefix}.${isSenderMode ? 'senderEmail' : 'receiverEmail'}`]}
+                                                                disabled={isFieldDisabled(`${recDisabledPrefix}.${isSenderMode ? 'senderEmail' : 'receiverEmail'}`)}
+                                                            />
+                                                        </Box>
+                                                        {renderShippingSection()}
+                                                    </Box>
+                                                );
+                                            };
+
+                                            // Always render the list (assumes >=1 items via state enforcement)
+                                            return currentList.map((rec, i) => renderRecForm(rec, i));
+                                        })()}
+                                        <Button
+                                            variant="outlined"
+                                            startIcon={<AddIcon />}
+                                            onClick={formData.senderType === 'receiver' ? addSender : addReceiver}
+                                            sx={{ alignSelf: 'flex-start' }}
+                                        >
+                                            {formData.senderType === 'receiver' ? 'Add Sender' : 'Add Receiver'}
+                                        </Button>
+                                    </Stack>
+                                </AccordionDetails>
+                            </Accordion>
+                            <Accordion
+                                expanded={expanded.has("panel3")}
+                                onChange={handleAccordionChange("panel3")}
                                 sx={{
-                                    bgcolor: expanded.has("panel3") ? "#0d6c6a" : "#fff3e0",
                                     borderRadius: 2,
-                                    "& .MuiAccordionSummary-content": { fontWeight: "bold", color: expanded.has("panel3") ? "#fff" : "#f58220" },
+                                    boxShadow: "none",
+                                    "&:before": { display: "none" },
+                                    "&.Mui-expanded": { boxShadow: "0 2px 8px rgba(0,0,0,0.1)" },
                                 }}
                             >
-                                3. Transport
-                            </AccordionSummary>
-                            <AccordionDetails sx={{ p: 3, bgcolor: "#fff" }}>
-                                <Stack spacing={3}>
-                                    <FormControl component="fieldset" error={!!errors.transportType}>
-                                        <Typography variant="h6" color="#f58220" gutterBottom>
-                                            Transport Type
-                                        </Typography>
-                                        <RadioGroup
-                                            name="transportType"
-                                            value={formData.transportType}
-                                            onChange={handleChange}
-                                            style={{ flexDirection: "row" }}
-                                        >
-                                            <FormControlLabel value="Drop Off" control={<Radio />} label="Drop Off" />
-                                            <FormControlLabel value="Collection" control={<Radio />} label="Collection" />
-                                            <FormControlLabel value="Third Party" control={<Radio />} label="Third Party" />
-                                        </RadioGroup>
-                                        {errors.transportType && <Typography variant="caption" color="error">{errors.transportType}</Typography>}
-                                    </FormControl>
-                                    {formData.transportType === 'Drop Off' && (
-                                        <Stack spacing={2}>
+                                <AccordionSummary
+                                    expandIcon={<ExpandMoreIcon />}
+                                    sx={{
+                                        bgcolor: expanded.has("panel3") ? "#0d6c6a" : "#fff3e0",
+                                        borderRadius: 2,
+                                        "& .MuiAccordionSummary-content": { fontWeight: "bold", color: expanded.has("panel3") ? "#fff" : "#f58220" },
+                                    }}
+                                >
+                                    3. Transport
+                                </AccordionSummary>
+                                <AccordionDetails sx={{ p: 3, bgcolor: "#fff" }}>
+                                    <Stack spacing={3}>
+                                        <FormControl component="fieldset" error={!!errors.transportType}>
                                             <Typography variant="h6" color="#f58220" gutterBottom>
-                                                🧭 Drop-Off Details
+                                                Transport Type
                                             </Typography>
-                                            <CustomSelect
-                                                label="Drop Method"
-                                                name="dropMethod"
-                                                value={formData.dropMethod || ""}
+                                            <RadioGroup
+                                                name="transportType"
+                                                value={formData.transportType}
                                                 onChange={handleChange}
-                                                error={!!errors.dropMethod}
-                                                renderValue={(selected) => selected || "Select Drop Method"}
+                                                style={{ flexDirection: "row" }}
                                             >
-                                                <MenuItem value="">Select Drop Method</MenuItem>
-                                                <MenuItem value="Drop-Off">Drop-Off</MenuItem>
-                                                <MenuItem value="RGSL Pickup">RGSL Pickup</MenuItem>
-                                            </CustomSelect>
+                                                <FormControlLabel value="Drop Off" control={<Radio />} label="Drop Off" />
+                                                <FormControlLabel value="Collection" control={<Radio />} label="Collection" />
+                                                <FormControlLabel value="Third Party" control={<Radio />} label="Third Party" />
+                                            </RadioGroup>
+                                            {errors.transportType && <Typography variant="caption" color="error">{errors.transportType}</Typography>}
+                                        </FormControl>
+                                        {formData.transportType === 'Drop Off' && (
                                             <Stack spacing={2}>
-                                                <CustomTextField
-                                                    label="Person Name"
-                                                    name="dropoffName"
-                                                    value={formData.dropoffName}
-                                                    onChange={handleChange}
-                                                    error={!!errors.dropoffName}
-                                                    helperText={errors.dropoffName}
-                                                    required={formData.dropMethod === 'Drop-Off'}
-                                                />
-                                                <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                                    <CustomTextField
-                                                        label="CNIC/ID"
-                                                        name="dropOffCnic"
-                                                        value={formData.dropOffCnic}
-                                                        onChange={handleChange}
-                                                        error={!!errors.dropOffCnic}
-                                                        helperText={errors.dropOffCnic}
-                                                        required={formData.dropMethod === 'Drop-Off'}
-                                                    />
-                                                    <CustomTextField
-                                                        label="Mobile"
-                                                        name="dropOffMobile"
-                                                        value={formData.dropOffMobile}
-                                                        onChange={handleChange}
-                                                        error={!!errors.dropOffMobile}
-                                                        helperText={errors.dropOffMobile}
-                                                        required={formData.dropMethod === 'Drop-Off'}
-                                                    />
-                                                </Box>
-                                            </Stack>
-                                            <CustomTextField
-                                                label="Plate No (optional)"
-                                                name="plateNo"
-                                                value={formData.plateNo}
-                                                onChange={handleChange}
-                                                error={!!errors.plateNo}
-                                                helperText={errors.plateNo}
-                                            />
-                                            <CustomTextField
-                                                label="Drop Date"
-                                                name="dropDate"
-                                                type="date"
-                                                value={formData.dropDate}
-                                                onChange={handleChange}
-                                                InputLabelProps={{ shrink: true }}
-                                                error={!!errors.dropDate}
-                                                helperText={errors.dropDate}
-                                                required
-                                            />
-                                        </Stack>
-                                    )}
-                                    {formData.transportType === 'Collection' && (
-                                        <Stack spacing={2}>
-                                            <Typography variant="h6" color="#f58220" gutterBottom>
-                                                🚛 Collection Details
-                                            </Typography>
-                                            <CustomSelect
-                                                label="Collection Method"
-                                                name="collectionMethod"
-                                                value={formData.collectionMethod || ""}
-                                                onChange={handleChange}
-                                                error={!!errors.collectionMethod}
-                                                renderValue={(selected) => selected || "Select Collection Method"}
-                                            >
-                                                <MenuItem value="">Select Collection Method</MenuItem>
-                                                <MenuItem value="Delivered by RGSL">Delivered by RGSL</MenuItem>
-                                                <MenuItem value="Collected by Client">Collected by Client</MenuItem>
-                                            </CustomSelect>
-                                            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                <Typography variant="h6" color="#f58220" gutterBottom>
+                                                    🧭 Drop-Off Details
+                                                </Typography>
                                                 <CustomSelect
-                                                    label="Full / Partial"
-                                                    name="collection_scope"
-                                                    value={formData.collection_scope || "Partial"}
+                                                    label="Drop Method"
+                                                    name="dropMethod"
+                                                    value={formData.dropMethod || ""}
                                                     onChange={handleChange}
-                                                    error={!!errors.collection_scope}
-                                                    helperText={errors.collection_scope}
+                                                    error={!!errors.dropMethod}
+                                                    renderValue={(selected) => selected || "Select Drop Method"}
                                                 >
-                                                    <MenuItem value="Full">Full</MenuItem>
-                                                    <MenuItem value="Partial">Partial</MenuItem>
+                                                    <MenuItem value="">Select Drop Method</MenuItem>
+                                                    <MenuItem value="Drop-Off">Drop-Off</MenuItem>
+                                                    <MenuItem value="RGSL Pickup">RGSL Pickup</MenuItem>
                                                 </CustomSelect>
-                                                {formData.collection_scope === "Partial" && (
+                                                <Stack spacing={2}>
                                                     <CustomTextField
-                                                        label="Qty Delivered"
-                                                        name="qtyDelivered"
-                                                        value={formData.qtyDelivered || ""}
+                                                        label="Person Name"
+                                                        name="dropoffName"
+                                                        value={formData.dropoffName}
                                                         onChange={handleChange}
-                                                        error={!!errors.qtyDelivered}
-                                                        helperText={errors.qtyDelivered}
+                                                        error={!!errors.dropoffName}
+                                                        helperText={errors.dropoffName}
+                                                        required={formData.dropMethod === 'Drop-Off'}
                                                     />
-                                                )}
-                                            </Box>
-                                            <Stack spacing={2}>
-                                                <CustomTextField
-                                                    label="Receiver Name / CNIC/ID"
-                                                    name="clientReceiverName"
-                                                    value={formData.clientReceiverName}
-                                                    onChange={handleChange}
-                                                    error={!!errors.clientReceiverName}
-                                                    helperText={errors.clientReceiverName}
-                                                    required={formData.collectionMethod === 'Collected by Client'}
-                                                />
-                                                <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                                    <CustomTextField
-                                                        label="Receiver ID"
-                                                        name="clientReceiverId"
-                                                        value={formData.clientReceiverId}
-                                                        onChange={handleChange}
-                                                        error={!!errors.clientReceiverId}
-                                                        helperText={errors.clientReceiverId}
-                                                        required={formData.collectionMethod === 'Collected by Client'}
-                                                    />
-                                                    <CustomTextField
-                                                        label="Receiver Mobile"
-                                                        name="clientReceiverMobile"
-                                                        value={formData.clientReceiverMobile}
-                                                        onChange={handleChange}
-                                                        error={!!errors.clientReceiverMobile}
-                                                        helperText={errors.clientReceiverMobile}
-                                                        required={formData.collectionMethod === 'Collected by Client'}
-                                                    />
-                                                </Box>
+                                                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                        <CustomTextField
+                                                            label="CNIC/ID"
+                                                            name="dropOffCnic"
+                                                            value={formData.dropOffCnic}
+                                                            onChange={handleChange}
+                                                            error={!!errors.dropOffCnic}
+                                                            helperText={errors.dropOffCnic}
+                                                            required={formData.dropMethod === 'Drop-Off'}
+                                                        />
+                                                        <CustomTextField
+                                                            label="Mobile"
+                                                            name="dropOffMobile"
+                                                            value={formData.dropOffMobile}
+                                                            onChange={handleChange}
+                                                            error={!!errors.dropOffMobile}
+                                                            helperText={errors.dropOffMobile}
+                                                            required={formData.dropMethod === 'Drop-Off'}
+                                                        />
+                                                    </Box>
+                                                </Stack>
                                                 <CustomTextField
                                                     label="Plate No (optional)"
                                                     name="plateNo"
@@ -2296,331 +2482,423 @@ const handleSave = async () => {
                                                     error={!!errors.plateNo}
                                                     helperText={errors.plateNo}
                                                 />
+                                                <CustomTextField
+                                                    label="Drop Date"
+                                                    name="dropDate"
+                                                    type="date"
+                                                    value={formData.dropDate}
+                                                    onChange={handleChange}
+                                                    InputLabelProps={{ shrink: true }}
+                                                    error={!!errors.dropDate}
+                                                    helperText={errors.dropDate}
+                                                    required
+                                                />
                                             </Stack>
-                                            <CustomTextField
-                                                label="Delivery Date"
-                                                name="deliveryDate"
-                                                type="date"
-                                                value={formData.deliveryDate}
-                                                onChange={handleChange}
-                                                InputLabelProps={{ shrink: true }}
-                                                error={!!errors.deliveryDate}
-                                                helperText={errors.deliveryDate}
-                                                required
-                                            />
-                                            <Button
-                                                variant="outlined"
-                                                component="label"
-                                                sx={{ borderRadius: 2, borderColor: "#f58220", color: "#f58220", px: 3 }}
-                                            >
-                                                Gatepass Upload (Optional)
-                                                <input type="file" hidden multiple onChange={handleGatepassUpload} />
-                                            </Button>
-                                            {Array.isArray(formData.gatepass) && formData.gatepass.length > 0 && (
-                                                <Stack spacing={1} direction="row" flexWrap="wrap" gap={1}>
-                                                    {formData.gatepass.map((gatepass, j) => {
-                                                        const src = typeof gatepass === 'string' ? gatepass : URL.createObjectURL(gatepass);
-                                                        const label = typeof gatepass === 'string' ? gatepass.split('/').pop() : gatepass.name || 'File';
-                                                        return (
-                                                            <Chip
-                                                                key={j}
-                                                                label={label}
-                                                                color="secondary"
-                                                                size="small"
-                                                                variant="outlined"
-                                                                onClick={() => {
-                                                                    setPreviewSrc(src);
-                                                                    setPreviewOpen(true);
-                                                                }}
-                                                                sx={{ cursor: 'pointer', '&:hover': { backgroundColor: '#f58220', color: 'white' } }}
-                                                            />
-                                                        );
-                                                    })}
+                                        )}
+                                        {formData.transportType === 'Collection' && (
+                                            <Stack spacing={2}>
+                                                <Typography variant="h6" color="#f58220" gutterBottom>
+                                                    🚛 Collection Details
+                                                </Typography>
+                                                <CustomSelect
+                                                    label="Collection Method"
+                                                    name="collectionMethod"
+                                                    value={formData.collectionMethod || ""}
+                                                    onChange={handleChange}
+                                                    error={!!errors.collectionMethod}
+                                                    renderValue={(selected) => selected || "Select Collection Method"}
+                                                >
+                                                    <MenuItem value="">Select Collection Method</MenuItem>
+                                                    <MenuItem value="Delivered by RGSL">Delivered by RGSL</MenuItem>
+                                                    <MenuItem value="Collected by Client">Collected by Client</MenuItem>
+                                                </CustomSelect>
+                                                <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                    <CustomSelect
+                                                        label="Full / Partial"
+                                                        name="collection_scope"
+                                                        value={formData.collection_scope || "Partial"}
+                                                        onChange={handleChange}
+                                                        error={!!errors.collection_scope}
+                                                        helperText={errors.collection_scope}
+                                                    >
+                                                        <MenuItem value="Full">Full</MenuItem>
+                                                        <MenuItem value="Partial">Partial</MenuItem>
+                                                    </CustomSelect>
+                                                    {formData.collection_scope === "Partial" && (
+                                                        <CustomTextField
+                                                            label="Qty Delivered"
+                                                            name="qtyDelivered"
+                                                            value={formData.qtyDelivered || ""}
+                                                            onChange={handleChange}
+                                                            error={!!errors.qtyDelivered}
+                                                            helperText={errors.qtyDelivered}
+                                                        />
+                                                    )}
+                                                </Box>
+                                                <Stack spacing={2}>
+                                                    <CustomTextField
+                                                        label="Receiver Name / CNIC/ID"
+                                                        name="clientReceiverName"
+                                                        value={formData.clientReceiverName}
+                                                        onChange={handleChange}
+                                                        error={!!errors.clientReceiverName}
+                                                        helperText={errors.clientReceiverName}
+                                                        required={formData.collectionMethod === 'Collected by Client'}
+                                                    />
+                                                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                        <CustomTextField
+                                                            label="Receiver ID"
+                                                            name="clientReceiverId"
+                                                            value={formData.clientReceiverId}
+                                                            onChange={handleChange}
+                                                            error={!!errors.clientReceiverId}
+                                                            helperText={errors.clientReceiverId}
+                                                            required={formData.collectionMethod === 'Collected by Client'}
+                                                        />
+                                                        <CustomTextField
+                                                            label="Receiver Mobile"
+                                                            name="clientReceiverMobile"
+                                                            value={formData.clientReceiverMobile}
+                                                            onChange={handleChange}
+                                                            error={!!errors.clientReceiverMobile}
+                                                            helperText={errors.clientReceiverMobile}
+                                                            required={formData.collectionMethod === 'Collected by Client'}
+                                                        />
+                                                    </Box>
+                                                    <CustomTextField
+                                                        label="Plate No (optional)"
+                                                        name="plateNo"
+                                                        value={formData.plateNo}
+                                                        onChange={handleChange}
+                                                        error={!!errors.plateNo}
+                                                        helperText={errors.plateNo}
+                                                    />
                                                 </Stack>
-                                            )}
-                                        </Stack>
-                                    )}
-                                    {formData.transportType === 'Third Party' && (
-                                        <Stack spacing={2}>
-                                            <Typography variant="h6" color="#f58220" gutterBottom>
-                                                👥 Third Party Details
-                                            </Typography>
-                                            <CustomSelect
-                                                label="3rd party Transport Company"
-                                                name="thirdPartyTransport"
-                                                value={formData.thirdPartyTransport || ""}
-                                                onChange={handleChange}
-                                                error={!!errors.thirdPartyTransport}
-                                                helperText={errors.thirdPartyTransport}
-                                                renderValue={(selected) => selected || "Select Company"}
-                                            >
-                                                {companies.map((c) => (
-                                                    <MenuItem key={c} value={c}>
-                                                        {c}
-                                                    </MenuItem>
-                                                ))}
-                                            </CustomSelect>
-                                            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
                                                 <CustomTextField
-                                                    label="Driver Name"
-                                                    name="driverName"
-                                                    value={formData.driverName}
+                                                    label="Delivery Date"
+                                                    name="deliveryDate"
+                                                    type="date"
+                                                    value={formData.deliveryDate}
                                                     onChange={handleChange}
-                                                    error={!!errors.driverName}
-                                                    helperText={errors.driverName}
+                                                    InputLabelProps={{ shrink: true }}
+                                                    error={!!errors.deliveryDate}
+                                                    helperText={errors.deliveryDate}
                                                     required
                                                 />
-                                                <CustomTextField
-                                                    label="Driver Contact number"
-                                                    name="driverContact"
-                                                    value={formData.driverContact}
+                                                <Button
+                                                    variant="outlined"
+                                                    component="label"
+                                                    sx={{ borderRadius: 2, borderColor: "#f58220", color: "#f58220", px: 3 }}
+                                                >
+                                                    Gatepass Upload (Optional)
+                                                    <input type="file" hidden multiple onChange={handleGatepassUpload} />
+                                                </Button>
+                                                {Array.isArray(formData.gatepass) && formData.gatepass.length > 0 && (
+                                                    <Stack spacing={1} direction="row" flexWrap="wrap" gap={1}>
+                                                        {formData.gatepass.map((gatepass, j) => {
+                                                            const src = typeof gatepass === 'string' ? gatepass : URL.createObjectURL(gatepass);
+                                                            const label = typeof gatepass === 'string' ? gatepass.split('/').pop() : gatepass.name || 'File';
+                                                            return (
+                                                                <Chip
+                                                                    key={j}
+                                                                    label={label}
+                                                                    color="secondary"
+                                                                    size="small"
+                                                                    variant="outlined"
+                                                                    onClick={() => {
+                                                                        setPreviewSrc(src);
+                                                                        setPreviewOpen(true);
+                                                                    }}
+                                                                    sx={{ cursor: 'pointer', '&:hover': { backgroundColor: '#f58220', color: 'white' } }}
+                                                                />
+                                                            );
+                                                        })}
+                                                    </Stack>
+                                                )}
+                                            </Stack>
+                                        )}
+                                        {formData.transportType === 'Third Party' && (
+                                            <Stack spacing={2}>
+                                                <Typography variant="h6" color="#f58220" gutterBottom>
+                                                    👥 Third Party Details
+                                                </Typography>
+                                                <CustomSelect
+                                                    label="3rd party Transport Company"
+                                                    name="thirdPartyTransport"
+                                                    value={formData.thirdPartyTransport || ""}
                                                     onChange={handleChange}
-                                                    error={!!errors.driverContact}
-                                                    helperText={errors.driverContact}
+                                                    error={!!errors.thirdPartyTransport}
+                                                    helperText={errors.thirdPartyTransport}
+                                                    renderValue={(selected) => selected || "Select Company"}
+                                                >
+                                                    {companies.map((c) => (
+                                                        <MenuItem key={c} value={c}>
+                                                            {c}
+                                                        </MenuItem>
+                                                    ))}
+                                                </CustomSelect>
+                                                <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                    <CustomTextField
+                                                        label="Driver Name"
+                                                        name="driverName"
+                                                        value={formData.driverName}
+                                                        onChange={handleChange}
+                                                        error={!!errors.driverName}
+                                                        helperText={errors.driverName}
+                                                        required
+                                                    />
+                                                    <CustomTextField
+                                                        label="Driver Contact number"
+                                                        name="driverContact"
+                                                        value={formData.driverContact}
+                                                        onChange={handleChange}
+                                                        error={!!errors.driverContact}
+                                                        helperText={errors.driverContact}
+                                                        required
+                                                    />
+                                                </Box>
+                                                <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                    <CustomTextField
+                                                        label="Driver NIC Number"
+                                                        name="driverNic"
+                                                        value={formData.driverNic}
+                                                        onChange={handleChange}
+                                                        error={!!errors.driverNic}
+                                                        helperText={errors.driverNic}
+                                                        required
+                                                    />
+                                                    <CustomTextField
+                                                        label="Driver Pickup Location"
+                                                        name="driverPickupLocation"
+                                                        value={formData.driverPickupLocation}
+                                                        onChange={handleChange}
+                                                        error={!!errors.driverPickupLocation}
+                                                        helperText={errors.driverPickupLocation}
+                                                        required
+                                                    />
+                                                </Box>
+                                                <CustomTextField
+                                                    label="Truck number"
+                                                    name="truckNumber"
+                                                    value={formData.truckNumber}
+                                                    onChange={handleChange}
+                                                    error={!!errors.truckNumber}
+                                                    helperText={errors.truckNumber}
                                                     required
                                                 />
-                                            </Box>
-                                            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                                <CustomTextField
-                                                    label="Driver NIC Number"
-                                                    name="driverNic"
-                                                    value={formData.driverNic}
-                                                    onChange={handleChange}
-                                                    error={!!errors.driverNic}
-                                                    helperText={errors.driverNic}
-                                                    required
-                                                />
-                                                <CustomTextField
-                                                    label="Driver Pickup Location"
-                                                    name="driverPickupLocation"
-                                                    value={formData.driverPickupLocation}
-                                                    onChange={handleChange}
-                                                    error={!!errors.driverPickupLocation}
-                                                    helperText={errors.driverPickupLocation}
-                                                    required
-                                                />
-                                            </Box>
-                                            <CustomTextField
-                                                label="Truck number"
-                                                name="truckNumber"
-                                                value={formData.truckNumber}
-                                                onChange={handleChange}
-                                                error={!!errors.truckNumber}
-                                                helperText={errors.truckNumber}
-                                                required
-                                            />
-                                        </Stack>
-                                    )}
-                                </Stack>
-                            </AccordionDetails>
-                        </Accordion>
-                        <Accordion
-                            expanded={expanded.has("panel4")}
-                            onChange={handleAccordionChange("panel4")}
-                            sx={{
-                                borderRadius: 2,
-                                boxShadow: "none",
-                                "&:before": { display: "none" },
-                                "&.Mui-expanded": { boxShadow: "0 2px 8px rgba(0,0,0,0.1)" },
-                            }}
-                        >
-                            <AccordionSummary
-                                expandIcon={<ExpandMoreIcon />}
+                                            </Stack>
+                                        )}
+                                    </Stack>
+                                </AccordionDetails>
+                            </Accordion>
+                            <Accordion
+                                expanded={expanded.has("panel4")}
+                                onChange={handleAccordionChange("panel4")}
                                 sx={{
-                                    bgcolor: expanded.has("panel4") ? "#0d6c6a" : "#fff3e0",
                                     borderRadius: 2,
-                                    "& .MuiAccordionSummary-content": { fontWeight: "bold", color: expanded.has("panel4") ? "#fff" : "#f58220" },
+                                    boxShadow: "none",
+                                    "&:before": { display: "none" },
+                                    "&.Mui-expanded": { boxShadow: "0 2px 8px rgba(0,0,0,0.1)" },
                                 }}
                             >
-                                4. Order Summary
-                            </AccordionSummary>
-                            <AccordionDetails sx={{ p: 3, bgcolor: "#fff" }}>
-                                <Stack spacing={2}>
-                                    <Stack direction="row" justifyContent="space-between" alignItems="center">
-                                        <Typography variant="body1" fontWeight="medium">Booking Ref:</Typography>
-                                        <Chip label={formData.bookingRef || "-"} variant="outlined" color="primary" />
-                                    </Stack>
-                                    <Stack direction="row" justifyContent="space-between" alignItems="center">
-                                        <Typography variant="body1" fontWeight="medium">Point of Origin:</Typography>
-                                        <Typography variant="body1">{formData.pointOfOrigin || "-"}</Typography>
-                                    </Stack>
-                                    <Stack direction="row" justifyContent="space-between" alignItems="center">
-                                        <Typography variant="body1" fontWeight="medium">Place of Loading:</Typography>
-                                        <Typography variant="body1">{formData.placeOfLoading || "-"}</Typography>
-                                    </Stack>
-                                    <Stack direction="row" justifyContent="space-between" alignItems="center">
-                                        <Typography variant="body1" fontWeight="medium">Final Destination:</Typography>
-                                        <Typography variant="body1">{formData.finalDestination || "-"}</Typography>
-                                    </Stack>
-                                    <Stack direction="row" justifyContent="space-between" alignItems="center">
-                                        <Typography variant="body1" fontWeight="medium">Owner:</Typography>
-                                        <Typography variant="body1">{ownerName || "-"}</Typography>
-                                    </Stack>
-                                    <Stack spacing={1}>
-                                        <Typography variant="body1" fontWeight="medium">{formData.senderType === 'sender' ? 'Receivers:' : 'Senders:'}</Typography>
-                                        {(formData.senderType === 'sender' ? formData.receivers : formData.senders).map((rec, i) => (
-                                            <Stack direction="row" justifyContent="space-between" alignItems="center" key={i}>
-                                                <Chip sx={{ p: 2 }} label={formData.senderType === 'sender' ? rec.receiverName : rec.senderName || `${formData.senderType === 'sender' ? 'Receiver' : 'Sender'} ${i + 1}`} size="small" color="primary" variant="outlined" />
-                                                <Typography variant="body2" color="text.secondary">
-                                                    Delivered: {rec.qtyDelivered || 0} / { (rec.shippingDetails || []).reduce((sum, sd) => sum + (parseInt(sd.totalNumber || 0) || 0), 0) } items
-                                                </Typography>
-                                            </Stack>
-                                        ))}
-                                    </Stack>
-                                    {formData.receivers.some(rec => rec.containers && rec.containers.length > 0) && (
+                                <AccordionSummary
+                                    expandIcon={<ExpandMoreIcon />}
+                                    sx={{
+                                        bgcolor: expanded.has("panel4") ? "#0d6c6a" : "#fff3e0",
+                                        borderRadius: 2,
+                                        "& .MuiAccordionSummary-content": { fontWeight: "bold", color: expanded.has("panel4") ? "#fff" : "#f58220" },
+                                    }}
+                                >
+                                    4. Order Summary
+                                </AccordionSummary>
+                                <AccordionDetails sx={{ p: 3, bgcolor: "#fff" }}>
+                                    <Stack spacing={2}>
+                                        <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                            <Typography variant="body1" fontWeight="medium">Booking Ref:</Typography>
+                                            <Chip label={formData.bookingRef || "-"} variant="outlined" color="primary" />
+                                        </Stack>
+                                        <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                            <Typography variant="body1" fontWeight="medium">Point of Origin:</Typography>
+                                            <Typography variant="body1">{formData.pointOfOrigin || "-"}</Typography>
+                                        </Stack>
+                                        <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                            <Typography variant="body1" fontWeight="medium">Place of Loading:</Typography>
+                                            <Typography variant="body1">{formData.placeOfLoading || "-"}</Typography>
+                                        </Stack>
+                                        <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                            <Typography variant="body1" fontWeight="medium">Final Destination:</Typography>
+                                            <Typography variant="body1">{formData.finalDestination || "-"}</Typography>
+                                        </Stack>
+                                        <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                            <Typography variant="body1" fontWeight="medium">Owner:</Typography>
+                                            <Typography variant="body1">{ownerName || "-"}</Typography>
+                                        </Stack>
                                         <Stack spacing={1}>
-                                            <Typography variant="body1" fontWeight="medium">Assigned Containers:</Typography>
-                                            {formData.receivers.flatMap(rec => rec.containers || []).map((cont, i) => (
+                                            <Typography variant="body1" fontWeight="medium">{formData.senderType === 'sender' ? 'Receivers:' : 'Senders:'}</Typography>
+                                            {(formData.senderType === 'sender' ? formData.receivers : formData.senders).map((rec, i) => (
                                                 <Stack direction="row" justifyContent="space-between" alignItems="center" key={i}>
-                                                    <Chip sx={{ p: 2 }} label={cont} color="info" size="small" variant="outlined" />
+                                                    <Chip sx={{ p: 2 }} label={formData.senderType === 'sender' ? rec.receiverName : rec.senderName || `${formData.senderType === 'sender' ? 'Receiver' : 'Sender'} ${i + 1}`} size="small" color="primary" variant="outlined" />
+                                                    <Typography variant="body2" color="text.secondary">
+                                                        Delivered: {rec.qtyDelivered || 0} / { (rec.shippingDetails || []).reduce((sum, sd) => sum + (parseInt(sd.totalNumber || 0) || 0), 0) } items
+                                                    </Typography>
                                                 </Stack>
                                             ))}
                                         </Stack>
-                                    )}
-                                    {/* New: Global Totals */}
-                                    <Divider />
-                                    <Stack direction="row" justifyContent="space-between" alignItems="center">
-                                        <Typography variant="body1" fontWeight="medium">Total Items (All {formData.senderType === 'sender' ? 'Receivers' : 'Senders'}):</Typography>
-                                        <Chip label={formData.globalTotalItems || "-"} variant="outlined" color="success" />
+                                        {formData.receivers.some(rec => rec.containers && rec.containers.length > 0) && (
+                                            <Stack spacing={1}>
+                                                <Typography variant="body1" fontWeight="medium">Assigned Containers:</Typography>
+                                                {formData.receivers.flatMap(rec => rec.containers || []).map((cont, i) => (
+                                                    <Stack direction="row" justifyContent="space-between" alignItems="center" key={i}>
+                                                        <Chip sx={{ p: 2 }} label={cont} color="info" size="small" variant="outlined" />
+                                                    </Stack>
+                                                ))}
+                                            </Stack>
+                                        )}
+                                        {/* New: Global Totals */}
+                                        <Divider />
+                                        <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                            <Typography variant="body1" fontWeight="medium">Total Items (All {formData.senderType === 'sender' ? 'Receivers' : 'Senders'}):</Typography>
+                                            <Chip label={formData.globalTotalItems || "-"} variant="outlined" color="success" />
+                                        </Stack>
+                                        <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                            <Typography variant="body1" fontWeight="medium">Shipping Line:</Typography>
+                                            <Typography variant="body1">{firstPanel2Item.shippingLine || "-"}</Typography>
+                                        </Stack>
+                                        <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                            <Typography variant="body1" fontWeight="medium">ETA:</Typography>
+                                            <Typography variant="body1">{firstPanel2Item.eta || "-"}</Typography>
+                                        </Stack>
+                                        <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                            <Typography variant="body1" fontWeight="medium">Transport Type:</Typography>
+                                            <Typography variant="body1">{formData.transportType || "-"}</Typography>
+                                        </Stack>
                                     </Stack>
-                                    <Stack direction="row" justifyContent="space-between" alignItems="center">
-                                        <Typography variant="body1" fontWeight="medium">Shipping Line:</Typography>
-                                        <Typography variant="body1">{firstPanel2Item.shippingLine || "-"}</Typography>
-                                    </Stack>
-                                    <Stack direction="row" justifyContent="space-between" alignItems="center">
-                                        <Typography variant="body1" fontWeight="medium">ETA:</Typography>
-                                        <Typography variant="body1">{firstPanel2Item.eta || "-"}</Typography>
-                                    </Stack>
-                                    <Stack direction="row" justifyContent="space-between" alignItems="center">
-                                        <Typography variant="body1" fontWeight="medium">Transport Type:</Typography>
-                                        <Typography variant="body1">{formData.transportType || "-"}</Typography>
-                                    </Stack>
-                                </Stack>
-                            </AccordionDetails>
-                        </Accordion>
-                        <Accordion
-                            expanded={expanded.has("panel5")}
-                            onChange={handleAccordionChange("panel5")}
-                            sx={{
-                                borderRadius: 2,
-                                boxShadow: "none",
-                                "&:before": { display: "none" },
-                                "&.Mui-expanded": { boxShadow: "0 2px 8px rgba(0,0,0,0.1)" },
-                            }}
-                        >
-                            <AccordionSummary
-                                expandIcon={<ExpandMoreIcon />}
+                                </AccordionDetails>
+                            </Accordion>
+                            <Accordion
+                                expanded={expanded.has("panel5")}
+                                onChange={handleAccordionChange("panel5")}
                                 sx={{
-                                    bgcolor: expanded.has("panel5") ? "#0d6c6a" : "#fff3e0",
                                     borderRadius: 2,
-                                    "& .MuiAccordionSummary-content": { fontWeight: "bold", color: expanded.has("panel5") ? "#fff" : "#f58220" },
+                                    boxShadow: "none",
+                                    "&:before": { display: "none" },
+                                    "&.Mui-expanded": { boxShadow: "0 2px 8px rgba(0,0,0,0.1)" },
                                 }}
                             >
-                                5. Attachments
-                            </AccordionSummary>
-                            <AccordionDetails sx={{ p: 3, bgcolor: "#fff" }}>
-                                <Stack spacing={2}>
-                                    <Button
-                                        variant="outlined"
-                                        component="label"
-                                        sx={{ borderRadius: 2, borderColor: "#f58220", color: "#f58220", px: 3 }}
-                                    >
-                                        Upload File
-                                        <input type="file" hidden multiple onChange={handleFileUpload} />
-                                    </Button>
-                                    {Array.isArray(formData.attachments) && formData.attachments.length > 0 && (
-                                        <Stack spacing={1} direction="row" flexWrap="wrap" gap={1}>
-                                            {formData.attachments.map((attachment, i) => {
-                                                const src = typeof attachment === 'string' ? attachment : URL.createObjectURL(attachment);
-                                                const label = typeof attachment === 'string' ? attachment.split('/').pop() : attachment.name || 'File';
-                                                return (
-                                                    <Chip
-                                                        key={i}
-                                                        label={label}
-                                                        color="secondary"
-                                                        size="small"
-                                                        variant="outlined"
-                                                        onClick={() => {
-                                                            setPreviewSrc(src);
-                                                            setPreviewOpen(true);
-                                                        }}
-                                                        sx={{ cursor: 'pointer', '&:hover': { backgroundColor: '#f58220', color: 'white' } }}
-                                                    />
-                                                );
-                                            })}
-                                        </Stack>
-                                    )}
-                                </Stack>
-                            </AccordionDetails>
-                        </Accordion>
-                    </Stack>
-                    {/* Bottom Buttons */}
-                    <Stack direction="row" justifyContent="flex-end" gap={2} mt={4} pt={3} borderTop="1px solid #e0e0e0">
-                        <Button
-                            variant="outlined"
-                            size="small"
-                            startIcon={<DownloadIcon />}
-                            sx={{ borderRadius: 2, borderColor: "#f58220", color: "#f58220" }}
+                                <AccordionSummary
+                                    expandIcon={<ExpandMoreIcon />}
+                                    sx={{
+                                        bgcolor: expanded.has("panel5") ? "#0d6c6a" : "#fff3e0",
+                                        borderRadius: 2,
+                                        "& .MuiAccordionSummary-content": { fontWeight: "bold", color: expanded.has("panel5") ? "#fff" : "#f58220" },
+                                    }}
+                                >
+                                    5. Attachments
+                                </AccordionSummary>
+                                <AccordionDetails sx={{ p: 3, bgcolor: "#fff" }}>
+                                    <Stack spacing={2}>
+                                        <Button
+                                            variant="outlined"
+                                            component="label"
+                                            sx={{ borderRadius: 2, borderColor: "#f58220", color: "#f58220", px: 3 }}
+                                        >
+                                            Upload File
+                                            <input type="file" hidden multiple onChange={handleFileUpload} />
+                                        </Button>
+                                        {Array.isArray(formData.attachments) && formData.attachments.length > 0 && (
+                                            <Stack spacing={1} direction="row" flexWrap="wrap" gap={1}>
+                                                {formData.attachments.map((attachment, i) => {
+                                                    const src = typeof attachment === 'string' ? attachment : URL.createObjectURL(attachment);
+                                                    const label = typeof attachment === 'string' ? attachment.split('/').pop() : attachment.name || 'File';
+                                                    return (
+                                                        <Chip
+                                                            key={i}
+                                                            label={label}
+                                                            color="secondary"
+                                                            size="small"
+                                                            variant="outlined"
+                                                            onClick={() => {
+                                                                setPreviewSrc(src);
+                                                                setPreviewOpen(true);
+                                                            }}
+                                                            sx={{ cursor: 'pointer', '&:hover': { backgroundColor: '#f58220', color: 'white' } }}
+                                                        />
+                                                    );
+                                                })}
+                                            </Stack>
+                                        )}
+                                    </Stack>
+                                </AccordionDetails>
+                            </Accordion>
+                        </Stack>
+                        {/* Bottom Buttons */}
+                        <Stack direction="row" justifyContent="flex-end" gap={2} mt={4} pt={3} borderTop="1px solid #e0e0e0">
+                            <Button
+                                onClick={() => generateOrderPDF(selectedOrder)}
+                                variant="outlined"
+                                size="small"
+                                startIcon={<DownloadIcon />}
+                                sx={{ borderRadius: 2, borderColor: "#f58220", color: "#f58220" }}
+                            >
+                                Print Consignment Manifest
+                            </Button>
+                        </Stack>
+                    </Box>
+                </Paper>
+                {/* Preview Modal */}
+                <Dialog open={previewOpen} onClose={() => setPreviewOpen(false)} maxWidth="lg" fullWidth>
+                    <DialogTitle>
+                        File Preview
+                        <IconButton
+                            onClick={() => setPreviewOpen(false)}
+                            sx={{ position: 'absolute', right: 8, top: 8 }}
                         >
-                            Print Consignment Manifest
-                        </Button>
-                    </Stack>
-                </Box>
-            </Paper>
-            {/* Preview Modal */}
-            <Dialog open={previewOpen} onClose={() => setPreviewOpen(false)} maxWidth="lg" fullWidth>
-                <DialogTitle>
-                    File Preview
-                    <IconButton
-                        onClick={() => setPreviewOpen(false)}
-                        sx={{ position: 'absolute', right: 8, top: 8 }}
-                    >
-                        <CloseIcon />
-                    </IconButton>
-                </DialogTitle>
-                <DialogContent sx={{ p: 2 }}>
-                    {previewSrc && (
-                        <img
-                            src={previewSrc}
-                            alt="Preview"
-                            style={{
-                                width: '100%',
-                                height: 'auto',
-                                maxHeight: '70vh',
-                                objectFit: 'contain',
-                                borderRadius: 2,
-                                boxShadow: '0 4px 20px rgba(0,0,0,0.1)'
-                            }}
-                            onLoad={() => console.log('Preview loaded:', previewSrc)}
-                            onError={(e) => {
-                                e.target.style.display = 'none';
-                                setSnackbar({
-                                    open: true,
-                                    message: 'Failed to load file. Check URL or file type.',
-                                    severity: 'error'
-                                });
-                            }}
-                        />
-                    )}
-                    {!previewSrc.startsWith('blob:') && previewSrc.endsWith('.pdf') && (
-                        <a href={previewSrc} target="_blank" rel="noopener noreferrer" style={{ display: 'block', textAlign: 'center', mt: 2 }}>
-                            <Button variant="outlined" startIcon={<DownloadIcon />}>Open PDF</Button>
-                        </a>
-                    )}
-                </DialogContent>
-            </Dialog>
-            {/* Snackbar for notifications */}
-            <Snackbar
-                open={snackbar.open}
-                autoHideDuration={6000}
-                onClose={handleSnackbarClose}
-                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-            >
-                <Alert onClose={handleSnackbarClose} severity={snackbar.severity} sx={{ width: '100%' }}>
-                    {snackbar.message}
-                </Alert>
-            </Snackbar>
-        </>
+                            <CloseIcon />
+                        </IconButton>
+                    </DialogTitle>
+                    <DialogContent sx={{ p: 2 }}>
+                        {previewSrc && (
+                            <img
+                                src={previewSrc}
+                                alt="Preview"
+                                style={{
+                                    width: '100%',
+                                    height: 'auto',
+                                    maxHeight: '70vh',
+                                    objectFit: 'contain',
+                                    borderRadius: 2,
+                                    boxShadow: '0 4px 20px rgba(0,0,0,0.1)'
+                                }}
+                                onLoad={() => console.log('Preview loaded:', previewSrc)}
+                                onError={(e) => {
+                                    e.target.style.display = 'none';
+                                    setSnackbar({
+                                        open: true,
+                                        message: 'Failed to load file. Check URL or file type.',
+                                        severity: 'error'
+                                    });
+                                }}
+                            />
+                        )}
+                        {!previewSrc.startsWith('blob:') && previewSrc.endsWith('.pdf') && (
+                            <a href={previewSrc} target="_blank" rel="noopener noreferrer" style={{ display: 'block', textAlign: 'center', mt: 2 }}>
+                                <Button variant="outlined" startIcon={<DownloadIcon />}>Open PDF</Button>
+                            </a>
+                        )}
+                    </DialogContent>
+                </Dialog>
+                {/* Snackbar for notifications */}
+                <Snackbar
+                    open={snackbar.open}
+                    autoHideDuration={6000}
+                    onClose={handleSnackbarClose}
+                    anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+                >
+                    <Alert onClose={handleSnackbarClose} severity={snackbar.severity} sx={{ width: '100%' }}>
+                        {snackbar.message}
+                    </Alert>
+                </Snackbar>
+            </>
     );
 };
 

@@ -533,7 +533,7 @@ const generateManifestPDF = async (data, selectedOrders = orders) => {
   //---------------------------------------------------
   // LOAD LOGO AS BASE64
   //---------------------------------------------------
-  const logoBase64 = await loadImageAsBase64("http://localhost:5173/logo-2.png");
+  const logoBase64 = await loadImageAsBase64("https://royalgulfshipping.com/wp-content/uploads/2023/08/RGSL-LOGO-white.png");
 
   //---------------------------------------------------
   // HEADER
@@ -2115,14 +2115,14 @@ const addContainer = () => {
                         <Button
                           variant="outlined"
                           startIcon={<DescriptionIcon />}
-                          onClick={generateManifestPDF}
+                                   onClick={() => generateManifestPDF(values)}
                           disabled={saving || !values.consignment_number}
                           sx={{ borderColor: '#f58220', color: '#f58220', '&:hover': { borderColor: '#e65100', backgroundColor: '#fff3e0' } }}
                         >
                           Print Note (PDF)
                         </Button>
                       </Tooltip>
-                      <Tooltip title="Download as Word document (requires additional setup)">
+                      {/* <Tooltip title="Download as Word document (requires additional setup)">
                         <Button
                           variant="outlined"
                           startIcon={<DescriptionIcon />}
@@ -2132,7 +2132,7 @@ const addContainer = () => {
                         >
                           Print Docx
                         </Button>
-                      </Tooltip>
+                      </Tooltip> */}
                     </Box>
                   </Fade>
                 </AccordionDetails>

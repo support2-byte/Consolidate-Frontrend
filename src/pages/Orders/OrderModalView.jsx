@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
-import jsPDF from 'jspdf'; // Add this import for PDF generation (npm install jspdf)
+import { useState, useEffect, useRef } from "react";
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 import {
     Box,
     Typography,
@@ -44,9 +45,13 @@ import PersonIcon from "@mui/icons-material/Person";
 import InventoryIcon from "@mui/icons-material/Inventory";
 import DriveEtaIcon from "@mui/icons-material/DriveEta";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
-import { getOrderStatusColor } from "./Utlis"; // Assuming you have a utility for status colors
+import DownloadIcon from "@mui/icons-material/Download";
+import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
+import { getOrderStatusColor } from "./Utlis";
 import { useNavigate } from "react-router-dom";
-import { api } from "../../api"; // Assuming API import from parent context
+import { api } from "../../api";
+// import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 // TabPanel Component
 function TabPanel(props) {
@@ -78,7 +83,7 @@ function a11yProps(index) {
     };
 }
 
-// View Order Modal Component
+// Enhanced View Order Modal Component
 const OrderModalView = ({ openModal, handleCloseModal, selectedOrder, modalLoading, modalError }) => {
     const [tabValue, setTabValue] = useState(0);
     const navigate = useNavigate();
@@ -86,13 +91,14 @@ const OrderModalView = ({ openModal, handleCloseModal, selectedOrder, modalLoadi
     const [loadingContainers, setLoadingContainers] = useState(false);
     const [assignmentError, setAssignmentError] = useState(null);
     const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
-    const [assignments, setAssignments] = useState({}); // {receiverId: containerId}
-
-
+    const [assignments, setAssignments] = useState({});
+    const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+    const [pdfGenerationMethod, setPdfGenerationMethod] = useState('jsPDF');
+    const pdfContentRef = useRef(null);
 
     // Fetch open containers
     const fetchContainers = async () => {
-        if (loadingContainers) return; // Prevent multiple calls
+        if (loadingContainers) return;
         setLoadingContainers(true);
         setAssignmentError(null);
         try {
@@ -100,7 +106,7 @@ const OrderModalView = ({ openModal, handleCloseModal, selectedOrder, modalLoadi
             setContainers(response.data.data || []);
         } catch (err) {
             console.error("Error fetching containers:", err);
-            setAssignmentError('Failed to fetch containers. Please check the backend query for table "cm".');
+            setAssignmentError('Failed to fetch containers. Please check backend query for table "cm".');
             setSnackbar({ open: true, message: 'Failed to fetch containers', severity: 'error' });
         } finally {
             setLoadingContainers(false);
@@ -110,7 +116,6 @@ const OrderModalView = ({ openModal, handleCloseModal, selectedOrder, modalLoadi
     // Effect: Initialize assignments when modal opens with order
     useEffect(() => {
         if (openModal && selectedOrder) {
-            // Initialize assignments from current receivers
             const initialAssignments = {};
             (selectedOrder.receivers || []).forEach(rec => {
                 if (rec.container_id) {
@@ -130,6 +135,17 @@ const OrderModalView = ({ openModal, handleCloseModal, selectedOrder, modalLoadi
 
     const statusColor = getOrderStatusColor(selectedOrder?.overall_status || selectedOrder?.status);
 
+const formatDate = (dateStr) => {
+    if (!dateStr) return 'N/A';
+    return new Date(dateStr).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+    });
+};
+
+
+
     const handleEdit = (orderId) => {
         handleCloseModal();
         navigate(`/orders/${orderId}/edit/`, { state: { orderId } });
@@ -141,8 +157,7 @@ const OrderModalView = ({ openModal, handleCloseModal, selectedOrder, modalLoadi
         try {
             await api.post(`/api/orders/${selectedOrder.id}/receivers/${receiverId}/assign-container`, { container_id: containerId });
             setSnackbar({ open: true, message: 'Container assigned successfully', severity: 'success' });
-            fetchContainers(); // Refresh open containers
-            // Refresh order details if needed (e.g., refetch selectedOrder in parent)
+            fetchContainers();
         } catch (err) {
             console.error('Error assigning container:', err);
             setAssignmentError(err.response?.data?.error || 'Failed to assign container');
@@ -150,153 +165,809 @@ const OrderModalView = ({ openModal, handleCloseModal, selectedOrder, modalLoadi
         }
     };
 
-    // Helper to format dates
-    const formatDate = (dateStr) => {
-        if (!dateStr) return 'N/A';
-        return new Date(dateStr).toLocaleDateString('en-US', { 
-            year: 'numeric', 
-            month: 'short', 
-            day: 'numeric' 
-        });
+
+
+
+const getFilesText = (files) => {
+    if (!files || files.length === 0) return 'None';
+    return files.slice(0, 5).join('\n') + (files.length > 5 ? `\n... and ${files.length - 5} more` : '');
+};
+
+const normalizeContainers = (containers) => {
+    if (!containers || !Array.isArray(containers)) return [];
+    // Flatten nested arrays (e.g., [["CONT1"]] -> ["CONT1"])
+    return containers.flat().filter(c => c && typeof c === 'string').map(c => c.trim());
+};
+
+
+// Helper to load images as Base64
+const loadImageAsBase64 = (url) => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'Anonymous';
+    img.src = url;
+
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      resolve(canvas.toDataURL('image/png'));
     };
 
-    // Helper to format files list for PDF
-    const getFilesText = (files) => {
-        if (!files || files.length === 0) return 'No attachments';
-        return files.map((file, index) => 
-            `${index + 1}. ${typeof file === 'string' ? file.split('/').pop() : file.name || 'File'}`
-        ).join('\n');
-    };
-    // Helper to normalize containers (handle string or array)
-    const normalizeContainers = (containers) => {
-        if (!containers) return [];
-        if (typeof containers === 'string') {
-            return [containers.trim()];
+    img.onerror = () => resolve(null);
+  });
+};
+
+const generateOrderPDF = async (selectedOrder) => {
+  if (!selectedOrder) return;
+
+  const doc = new jsPDF('p', 'mm', 'a4');
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const margin = 8;
+  const brandPrimary = [13, 108, 106];  // #0D6C6A
+  const brandLight = [220, 245, 243];
+  const yStart = 30;
+
+  //---------------------------------------------------
+  // HEADER
+  //---------------------------------------------------
+const drawHeader = async () => {
+  const headerHeight = 28;
+
+  doc.setFillColor(...brandPrimary);
+  doc.rect(0, 0, pageWidth, headerHeight, 'F');
+  const logoBase64 = await loadImageAsBase64("/logo.png");
+
+  if (logoBase64) {
+    doc.addImage(logoBase64, 'PNG', margin, 4, 60, 20);
+  } else {
+    console.warn("Logo failed to load.");
+  }
+    doc.setTextColor(255, 255, 255);
+  doc.setFontSize(9).setFont('helvetica', 'normal');
+  doc.text(`Booking Ref: ${selectedOrder.booking_ref || "N/A"}`, pageWidth - margin, 12, { align: 'right' });
+  doc.text(`Generated: ${new Date().toLocaleString()}`, pageWidth - margin, 17, { align: 'right' });
+};
+
+  //---------------------------------------------------
+  // SUMMARY CARDS
+  //---------------------------------------------------
+  const drawSummary = (y) => {
+    const cards = [
+      ["Order ID", selectedOrder.id || 'N/A'],
+      ["Receivers", selectedOrder.receivers?.length || 0],
+      ["Status", selectedOrder.status || "Created"],
+      ["Total Assigned Qty", selectedOrder.total_assigned_qty || 0],
+    ];
+
+    const cardWidth = (pageWidth - margin * 2 - 6) / 2;
+    const cardHeight = 16;
+
+    cards.forEach((item, i) => {
+      const col = i % 2;
+      const row = Math.floor(i / 2);
+      const x = margin + (col * (cardWidth + 6));
+      const cardY = y + row * (cardHeight + 6);
+
+      // Card box
+      doc.setDrawColor(220, 220, 220);
+      doc.setFillColor(...brandLight);
+      doc.roundedRect(x, cardY, cardWidth, cardHeight, 2, 2, 'FD');
+
+      // Title bar
+      doc.setFillColor(...brandPrimary);
+      doc.rect(x, cardY, cardWidth, 5, 'F');
+      doc.setFont('helvetica', 'bold').setFontSize(9);
+      doc.setTextColor(255, 255, 255);
+      doc.text(item[0], x + 2, cardY + 4);
+
+      // Value
+      doc.setTextColor(50, 50, 50);
+      doc.setFont('helvetica', 'normal');
+      doc.text(String(item[1]), x + 3, cardY + 11);
+    });
+
+    return y + Math.ceil(cards.length / 2) * (cardHeight + 6) + 5;
+  };
+
+  //---------------------------------------------------
+  // KEY-VALUE DETAILS SECTION
+  //---------------------------------------------------
+  const drawDetails = (y, title, details) => {
+    doc.setFont('helvetica', 'bold').setFontSize(14);
+    doc.setTextColor(...brandPrimary);
+    doc.text(title, margin, y);
+
+    y += 4;
+
+    // Underline
+    doc.setDrawColor(...brandPrimary);
+    doc.setLineWidth(0.6);
+    doc.line(margin, y, pageWidth - margin, y);
+    y += 6;
+
+    const colWidth = (pageWidth - margin * 2 - 10) / 2;
+    const rowHeight = 8;
+
+    details.forEach((pair, index) => {
+      const col = index % 2;
+      const row = Math.floor(index / 2);
+      const x = margin + col * (colWidth + 10);
+      const dy = y + row * rowHeight;
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.setTextColor(...brandPrimary);
+      doc.text(pair[0], x, dy);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(50, 50, 50);
+      doc.text(String(pair[1] || 'N/A'), x, dy + 4);
+    });
+
+    return y + Math.ceil(details.length / 2) * rowHeight + 6;
+  };
+
+  //---------------------------------------------------
+  // REMARKS & ATTACHMENTS BOX
+  //---------------------------------------------------
+  const drawBoxText = (y, title, text) => {
+    if (!text) return y;
+
+    const boxHeight = 20;
+    doc.setFillColor(248, 249, 250);
+    doc.roundedRect(margin, y, pageWidth - margin * 2, boxHeight, 2, 2, 'F');
+
+    doc.setFont('helvetica', 'bold').setFontSize(10);
+    doc.setTextColor(...brandPrimary);
+    doc.text(title, margin + 3, y + 6);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(50, 50, 50);
+    const wrapped = doc.splitTextToSize(text, pageWidth - margin * 2 - 6);
+    doc.text(wrapped, margin + 3, y + 11);
+
+    return y + boxHeight + 6;
+  };
+
+  //---------------------------------------------------
+  // RECEIVERS TABLE
+  //---------------------------------------------------
+  const drawReceivers = (y) => {
+    if (!selectedOrder.receivers?.length) return y;
+
+    doc.setFont('helvetica', 'bold').setFontSize(14);
+    doc.setTextColor(...brandPrimary);
+    doc.text("Receivers & Shipping Details", margin, y);
+    y += 6;
+
+    const headers = ['Receiver', 'Status', 'Consignment #', 'Qty', 'Weight', 'Contact', 'Address'];
+    const colWidths = [30, 30, 50, 20, 25, 30, 30];
+
+    autoTable(doc, {
+      startY: y,
+      head: [headers],
+      body: selectedOrder.receivers.map(r => [
+        r.receiver_name || 'N/A',
+        r.status || 'N/A',
+        r.consignment_number || 'N/A',
+        r.total_number ?? 'N/A',
+        r.total_weight ?? 'N/A',
+        r.receiver_contact || 'N/A',
+        r.receiver_address || 'N/A'
+      ]),
+      headStyles: { fillColor: brandPrimary, textColor: 255, fontStyle: 'bold' },
+      bodyStyles: { fontSize: 9, cellPadding: 3 },
+      columnStyles: {
+        0: { cellWidth: 30 },
+        1: { cellWidth: 35 },
+        2: { cellWidth: 30 },
+        3: { cellWidth: 25 },
+        4: { cellWidth: 25 },
+        5: { cellWidth: 25 },
+        6: { cellWidth: 25 },
+      },
+      margin: { left: margin, right: margin },
+    });
+
+    return doc.lastAutoTable.finalY + 6;
+  };
+
+  //---------------------------------------------------
+  // FOOTER
+  //---------------------------------------------------
+  const drawFooter = () => {
+    const y = 280;
+    doc.setDrawColor(...brandPrimary);
+    doc.line(margin, y, pageWidth - margin, y);
+
+    doc.setFont('helvetica', 'normal').setFontSize(9);
+    doc.setTextColor(80, 80, 80);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, margin, y + 6);
+    doc.text(`Page ${doc.getCurrentPageInfo().pageNumber}`, pageWidth - margin, y + 6, { align: 'right' });
+  };
+
+  //---------------------------------------------------
+  // BUILD PDF
+  //---------------------------------------------------
+  await drawHeader();
+
+  let y = yStart;
+
+  // Summary cards
+  y = drawSummary(y);
+
+  // Order Information
+  const orderDetails = [
+    ["Booking Ref", selectedOrder.booking_ref],
+    ["Overall Status", selectedOrder.status],
+    ["RGL Booking #", selectedOrder.rgl_booking_number],
+    ["Place of Loading", selectedOrder.place_of_loading],
+    ["Final Destination", selectedOrder.final_destination],
+    ["Place of Delivery", selectedOrder.place_of_delivery],
+    ["ETA", selectedOrder.eta || 'N/A'],
+    ["ETD", selectedOrder.etd || 'N/A'],
+    ["Shipping Line", selectedOrder.shipping_line],
+    ["Point of Origin", selectedOrder.point_of_origin],
+  ];
+  y = drawDetails(y, "ORDER INFORMATION", orderDetails);
+
+  // Sender Information
+  const senderDetails = [
+    ["Sender Name", selectedOrder.sender_name],
+    ["Contact Number", selectedOrder.sender_contact],
+    ["Address", selectedOrder.sender_address],
+    ["Email", selectedOrder.sender_email],
+    ["Sender Reference", selectedOrder.sender_ref],
+  ];
+  y = drawDetails(y, "SENDER INFORMATION", senderDetails);
+
+  // Remarks
+  y = drawBoxText(y, "Order Remarks", selectedOrder.order_remarks);
+  y = drawBoxText(y, "Consignment Remarks", selectedOrder.consignment_remarks);
+
+  // Receivers Table
+  y = drawReceivers(y);
+
+  // Attachments
+  const attachmentsText = selectedOrder.attachments?.length > 0
+    ? selectedOrder.attachments.join(", ")
+    : "None";
+  y = drawBoxText(y, "Attachments", attachmentsText);
+
+  // Footer
+  drawFooter();
+
+  //---------------------------------------------------
+  // SAVE PDF
+  //---------------------------------------------------
+  doc.save(`RGS_Order_${selectedOrder.booking_ref || "Unknown"}.pdf`);
+};
+
+
+// Enhanced HTML to Canvas method with better styling and layout
+const generatePDFWithCanvas = async () => {
+    if (!selectedOrder) return;
+    
+    // Create a temporary div element to render content
+    const tempElement = document.createElement('div');
+    tempElement.style.width = '210mm'; // A4 width
+    tempElement.style.padding = '20mm';
+    tempElement.style.backgroundColor = 'white';
+    tempElement.style.fontFamily = 'Arial, sans-serif';
+    tempElement.style.boxSizing = 'border-box';
+    
+    // Create the content for the PDF with enhanced styling
+    tempElement.innerHTML = `
+        <style>
+            * {
+                box-sizing: border-box;
+            }
+            body {
+                font-family: Arial, sans-serif;
+                margin: 0;
+                padding: 0;
+                color: #333;
+                background: white;
+            }
+            .header {
+                background: linear-gradient(135deg, #f58220 0%, #e65100 100%);
+                color: white;
+                padding: 15px 0;
+                text-align: center;
+                border-radius: 8px;
+                margin-bottom: 20px;
+                box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            }
+            .header h1 {
+                margin: 0;
+                font-size: 24px;
+                font-weight: bold;
+            }
+            .header p {
+                margin: 5px 0 0;
+                font-size: 14px;
+            }
+            .info-box {
+                background: #f0f7ff;
+                border-left: 4px solid #2196f3;
+                padding: 10px 15px;
+                margin-bottom: 15px;
+                border-radius: 0 4px 4px 0;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+            .info-box p {
+                margin: 0;
+                font-weight: bold;
+            }
+            .status-badge {
+                display: inline-block;
+                padding: 4px 8px;
+                border-radius: 12px;
+                font-size: 12px;
+                font-weight: bold;
+                background: #4caf50;
+                color: white;
+            }
+            .section {
+                margin-bottom: 25px;
+                border-radius: 8px;
+                overflow: hidden;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+                page-break-inside: avoid;
+            }
+            .section-header {
+                background: linear-gradient(135deg, #0d6c6a 0%, #0a5250 100%);
+                color: white;
+                padding: 10px 15px;
+                font-size: 16px;
+                font-weight: bold;
+                margin: 0;
+            }
+            .section-content {
+                background: #f9f9f9;
+                padding: 15px;
+            }
+            .receiver-header {
+                background: #f0f0f0;
+                padding: 10px;
+                border-radius: 4px;
+                margin-bottom: 10px;
+                font-weight: bold;
+                color: #0d6c6a;
+            }
+            .item-header {
+                background: #fff8e1;
+                padding: 8px;
+                border-radius: 4px;
+                margin: 10px 0;
+                font-weight: bold;
+                color: #f58220;
+            }
+            table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-bottom: 15px;
+            }
+            table th {
+                background: #f1f1f1;
+                text-align: left;
+                padding: 10px;
+                font-weight: bold;
+                border-bottom: 2px solid #f58220;
+            }
+            table td {
+                padding: 10px;
+                border-bottom: 1px solid #e0e0e0;
+            }
+            table tr:last-child td {
+                border-bottom: none;
+            }
+            .footer {
+                text-align: center;
+                margin-top: 30px;
+                padding-top: 15px;
+                border-top: 1px solid #e0e0e0;
+                color: #666;
+                font-size: 12px;
+            }
+            .page-break {
+                page-break-before: always;
+            }
+        </style>
+        
+        <div class="header">
+            <h1>ORDER DETAILS</h1>
+            <p>Ref: ${selectedOrder.booking_ref || 'N/A'}</p>
+            <p>Generated on: ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}</p>
+        </div>
+        
+        <div class="info-box">
+            <p>Status: ${selectedOrder.overall_status || selectedOrder.status || 'N/A'} <span class="status-badge">Active</span></p>
+        </div>
+        
+        <div class="section">
+            <h2 class="section-header">ORDER INFORMATION</h2>
+            <div class="section-content">
+                <table>
+                    <tr>
+                        <th>Booking Ref</th>
+                        <td>${selectedOrder.booking_ref || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <th>RGL Booking Number</th>
+                        <td>${selectedOrder.rgl_booking_number || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <th>Place of Loading</th>
+                        <td>${selectedOrder.place_of_loading || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <th>Final Destination</th>
+                        <td>${selectedOrder.final_destination || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <th>Place of Delivery</th>
+                        <td>${selectedOrder.place_of_delivery || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <th>ETA</th>
+                        <td>${formatDate(selectedOrder.eta)}</td>
+                    </tr>
+                    <tr>
+                        <th>ETD</th>
+                        <td>${formatDate(selectedOrder.etd)}</td>
+                    </tr>
+                    <tr>
+                        <th>Shipping Line</th>
+                        <td>${selectedOrder.shipping_line || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <th>Point of Origin</th>
+                        <td>${selectedOrder.point_of_origin || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <th>Order Remarks</th>
+                        <td>${selectedOrder.order_remarks || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <th>Consignment Remarks</th>
+                        <td>${selectedOrder.consignment_remarks || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <th>Created At</th>
+                        <td>${new Date(selectedOrder.created_at).toLocaleString('en-US', { 
+                            year: 'numeric', 
+                            month: 'short', 
+                            day: 'numeric', 
+                            hour: '2-digit', 
+                            minute: '2-digit' 
+                        })}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2 class="section-header">SENDER DETAILS</h2>
+            <div class="section-content">
+                <table>
+                    <tr>
+                        <th>Name</th>
+                        <td>${selectedOrder.sender_name || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <th>Contact</th>
+                        <td>${selectedOrder.sender_contact || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <th>Address</th>
+                        <td>${selectedOrder.sender_address || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <th>Email</th>
+                        <td>${selectedOrder.sender_email || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <th>Sender Ref</th>
+                        <td>${selectedOrder.sender_ref || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <th>Sender Remarks</th>
+                        <td>${selectedOrder.sender_remarks || 'N/A'}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        
+        ${selectedOrder.receivers && selectedOrder.receivers.length > 0 ? `
+        <div class="section">
+            <h2 class="section-header">RECEIVER DETAILS</h2>
+            <div class="section-content">
+                ${selectedOrder.receivers.map((rec, index) => {
+                    const normContainers = normalizeContainers(rec.containers);
+                    return `
+                    <div class="receiver-header">Receiver ${index + 1}: ${rec.receiver_name || 'N/A'}</div>
+                    <table>
+                        <tr>
+                            <th>Status</th>
+                            <td>${rec.status || 'Created'}</td>
+                        </tr>
+                        <tr>
+                            <th>Contact</th>
+                            <td>${rec.receiver_contact || 'N/A'}</td>
+                        </tr>
+                        <tr>
+                            <th>Address</th>
+                            <td>${rec.receiver_address || 'N/A'}</td>
+                        </tr>
+                        <tr>
+                            <th>Email</th>
+                            <td>${rec.receiver_email || 'N/A'}</td>
+                        </tr>
+                        <tr>
+                            <th>Consignment Number</th>
+                            <td>${rec.consignment_number || 'N/A'}</td>
+                        </tr>
+                        <tr>
+                            <th>Total Number</th>
+                            <td>${rec.total_number || 'N/A'}</td>
+                        </tr>
+                        <tr>
+                            <th>Total Weight</th>
+                            <td>${rec.total_weight ? `${rec.total_weight} kg` : 'N/A'}</td>
+                        </tr>
+                        <tr>
+                            <th>Containers</th>
+                            <td>${normContainers.join(', ') || 'N/A'}</td>
+                        </tr>
+                        <tr>
+                            <th>Assignment</th>
+                            <td>${rec.assignment || 'N/A'}</td>
+                        </tr>
+                        <tr>
+                            <th>Item Ref</th>
+                            <td>${rec.item_ref || 'N/A'}</td>
+                        </tr>
+                        <tr>
+                            <th>Receiver Ref</th>
+                            <td>${rec.receiver_ref || 'N/A'}</td>
+                        </tr>
+                    </table>
+                    
+                    ${rec.shippingDetails && rec.shippingDetails.length > 0 ? `
+                    <div class="item-header">Shipping Details</div>
+                    <table>
+                        ${rec.shippingDetails.map((item, itemIndex) => `
+                        <tr>
+                            <th>Item ${itemIndex + 1} Category</th>
+                            <td>${item.category || 'N/A'}</td>
+                        </tr>
+                        <tr>
+                            <th>Item ${itemIndex + 1} Subcategory</th>
+                            <td>${item.subcategory || 'N/A'}</td>
+                        </tr>
+                        <tr>
+                            <th>Item ${itemIndex + 1} Type</th>
+                            <td>${item.type || 'N/A'}</td>
+                        </tr>
+                        <tr>
+                            <th>Item ${itemIndex + 1} Pickup Location</th>
+                            <td>${item.pickupLocation || 'N/A'}</td>
+                        </tr>
+                        <tr>
+                            <th>Item ${itemIndex + 1} Delivery Address</th>
+                            <td>${item.deliveryAddress || 'N/A'}</td>
+                        </tr>
+                        <tr>
+                            <th>Item ${itemIndex + 1} Total Number</th>
+                            <td>${item.totalNumber || 'N/A'}</td>
+                        </tr>
+                        <tr>
+                            <th>Item ${itemIndex + 1} Weight</th>
+                            <td>${item.weight ? `${item.weight} kg` : 'N/A'}</td>
+                        </tr>
+                        <tr>
+                            <th>Item ${itemIndex + 1} Item Ref</th>
+                            <td>${item.itemRef || 'N/A'}</td>
+                        </tr>
+                        `).join('')}
+                    </table>
+                    ` : ''}
+                    `;
+                }).join('')}
+            </div>
+        </div>
+        ` : ''}
+        
+        <div class="section">
+            <h2 class="section-header">TRANSPORT DETAILS</h2>
+            <div class="section-content">
+                <table>
+                    <tr>
+                        <th>Transport Type</th>
+                        <td>${selectedOrder.transport_type || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <th>Driver Name</th>
+                        <td>${selectedOrder.driver_name || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <th>Driver Contact</th>
+                        <td>${selectedOrder.driver_contact || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <th>Driver NIC</th>
+                        <td>${selectedOrder.driver_nic || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <th>Driver Pickup Location</th>
+                        <td>${selectedOrder.driver_pickup_location || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <th>Truck Number</th>
+                        <td>${selectedOrder.truck_number || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <th>Third Party Transport</th>
+                        <td>${selectedOrder.third_party_transport || 'N/A'}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2 class="section-header">INBOUND/OUTBOUND DETAILS</h2>
+            <div class="section-content">
+                <table>
+                    <tr>
+                        <th>Drop Method</th>
+                        <td>${selectedOrder.drop_method || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <th>Dropoff Name</th>
+                        <td>${selectedOrder.dropoff_name || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <th>Drop-Off CNIC/ID</th>
+                        <td>${selectedOrder.drop_off_cnic || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <th>Drop-Off Mobile</th>
+                        <td>${selectedOrder.drop_off_mobile || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <th>Plate No</th>
+                        <td>${selectedOrder.plate_no || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <th>Drop Date</th>
+                        <td>${formatDate(selectedOrder.drop_date)}</td>
+                    </tr>
+                    <tr>
+                        <th>Collection Method</th>
+                        <td>${selectedOrder.collection_method || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <th>Collection Scope</th>
+                        <td>${selectedOrder.collection_scope || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <th>Full/Partial</th>
+                        <td>${selectedOrder.full_partial || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <th>Qty Delivered</th>
+                        <td>${selectedOrder.qty_delivered || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <th>Client Receiver Name</th>
+                        <td>${selectedOrder.client_receiver_name || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <th>Client Receiver ID</th>
+                        <td>${selectedOrder.client_receiver_id || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <th>Client Receiver Mobile</th>
+                        <td>${selectedOrder.client_receiver_mobile || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <th>Delivery Date</th>
+                        <td>${formatDate(selectedOrder.delivery_date)}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2 class="section-header">FILES</h2>
+            <div class="section-content">
+                <h3>Attachments:</h3>
+                <p>${getFilesText(selectedOrder.attachments)}</p>
+                <h3>Gatepass:</h3>
+                <p>${getFilesText(selectedOrder.gatepass)}</p>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>This is a computer-generated document and does not require a signature.</p>
+            <p>© 2025 Shipping Management System</p>
+        </div>
+    `;
+    
+    // Add the temporary element to the body
+    document.body.appendChild(tempElement);
+    
+    // Convert the element to canvas with higher quality and proper dimensions
+    const canvas = await html2canvas(tempElement, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        logging: false,
+        width: tempElement.scrollWidth,
+        height: tempElement.scrollHeight,
+        windowWidth: tempElement.scrollWidth,
+        windowHeight: tempElement.scrollHeight
+    });
+    
+    // Remove the temporary element
+    document.body.removeChild(tempElement);
+    
+    // Create PDF from canvas with better quality
+    const imgData = canvas.toDataURL('image/jpeg', 0.95); // Use JPEG with 95% quality for smaller file size
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const imgWidth = 210; // A4 width in mm
+    const pageHeight = 295; // A4 height in mm
+    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+    let heightLeft = imgHeight;
+    let position = 0;
+    
+    // Add the image to the PDF
+    pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+    heightLeft -= pageHeight;
+    
+    // Add new pages if needed
+    while (heightLeft >= 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+    }
+    
+    // Save the PDF
+    pdf.save(`Order_${selectedOrder.booking_ref || 'Unknown'}_${Date.now()}.pdf`);
+};
+    // Enhanced PDF generation function with method selection
+    const generatePDF = async () => {
+        if (!selectedOrder) return;
+        
+        setIsGeneratingPDF(true);
+        setSnackbar({ open: true, message: 'Generating PDF...', severity: 'info' });
+        
+        try {
+            if (pdfGenerationMethod === 'jsPDF') {
+                await generateOrderPDF();
+            } else {
+                // Use the html2canvas method
+                await generatePDFWithCanvas();
+            }
+            
+            setSnackbar({ open: true, message: 'PDF generated successfully', severity: 'success' });
+        } catch (error) {
+            console.error('Error generating PDF:', error);
+            setSnackbar({ open: true, message: 'Failed to generate PDF', severity: 'error' });
+        } finally {
+            setIsGeneratingPDF(false);
         }
-        if (Array.isArray(containers)) {
-            return containers;
-        }
-        return [];
     };
-        // // Export to PDF function
-        const exportToPDF = (order) => {
-            const doc = new jsPDF();
-            let yPosition = 20;
 
-            // Title
-            doc.setFontSize(20);
-            doc.text('Order Details', 20, yPosition);
-            yPosition += 15;
-
-            // Order Info Section
-            doc.setFontSize(14);
-            doc.text('Order Information', 20, yPosition);
-            yPosition += 10;
-            doc.setFontSize(10);
-            doc.text(`Booking Ref: ${order.booking_ref || 'N/A'}`, 20, yPosition);
-            yPosition += 7;
-            doc.text(`Status: ${order.overall_status || order.status || 'N/A'}`, 20, yPosition);
-            yPosition += 7;
-            doc.text(`RGL Booking Number: ${order.rgl_booking_number || 'N/A'}`, 20, yPosition);
-            yPosition += 7;
-            doc.text(`ETA: ${formatDate(order.eta)}`, 20, yPosition);
-            yPosition += 7;
-            doc.text(`ETD: ${formatDate(order.etd)}`, 20, yPosition);
-            yPosition += 7;
-            doc.text(`Shipping Line: ${order.shipping_line || 'N/A'}`, 20, yPosition);
-            yPosition += 10;
-
-            // Sender
-            doc.setFontSize(14);
-            doc.text('Sender Details', 20, yPosition);
-            yPosition += 10;
-            doc.setFontSize(10);
-            doc.text(`Name: ${order.sender_name || 'N/A'}`, 20, yPosition);
-            yPosition += 7;
-            doc.text(`Contact: ${order.sender_contact || 'N/A'}`, 20, yPosition);
-            yPosition += 7;
-            doc.text(`Email: ${order.sender_email || 'N/A'}`, 20, yPosition);
-            yPosition += 10;
-
-            // Receivers
-            doc.setFontSize(14);
-            doc.text('Receiver Details', 20, yPosition);
-            yPosition += 10;
-            doc.setFontSize(10);
-            (order.receivers || []).forEach((rec, index) => {
-                const normContainers = normalizeContainers(rec.containers);
-                doc.text(`Receiver ${index + 1} Name: ${rec.receiver_name || 'N/A'}`, 20, yPosition);
-                yPosition += 7;
-                doc.text(`Receiver ${index + 1} Status: ${rec.status || 'Created'}`, 20, yPosition);
-                yPosition += 7;
-                doc.text(`Receiver ${index + 1} Contact: ${rec.receiver_contact || 'N/A'}`, 20, yPosition);
-                yPosition += 7;
-                doc.text(`Receiver ${index + 1} Email: ${rec.receiver_email || 'N/A'}`, 20, yPosition);
-                yPosition += 7;
-                doc.text(`Receiver ${index + 1} Consignment Number: ${rec.consignment_number || 'N/A'}`, 20, yPosition);
-                yPosition += 7;
-                doc.text(`Receiver ${index + 1} Total Weight: ${rec.total_weight || 'N/A'}`, 20, yPosition);
-                yPosition += 7;
-                doc.text(`Receiver ${index + 1} Containers: ${normContainers.join(', ') || 'N/A'}`, 20, yPosition);
-                yPosition += 10;
-            });
-            yPosition += 10;
-
-            // Shipping
-            doc.setFontSize(14);
-            doc.text('Shipping Details', 20, yPosition);
-            yPosition += 10;
-            doc.setFontSize(10);
-            (order.order_items || []).forEach((item, index) => {
-                doc.text(`Item ${index + 1} Category: ${item.category || 'N/A'}`, 20, yPosition);
-                yPosition += 7;
-                doc.text(`Item ${index + 1} Weight: ${item.weight ? `${item.weight} kg` : 'N/A' }`, 20, yPosition);
-                yPosition += 7;
-            });
-            yPosition += 10;
-
-            // Transport
-            doc.setFontSize(14);
-            doc.text('Transport Details', 20, yPosition);
-            yPosition += 10;
-            doc.setFontSize(10);
-            doc.text(`Driver Name: ${order.driver_name || 'N/A'}`, 20, yPosition);
-            yPosition += 7;
-            doc.text(`Truck Number: ${order.truck_number || 'N/A'}`, 20, yPosition);
-            yPosition += 10;
-
-            // Inbound/Outbound
-            doc.setFontSize(14);
-            doc.text('Inbound/Outbound Details', 20, yPosition);
-            yPosition += 10;
-            doc.setFontSize(10);
-            doc.text(`Drop Method: ${order.drop_method || 'N/A'}`, 20, yPosition);
-            yPosition += 7;
-            doc.text(`Drop Date: ${formatDate(order.drop_date)}`, 20, yPosition);
-            yPosition += 7;
-            doc.text(`Collection Method: ${order.collection_method || 'N/A'}`, 20, yPosition);
-            yPosition += 7;
-            doc.text(`Delivery Date: ${formatDate(order.delivery_date)}`, 20, yPosition);
-            yPosition += 10;
-
-            // Files
-            doc.setFontSize(14);
-            doc.text('Files', 20, yPosition);
-            yPosition += 10;
-            doc.setFontSize(10);
-            doc.text('Attachments:', 20, yPosition);
-            yPosition += 7;
-            doc.text(getFilesText(order.attachments), 20, yPosition);
-            yPosition += 20; // Approximate lines
-            doc.text('Gatepass:', 20, yPosition);
-            yPosition += 7;
-            doc.text(getFilesText(order.gatepass), 20, yPosition);
-
-            // Save the PDF
-            doc.save(`Order_${order.booking_ref || 'Unknown'}_${Date.now()}.pdf`);
-        };
-
-    // Helper to format files list
+    // Helper to render files
     const renderFiles = (files) => {
         if (!files || files.length === 0) return <Typography variant="body2" color="text.secondary">No attachments</Typography>;
         return (
@@ -321,22 +992,27 @@ const OrderModalView = ({ openModal, handleCloseModal, selectedOrder, modalLoadi
         setTabValue(newValue);
     };
 
-    // Helper for horizontal key-value pairs in Grid
-    const HorizontalKeyValue = ({ data, spacing = 3 }) => (
+    // Enhanced helper for horizontal key-value pairs in Grid
+    const HorizontalKeyValue = ({ data, spacing = 3, highlightKey = null }) => (
         <Grid container spacing={spacing}>
             {Object.entries(data).map(([key, value]) => (
                 <Grid item xs={12} sm={6} md={4} key={key}>
                     <Box sx={{ 
                         p: 2, 
-                        border: '1px solid #e3f2fd', 
+                        border: highlightKey === key ? '2px solid #f58220' : '1px solid #e3f2fd', 
                         borderRadius: 2, 
-                        bgcolor: 'linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)',
+                        bgcolor: highlightKey === key 
+                            ? 'linear-gradient(135deg, #fff8e1 0%, #ffecb3 100%)' 
+                            : 'linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)',
                         transition: 'all 0.3s ease',
                         '&:hover': { 
                             boxShadow: '0 4px 12px rgba(245, 130, 32, 0.15)',
                             transform: 'translateY(-2px)',
                             borderColor: '#f58220'
-                        }
+                        },
+                        height: '100%',
+                        display: 'flex',
+                        flexDirection: 'column'
                     }}>
                         <Typography variant="caption" color="text.secondary" display="block" sx={{ 
                             textTransform: 'uppercase', 
@@ -355,7 +1031,7 @@ const OrderModalView = ({ openModal, handleCloseModal, selectedOrder, modalLoadi
         </Grid>
     );
 
-    // Helper to render receivers list
+    // Enhanced helper to render receivers list
     const renderReceivers = () => {
         const receivers = selectedOrder?.receivers || [];
         if (receivers?.length === 0) {
@@ -366,7 +1042,16 @@ const OrderModalView = ({ openModal, handleCloseModal, selectedOrder, modalLoadi
                 {receivers?.map((rec, index) => {
                     const normContainers = normalizeContainers(rec.containers);
                     return (
-                        <Card key={rec.id || index} sx={{ mb: 2, border: '1px solid #e3f2fd', borderRadius: 2 }}>
+                        <Card key={rec.id || index} sx={{ 
+                            mb: 2, 
+                            border: '1px solid #e3f2fd', 
+                            borderRadius: 2,
+                            transition: 'all 0.3s ease',
+                            '&:hover': { 
+                                boxShadow: '0 6px 16px rgba(245, 130, 32, 0.12)',
+                                transform: 'translateY(-2px)'
+                            }
+                        }}>
                             <CardContent sx={{ p: 2 }}>
                                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                                     <Typography variant="subtitle1" fontWeight="bold" color="#f58220">
@@ -408,7 +1093,21 @@ const OrderModalView = ({ openModal, handleCloseModal, selectedOrder, modalLoadi
                                         </Typography>
                                         <Stack direction="row" spacing={1} flexWrap="wrap">
                                             {normContainers.map((cont, cIndex) => (
-                                                <Chip key={cIndex} label={cont} variant="outlined" color="info" size="small" />
+                                                <Chip 
+                                                    key={cIndex} 
+                                                    label={cont} 
+                                                    variant="outlined" 
+                                                    color="info" 
+                                                    size="small"
+                                                    sx={{ 
+                                                        mb: 1,
+                                                        transition: 'all 0.2s ease',
+                                                        '&:hover': { 
+                                                            bgcolor: 'info.main',
+                                                            color: 'white'
+                                                        }
+                                                    }} 
+                                                />
                                             ))}
                                         </Stack>
                                     </Box>
@@ -421,44 +1120,57 @@ const OrderModalView = ({ openModal, handleCloseModal, selectedOrder, modalLoadi
         );
     };
 
-    // Helper to render order items
+    // Enhanced helper to render order items
     const renderOrderItems = () => {
-        const items = selectedOrder?.order_items || [];
-        if (items.length === 0) {
+        const receivers = selectedOrder?.receivers || [];
+        if (receivers?.length === 0) {
             return <Typography variant="body2" color="text.secondary">No order items</Typography>;
         }
+        
         return (
             <List dense sx={{ py: 0 }}>
-                {items.map((item, index) => (
-                    <Card key={item.id || index} sx={{ mb: 2, border: '1px solid #e3f2fd', borderRadius: 2 }}>
-                        <CardContent sx={{ p: 2 }}>
-                            <Typography variant="subtitle1" fontWeight="bold" color="#f58220" gutterBottom>
-                                Item {index + 1}
-                            </Typography>
-                            <HorizontalKeyValue 
-                                data={{
-                                    'Category': item.category,
-                                    'Subcategory': item.subcategory,
-                                    'Type': item.type,
-                                    'Pickup Location': item.pickup_location,
-                                    'Delivery Address': item.delivery_address,
-                                    'Total Number': item.total_number,
-                                    'Weight': item.weight ? `${item.weight} kg` : 'N/A',
-                                    'Total Weight': item.total_weight ? `${item.total_weight} kg` : 'N/A',
-                                    // 'Item Ref': item.item_ref,
-                                    // 'Consignment Status': item.consignment_status
-                                }} 
-                                spacing={2}
-                            />
-                        </CardContent>
-                    </Card>
-                ))}
+                {receivers?.map((rec, index) => {
+                    if (rec.shippingDetails && rec.shippingDetails.length > 0) {
+                        return rec.shippingDetails.map((item, itemIndex) => (
+                            <Card key={`${index}-${itemIndex}`} sx={{ 
+                                mb: 2, 
+                                border: '1px solid #e3f2fd', 
+                                borderRadius: 2,
+                                transition: 'all 0.3s ease',
+                                '&:hover': { 
+                                    boxShadow: '0 6px 16px rgba(245, 130, 32, 0.12)',
+                                    transform: 'translateY(-2px)'
+                                }
+                            }}>
+                                <CardContent sx={{ p: 2 }}>
+                                    <Typography variant="subtitle1" fontWeight="bold" color="#f58220" gutterBottom>
+                                        Receiver {index + 1} - Item {itemIndex + 1}
+                                    </Typography>
+                                    <HorizontalKeyValue 
+                                        data={{
+                                            'Category': item.category,
+                                            'Subcategory': item.subcategory,
+                                            'Type': item.type,
+                                            'Pickup Location': item.pickupLocation,
+                                            'Delivery Address': item.deliveryAddress,
+                                            'Total Number': item.totalNumber,
+                                            'Weight': item.weight ? `${item.weight} kg` : 'N/A',
+                                            'Item Ref': item.itemRef
+                                        }} 
+                                        spacing={2}
+                                    />
+                                </CardContent>
+                            </Card>
+                        ));
+                    }
+                    return null;
+                })}
             </List>
         );
     };
 
-    // Render Containers Tab
-   const renderContainersTab = () => {
+    // Enhanced Render Containers Tab
+    const renderContainersTab = () => {
         if (!selectedOrder) {
             return (
                 <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 4 }}>
@@ -470,7 +1182,7 @@ const OrderModalView = ({ openModal, handleCloseModal, selectedOrder, modalLoadi
         }
         const receivers = selectedOrder?.receivers || [];
         return (
-            <Grid  spacing={3}>
+            <Grid container spacing={3}>
                 <Grid item xs={12}>
                     <Card sx={{ 
                         boxShadow: 3, 
@@ -504,15 +1216,45 @@ const OrderModalView = ({ openModal, handleCloseModal, selectedOrder, modalLoadi
                                                 <TableRow key={rec.id || rec.receiver_name}>
                                                     <TableCell>{rec.receiver_name}</TableCell>
                                                     <TableCell>
-                                                        {normContainers.join(', ') || 'None'}
+                                                        {normContainers.length > 0 ? (
+                                                            <Stack direction="row" spacing={1}>
+                                                                {normContainers.map((cont, cIndex) => (
+                                                                    <Chip key={cIndex} label={cont} variant="outlined" color="info" size="small" />
+                                                                ))}
+                                                            </Stack>
+                                                        ) : (
+                                                            <Typography variant="body2" color="text.secondary">None</Typography>
+                                                        )}
                                                     </TableCell>
-                                                    <TableCell>{rec.status || 'Created'}</TableCell>
+                                                    <TableCell>
+                                                        <Chip 
+                                                            label={rec.status || 'Created'} 
+                                                            size="small" 
+                                                            color="primary" 
+                                                            variant="filled"
+                                                            sx={{ 
+                                                                bgcolor: getOrderStatusColor(rec.status || 'Created'),
+                                                                color: 'white',
+                                                                fontWeight: 'bold'
+                                                            }} 
+                                                        />
+                                                    </TableCell>
                                                     <TableCell>
                                                         <Button
                                                             size="small"
                                                             variant="outlined"
                                                             onClick={() => handleAssignContainer(rec.id, assignments[rec.id])}
                                                             disabled={!assignments[rec.id]}
+                                                            sx={{
+                                                                borderRadius: 2,
+                                                                borderColor: '#f58220',
+                                                                color: '#f58220',
+                                                                '&:hover': {
+                                                                    borderColor: '#e65100',
+                                                                    color: '#e65100',
+                                                                    bgcolor: 'rgba(245, 130, 32, 0.04)'
+                                                                }
+                                                            }}
                                                         >
                                                             Reassign
                                                         </Button>
@@ -528,7 +1270,14 @@ const OrderModalView = ({ openModal, handleCloseModal, selectedOrder, modalLoadi
                             <Grid container spacing={2}>
                                 {receivers.map((rec) => (
                                     <Grid item xs={12} md={6} key={rec.id || rec.receiver_name}>
-                                        <Card sx={{ p: 2 }}>
+                                        <Card sx={{ 
+                                            p: 2,
+                                            transition: 'all 0.3s ease',
+                                            '&:hover': { 
+                                                boxShadow: '0 4px 12px rgba(245, 130, 32, 0.15)',
+                                                transform: 'translateY(-2px)'
+                                            }
+                                        }}>
                                             <Typography variant="subtitle1" gutterBottom>{rec.receiver_name}</Typography>
                                             <FormControl fullWidth size="small">
                                                 <InputLabel>Available Container</InputLabel>
@@ -547,7 +1296,7 @@ const OrderModalView = ({ openModal, handleCloseModal, selectedOrder, modalLoadi
                                                         )
                                                         .map((container) => (
                                                             <MenuItem key={container.id} value={container.id}>
-                                                                {container.container_number} - {container.owner_type    }
+                                                                {container.container_number} - {container.owner_type}
                                                             </MenuItem>
                                                         ))}
                                                 </Select>
@@ -555,7 +1304,14 @@ const OrderModalView = ({ openModal, handleCloseModal, selectedOrder, modalLoadi
                                             <Button
                                                 variant="contained"
                                                 fullWidth
-                                                sx={{ mt: 2 }}
+                                                sx={{ 
+                                                    mt: 2,
+                                                    borderRadius: 2,
+                                                    bgcolor: 'linear-gradient(135deg, #f58220 0%, #e65100 100%)',
+                                                    '&:hover': {
+                                                        bgcolor: 'linear-gradient(135deg, #e65100 0%, #d84315 100%)',
+                                                    }
+                                                }}
                                                 onClick={() => handleAssignContainer(rec.id, assignments[rec.id])}
                                                 disabled={!assignments[rec.id]}
                                             >
@@ -571,7 +1327,17 @@ const OrderModalView = ({ openModal, handleCloseModal, selectedOrder, modalLoadi
                                     variant="outlined"
                                     onClick={fetchContainers}
                                     disabled={loadingContainers}
-                                    sx={{ mb: 2 }}
+                                    sx={{ 
+                                        mb: 2,
+                                        borderRadius: 2,
+                                        borderColor: '#f58220',
+                                        color: '#f58220',
+                                        '&:hover': {
+                                            borderColor: '#e65100',
+                                            color: '#e65100',
+                                            bgcolor: 'rgba(245, 130, 32, 0.04)'
+                                        }
+                                    }}
                                 >
                                     {loadingContainers ? <CircularProgress size={20} sx={{ mr: 1 }} /> : null}
                                     {loadingContainers ? 'Loading...' : 'Retry Fetch Containers'}
@@ -623,21 +1389,34 @@ const OrderModalView = ({ openModal, handleCloseModal, selectedOrder, modalLoadi
     const handleSnackbarClose = () => {
         setSnackbar(prev => ({ ...prev, open: false }));
     };
+
     return (
         <>
-            <Dialog open={openModal} onClose={handleCloseModal} maxWidth="xl" fullWidth>
+            <Dialog 
+                open={openModal} 
+                onClose={handleCloseModal} 
+                maxWidth="xl" 
+                fullWidth
+                PaperProps={{
+                    sx: {
+                        borderRadius: 4,
+                        overflow: 'hidden',
+                        boxShadow: '0 10px 30px rgba(0,0,0,0.1)'
+                    }
+                }}
+            >
                 <DialogTitle sx={{ 
                     display: 'flex', 
                     justifyContent: 'space-between', 
                     alignItems: 'center', 
-                    bgcolor: '#0d6c6a', 
+                    bgcolor: 'linear-gradient(135deg, #0d6c6a 0%, #0a5250 100%)', 
                     color: 'white', 
-                    borderRadius: '12px 12px 0 0',
                     py: 3,
+                    px: 4,
                     boxShadow: '0 4px 12px rgba(245, 130, 32, 0.3)'
                 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5,bgcolor:'#0d6c6a' }}>
-                        <InfoIcon sx={{ fontSize: '1.5rem' }} />
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                        <InfoIcon sx={{ fontSize: '1.8rem' }} />
                         <Typography variant="h5" fontWeight="bold" sx={{ fontSize: '1.75rem' }}>
                             Order Details - {selectedOrder?.booking_ref}
                         </Typography>
@@ -655,440 +1434,543 @@ const OrderModalView = ({ openModal, handleCloseModal, selectedOrder, modalLoadi
                         />
                         {(selectedOrder?.receivers || []).length > 0 && (
                             <Chip 
-                                label={`(${selectedOrder?.receivers?.length} Receivers)`} 
+                                label={`${selectedOrder?.receivers?.length} Receivers`} 
                                 size="small" 
                                 color="secondary" 
                                 variant="outlined" 
-                                sx={{ ml: 1 }} 
+                                sx={{ 
+                                    ml: 1,
+                                    borderColor: 'rgba(255,255,255,0.5)',
+                                    color: 'white'
+                                }} 
                             />
                         )}
                     </Box>
-                    <IconButton onClick={handleCloseModal} sx={{ color: 'white', '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' } }}>
+                    <IconButton 
+                        onClick={handleCloseModal} 
+                        sx={{ 
+                            color: 'white', 
+                            '&:hover': { 
+                                bgcolor: 'rgba(255,255,255,0.1)',
+                                transform: 'rotate(90deg)'
+                            },
+                            transition: 'all 0.3s ease'
+                        }}
+                    >
                         <CloseIcon />
                     </IconButton>
                 </DialogTitle>
+                
                 <DialogContent sx={{ p: 0 }}>
                     {modalLoading ? (
-                        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 4 }}>
-                            <CircularProgress size={24} sx={{ color: '#f58220' }} />
-                            <Typography variant="body1" sx={{ ml: 1, color: 'text.secondary' }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 8 }}>
+                            <CircularProgress size={40} sx={{ color: '#f58220' }} />
+                            <Typography variant="body1" sx={{ ml: 2, color: 'text.secondary' }}>
                                 Loading order details...
                             </Typography>
                         </Box>
                     ) : modalError ? (
-                        <Alert severity="error" sx={{ mt: 2, borderRadius: 2 }}>
+                        <Alert severity="error" sx={{ m: 3, borderRadius: 2 }}>
                             {modalError}
                         </Alert>
                     ) : selectedOrder ? (
                         <>
-                            <Box sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: '#fafafa' }}>
-                                <Tabs value={tabValue} onChange={handleTabChange} aria-label="order details tabs" variant="scrollable" scrollButtons="auto" sx={{ px: 2 }}>
-                                    <Tab label="Overview" icon={<InfoIcon />} iconPosition="start" {...a11yProps(0)} sx={{ 
-                                        color: '#f58220', 
-                                        fontWeight: 'bold',
-                                        fontSize: '1rem',
-                                        '&.Mui-selected': { color: '#f58220' }
-                                    }} />
-                                    <Tab label="Parties" icon={<PersonIcon />} iconPosition="start" {...a11yProps(1)} sx={{ 
-                                        color: '#f58220', 
-                                        fontWeight: 'bold',
-                                        fontSize: '1rem',
-                                        '&.Mui-selected': { color: '#f58220' }
-                                    }} />
-                                    <Tab label="Shipping" icon={<InventoryIcon />} iconPosition="start" {...a11yProps(2)} sx={{ 
-                                        color: '#f58220', 
-                                        fontWeight: 'bold',
-                                        fontSize: '1rem',
-                                        '&.Mui-selected': { color: '#f58220' }
-                                    }} />
-                                    <Tab label="Transport" icon={<DriveEtaIcon />} iconPosition="start" {...a11yProps(3)} sx={{ 
-                                        color: '#f58220', 
-                                        fontWeight: 'bold',
-                                        fontSize: '1rem',
-                                        '&.Mui-selected': { color: '#f58220' }
-                                    }} />
-                                    <Tab label="Inbound/Outbound" icon={<LocalShippingIcon />} iconPosition="start" {...a11yProps(4)} sx={{ 
-                                        color: '#f58220', 
-                                        fontWeight: 'bold',
-                                        fontSize: '1rem',
-                                        '&.Mui-selected': { color: '#f58220' }
-                                    }} />
-                                    <Tab label="Files" icon={<AttachFileIcon />} iconPosition="start" {...a11yProps(5)} sx={{ 
-                                        color: '#f58220', 
-                                        fontWeight: 'bold',
-                                        fontSize: '1rem',
-                                        '&.Mui-selected': { color: '#f58220' }
-                                    }} />
-                                    <Tab label="Containers" icon={<LocalShippingIcon />} iconPosition="start" {...a11yProps(6)} sx={{ 
-                                        color: '#f58220', 
-                                        fontWeight: 'bold',
-                                        fontSize: '1rem',
-                                        '&.Mui-selected': { color: '#f58220' }
-                                    }} />
+                            <Box sx={{ 
+                                borderBottom: 1, 
+                                borderColor: 'divider', 
+                                bgcolor: 'linear-gradient(to right, #fafafa, #f5f5f5)',
+                                boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+                            }}>
+                                <Tabs 
+                                    value={tabValue} 
+                                    onChange={handleTabChange} 
+                                    variant="scrollable" 
+                                    scrollButtons="auto" 
+                                    sx={{ 
+                                        px: 2,
+                                        '& .MuiTab-root': {
+                                            minHeight: 64,
+                                            transition: 'all 0.3s ease'
+                                        }
+                                    }}
+                                    TabIndicatorProps={{
+                                        style: {
+                                            backgroundColor: '#f58220',
+                                            height: 3
+                                        }
+                                    }}
+                                >
+                                    <Tab 
+                                        label="Overview" 
+                                        icon={<InfoIcon />} 
+                                        iconPosition="start" 
+                                        {...a11yProps(0)} 
+                                        sx={{ 
+                                            color: '#666', 
+                                            fontWeight: 'bold',
+                                            fontSize: '0.9rem',
+                                            '&.Mui-selected': { color: '#f58220' }
+                                        }} 
+                                    />
+                                    <Tab 
+                                        label="Parties" 
+                                        icon={<PersonIcon />} 
+                                        iconPosition="start" 
+                                        {...a11yProps(1)} 
+                                        sx={{ 
+                                            color: '#666', 
+                                            fontWeight: 'bold',
+                                            fontSize: '0.9rem',
+                                            '&.Mui-selected': { color: '#f58220' }
+                                        }} 
+                                    />
+                                    <Tab 
+                                        label="Shipping" 
+                                        icon={<InventoryIcon />} 
+                                        iconPosition="start" 
+                                        {...a11yProps(2)} 
+                                        sx={{ 
+                                            color: '#666', 
+                                            fontWeight: 'bold',
+                                            fontSize: '0.9rem',
+                                            '&.Mui-selected': { color: '#f58220' }
+                                        }} 
+                                    />
+                                    <Tab 
+                                        label="Transport" 
+                                        icon={<DriveEtaIcon />} 
+                                        iconPosition="start" 
+                                        {...a11yProps(3)} 
+                                        sx={{ 
+                                            color: '#666', 
+                                            fontWeight: 'bold',
+                                            fontSize: '0.9rem',
+                                            '&.Mui-selected': { color: '#f58220' }
+                                        }} 
+                                    />
+                                    <Tab 
+                                        label="Inbound/Outbound" 
+                                        icon={<LocalShippingIcon />} 
+                                        iconPosition="start" 
+                                        {...a11yProps(4)} 
+                                        sx={{ 
+                                            color: '#666', 
+                                            fontWeight: 'bold',
+                                            fontSize: '0.9rem',
+                                            '&.Mui-selected': { color: '#f58220' }
+                                        }} 
+                                    />
+                                    <Tab 
+                                        label="Files" 
+                                        icon={<AttachFileIcon />} 
+                                        iconPosition="start" 
+                                        {...a11yProps(5)} 
+                                        sx={{ 
+                                            color: '#666', 
+                                            fontWeight: 'bold',
+                                            fontSize: '0.9rem',
+                                            '&.Mui-selected': { color: '#f58220' }
+                                        }} 
+                                    />
+                                    <Tab 
+                                        label="Containers" 
+                                        icon={<LocalShippingIcon />} 
+                                        iconPosition="start" 
+                                        {...a11yProps(6)} 
+                                        sx={{ 
+                                            color: '#666', 
+                                            fontWeight: 'bold',
+                                            fontSize: '0.9rem',
+                                            '&.Mui-selected': { color: '#f58220' }
+                                        }} 
+                                    />
                                 </Tabs>
                             </Box>
-                            <TabPanel value={tabValue} index={0}>
-                                <Grid container spacing={3}>
-                                    {/* Order Information Card */}
-                                    <Grid item xs={12}>
-                                        <Card sx={{ 
-                                            boxShadow: 3, 
-                                            borderRadius: 3,
-                                            border: '1px solid #e3f2fd',
-                                            transition: 'all 0.3s ease',
-                                            '&:hover': { boxShadow: '0 8px 25px rgba(245, 130, 32, 0.1)' }
-                                        }}>
-                                            <CardContent sx={{ p: 3 }}>
-                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
-                                                    <InfoIcon color="primary" sx={{ fontSize: '1.5rem' }} />
-                                                    <Typography variant="h5" fontWeight="bold" color="#f58220" sx={{ fontSize: '1.5rem' }}>
-                                                        Order Information
-                                                    </Typography>
-                                                </Box>
-                                                <HorizontalKeyValue 
-                                                    data={{
-                                                        'Status': selectedOrder?.overall_status || selectedOrder?.status || 'Created',
-                                                        'RGL Booking Number': selectedOrder?.rgl_booking_number,
-                                                        'Place of Loading': selectedOrder?.place_of_loading,
-                                                        'Final Destination': selectedOrder?.final_destination,
-                                                        'Place of Delivery': selectedOrder?.place_of_delivery,
-                                                        'ETA': formatDate(selectedOrder?.eta),
-                                                        'ETD': formatDate(selectedOrder?.etd),
-                                                        'Consignment Marks': selectedOrder?.consignment_marks,
-                                                        'Point of Origin': selectedOrder?.point_of_origin,
-                                                        'Shipping Line': selectedOrder?.shipping_line,
-                                                        'Order Remarks': selectedOrder?.order_remarks,
-                                                        'Consignment Remarks': selectedOrder?.consignment_remarks,
-                                                        'Created At': new Date(selectedOrder?.created_at).toLocaleString('en-US', { 
-                                                            year: 'numeric', 
-                                                            month: 'short', 
-                                                            day: 'numeric', 
-                                                            hour: '2-digit', 
-                                                            minute: '2-digit' 
-                                                        })
-                                                    }} 
-                                                />
-                                            </CardContent>
-                                        </Card>
+                            
+                            <Box sx={{ p: 3, bgcolor: '#fafafa' }}>
+                                <TabPanel value={tabValue} index={0}>
+                                    <Grid container spacing={3}>
+                                        {/* Order Information Card */}
+                                        <Grid item xs={12}>
+                                            <Card sx={{ 
+                                                boxShadow: 3, 
+                                                borderRadius: 3,
+                                                border: '1px solid #e3f2fd',
+                                                transition: 'all 0.3s ease',
+                                                '&:hover': { boxShadow: '0 8px 25px rgba(245, 130, 32, 0.1)' }
+                                            }}>
+                                                <CardContent sx={{ p: 3 }}>
+                                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
+                                                        <InfoIcon color="primary" sx={{ fontSize: '1.5rem' }} />
+                                                        <Typography variant="h5" fontWeight="bold" color="#f58220" sx={{ fontSize: '1.5rem' }}>
+                                                            Order Information
+                                                        </Typography>
+                                                    </Box>
+                                                    <HorizontalKeyValue 
+                                                        data={{
+                                                            'Status': selectedOrder?.overall_status || selectedOrder?.status || 'Created',
+                                                            'RGL Booking Number': selectedOrder?.rgl_booking_number,
+                                                            'Place of Loading': selectedOrder?.place_of_loading,
+                                                            'Final Destination': selectedOrder?.final_destination,
+                                                            'Place of Delivery': selectedOrder?.place_of_delivery,
+                                                            'ETA': formatDate(selectedOrder?.eta),
+                                                            'ETD': formatDate(selectedOrder?.etd),
+                                                            'Consignment Marks': selectedOrder?.consignment_marks,
+                                                            'Point of Origin': selectedOrder?.point_of_origin,
+                                                            'Shipping Line': selectedOrder?.shipping_line,
+                                                            'Order Remarks': selectedOrder?.order_remarks,
+                                                            'Consignment Remarks': selectedOrder?.consignment_remarks,
+                                                            'Created At': new Date(selectedOrder?.created_at).toLocaleString('en-US', { 
+                                                                year: 'numeric', 
+                                                                month: 'short', 
+                                                                day: 'numeric', 
+                                                                hour: '2-digit', 
+                                                                minute: '2-digit' 
+                                                            })
+                                                        }} 
+                                                    />
+                                                </CardContent>
+                                            </Card>
+                                        </Grid>
                                     </Grid>
-                                </Grid>
-                            </TabPanel>
+                                </TabPanel>
 
-                            <TabPanel value={tabValue} index={1}>
-                                <Grid container spacing={3}>
-                                    {/* Sender Details Card */}
-                                    <Grid item xs={12} md={6}>
-                                        <Card sx={{ 
-                                            boxShadow: 3, 
-                                            borderRadius: 3,
-                                            border: '1px solid #e3f2fd',
-                                            transition: 'all 0.3s ease',
-                                            '&:hover': { boxShadow: '0 8px 25px rgba(245, 130, 32, 0.1)' }
-                                        }}>
-                                            <CardContent sx={{ p: 3 }}>
-                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
-                                                    <PersonIcon color="primary" sx={{ fontSize: '1.5rem' }} />
-                                                    <Typography variant="h5" fontWeight="bold" color="#f58220" sx={{ fontSize: '1.5rem' }}>
-                                                        Sender Details
-                                                    </Typography>
-                                                </Box>
-                                                <HorizontalKeyValue 
-                                                    data={{
-                                                        'Name': selectedOrder?.sender_name,
-                                                        'Contact': selectedOrder?.sender_contact,
-                                                        'Address': selectedOrder?.sender_address,
-                                                        'Email': selectedOrder?.sender_email,
-                                                        'Sender Ref': selectedOrder?.sender_ref,
-                                                        'Sender Remarks': selectedOrder?.sender_remarks
-                                                    }} 
-                                                    spacing={2}
-                                                />
-                                            </CardContent>
-                                        </Card>
+                                <TabPanel value={tabValue} index={1}>
+                                    <Grid container spacing={3}>
+                                        {/* Sender Details Card */}
+                                        <Grid item xs={12} md={6}>
+                                            <Card sx={{ 
+                                                boxShadow: 3, 
+                                                borderRadius: 3,
+                                                border: '1px solid #e3f2fd',
+                                                transition: 'all 0.3s ease',
+                                                '&:hover': { boxShadow: '0 8px 25px rgba(245, 130, 32, 0.1)' }
+                                            }}>
+                                                <CardContent sx={{ p: 3 }}>
+                                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
+                                                        <PersonIcon color="primary" sx={{ fontSize: '1.5rem' }} />
+                                                        <Typography variant="h5" fontWeight="bold" color="#f58220" sx={{ fontSize: '1.5rem' }}>
+                                                            Sender Details
+                                                        </Typography>
+                                                    </Box>
+                                                    <HorizontalKeyValue 
+                                                        data={{
+                                                            'Name': selectedOrder?.sender_name,
+                                                            'Contact': selectedOrder?.sender_contact,
+                                                            'Address': selectedOrder?.sender_address,
+                                                            'Email': selectedOrder?.sender_email,
+                                                            'Sender Ref': selectedOrder?.sender_ref,
+                                                            'Sender Remarks': selectedOrder?.sender_remarks
+                                                        }} 
+                                                        spacing={2}
+                                                    />
+                                                </CardContent>
+                                            </Card>
+                                        </Grid>
+
+                                        {/* Receivers Details Card */}
+                                        <Grid item xs={12} md={6}>
+                                            <Card sx={{ 
+                                                boxShadow: 3, 
+                                                borderRadius: 3,
+                                                border: '1px solid #e3f2fd',
+                                                transition: 'all 0.3s ease',
+                                                '&:hover': { boxShadow: '0 8px 25px rgba(245, 130, 32, 0.1)' }
+                                            }}>
+                                                <CardContent sx={{ p: 3 }}>
+                                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
+                                                        <PersonIcon color="primary" sx={{ fontSize: '1.5rem' }} />
+                                                        <Typography variant="h5" fontWeight="bold" color="#f58220" sx={{ fontSize: '1.5rem' }}>
+                                                            Receivers ({(selectedOrder?.receivers || []).length})
+                                                        </Typography>
+                                                    </Box>
+                                                    {renderReceivers()}
+                                                </CardContent>
+                                            </Card>
+                                        </Grid>
                                     </Grid>
+                                </TabPanel>
 
-                                    {/* Receivers Details Card */}
-                                    <Grid item xs={12} md={6}>
-                                        <Card sx={{ 
-                                            boxShadow: 3, 
-                                            borderRadius: 3,
-                                            border: '1px solid #e3f2fd',
-                                            transition: 'all 0.3s ease',
-                                            '&:hover': { boxShadow: '0 8px 25px rgba(245, 130, 32, 0.1)' }
-                                        }}>
-                                            <CardContent sx={{ p: 3 }}>
-                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
-                                                    <PersonIcon color="primary" sx={{ fontSize: '1.5rem' }} />
-                                                    <Typography variant="h5" fontWeight="bold" color="#f58220" sx={{ fontSize: '1.5rem' }}>
-                                                        Receivers ({(selectedOrder?.receivers || []).length})
-                                                    </Typography>
-                                                </Box>
-                                                {renderReceivers()}
-                                            </CardContent>
-                                        </Card>
+                                <TabPanel value={tabValue} index={2}>
+                                    <Grid container spacing={3}>
+                                        {/* Shipping Details Card */}
+                                        <Grid item xs={12}>
+                                            <Card sx={{ 
+                                                boxShadow: 3, 
+                                                borderRadius: 3,
+                                                border: '1px solid #e3f2fd',
+                                                transition: 'all 0.3s ease',
+                                                '&:hover': { boxShadow: '0 8px 25px rgba(245, 130, 32, 0.1)' }
+                                            }}>
+                                                <CardContent sx={{ p: 3 }}>
+                                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
+                                                        <InventoryIcon color="primary" sx={{ fontSize: '1.5rem' }} />
+                                                        <Typography variant="h5" fontWeight="bold" color="#f58220" sx={{ fontSize: '1.5rem' }}>
+                                                            Shipping Details
+                                                        </Typography>
+                                                    </Box>
+                                                    {renderOrderItems()}
+                                                </CardContent>
+                                            </Card>
+                                        </Grid>
                                     </Grid>
-                                </Grid>
-                            </TabPanel>
+                                </TabPanel>
 
-                            <TabPanel value={tabValue} index={2}>
-                                <Grid container spacing={3}>
-                                    {/* Shipping Details Card */}
-                                    <Grid item xs={12}>
-                                        <Card sx={{ 
-                                            boxShadow: 3, 
-                                            borderRadius: 3,
-                                            border: '1px solid #e3f2fd',
-                                            transition: 'all 0.3s ease',
-                                            '&:hover': { boxShadow: '0 8px 25px rgba(245, 130, 32, 0.1)' }
-                                        }}>
-                                            <CardContent sx={{ p: 3 }}>
-                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
-                                                    <InventoryIcon color="primary" sx={{ fontSize: '1.5rem' }} />
-                                                    <Typography variant="h5" fontWeight="bold" color="#f58220" sx={{ fontSize: '1.5rem' }}>
-                                                        Shipping Details
-                                                    </Typography>
-                                                </Box>
-                                                {renderOrderItems()}
-                                            </CardContent>
-                                        </Card>
+                                <TabPanel value={tabValue} index={3}>
+                                    <Grid container spacing={3}>
+                                        {/* Transport Details Card */}
+                                        <Grid item xs={12}>
+                                            <Card sx={{ 
+                                                boxShadow: 3, 
+                                                borderRadius: 3,
+                                                border: '1px solid #e3f2fd',
+                                                transition: 'all 0.3s ease',
+                                                '&:hover': { boxShadow: '0 8px 25px rgba(245, 130, 32, 0.1)' }
+                                            }}>
+                                                <CardContent sx={{ p: 3 }}>
+                                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
+                                                        <DriveEtaIcon color="primary" sx={{ fontSize: '1.5rem' }} />
+                                                        <Typography variant="h5" fontWeight="bold" color="#f58220" sx={{ fontSize: '1.5rem' }}>
+                                                            Transport Details
+                                                        </Typography>
+                                                    </Box>
+                                                    <HorizontalKeyValue 
+                                                        data={{
+                                                            'Transport Type': selectedOrder?.transport_type,
+                                                            'Driver Name': selectedOrder?.driver_name,
+                                                            'Driver Contact': selectedOrder?.driver_contact,
+                                                            'Driver NIC': selectedOrder?.driver_nic,
+                                                            'Driver Pickup Location': selectedOrder?.driver_pickup_location,
+                                                            'Truck Number': selectedOrder?.truck_number,
+                                                            'Third Party Transport': selectedOrder?.third_party_transport
+                                                        }} 
+                                                    />
+                                                </CardContent>
+                                            </Card>
+                                        </Grid>
                                     </Grid>
-                                </Grid>
-                            </TabPanel>
+                                </TabPanel>
 
-                            <TabPanel value={tabValue} index={3}>
-                                <Grid container spacing={3}>
-                                    {/* Transport Details Card */}
-                                    <Grid item xs={12}>
-                                        <Card sx={{ 
-                                            boxShadow: 3, 
-                                            borderRadius: 3,
-                                            border: '1px solid #e3f2fd',
-                                            transition: 'all 0.3s ease',
-                                            '&:hover': { boxShadow: '0 8px 25px rgba(245, 130, 32, 0.1)' }
-                                        }}>
-                                            <CardContent sx={{ p: 3 }}>
-                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
-                                                    <DriveEtaIcon color="primary" sx={{ fontSize: '1.5rem' }} />
-                                                    <Typography variant="h5" fontWeight="bold" color="#f58220" sx={{ fontSize: '1.5rem' }}>
-                                                        Transport Details
-                                                    </Typography>
-                                                </Box>
-                                                <HorizontalKeyValue 
-                                                    data={{
-                                                        'Transport Type': selectedOrder?.transport_type,
-                                                        'Driver Name': selectedOrder?.driver_name,
-                                                        'Driver Contact': selectedOrder?.driver_contact,
-                                                        'Driver NIC': selectedOrder?.driver_nic,
-                                                        'Driver Pickup Location': selectedOrder?.driver_pickup_location,
-                                                        'Truck Number': selectedOrder?.truck_number,
-                                                        'Third Party Transport': selectedOrder?.third_party_transport
-                                                    }} 
-                                                />
-                                            </CardContent>
-                                        </Card>
+                                <TabPanel value={tabValue} index={4}>
+                                    <Grid container spacing={3}>
+                                        {/* Drop-Off / Inbound Details Card */}
+                                        <Grid item xs={12} md={6}>
+                                            <Card sx={{ 
+                                                boxShadow: 3, 
+                                                borderRadius: 3,
+                                                border: '1px solid #e3f2fd',
+                                                transition: 'all 0.3s ease',
+                                                '&:hover': { boxShadow: '0 8px 25px rgba(245, 130, 32, 0.1)' }
+                                            }}>
+                                                <CardContent sx={{ p: 3 }}>
+                                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
+                                                        <LocalShippingIcon color="primary" sx={{ fontSize: '1.5rem' }} />
+                                                        <Typography variant="h5" fontWeight="bold" color="#f58220" sx={{ fontSize: '1.5rem' }}>
+                                                            Drop-Off (Inbound)
+                                                        </Typography>
+                                                    </Box>
+                                                    <HorizontalKeyValue 
+                                                        data={{
+                                                            'Drop Method': selectedOrder?.drop_method,
+                                                            'Dropoff Name': selectedOrder?.dropoff_name,
+                                                            'Drop-Off CNIC/ID': selectedOrder?.drop_off_cnic,
+                                                            'Drop-Off Mobile': selectedOrder?.drop_off_mobile,
+                                                            'Plate No': selectedOrder?.plate_no,
+                                                            'Drop Date': formatDate(selectedOrder?.drop_date)
+                                                        }} 
+                                                        spacing={2}
+                                                    />
+                                                </CardContent>
+                                            </Card>
+                                        </Grid>
+
+                                        {/* Collection / Outbound Details Card */}
+                                        <Grid item xs={12} md={6}>
+                                            <Card sx={{ 
+                                                boxShadow: 3, 
+                                                borderRadius: 3,
+                                                border: '1px solid #e3f2fd',
+                                                transition: 'all 0.3s ease',
+                                                '&:hover': { boxShadow: '0 8px 25px rgba(245, 130, 32, 0.1)' }
+                                            }}>
+                                                <CardContent sx={{ p: 3 }}>
+                                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
+                                                        <LocalShippingIcon color="primary" sx={{ fontSize: '1.5rem' }} />
+                                                        <Typography variant="h5" fontWeight="bold" color="#f58220" sx={{ fontSize: '1.5rem' }}>
+                                                            Collection (Outbound)
+                                                        </Typography>
+                                                    </Box>
+                                                    <HorizontalKeyValue 
+                                                        data={{
+                                                            'Collection Method': selectedOrder?.collection_method,
+                                                            'Collection Scope': selectedOrder?.collection_scope,
+                                                            'Full/Partial': selectedOrder?.full_partial,
+                                                            'Qty Delivered': selectedOrder?.qty_delivered,
+                                                            'Client Receiver Name': selectedOrder?.client_receiver_name,
+                                                            'Client Receiver ID': selectedOrder?.client_receiver_id,
+                                                            'Client Receiver Mobile': selectedOrder?.client_receiver_mobile,
+                                                            'Delivery Date': formatDate(selectedOrder?.delivery_date)
+                                                        }} 
+                                                        spacing={2}
+                                                    />
+                                                </CardContent>
+                                            </Card>
+                                        </Grid>
                                     </Grid>
-                                </Grid>
-                            </TabPanel>
+                                </TabPanel>
 
-                            <TabPanel value={tabValue} index={4}>
-                                <Grid container spacing={3}>
-                                    {/* Drop-Off / Inbound Details Card */}
-                                    <Grid item xs={12} md={6}>
-                                        <Card sx={{ 
-                                            boxShadow: 3, 
-                                            borderRadius: 3,
-                                            border: '1px solid #e3f2fd',
-                                            transition: 'all 0.3s ease',
-                                            '&:hover': { boxShadow: '0 8px 25px rgba(245, 130, 32, 0.1)' }
-                                        }}>
-                                            <CardContent sx={{ p: 3 }}>
-                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
-                                                    <LocalShippingIcon color="primary" sx={{ fontSize: '1.5rem' }} />
-                                                    <Typography variant="h5" fontWeight="bold" color="#f58220" sx={{ fontSize: '1.5rem' }}>
-                                                        Drop-Off (Inbound)
-                                                    </Typography>
-                                                </Box>
-                                                <HorizontalKeyValue 
-                                                    data={{
-                                                        'Drop Method': selectedOrder?.drop_method,
-                                                        'Dropoff Name': selectedOrder?.dropoff_name,
-                                                        'Drop-Off CNIC/ID': selectedOrder?.drop_off_cnic,
-                                                        'Drop-Off Mobile': selectedOrder?.drop_off_mobile,
-                                                        'Plate No': selectedOrder?.plate_no,
-                                                        'Drop Date': formatDate(selectedOrder?.drop_date)
-                                                    }} 
-                                                    spacing={2}
-                                                />
-                                            </CardContent>
-                                        </Card>
+                                <TabPanel value={tabValue} index={5}>
+                                    <Grid container spacing={3}>
+                                        {/* Attachments Card */}
+                                        <Grid item xs={12} md={6}>
+                                            <Card sx={{ 
+                                                boxShadow: 3, 
+                                                borderRadius: 3,
+                                                border: '1px solid #e3f2fd',
+                                                transition: 'all 0.3s ease',
+                                                '&:hover': { boxShadow: '0 8px 25px rgba(245, 130, 32, 0.1)' }
+                                            }}>
+                                                <CardContent sx={{ p: 3 }}>
+                                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
+                                                        <AttachFileIcon color="primary" sx={{ fontSize: '1.5rem' }} />
+                                                        <Typography variant="h5" fontWeight="bold" color="#f58220" sx={{ fontSize: '1.5rem' }}>
+                                                            Attachments
+                                                        </Typography>
+                                                    </Box>
+                                                    {renderFiles(selectedOrder?.attachments)}
+                                                </CardContent>
+                                            </Card>
+                                        </Grid>
+
+                                        {/* Gatepass Card */}
+                                        <Grid item xs={12} md={6}>
+                                            <Card sx={{ 
+                                                boxShadow: 3, 
+                                                borderRadius: 3,
+                                                border: '1px solid #e3f2fd',
+                                                transition: 'all 0.3s ease',
+                                                '&:hover': { boxShadow: '0 8px 25px rgba(245, 130, 32, 0.1)' }
+                                            }}>
+                                                <CardContent sx={{ p: 3 }}>
+                                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
+                                                        <AttachFileIcon color="primary" sx={{ fontSize: '1.5rem' }} />
+                                                        <Typography variant="h5" fontWeight="bold" color="#f58220" sx={{ fontSize: '1.5rem' }}>
+                                                            Gatepass
+                                                        </Typography>
+                                                    </Box>
+                                                    {renderFiles(selectedOrder?.gatepass)}
+                                                </CardContent>
+                                            </Card>
+                                        </Grid>
                                     </Grid>
+                                </TabPanel>
 
-                                    {/* Collection / Outbound Details Card */}
-                                    <Grid item xs={12} md={6}>
-                                        <Card sx={{ 
-                                            boxShadow: 3, 
-                                            borderRadius: 3,
-                                            border: '1px solid #e3f2fd',
-                                            transition: 'all 0.3s ease',
-                                            '&:hover': { boxShadow: '0 8px 25px rgba(245, 130, 32, 0.1)' }
-                                        }}>
-                                            <CardContent sx={{ p: 3 }}>
-                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
-                                                    <LocalShippingIcon color="primary" sx={{ fontSize: '1.5rem' }} />
-                                                    <Typography variant="h5" fontWeight="bold" color="#f58220" sx={{ fontSize: '1.5rem' }}>
-                                                        Collection (Outbound)
-                                                    </Typography>
-                                                </Box>
-                                                <HorizontalKeyValue 
-                                                    data={{
-                                                        'Collection Method': selectedOrder?.collection_method,
-                                                        'Full/Partial': selectedOrder?.full_partial,
-                                                        'Qty Delivered': selectedOrder?.qty_delivered,
-                                                        'Client Receiver Name': selectedOrder?.client_receiver_name,
-                                                        'Client Receiver ID': selectedOrder?.client_receiver_id,
-                                                        'Client Receiver Mobile': selectedOrder?.client_receiver_mobile,
-                                                        'Delivery Date': formatDate(selectedOrder?.delivery_date)
-                                                    }} 
-                                                    spacing={2}
-                                                />
-                                            </CardContent>
-                                        </Card>
-                                    </Grid>
-                                </Grid>
-                            </TabPanel>
-
-                            <TabPanel value={tabValue} index={5}>
-                                <Grid container spacing={3}>
-                                    {/* Attachments Card */}
-                                    <Grid item xs={12} md={6}>
-                                        <Card sx={{ 
-                                            boxShadow: 3, 
-                                            borderRadius: 3,
-                                            border: '1px solid #e3f2fd',
-                                            transition: 'all 0.3s ease',
-                                            '&:hover': { boxShadow: '0 8px 25px rgba(245, 130, 32, 0.1)' }
-                                        }}>
-                                            <CardContent sx={{ p: 3 }}>
-                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
-                                                    <AttachFileIcon color="primary" sx={{ fontSize: '1.5rem' }} />
-                                                    <Typography variant="h5" fontWeight="bold" color="#f58220" sx={{ fontSize: '1.5rem' }}>
-                                                        Attachments
-                                                    </Typography>
-                                                </Box>
-                                                {renderFiles(selectedOrder?.attachments)}
-                                            </CardContent>
-                                        </Card>
-                                    </Grid>
-
-                                    {/* Gatepass Card */}
-                                    <Grid item xs={12} md={6}>
-                                        <Card sx={{ 
-                                            boxShadow: 3, 
-                                            borderRadius: 3,
-                                            border: '1px solid #e3f2fd',
-                                            transition: 'all 0.3s ease',
-                                            '&:hover': { boxShadow: '0 8px 25px rgba(245, 130, 32, 0.1)' }
-                                        }}>
-                                            <CardContent sx={{ p: 3 }}>
-                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
-                                                    <AttachFileIcon color="primary" sx={{ fontSize: '1.5rem' }} />
-                                                    <Typography variant="h5" fontWeight="bold" color="#f58220" sx={{ fontSize: '1.5rem' }}>
-                                                        Gatepass
-                                                    </Typography>
-                                                </Box>
-                                                {renderFiles(selectedOrder?.gatepass)}
-                                            </CardContent>
-                                        </Card>
-                                    </Grid>
-                                </Grid>
-                            </TabPanel>
-
-                            <TabPanel value={tabValue} index={6}>
-                                {renderContainersTab()}
-                            </TabPanel>
+                                <TabPanel value={tabValue} index={6}>
+                                    {renderContainersTab()}
+                                </TabPanel>
+                            </Box>
                         </>
                     ) : (
-                        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 4 }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 8 }}>
                             <Typography variant="body1" color="text.secondary">
                                 No order selected
                             </Typography>
                         </Box>
                     )}
                 </DialogContent>
+                
                 <DialogActions sx={{ 
                     p: 3, 
                     bgcolor: 'linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)', 
                     borderTop: '1px solid #e0e0e0',
-                    justifyContent: 'flex-end',
-                    gap: 2,
+                    justifyContent: 'space-between',
                     boxShadow: '0 -4px 12px rgba(0,0,0,0.05)'
                 }}>
-                    <Button 
-                        onClick={handleCloseModal} 
-                        variant="outlined" 
-                        sx={{ 
-                            borderRadius: 3, 
-                            borderColor: '#f58220', 
-                            color: '#f58220',
-                            px: 4,
-                            py: 1,
-                            fontWeight: 'bold',
-                            fontSize: '1rem',
-                            transition: 'all 0.3s ease',
-                            '&:hover': { 
-                                borderColor: '#e65100', 
-                                color: '#e65100',
-                                boxShadow: '0 4px 12px rgba(245, 130, 32, 0.2)',
-                                transform: 'translateY(-1px)'
-                            }
-                        }}
-                    >
-                        Close
-                    </Button>
-                    <Button 
-                        onClick={() => exportToPDF(selectedOrder)} 
-                        variant="outlined" 
-                        sx={{ 
-                            borderRadius: 3, 
-                            borderColor: '#f58220', 
-                            color: '#f58220',
-                            px: 4,
-                            py: 1,
-                            fontWeight: 'bold',
-                            fontSize: '1rem',
-                            transition: 'all 0.3s ease',
-                            '&:hover': { 
-                                borderColor: '#e65100', 
-                                color: '#e65100',
-                                boxShadow: '0 4px 12px rgba(245, 130, 32, 0.2)',
-                                transform: 'translateY(-1px)'
-                            }
-                        }}
-                        disabled={!selectedOrder}
-                    >
-                        Export to PDF
-                    </Button>
-                    <Button 
-                        onClick={() => {handleEdit(selectedOrder?.id); }} 
-                        variant="contained" 
-                        sx={{ 
-                            borderRadius: 3, 
-                            bgcolor: 'linear-gradient(135deg, #f58220 0%, #e65100 100%)',
-                            px: 4,
-                            py: 1,
-                            fontWeight: 'bold',
-                            fontSize: '1rem',
-                            transition: 'all 0.3s ease',
-                            '&:hover': { 
-                                bgcolor: 'linear-gradient(135deg, #e65100 0%, #d84315 100%)',
-                                boxShadow: '0 6px 20px rgba(245, 130, 32, 0.3)',
-                                transform: 'translateY(-1px)'
-                            }
-                        }}
-                        disabled={!selectedOrder}
-                    >
-                        Edit Order
-                    </Button>
+                    <Box>
+                        <FormControl size="small" sx={{ minWidth: 150 }}>
+                            <InputLabel id="pdf-method-label">PDF Method</InputLabel>
+                            <Select
+                                labelId="pdf-method-label"
+                                value={pdfGenerationMethod}
+                                label="PDF Method"
+                                onChange={(e) => setPdfGenerationMethod(e.target.value)}
+                                sx={{ borderRadius: 2 }}
+                            >
+                                <MenuItem value="jsPDF">Standard PDF</MenuItem>
+                                <MenuItem value="html2canvas">Visual PDF</MenuItem>
+                            </Select>
+                        </FormControl>
+                    </Box>
+                    
+                    <Box sx={{ display: 'flex', gap: 2 }}>
+                        <Button 
+                            onClick={handleCloseModal} 
+                            variant="outlined" 
+                            sx={{ 
+                                borderRadius: 3, 
+                                borderColor: '#f58220', 
+                                color: '#f58220',
+                                px: 4,
+                                py: 1,
+                                fontWeight: 'bold',
+                                fontSize: '1rem',
+                                transition: 'all 0.3s ease',
+                                '&:hover': { 
+                                    borderColor: '#e65100', 
+                                    color: '#e65100',
+                                    boxShadow: '0 4px 12px rgba(245, 130, 32, 0.2)',
+                                    transform: 'translateY(-1px)'
+                                }
+                            }}
+                        >
+                            Close
+                        </Button>
+                        <Button 
+                            onClick={() => generateOrderPDF(selectedOrder)} 
+                            variant="outlined" 
+                            sx={{ 
+                                borderRadius: 3, 
+                                borderColor: '#f58220', 
+                                color: '#f58220',
+                                px: 4,
+                                py: 1,
+                                fontWeight: 'bold',
+                                fontSize: '1rem',
+                                transition: 'all 0.3s ease',
+                                '&:hover': { 
+                                    borderColor: '#e65100', 
+                                    color: '#e65100',
+                                    boxShadow: '0 4px 12px rgba(245, 130, 32, 0.2)',
+                                    transform: 'translateY(-1px)'
+                                }
+                            }}
+                            disabled={!selectedOrder || isGeneratingPDF}
+                            startIcon={isGeneratingPDF ? <CircularProgress size={20} color="inherit" /> : <PictureAsPdfIcon />}
+                        >
+                            {isGeneratingPDF ? 'Generating...' : 'Export to PDF'}
+                        </Button>
+                        <Button 
+                            onClick={() => {handleEdit(selectedOrder?.id); }} 
+                            variant="contained" 
+                            sx={{ 
+                                borderRadius: 3, 
+                                bgcolor: 'linear-gradient(135deg, #f58220 0%, #e65100 100%)',
+                                px: 4,
+                                py: 1,
+                                fontWeight: 'bold',
+                                fontSize: '1rem',
+                                transition: 'all 0.3s ease',
+                                '&:hover': { 
+                                    bgcolor: 'linear-gradient(135deg, #e65100 0%, #d84315 100%)',
+                                    boxShadow: '0 6px 20px rgba(245, 130, 32, 0.3)',
+                                    transform: 'translateY(-1px)'
+                                }
+                            }}
+                            disabled={!selectedOrder}
+                        >
+                            Edit Order
+                        </Button>
+                    </Box>
                 </DialogActions>
             </Dialog>
 
