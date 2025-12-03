@@ -491,30 +491,7 @@ const totalOrders = useMemo(() =>
         </Typography>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ width: { xs: '100%', sm: 'auto' } }}>
           <Tooltip title={numSelected === 0 ? "Select items to add to vessel" : ""}>
-  <span> {/* Wrapper for disabled state */}
-    <Button
-      variant="contained"
-      disabled={numSelected === 0}
-      onClick={() => console.log('Add selected to vessel')}
-      startIcon={<AddIcon />}
-      size="medium"
-     fullWidth={true}
-                sx={{
-                  borderRadius: 2,
-                  backgroundColor: "#0d6c6a",
-                  color: "#fff",
-                  "&:hover": { backgroundColor: "#0a5a59" },
-                  fontSize: '0.875rem',
-                  fontWeight: 'medium',
-                  transition: 'all 0.2s ease',
-                  minHeight: 40,
-                  width: 200,
-                  '&:disabled': { backgroundColor: 'grey.400' }
-                }}
-    >
-      Vessel ({numSelected})
-    </Button>
-  </span>
+
 </Tooltip>
           <Tooltip title="Export to CSV/PDF">
             <Button

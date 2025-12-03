@@ -179,110 +179,110 @@ const normalizeContainers = (containers) => {
     return containers.flat().filter(c => c && typeof c === 'string').map(c => c.trim());
 };
 
+// Make sure to import jsPDF and autoTable
+// import jsPDF from "jspdf";
+// import autoTable from "jspdf-autotable";
 
-// Helper to load images as Base64
-const loadImageAsBase64 = (url) => {
-  return new Promise((resolve) => {
+// Ensure you import jsPDF and autoTable
+// import jsPDF from "jspdf";
+// import autoTable from "jspdf-autotable";
+
+const loadImageAsBase64 = (url) =>
+  new Promise((resolve) => {
     const img = new Image();
-    img.crossOrigin = 'Anonymous';
+    img.crossOrigin = "Anonymous";
     img.src = url;
-
     img.onload = () => {
-      const canvas = document.createElement('canvas');
+      const canvas = document.createElement("canvas");
       canvas.width = img.width;
       canvas.height = img.height;
-      const ctx = canvas.getContext('2d');
+      const ctx = canvas.getContext("2d");
       ctx.drawImage(img, 0, 0);
-      resolve(canvas.toDataURL('image/png'));
+      resolve(canvas.toDataURL("image/png"));
     };
-
     img.onerror = () => resolve(null);
   });
-};
 
-const generateOrderPDF = async (selectedOrder) => {
-  if (!selectedOrder) return;
+const generateOrderPDF = async (order) => {
+  if (!order) return;
 
-  const doc = new jsPDF('p', 'mm', 'a4');
+  const doc = new jsPDF("p", "mm", "a4");
   const pageWidth = doc.internal.pageSize.getWidth();
-  const margin = 8;
-  const brandPrimary = [13, 108, 106];  // #0D6C6A
+  const margin = 14;
+  const brandPrimary = [13, 108, 106]; // #0d6c6a
   const brandLight = [220, 245, 243];
-  const yStart = 30;
+  let y = 30;
 
-  //---------------------------------------------------
-  // HEADER
-  //---------------------------------------------------
-const drawHeader = async () => {
-  const headerHeight = 28;
+  // -------- HEADER --------
+  const logoBase64 = await loadImageAsBase64("./logo-2.png");
+  if (logoBase64) doc.addImage(logoBase64, "PNG", margin, 4, 60, 12);
 
-  doc.setFillColor(...brandPrimary);
-  doc.rect(0, 0, pageWidth, headerHeight, 'F');
-  const logoBase64 = await loadImageAsBase64("/logo.png");
+  doc.setFont("helvetica", "bold").setFontSize(16);
+  doc.setTextColor(...brandPrimary);
+  doc.text("ORDER DETAILS REPORT", pageWidth - margin, 10, { align: "right" });
 
-  if (logoBase64) {
-    doc.addImage(logoBase64, 'PNG', margin, 4, 60, 20);
-  } else {
-    console.warn("Logo failed to load.");
-  }
+  doc.setFont("helvetica", "normal").setFontSize(9);
+  doc.text(`Booking Ref: ${order.booking_ref}`, pageWidth - margin, 17, { align: "right" });
+  doc.text(`Generated: ${new Date().toLocaleString()}`, pageWidth - margin, 22, { align: "right" });
+
+  // -------- SUMMARY CARDS --------
+  const cards = [
+    ["Order ID", order.id],
+    ["Status", order.status],
+    ["Drop Method", order.drop_method],
+    ["Point of Origin", order.point_of_origin],
+    ["Total Assigned Qty", order.total_assigned_qty],
+    ["Collection Scope", order.collection_scope],
+  ];
+  const cardWidth = (pageWidth - margin * 2 - 6) / 2;
+  const cardHeight = 16;
+
+  cards.forEach((item, i) => {
+    const col = i % 2;
+    const row = Math.floor(i / 2);
+    const x = margin + col * (cardWidth + 6);
+    const cardY = y + row * (cardHeight + 6);
+
+    doc.setDrawColor(220, 220, 220);
+    doc.setFillColor(...brandLight);
+    doc.roundedRect(x, cardY, cardWidth, cardHeight, 2, 2, "FD");
+
+    doc.setFillColor(...brandPrimary);
+    doc.rect(x, cardY, cardWidth, 5, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
     doc.setTextColor(255, 255, 255);
-  doc.setFontSize(9).setFont('helvetica', 'normal');
-  doc.text(`Booking Ref: ${selectedOrder.booking_ref || "N/A"}`, pageWidth - margin, 12, { align: 'right' });
-  doc.text(`Generated: ${new Date().toLocaleString()}`, pageWidth - margin, 17, { align: 'right' });
-};
+    doc.text(item[0], x + 2, cardY + 4);
 
-  //---------------------------------------------------
-  // SUMMARY CARDS
-  //---------------------------------------------------
-  const drawSummary = (y) => {
-    const cards = [
-      ["Order ID", selectedOrder.id || 'N/A'],
-      ["Receivers", selectedOrder.receivers?.length || 0],
-      ["Status", selectedOrder.status || "Created"],
-      ["Total Assigned Qty", selectedOrder.total_assigned_qty || 0],
-    ];
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(50, 50, 50);
+    doc.text(String(item[1]), x + 3, cardY + 11);
+  });
 
-    const cardWidth = (pageWidth - margin * 2 - 6) / 2;
-    const cardHeight = 16;
+  y += Math.ceil(cards.length / 2) * (cardHeight + 6) + 5;
 
-    cards.forEach((item, i) => {
-      const col = i % 2;
-      const row = Math.floor(i / 2);
-      const x = margin + (col * (cardWidth + 6));
-      const cardY = y + row * (cardHeight + 6);
+  // -------- ORDER DETAILS --------
+  const orderDetails = [
+    ["Booking Ref", order.booking_ref],
+    ["RGL Booking #", order.rgl_booking_number],
+    ["Place of Loading", order.place_of_loading],
+    ["Final Destination", order.final_destination],
+    ["Place of Delivery", order.place_of_delivery],
+    ["ETA", order.eta || "N/A"],
+    ["ETD", order.etd || "N/A"],
+    ["Shipping Line", order.shipping_line || "N/A"],
+    ["Plate No", order.plate_no],
+    ["Drop Off CNIC", order.drop_off_cnic],
+    ["Drop Off Mobile", order.drop_off_mobile],
+    ["Drop Date", order.drop_date ? new Date(order.drop_date).toLocaleString() : "N/A"],
+  ];
 
-      // Card box
-      doc.setDrawColor(220, 220, 220);
-      doc.setFillColor(...brandLight);
-      doc.roundedRect(x, cardY, cardWidth, cardHeight, 2, 2, 'FD');
-
-      // Title bar
-      doc.setFillColor(...brandPrimary);
-      doc.rect(x, cardY, cardWidth, 5, 'F');
-      doc.setFont('helvetica', 'bold').setFontSize(9);
-      doc.setTextColor(255, 255, 255);
-      doc.text(item[0], x + 2, cardY + 4);
-
-      // Value
-      doc.setTextColor(50, 50, 50);
-      doc.setFont('helvetica', 'normal');
-      doc.text(String(item[1]), x + 3, cardY + 11);
-    });
-
-    return y + Math.ceil(cards.length / 2) * (cardHeight + 6) + 5;
-  };
-
-  //---------------------------------------------------
-  // KEY-VALUE DETAILS SECTION
-  //---------------------------------------------------
-  const drawDetails = (y, title, details) => {
-    doc.setFont('helvetica', 'bold').setFontSize(14);
+  const drawKeyValueSection = (y, title, details) => {
+    doc.setFont("helvetica", "bold").setFontSize(14);
     doc.setTextColor(...brandPrimary);
     doc.text(title, margin, y);
-
     y += 4;
 
-    // Underline
     doc.setDrawColor(...brandPrimary);
     doc.setLineWidth(0.6);
     doc.line(margin, y, pageWidth - margin, y);
@@ -297,35 +297,105 @@ const drawHeader = async () => {
       const x = margin + col * (colWidth + 10);
       const dy = y + row * rowHeight;
 
-      doc.setFont('helvetica', 'bold');
+      doc.setFont("helvetica", "bold");
       doc.setFontSize(10);
       doc.setTextColor(...brandPrimary);
       doc.text(pair[0], x, dy);
 
-      doc.setFont('helvetica', 'normal');
+      doc.setFont("helvetica", "normal");
       doc.setTextColor(50, 50, 50);
-      doc.text(String(pair[1] || 'N/A'), x, dy + 4);
+      doc.text(String(pair[1] || "N/A"), x, dy + 4);
     });
 
     return y + Math.ceil(details.length / 2) * rowHeight + 6;
   };
 
-  //---------------------------------------------------
-  // REMARKS & ATTACHMENTS BOX
-  //---------------------------------------------------
+  y = drawKeyValueSection(y, "ORDER INFORMATION", orderDetails);
+
+  // -------- SENDER DETAILS --------
+  const senderDetails = [
+    ["Sender Name", order.sender_name],
+    ["Contact Number", order.sender_contact],
+    ["Email", order.sender_email],
+    ["Address", order.sender_address],
+    ["Sender Ref", order.sender_ref],
+    ["Sender Remarks", order.sender_remarks],
+    ["Selected Sender Owner", order.selected_sender_owner],
+  ];
+  y = drawKeyValueSection(y, "SENDER INFORMATION", senderDetails);
+
+  // -------- RECEIVERS TABLE --------
+  if (order.receivers?.length) {
+    doc.setFont("helvetica", "bold").setFontSize(14);
+    doc.setTextColor(...brandPrimary);
+    doc.text("RECEIVERS", margin, y);
+    y += 6;
+
+    autoTable(doc, {
+      startY: y,
+      head: [["Receiver", "Status", "Consignment #", "Qty", "Weight", "Contact", "Address", "Containers"]],
+      body: order.receivers.map((r) => [
+        r.receiver_name,
+        r.status,
+        r.consignment_number,
+        r.total_number,
+        r.total_weight,
+        r.receiver_contact,
+        r.receiver_address,
+        r.containers?.map(c => c.join(", ")).join("; ") || "N/A",
+      ]),
+      headStyles: { fillColor: brandPrimary, textColor: 255 },
+      bodyStyles: { fontSize: 9, cellPadding: 3 },
+      margin: { left: margin, right: margin },
+    });
+
+    y = doc.lastAutoTable.finalY + 6;
+
+    // -------- RECEIVER SHIPPING DETAILS TABLE --------
+    for (const receiver of order.receivers) {
+      if (!receiver.shippingDetails?.length) continue;
+
+      doc.setFont("helvetica", "bold").setFontSize(12);
+      doc.setTextColor(...brandPrimary);
+      doc.text(`Products Details for: ${receiver.receiver_name}`, margin, y);
+      y += 6;
+
+      autoTable(doc, {
+        startY: y,
+        head: [["Category", "Subcategory", "Type", "Total #", "Weight", "Pickup", "Delivery", "Item Ref", "Assigned Qty"]],
+        body: receiver.shippingDetails.map((s) => [
+          s.category,
+          s.subcategory,
+          s.type,
+          s.totalNumber,
+          s.weight,
+          s.pickupLocation,
+          s.deliveryAddress,
+          s.itemRef,
+          s.assignedQty
+        ]),
+        headStyles: { fillColor: brandPrimary, textColor: 255 },
+        bodyStyles: { fontSize: 9, cellPadding: 3 },
+        margin: { left: margin, right: margin },
+      });
+
+      y = doc.lastAutoTable.finalY + 6;
+    }
+  }
+
+  // -------- REMARKS --------
   const drawBoxText = (y, title, text) => {
     if (!text) return y;
 
     const boxHeight = 20;
     doc.setFillColor(248, 249, 250);
-    doc.roundedRect(margin, y, pageWidth - margin * 2, boxHeight, 2, 2, 'F');
+    doc.roundedRect(margin, y, pageWidth - margin * 2, boxHeight, 2, 2, "F");
 
-    doc.setFont('helvetica', 'bold').setFontSize(10);
+    doc.setFont("helvetica", "bold").setFontSize(10);
     doc.setTextColor(...brandPrimary);
     doc.text(title, margin + 3, y + 6);
 
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal").setFontSize(9);
     doc.setTextColor(50, 50, 50);
     const wrapped = doc.splitTextToSize(text, pageWidth - margin * 2 - 6);
     doc.text(wrapped, margin + 3, y + 11);
@@ -333,118 +403,23 @@ const drawHeader = async () => {
     return y + boxHeight + 6;
   };
 
-  //---------------------------------------------------
-  // RECEIVERS TABLE
-  //---------------------------------------------------
-  const drawReceivers = (y) => {
-    if (!selectedOrder.receivers?.length) return y;
+  y = drawBoxText(y, "Order Remarks", order.order_remarks);
 
-    doc.setFont('helvetica', 'bold').setFontSize(14);
-    doc.setTextColor(...brandPrimary);
-    doc.text("Receivers & Shipping Details", margin, y);
-    y += 6;
-
-    const headers = ['Receiver', 'Status', 'Consignment #', 'Qty', 'Weight', 'Contact', 'Address'];
-    const colWidths = [30, 30, 50, 20, 25, 30, 30];
-
-    autoTable(doc, {
-      startY: y,
-      head: [headers],
-      body: selectedOrder.receivers.map(r => [
-        r.receiver_name || 'N/A',
-        r.status || 'N/A',
-        r.consignment_number || 'N/A',
-        r.total_number ?? 'N/A',
-        r.total_weight ?? 'N/A',
-        r.receiver_contact || 'N/A',
-        r.receiver_address || 'N/A'
-      ]),
-      headStyles: { fillColor: brandPrimary, textColor: 255, fontStyle: 'bold' },
-      bodyStyles: { fontSize: 9, cellPadding: 3 },
-      columnStyles: {
-        0: { cellWidth: 30 },
-        1: { cellWidth: 35 },
-        2: { cellWidth: 30 },
-        3: { cellWidth: 25 },
-        4: { cellWidth: 25 },
-        5: { cellWidth: 25 },
-        6: { cellWidth: 25 },
-      },
-      margin: { left: margin, right: margin },
-    });
-
-    return doc.lastAutoTable.finalY + 6;
-  };
-
-  //---------------------------------------------------
-  // FOOTER
-  //---------------------------------------------------
-  const drawFooter = () => {
-    const y = 280;
-    doc.setDrawColor(...brandPrimary);
-    doc.line(margin, y, pageWidth - margin, y);
-
-    doc.setFont('helvetica', 'normal').setFontSize(9);
-    doc.setTextColor(80, 80, 80);
-    doc.text(`Generated: ${new Date().toLocaleString()}`, margin, y + 6);
-    doc.text(`Page ${doc.getCurrentPageInfo().pageNumber}`, pageWidth - margin, y + 6, { align: 'right' });
-  };
-
-  //---------------------------------------------------
-  // BUILD PDF
-  //---------------------------------------------------
-  await drawHeader();
-
-  let y = yStart;
-
-  // Summary cards
-  y = drawSummary(y);
-
-  // Order Information
-  const orderDetails = [
-    ["Booking Ref", selectedOrder.booking_ref],
-    ["Overall Status", selectedOrder.status],
-    ["RGL Booking #", selectedOrder.rgl_booking_number],
-    ["Place of Loading", selectedOrder.place_of_loading],
-    ["Final Destination", selectedOrder.final_destination],
-    ["Place of Delivery", selectedOrder.place_of_delivery],
-    ["ETA", selectedOrder.eta || 'N/A'],
-    ["ETD", selectedOrder.etd || 'N/A'],
-    ["Shipping Line", selectedOrder.shipping_line],
-    ["Point of Origin", selectedOrder.point_of_origin],
-  ];
-  y = drawDetails(y, "ORDER INFORMATION", orderDetails);
-
-  // Sender Information
-  const senderDetails = [
-    ["Sender Name", selectedOrder.sender_name],
-    ["Contact Number", selectedOrder.sender_contact],
-    ["Address", selectedOrder.sender_address],
-    ["Email", selectedOrder.sender_email],
-    ["Sender Reference", selectedOrder.sender_ref],
-  ];
-  y = drawDetails(y, "SENDER INFORMATION", senderDetails);
-
-  // Remarks
-  y = drawBoxText(y, "Order Remarks", selectedOrder.order_remarks);
-  y = drawBoxText(y, "Consignment Remarks", selectedOrder.consignment_remarks);
-
-  // Receivers Table
-  y = drawReceivers(y);
-
-  // Attachments
-  const attachmentsText = selectedOrder.attachments?.length > 0
-    ? selectedOrder.attachments.join(", ")
-    : "None";
+  // -------- ATTACHMENTS --------
+  const attachmentsText = order.attachments?.length ? order.attachments.join(", ") : "None";
   y = drawBoxText(y, "Attachments", attachmentsText);
 
-  // Footer
-  drawFooter();
+  // -------- FOOTER --------
+  const footerY = 275;
+  doc.setDrawColor(...brandPrimary);
+  doc.line(margin, footerY, pageWidth - margin, footerY);
+  doc.setFont("helvetica", "normal").setFontSize(9);
+  doc.setTextColor(80, 80, 80);
+  doc.text(`Generated: ${new Date().toLocaleString()}`, margin, footerY + 6);
+  doc.text(`Page ${doc.getCurrentPageInfo().pageNumber}`, pageWidth - margin, footerY + 6, { align: "right" });
 
-  //---------------------------------------------------
-  // SAVE PDF
-  //---------------------------------------------------
-  doc.save(`RGS_Order_${selectedOrder.booking_ref || "Unknown"}.pdf`);
+  // -------- SAVE PDF --------
+  doc.save(`Order_${order.booking_ref || "Unknown"}.pdf`);
 };
 
 
@@ -1395,7 +1370,7 @@ const generatePDFWithCanvas = async () => {
             <Dialog 
                 open={openModal} 
                 onClose={handleCloseModal} 
-                maxWidth="xl" 
+                maxWidth={1400} 
                 fullWidth
                 PaperProps={{
                     sx: {

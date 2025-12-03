@@ -827,38 +827,45 @@ const generateDocx = () => {
   }, [values.containers]);
 
   // Fetch orders
-  useEffect(() => {
-    const fetchOrders = async () => {
-      if ((addedContainerIds || []).length === 0) {
-        setOrders([]);
-        setOrderTotal(0);
-        setOrdersLoading(false);
-        return;
+useEffect(() => {
+  const fetchOrders = async () => {
+    if ((addedContainerIds || []).length === 0) {
+      setOrders([]);
+      setOrderTotal(0);
+      setOrdersLoading(false);
+      return;
+    }
+    setOrdersLoading(true);
+    try {
+      const params = {
+        page: orderPage + 1,
+        limit: orderRowsPerPage,
+        includeContainer: true,
+        container_id: addedContainerIds.join(','),  // Removed includeContainer (unused)
+        ...(filters.booking_ref && { booking_ref: filters.booking_ref }),
+        ...(filters.status && { status: filters.status }),
+      };
+      console.log('Fetching orders with params:', params);  // Debug: Log sent params
+      const response = await api.get(`/api/orders`, { params });
+      console.log('Fetched orders response:', response.data);  // Debug: Full response
+      const fetchedOrders = response.data?.data || [];
+      const fetchedTotal = response.data?.total || 0;
+      setOrders(fetchedOrders);
+      setOrderTotal(fetchedTotal);
+      if (fetchedOrders.length > 0) {
+        handleSelectAllClick({ target: { checked: true } });  // Guard: Only if data exists
       }
-      setOrdersLoading(true);
-      try {
-        const params = {
-          page: orderPage + 1,
-          limit: orderRowsPerPage,
-          includeContainer: true,
-          container_ids: addedContainerIds.join(','),
-          ...(filters.booking_ref && { booking_ref: filters.booking_ref }),
-          ...(filters.status && { status: filters.status }),
-        };
-        const response = await api.get(`/api/orders`, { params });
-        console.log('Fetched orders:', response.data);
-        setOrders(response.data?.data || []);
-        setOrderTotal(response.data?.total || 0);
-        handleSelectAllClick({ target: { checked: true } });
-      } catch (err) {
-        console.error("Error fetching orders:", err);
-      } finally {
-        setOrdersLoading(false);
-      }
-    };
-    fetchOrders();
-  }, [addedContainerIds, filters, orderPage, orderRowsPerPage]);
-
+    } catch (err) {
+      console.error("Error fetching orders:", err);
+      showToast('Failed to fetch orders. Please try again.', 'error');  // User feedback
+      setOrders([]);  // Reset on error
+      setOrderTotal(0);
+    } finally {
+      setOrdersLoading(false);
+    }
+  };
+  fetchOrders();
+}, [addedContainerIds, filters, orderPage, orderRowsPerPage]);  // Added deps if needed
   const isSelected = (id) => (selectedOrders || []).indexOf(id) !== -1;
   const handleOrderToggle = (orderId) => () => {
     console.log('toggle order', orderId);
@@ -1277,9 +1284,10 @@ const addContainer = () => {
   const handleCreate = async (e) => {
     console.log('Creating consignment', e);
     if (e) e.preventDefault();
-    setSaving(true);
     const submitData = await validateAndPrepare();
     if (!submitData) return;
+    setSaving(true);
+
     try {
       const res = await api.post('/api/consignments', submitData);
       console.log('[handleCreate] Success response:', res.data);
@@ -2034,26 +2042,7 @@ const addContainer = () => {
                     </Box>
                     {/* Counts & Seal Row */}
                     <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
-                      <Box sx={{ flex: 1, minWidth: 250 }}>
-                        <CustomTextField
-                          name="delivered"
-                          value={values.delivered}
-                          label="# Delivered"
-                          type="number"
-                          readOnly
-                          startAdornment={<DescriptionIcon sx={{ mr: 1, color: '#f58220' }} />}
-                        />
-                      </Box>
-                      <Box sx={{ flex: 1, minWidth: 250 }}>
-                        <CustomTextField
-                          name="pending"
-                          value={values.pending}
-                          label="# Pending"
-                          type="number"
-                          readOnly
-                          startAdornment={<DescriptionIcon sx={{ mr: 1, color: '#f58220' }} />}
-                        />
-                      </Box>
+                   
                       <Box sx={{ flex: 1, minWidth: 250 }}>
                         <CustomTextField
                           name="seal_no"
@@ -2063,9 +2052,6 @@ const addContainer = () => {
                           startAdornment={<LocalPrintshopIcon sx={{ mr: 1, color: '#f58220' }} />}
                         />
                       </Box>
-                    </Box>
-                    {/* Weights Row */}
-                    <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
                       <Box sx={{ flex: 1, minWidth: 300 }}>
                         <CustomTextField
                           name="netWeight"

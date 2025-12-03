@@ -8,6 +8,7 @@ import {
 import AddCircleIcon from '@mui/icons-material/AddCircle';
 import EditIcon from '@mui/icons-material/Edit';
 import HistoryIcon from '@mui/icons-material/History';
+import EditNoteIcon from '@mui/icons-material/EditNote';
 import CloseIcon from '@mui/icons-material/Close';
 import { api } from '../../api'; // Assuming api is configured with baseURL
 import SaveIcon from '@mui/icons-material/Save'
@@ -574,7 +575,7 @@ const ContainerModule = () => {
               color: "#fff"
             }}
           >
-            Add Container
+            Add Containers
           </Button>
         </Box>
         <Divider sx={{ mb: 3 }} />
@@ -788,10 +789,25 @@ const ContainerModule = () => {
                   <IconButton onClick={handleQuickCancel} size="small"><CloseIcon /></IconButton></Tooltip></Box>) :
                    (<><Tooltip title="Quick Update Status & Location">
                   <IconButton onClick={() => handleQuickEdit(container)} sx={{ color: '#0d6c6a' }} size="small">
-                    <EditIcon fontSize="small" /></IconButton></Tooltip><Tooltip title="View History">
+                    <EditIcon fontSize="small" /></IconButton></Tooltip>
+                    <Tooltip title="Edit Container Details">
+                      <IconButton onClick={() => handleEdit(container)} sx={{ color: '#f58220' }} size="small">
+                        <EditNoteIcon fontSize="large" />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="View History">
                       <IconButton onClick={() => openHistory(container.cid)} sx={{ color: '#0d6c6a' }} disabled={loadingHistory}>{loadingHistory ?
                        <CircularProgress size={16} /> : <HistoryIcon />}</IconButton></Tooltip>
-                 <Tooltip title={container.availability !== 'Cleared' ? 'Container must be Cleared to mark Returned' : 'Mark as Returned'}><span><Button disabled={container.availability !== 'Cleared' || loadingReturned[container.cid]} onClick={() => markReturned(container.cid)} size="small" startIcon={loadingReturned[container.cid] ? <CircularProgress size={16} /> : null} sx={{ textTransform: 'none', color: '#0d6c6a' }}>Mark Returned</Button></span></Tooltip></>)}</TableCell></TableRow>); }))}
+                 {/* <Tooltip title={container.availability !== 'Cleared' ? 'Container must be Cleared to mark Returned' : 'Mark as Returned'}><span>
+                  <Button disabled={container.availability !== 'Cleared' || loadingReturned[container.cid]} onClick={() => markReturned(container.cid)} size="small" startIcon={loadingReturned[container.cid] ? <CircularProgress size={16} /> : null}
+                   sx={{ textTransform: 'none', color: '#0d6c6a' }}>Mark Returned</Button></span></Tooltip>
+                    */}
+                   
+                   </>
+               )} 
+                 
+                   
+                 </TableCell></TableRow>); }))}
               </TableBody>
             </Table>
           </TableContainer>
@@ -841,7 +857,7 @@ const ContainerModule = () => {
     <FormControlLabel
       key={own.value}
       value={own.value}
-      control={<Radio disabled={isEditing} />}
+      control={<Radio />}
       label={own.label}
     />
   ))}
@@ -929,7 +945,6 @@ const ContainerModule = () => {
                     fullWidth
                     required
                     variant="outlined"
-                    disabled={isEditing}
                     sx={{ bgcolor: 'white' }}
                   />
                 </Box>
@@ -944,7 +959,6 @@ const ContainerModule = () => {
                       fullWidth
                       required
                       variant="outlined"
-                      disabled={isEditing}
                       sx={{ bgcolor: 'white' }}
                     />
                   </Box>
@@ -958,10 +972,9 @@ const ContainerModule = () => {
                       fullWidth
                       required
                       variant="outlined"
-                      disabled={isEditing}
                       sx={{ bgcolor: 'white', marginRight: 2 }}
                     />
-                    <FormControl fullWidth variant="outlined" sx={{ bgcolor: 'white', width: 100 }} disabled={isEditing}>
+                    <FormControl fullWidth variant="outlined" sx={{ bgcolor: 'white', width: 100 }}>
                       <InputLabel>Currency</InputLabel>
                       <Select name="currency" label="Currency" value={formData.currency || 'USD'} onChange={handleFormChange}>
                         {['USD', 'EUR', 'GBP', 'AED', 'PKR', 'SAR', 'INR'].map((curr) => (
@@ -983,7 +996,6 @@ const ContainerModule = () => {
                     fullWidth
                     required
                     variant="outlined"
-                    disabled={isEditing}
                     sx={{ bgcolor: 'white' }}
                   />
 
@@ -1004,7 +1016,6 @@ const ContainerModule = () => {
                       fullWidth
                       required
                       variant="outlined"
-                      disabled={isEditing}
                       sx={{ bgcolor: 'white' }}
                     />
                   </Box>
@@ -1028,7 +1039,6 @@ const ContainerModule = () => {
                       fullWidth
                       required
                       variant="outlined"
-                      disabled={isEditing}
                       sx={{ bgcolor: 'white' }}
                     />
                   </Box>
@@ -1042,7 +1052,6 @@ const ContainerModule = () => {
                       fullWidth
                       required
                       variant="outlined"
-                      disabled={isEditing}
                       sx={{ bgcolor: 'white' }}
                     />
                   </Box>
@@ -1057,7 +1066,6 @@ const ContainerModule = () => {
                       onChange={handleFormChange}
                       fullWidth
                       variant="outlined"
-                      disabled={isEditing}
                       sx={{ bgcolor: 'white' }}
                     />
                   </Box>
@@ -1070,7 +1078,6 @@ const ContainerModule = () => {
                       fullWidth
                       required
                       variant="outlined"
-                      disabled={isEditing}
                       sx={{ bgcolor: 'white' }}
                     />
                   </Box>
@@ -1086,7 +1093,6 @@ const ContainerModule = () => {
                       fullWidth
                       required
                       variant="outlined"
-                      disabled={isEditing}
                       sx={{ bgcolor: 'white' }}
                     />
                   </Box>
@@ -1099,7 +1105,6 @@ const ContainerModule = () => {
                       fullWidth
                       required
                       variant="outlined"
-                      disabled={isEditing}
                       sx={{ bgcolor: 'white' }}
                     />
                   </Box>
@@ -1113,7 +1118,6 @@ const ContainerModule = () => {
                       fullWidth
                       required
                       variant="outlined"
-                      disabled={isEditing}
                       sx={{ bgcolor: 'white' }}
                     />
                   </Box>
@@ -1210,7 +1214,6 @@ const ContainerModule = () => {
     </Box>
   );
 };
-
 export default ContainerModule;
 
 

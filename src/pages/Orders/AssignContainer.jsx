@@ -642,7 +642,7 @@ const AssignModal = ({
             <Dialog
                 open={openAssignModal}
                 onClose={() => setOpenAssignModal(false)}
-                maxWidth="xl"
+                maxWidth={'xl'}
                 fullWidth
                 aria-labelledby="assign-modal-title"
                 aria-describedby="assign-modal-description"
@@ -716,7 +716,7 @@ const AssignModal = ({
     maxHeight: '80vh',
     bgcolor: themeColors.background,
 }} id="assign-modal-description">
-    <Grid container justifyContent="space-between" mb={3} spacing={{ xs: 2, sm: 3 }}>
+    <Grid  justifyContent="space-between" mb={3} spacing={{ xs: 2, sm: 3 }}>
         <Grid item xs={12}>
             <Card sx={{
                 boxShadow: '0 4px 20px rgba(13, 108, 106, 0.08)',
@@ -729,7 +729,7 @@ const AssignModal = ({
                 },
                 bgcolor: themeColors.surface,
             }}>
-                <CardContent sx={{ p: { xs: 2.5, sm: 3 } }}>
+                <CardContent sx={{ width: '100%' }}>
                     <Stack direction="row" alignItems="center" justifyContent="space-between" mb={3} flexWrap="wrap" gap={1}>
                         <Stack direction="row" alignItems="center" gap={1.5}>
                             <PersonIcon color="primary" sx={{ fontSize: { xs: '1.2rem', sm: '1.5rem' } }} aria-hidden="true" />
@@ -787,7 +787,7 @@ const AssignModal = ({
                     <TableContainer sx={{
                         maxHeight: { xs: 320, sm: 380 },
                         overflow: 'auto',
-                        overflowX: 'clip',
+                        overflowX: 'scroll',
                         borderRadius: 2,
                         border: `1px solid ${themeColors.border}`,
                         bgcolor: themeColors.surface,

@@ -36,6 +36,7 @@ import {
     Collapse
 } from "@mui/material";
 import Avatar from '@mui/material/Avatar';
+import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import EditIcon from "@mui/icons-material/Edit";
 import Tooltip from '@mui/material/Tooltip';
 import List from '@mui/material/List';
@@ -65,6 +66,7 @@ const OrdersList = () => {
     const [loadingContainers, setLoadingContainers] = useState(false);
     const [assignmentError, setAssignmentError] = useState(null);
     const [selectedContainers, setSelectedContainers] = useState([]);
+    const [places, setPlaces] = useState([]);
     const [filters, setFilters] = useState({
         status: "",
         booking_ref: "", // Updated: Use booking_ref for search
@@ -145,15 +147,19 @@ const OrdersList = () => {
         handleCloseStatusDialog();
     };
     const fetchOrders = async () => {
+        console.log('Fetching orders with filters:', filters, 'page:', page, 'rowsPerPage:', rowsPerPage);
         setLoading(true);
         setError(null);
         try {
-            const params = {
-                page: page + 1, // API uses 1-based
-                limit: rowsPerPage,
-                includeContainer: true,
-                ...filters,
-            };
+          const nonEmptyFilters = Object.fromEntries(
+    Object.entries(filters).filter(([_, v]) => v && v.trim())
+  );
+  const params = {
+    page: page + 1,
+    limit: rowsPerPage,
+    includeContainer: true,
+    ...nonEmptyFilters,  // Use this instead of ...filters
+  };
             const response = await api.get(`/api/orders`, { params });
             console.log('Fetched orders:', response.data);
             setOrders(response.data.data || []);
@@ -170,6 +176,42 @@ const OrdersList = () => {
             setLoading(false);
         }
     };
+
+    // Fetch options on mount (replaces dummies)
+const fetchOptions = async () => {
+    try {
+        setLoading(true);
+        const [placesRes, companiesRes, categoriesRes, subcategoriesRes, statusesRes] = await Promise.all([
+            api.get('api/options/places/crud'),
+            api.get('api/options/thirdParty/crud'),
+            api.get('api/options/categories/crud'), // Assumed endpoint; adjust if different
+            api.get('api/options/subcategories/crud'), // For subcategories
+            api.get('api/options/statuses'),
+        ]);
+        // Places: assume data.places = [{id, name, is_destination, ...}]
+        console.log('optionssss', placesRes, companiesRes, categoriesRes, subcategoriesRes, statusesRes);
+        const allPlaces = placesRes?.data?.places || [];
+        setPlaces(allPlaces.map(p => ({ value: p.id.toString(), label: p.name })));
+    } catch (error) {
+        console.error('Error fetching options:', error);
+        setSnackbar({
+            open: true,
+            message: error.response?.data?.error || error.message || 'Failed to fetch options',
+            severity: 'error',
+        });
+       } finally {
+        setLoading(false);
+    }
+};
+
+// Helper function to get place name by ID
+const getPlaceName = (placeId) => {
+    if (!placeId) return '-';
+    const place = places.find(p => p.value === placeId.toString());
+    return place ? place.label : placeId;
+};
+
+
     const handleReceiverAction = (receiver) => {
         console.log('Editing receiver:', receiver);
         // Example: Open an edit modal or update state
@@ -428,6 +470,7 @@ const OrdersList = () => {
         }
     };
     useEffect(() => {
+        fetchOptions();
         fetchOrders();
     }, [page, rowsPerPage, filters]);
     useEffect(() => {
@@ -441,6 +484,14 @@ const OrdersList = () => {
         setPage(0);
     };
     const handleFilterChange = (e) => {
+        console.log('Filter change:', e.target.name, e.target.value);
+        const { name, value } = e.target;
+        setFilters((prev) => ({ ...prev, [name]: value }));
+        setPage(0);
+    };
+
+    const handleFilterText = (e) => {
+        console.log('Filter change:', e.target.name, e.target.value );
         const { name, value } = e.target;
         setFilters((prev) => ({ ...prev, [name]: value }));
         setPage(0);
@@ -821,7 +872,7 @@ const OrdersList = () => {
     }
     const numSelected = selectedOrders.length;
     const rowCount = orders.length;
-    return (
+        return (
         <>
             <Paper sx={{ p: 3, borderRadius: 3, boxShadow: 3, bgcolor: "#fafafa" }}>
                 <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}>
@@ -877,9 +928,10 @@ const OrdersList = () => {
                 <Stack direction="row" spacing={2} mb={3} alignItems="center">
                     <TextField
                         label="Search Booking Ref"
+                        type="text"
                         name="booking_ref" // Updated to match backend filter
-                        value={filters.booking_ref}
-                        onChange={handleFilterChange}
+                        value={filters.booking_ref || ''}
+                        onChange={handleFilterText}
                         size="small"
                         sx={{ width: 200 }}
                     />
@@ -956,8 +1008,8 @@ const OrdersList = () => {
                                             />
                                         </TableCell>
                                         <StyledTableCell>{order.booking_ref}</StyledTableCell>
-                                        <StyledTableCell>{order?.place_of_loading}</StyledTableCell>
-                                        <StyledTableCell>{order.place_of_loading}</StyledTableCell>
+                                        <StyledTableCell>{getPlaceName(order?.place_of_loading)}</StyledTableCell>
+                                        <StyledTableCell>{getPlaceName(order.place_of_delivery)}</StyledTableCell>
                                         <StyledTableCell>{order.sender_name}</StyledTableCell>
                                         <StyledTableCell>
                                             <StyledTooltip
