@@ -4075,7 +4075,7 @@ const handleSaveShipping = async (index) => {
         snakeItem[snakeKey] = sd[key] || '';
       }
     });
-    snakeItem.item_ref = `REF-${index + 1}-${j + 1}-${Date.now()}`;
+    snakeItem.item_ref = `ORDER-ITEM-REF-${index + 1}-${j + 1}-${Date.now()}`;
     return snakeItem;
   });
   formDataToSend.append('order_items', JSON.stringify(orderItemsToSend));
@@ -4355,7 +4355,7 @@ const handleSave = async () => {
                     snakeItem[snakeKey] = sd[key] || '';
                 }
             });
-            snakeItem.item_ref = `REF-${i + 1}-${j + 1}-${Date.now()}`;
+            snakeItem.item_ref = `ORDER-ITEM-REF-${i + 1}-${j + 1}-${Date.now()}`;
             orderItemsToSend.push(snakeItem);
         });
     });
@@ -4849,7 +4849,7 @@ const handleSave = async () => {
                         totalNumber: '',
                         weight: '',
                         deliveryAddress: '',
-                        itemRef: `REF-${i + 1}-1`
+                        itemRef: `ORDER-ITEM-REF-${i + 1}-1`
                     };
                     const handleEmptySdChange = (field, value) => {
                         addShippingFn(i);
@@ -5152,7 +5152,7 @@ const handleSave = async () => {
                                                     fullWidth
                                                     // disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[${j}].deliveryAddress`)}s
                                                 />
-                                                <CustomTextField label="Ref Number" value={sd.itemRef || `REF-${i + 1}-${j + 1}`} disabled={true} />
+                                                <CustomTextField label="Ref Number" value={sd.itemRef || `ORDER-ITEM-REF-${i + 1}-${j + 1}`} disabled={true} />
                                             </Box>
                                         </Stack>
                                     </Box>
