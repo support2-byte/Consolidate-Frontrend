@@ -708,7 +708,7 @@ const AssignModal = ({
                         </IconButton>
                     </Stack>
                 </DialogTitle>
-           <DialogContent sx={{
+          <DialogContent sx={{
     mt: 2,
     p: { xs: 2, sm: 3 },
     overflow: 'auto',
@@ -716,7 +716,7 @@ const AssignModal = ({
     maxHeight: '80vh',
     bgcolor: themeColors.background,
 }} id="assign-modal-description">
-    <Grid  justifyContent="space-between" mb={3} spacing={{ xs: 2, sm: 3 }}>
+    <Grid justifyContent="space-between" mb={3} spacing={{ xs: 2, sm: 3 }}>
         <Grid item xs={12}>
             <Card sx={{
                 boxShadow: '0 4px 20px rgba(13, 108, 106, 0.08)',
@@ -938,7 +938,7 @@ const AssignModal = ({
                                         display: { xs: showAllColumns && columnVisibility.containers ? 'table-cell' : 'none', sm: columnVisibility.containers ? 'table-cell' : 'none' }
                                     }} aria-sort="none">Containers</TableCell>
                                     {/* Hidden Actions column */}
-                                  
+                                 
                                 </TableRow>
                             </TableHead>
                             <TableBody>
@@ -1122,7 +1122,7 @@ console.log('Rendering receiver row:', rec, 'FullRec:', fullRec, 'ShippingDetail
                                                         >
                                                             <Typography variant="body2" noWrap sx={{ maxWidth: 140, cursor: 'help', color: themeColors.textSecondary }}>
                                                                 {shippingDetails.length > 1 && <sup style={{ color: themeColors.primary }}>({shippingDetails.length})</sup>}
-                                                  
+                                                 
                                                                 {address.length > 50 ? `${address.substring(0, 50)}...` : address}
                                                             </Typography>
                                                         </Tooltip>
@@ -1324,7 +1324,7 @@ console.log('Rendering receiver row:', rec, 'FullRec:', fullRec, 'ShippingDetail
                 <Stack direction="row" alignItems="center" gap={0.5}>
                     {/* <Typography variant="body2" fontWeight="600" color={themeColors.textPrimary}>{`Delivered: ${delivered}`}</Typography> */}
                     <Tooltip title="Edit Assign Qty"
-                  
+                 
                     >
                         <IconButton
                             onClick={(e) => {
@@ -1405,19 +1405,18 @@ console.log('Rendering receiver row:', rec, 'FullRec:', fullRec, 'ShippingDetail
                 const detail = shippingDetails[0];
                 console.log('Single detail for receiver:', detail);
                 const key = getDetailKey(rec.orderId, rec.id, 0);
-                const currentConts = selectedContainersPerDetail[key] || [];
-                const availConts = getAvailableContainersForKey(key);
+                const currentCont = selectedContainersPerDetail[key]?.[0] || ''; // Single value for single select
+                const availConts = getAvailableContainersForKey(key); // Only available containers
                 return (
                     <FormControl size="small" sx={{ minWidth: 120, flex: 1 }}>
-                        <InputLabel shrink>Containers</InputLabel>
+                        <InputLabel shrink>Container</InputLabel>
                         <Select
-                            multiple
-                            value={currentConts}
-                            onChange={(e) => handleContainerChange(key, e.target.value)}
+                            value={currentCont}
+                            onChange={(e) => handleContainerChange(key, e.target.value ? [e.target.value] : [])} // Wrap single value in array for consistency
                             renderValue={(selected) => {
-                                if (selected.length === 0) return 'Select';
-                                const names = selected.map(cid => availConts.find(c => c.cid === cid)?.container_number || cid);
-                                return names.length <= 2 ? names.join(', ') : `${selected.length} cont.`;
+                                if (!selected) return 'Select';
+                                const name = availConts.find(c => c.cid === selected)?.container_number || selected;
+                                return name;
                             }}
                             displayEmpty
                             sx={{
@@ -1426,8 +1425,11 @@ console.log('Rendering receiver row:', rec, 'FullRec:', fullRec, 'ShippingDetail
                                     py: 0.75,
                                 }
                             }}
-                            aria-label="Select containers"
+                            aria-label="Select container"
                         >
+                            <MenuItem value="" sx={{ fontSize: '0.85rem' }}>
+                                <em>Select Container</em>
+                            </MenuItem>
                             {availConts.map(c => (
                                 <MenuItem key={c.cid} value={c.cid} sx={{ fontSize: '0.85rem' }}>
                                     {c.container_number}
@@ -1495,13 +1497,13 @@ console.log('Rendering receiver row:', rec, 'FullRec:', fullRec, 'ShippingDetail
                                                 </TableRow>
                                                 {isExpanded && shippingDetails.length > 1 && shippingDetails.map((detail, idx) => {
                                                     const key = getDetailKey(rec.orderId, rec.id, idx);
-                                                    const currentConts = selectedContainersPerDetail[key] || [];
-                                                    const availConts = getAvailableContainersForKey(key);
+                                                    const currentCont = selectedContainersPerDetail[key]?.[0] || ''; // Single value for single select
+                                                    const availConts = getAvailableContainersForKey(key); // Only available containers
                                                     const detailRemaining = parseInt(detail.remainingItems || '0') || 0;
                                                     const detailDelivered = parseInt(detail.deliveredItems || '0') || 0;
-                                                    const hasAssignment = (assignmentQuantities[key] || 0) > 0 || currentConts.length > 0;
+                                                    const hasAssignment = (assignmentQuantities[key] || 0) > 0 || currentCont;
                                                     const detailAssignQty = assignmentQuantities[key] || 0;
-                                                    console.log('Detail assignment state:', { detail, detailAssignQty, currentConts });
+                                                    console.log('Detail assignment state:', { detail, detailAssignQty, currentCont });
                                                     return (
                                                         <TableRow
                                                             key={`sub-${rec.orderId}-${rec.id}-${idx}`}
@@ -1659,16 +1661,15 @@ console.log('Rendering receiver row:', rec, 'FullRec:', fullRec, 'ShippingDetail
                                                                                 minHeight: 44,
                                                                             }
                                                                         }}>
-                                                                            <InputLabel shrink>Containers</InputLabel>
+                                                                            <InputLabel shrink>Container</InputLabel>
                                                                             <Select
-                                                                                multiple
-                                                                                value={currentConts}
-                                                                                onChange={(e) => handleContainerChange(key, e.target.value)}
-                                                                                label="Containers"
+                                                                                value={currentCont}
+                                                                                onChange={(e) => handleContainerChange(key, e.target.value ? [e.target.value] : [])} // Wrap single value in array for consistency
+                                                                                label="Container"
                                                                                 renderValue={(selected) => {
-                                                                                    if (selected.length === 0) return 'Select containers';
-                                                                                    const names = selected.map(cid => availConts.find(c => c.cid === cid)?.container_number || cid);
-                                                                                    return names.length <= 2 ? names.join(', ') : `${selected.length} containers`;
+                                                                                    if (!selected) return 'Select container';
+                                                                                    const name = availConts.find(c => c.cid === selected)?.container_number || selected;
+                                                                                    return name;
                                                                                 }}
                                                                                 displayEmpty
                                                                                 sx={{
@@ -1685,8 +1686,11 @@ console.log('Rendering receiver row:', rec, 'FullRec:', fullRec, 'ShippingDetail
                                                                                         boxShadow: `0 0 0 2px rgba(${themeColors.primary}, 0.1)`,
                                                                                     }
                                                                                 }}
-                                                                                aria-label={`Select containers for detail ${idx + 1}`}
+                                                                                aria-label={`Select container for detail ${idx + 1}`}
                                                                             >
+                                                                                <MenuItem value="" sx={{ fontSize: '0.9rem' }}>
+                                                                                    <em>Select Container</em>
+                                                                                </MenuItem>
                                                                                 {availConts.map(c => (
                                                                                     <MenuItem key={c.cid} value={c.cid} sx={{ fontSize: '0.9rem' }}>
                                                                                         <Stack direction="row" alignItems="center" gap={1}>
@@ -1697,10 +1701,10 @@ console.log('Rendering receiver row:', rec, 'FullRec:', fullRec, 'ShippingDetail
                                                                                 ))}
                                                                             </Select>
                                                                         </FormControl>
-                                                                        {hasAssignment && currentConts.length > 0 && (
-                                                                            <Tooltip title={`Selected: ${currentConts.map(cid => availConts.find(c => c.cid === cid)?.container_number || cid).join(', ')}`}>
+                                                                        {hasAssignment && currentCont && (
+                                                                            <Tooltip title={`Selected: ${availConts.find(c => c.cid === currentCont)?.container_number || currentCont}`}>
                                                                                 <Chip
-                                                                                    label={currentConts.length > 1 ? `${currentConts.slice(0, 1).map(cid => availConts.find(c => c.cid === cid)?.container_number || cid)}... (${currentConts.length})` : currentConts.map(cid => availConts.find(c => c.cid === cid)?.container_number || cid).join(', ')}
+                                                                                    label={availConts.find(c => c.cid === currentCont)?.container_number || currentCont}
                                                                                     size="small"
                                                                                     variant="outlined"
                                                                                     color="success"
@@ -1711,12 +1715,12 @@ console.log('Rendering receiver row:', rec, 'FullRec:', fullRec, 'ShippingDetail
                                                                                         borderColor: themeColors.success,
                                                                                         color: themeColors.success,
                                                                                     }}
-                                                                                    aria-label={`Selected containers for detail: ${currentConts.map(cid => availConts.find(c => c.cid === cid)?.container_number || cid).join(', ')}`}
+                                                                                    aria-label={`Selected container: ${availConts.find(c => c.cid === currentCont)?.container_number || currentCont}`}
                                                                                 />
                                                                             </Tooltip>
                                                                         )}
                                                                         {hasAssignment && (
-                                                                            <Tooltip title={`Remove assignment: ${detailAssignQty} pcs, ${currentConts.length} cont`}>
+                                                                            <Tooltip title={`Remove assignment: ${detailAssignQty} pcs, ${currentCont ? 1 : 0} cont`}>
                                                                                 <IconButton
                                                                                     size="small"
                                                                                     onClick={(e) => {

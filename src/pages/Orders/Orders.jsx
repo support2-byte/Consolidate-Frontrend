@@ -512,49 +512,31 @@ const getPlaceName = (placeId) => {
         setSnackbar((prev) => ({ ...prev, open: false }));
     };
     const statuses = [
-        'Created',
-        'Received for Shipment',
-        'Waiting for Authentication',
-        'Shipper Authentication Confirmed',
-        'Waiting for Consignee Authentication',
-        'Waiting for Shipper Authentication (if applicable)',
-        'Consignee Authentication Confirmed',
-        'In Process',
-        'Ready for Loading',
-        'Loaded into Container',
-        'Departed for Port',
-        'Offloaded at Port',
-        'Clearance Completed',
-        'Containers Returned (Internal only)', // Internal only - no client visibility
-        'Hold',
-        'Cancelled',
-        'Delivered'
-    ];
-    const getStatusColors = (status) => {
-        // Extend your existing getStatusColors function to handle new statuses
-        const colorMap = {
-            'Created': { bg: '#00695c', text: '#f1f8e9' },
-            'Received for Shipment': { bg: '#e3f2fd', text: '#1976d2' },
-            'Waiting for Authentication': { bg: '#fff3e0', text: '#ef6c00' },
-            'Shipper Authentication Confirmed': { bg: '#e8f5e8', text: '#388e3c' },
-            'Waiting for Consignee Authentication': { bg: '#fff3e0', text: '#ef6c00' },
-            'Waiting for Shipper Authentication (if applicable)': { bg: '#fff3e0', text: '#ef6c00' },
-            'Consignee Authentication Confirmed': { bg: '#e8f5e8', text: '#388e3c' },
-            'In Process': { bg: '#fff3e0', text: '#ef6c00' },
-            'Ready for Loading': { bg: '#f3e5f5', text: '#7b1fa2' },
-            'Loaded into Container': { bg: '#e0f2f1', text: '#00695c' },
-            'Departed for Port': { bg: '#e1f5fe', text: '#0277bd' },
-            'Offloaded at Port': { bg: '#f1f8e9', text: '#689f38' },
-            'Clearance Completed': { bg: '#fce4ec', text: '#c2185b' },
-            'Containers Returned (Internal only)': { bg: '#ffebee', text: '#c62828' }, // Internal red
-            'Hold': { bg: '#fff3e0', text: '#f57c00' },
-            'Cancelled': { bg: '#ffebee', text: '#d32f2f' },
-            'Delivered': { bg: '#e8f5e8', text: '#2e7d32' },
-            // Fallback for unknown
-            default: { bg: '#f5f5f5', text: '#666' }
-        };
-        return colorMap[status] || colorMap.default;
+    'Ready for Loading',
+    'Loaded Into container',
+    'Shipment Processing',
+    'Shipment In Transit',
+    'Under Processing',
+    'Arrived at Sort Facility',
+    'Ready for Delivery',
+    'Shipment Delivered'
+];
+const getStatusColors = (status) => {
+    // Extend your existing getStatusColors function to handle new statuses
+    const colorMap = {
+        'Ready for Loading': { bg: '#f3e5f5', text: '#7b1fa2' },
+        'Loaded Into container': { bg: '#e0f2f1', text: '#00695c' },
+        'Shipment Processing': { bg: '#fff3e0', text: '#ef6c00' },
+        'Shipment In Transit': { bg: '#e1f5fe', text: '#0277bd' },
+        'Under Processing': { bg: '#fff3e0', text: '#f57c00' },
+        'Arrived at Sort Facility': { bg: '#f1f8e9', text: '#689f38' },
+        'Ready for Delivery': { bg: '#fce4ec', text: '#c2185b' },
+        'Shipment Delivered': { bg: '#e8f5e8', text: '#2e7d32' },
+        // Fallback for unknown
+        default: { bg: '#f5f5f5', text: '#666' }
     };
+    return colorMap[status] || colorMap.default;
+};
     const StyledTooltip = styled(Tooltip)(({ theme }) => ({
         [`& .MuiTooltip-tooltip`]: {
             backgroundColor: theme.palette.common.white,

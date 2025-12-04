@@ -3269,12 +3269,12 @@ const OrderForm = () => {
                 if (item[emailField] && !emailRegex.test(item[emailField])) {
                     newErrors[`${itemsKey}[${i}].${emailField}`] = `Invalid ${itemPrefix.toLowerCase()} ${i + 1} email format`;
                 }
-                if (!item.eta?.trim()) {
-                    newErrors[`${itemsKey}[${i}].eta`] = `ETA is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
-                }
-                if (!item.etd?.trim()) {
-                    newErrors[`${itemsKey}[${i}].etd`] = `ETD is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
-                }
+                // if (!item.eta?.trim()) {
+                //     newErrors[`${itemsKey}[${i}].eta`] = `ETA is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
+                // }
+                // if (!item.etd?.trim()) {
+                //     newErrors[`${itemsKey}[${i}].etd`] = `ETD is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
+                // }
                 // if (!item.shippingLine?.trim()) {
                 // newErrors[`${itemsKey}[${i}].shippingLine`] = `Shipping Line is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
                 // }
@@ -4458,6 +4458,14 @@ const handleSave = async () => {
     justifyContent="space-between" 
     alignItems="center" 
     mb={3}
+    className="MuiStack-root css-twoet5"
+sx={{
+        position: 'sticky',
+        zIndex: 9999,
+        top: 63,
+        background: 'white',    
+    p: 2,
+    }}
     
 >
     <Typography variant="h4" fontWeight="bold" color="#f58220">
@@ -4465,15 +4473,10 @@ const handleSave = async () => {
     </Typography>
     <Stack direction="row"
     sx={{
-        position: 'fixed',
-        top: 120,
-        zIndex: 999,
-        // bgcolor: '#fff',
-        width: '75%',
-        justifyContent: 'flex-end',
-        // height:200,
-        // borderBottom: '1px solid #e0e0e0',
-        py: 1,
+        position: 'sticky',
+        zIndex: 9999,
+        top: 63,
+        background: 'white',    
     }}
     gap={1}>
         <Button
@@ -4877,8 +4880,8 @@ const handleSave = async () => {
                                     InputLabelProps={{ shrink: true }}
                                     error={!!errors[`${listKey}[${i}].eta`]}
                                     helperText={errors[`${listKey}[${i}].eta`]}
-                                    required
-                                    disabled={isFieldDisabled(`${recDisabledPrefix}.eta`)}
+                                    // required
+                                    // disabled={isFieldDisabled(`${recDisabledPrefix}.eta`)}
                                 />
                                 <CustomTextField
                                     label="ETD"
@@ -4888,8 +4891,8 @@ const handleSave = async () => {
                                     InputLabelProps={{ shrink: true }}
                                     error={!!errors[`${listKey}[${i}].etd`]}
                                     helperText={errors[`${listKey}[${i}].etd`]}
-                                    required
-                                    disabled={isFieldDisabled(`${recDisabledPrefix}.etd`)}
+                                    // required
+                                    // disabled={isFieldDisabled(`${recDisabledPrefix}.etd`)}
                                 />
                             </Box>
                             {/* <CustomTextField
@@ -5711,40 +5714,49 @@ const handleSave = async () => {
                             >
                                 5. Attachments
                             </AccordionSummary>
-                            <AccordionDetails sx={{ p: 3, bgcolor: "#fff" }}>
-                                <Stack spacing={2}>
-                                    <Button
-                                        variant="outlined"
-                                        component="label"
-                                        sx={{ borderRadius: 2, borderColor: "#f58220", color: "#f58220", px: 3 }}
-                                    >
-                                        Upload File
-                                        <input type="file" hidden multiple onChange={handleFileUpload} />
-                                    </Button>
-                                    {Array.isArray(formData.attachments) && formData.attachments.length > 0 && (
-                                        <Stack spacing={1} direction="row" flexWrap="wrap" gap={1}>
-                                            {formData.attachments.map((attachment, i) => {
-                                                const src = typeof attachment === 'string' ? attachment : URL.createObjectURL(attachment);
-                                                const label = typeof attachment === 'string' ? attachment.split('/').pop() : attachment.name || 'File';
-                                                return (
-                                                    <Chip
-                                                        key={i}
-                                                        label={label}
-                                                        color="secondary"
-                                                        size="small"
-                                                        variant="outlined"
-                                                        onClick={() => {
-                                                            setPreviewSrc(src);
-                                                            setPreviewOpen(true);
-                                                        }}
-                                                        sx={{ cursor: 'pointer', '&:hover': { backgroundColor: '#f58220', color: 'white' } }}
-                                                    />
-                                                );
-                                            })}
-                                        </Stack>
-                                    )}
-                                </Stack>
-                            </AccordionDetails>
+                  <AccordionDetails sx={{ p: 3, bgcolor: "#fff" }}>
+  <Stack spacing={2}>
+    <Button
+      variant="outlined"
+      component="label"
+      sx={{ borderRadius: 2, borderColor: "#f58220", color: "#f58220", px: 3 }}
+    >
+      Upload File
+      <input type="file" hidden multiple onChange={handleFileUpload} />
+    </Button>
+    {Array.isArray(formData.attachments) && formData.attachments.length > 0 && (
+      <Stack spacing={1} direction="row" flexWrap="wrap" gap={1}>
+        {formData.attachments.map((attachment, i) => {
+          const src = typeof attachment === 'string' ? attachment : URL.createObjectURL(attachment);
+          const label = typeof attachment === 'string' ? attachment.split('/').pop() : attachment.name || 'File';
+          return (
+            <Chip
+              key={i}
+              label={label}
+              color="secondary"
+              size="small"
+              variant="outlined"
+              onClick={() => {
+                setPreviewSrc(src);
+                setPreviewOpen(true);
+              }}
+              onDelete={() => {
+                // Revoke object URL if it's a File object to free memory
+                if (typeof attachment === 'object' && attachment !== null) {
+                  URL.revokeObjectURL(src);
+                }
+                // Remove the attachment from the array
+                const newAttachments = formData.attachments.filter((_, index) => index !== i);
+                setFormData(prev => ({ ...prev, attachments: newAttachments }));
+              }}
+              sx={{ cursor: 'pointer', '&:hover': { backgroundColor: '#f58220', color: 'white' } }}
+            />
+          );
+        })}
+      </Stack>
+    )}
+  </Stack>
+</AccordionDetails>
                         </Accordion>
                     </Stack>
                     {/* Bottom Buttons */}
