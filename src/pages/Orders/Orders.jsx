@@ -33,7 +33,8 @@ import {
     Grid,
     AlertTitle,
     Checkbox,
-    Collapse
+    Collapse,
+    Divider
 } from "@mui/material";
 import Avatar from '@mui/material/Avatar';
 import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
@@ -123,6 +124,7 @@ const OrdersList = () => {
     const handleConfirmStatusUpdate = async () => {
         if (!selectedOrderForUpdate || !selectedReceiverForUpdate || !selectedStatus) return;
         try {
+            setLoading(true);
             console.log('Updating status to:', selectedStatus, 'for receiver:', selectedReceiverForUpdate); 
             // API call to update receiver status (triggers notifications as per mapping)
             await api.put(`/api/orders/${selectedReceiverForUpdate.order_id}/receivers/${selectedReceiverForUpdate.id}/status`, {
@@ -138,44 +140,81 @@ const OrdersList = () => {
             });
             fetchOrders(); // Refresh the list to update overall status
         } catch (err) {
+            setLoading(false);
             setSnackbar({
                 open: true,
-                message: 'Failed to update status',
+                message: err.response?.data?.details || err.response?.message || 'Failed to update status',
                 severity: 'error',
             });
+            console.error('Error updating status:', err);
         }
+        // setLoading(false);
         handleCloseStatusDialog();
     };
-    const fetchOrders = async () => {
-        console.log('Fetching orders with filters:', filters, 'page:', page, 'rowsPerPage:', rowsPerPage);
-        setLoading(true);
-        setError(null);
-        try {
-          const nonEmptyFilters = Object.fromEntries(
-    Object.entries(filters).filter(([_, v]) => v && v.trim())
-  );
-  const params = {
-    page: page + 1,
-    limit: rowsPerPage,
-    includeContainer: true,
-    ...nonEmptyFilters,  // Use this instead of ...filters
-  };
-            const response = await api.get(`/api/orders`, { params });
-            console.log('Fetched orders:', response.data);
-            setOrders(response.data.data || []);
-            setTotal(response.data.total || 0);
-        } catch (err) {
-            console.error("Error fetching orders:", err);
-            setError("Failed to fetch orders");
-            setSnackbar({
-                open: true,
-                message: err.response?.data?.error || err.message || 'Failed to fetch orders',
-                severity: 'error',
-            });
-        } finally {
-            setLoading(false);
-        }
-    };
+const fetchOrders = async () => {
+    console.log('Fetching orders with filters:', filters, 'page:', page, 'rowsPerPage:', rowsPerPage);
+    setLoading(true);
+    setError(null);
+    try {
+        const nonEmptyFilters = Object.fromEntries(
+            Object.entries(filters).filter(([_, v]) => v && v.trim())
+        );
+        const params = {
+            page: page + 1,
+            limit: rowsPerPage,
+            includeContainer: true,
+            ...nonEmptyFilters,  // Use this instead of ...filters
+        };
+        const response = await api.get(`/api/orders`, { params });
+        console.log('Fetched orders:', response.data);
+        
+        // NEW: Auto-populate owner fields for each order if selected_sender_owner exists but name is empty
+        const ordersWithAutoPopulate = await Promise.all(
+            (response.data.data || []).map(async (order) => {
+                const ownerPrefix = order.sender_type === 'sender' ? 'sender' : 'receiver';
+                const ownerNameKey = `${ownerPrefix}_name`;
+                const selectedOwnerKey = 'selected_sender_owner';
+                
+                if (order[selectedOwnerKey] && !order[ownerNameKey]?.trim()) {
+                    try {
+                        console.log(`Auto-populating owner for order ${order.id} from ID: ${order[selectedOwnerKey]}`); // Debug log
+                        const customerRes = await api.get(`/api/customers/${order[selectedOwnerKey]}`);
+                        if (customerRes?.data) {
+                            const customer = customerRes.data;
+                            // Map customer fields to owner (adjust paths based on your API response structure)
+                            const updatedOrder = { ...order };
+                            updatedOrder[ownerNameKey] = customer.contact_name || customer.contact_persons?.[0]?.name || '';
+                            updatedOrder[`${ownerPrefix}_contact`] = customer.primary_phone || customer.contact_persons?.[0]?.phone || '';
+                            updatedOrder[`${ownerPrefix}_address`] = customer.zoho_notes || customer.billing_address || '';
+                            updatedOrder[`${ownerPrefix}_email`] = customer.email || customer.contact_persons?.[0]?.email || '';
+                            updatedOrder[`${ownerPrefix}_ref`] = customer.zoho_id || customer.ref || '';
+                            updatedOrder[`${ownerPrefix}_remarks`] = customer.zoho_notes || customer.system_notes || '';
+                            console.log(`Auto-populated ${ownerNameKey} for order ${order.id}:`, updatedOrder[ownerNameKey]); // Debug log
+                            return updatedOrder;
+                        }
+                    } catch (autoErr) {
+                        console.error(`Auto-populate owner failed for order ${order.id}:`, autoErr);
+                        // Fallback: Return original order unchanged
+                    }
+                }
+                return order; // No change needed
+            })
+        );
+        
+        setOrders(ordersWithAutoPopulate);
+        setTotal(response.data.total || 0);
+    } catch (err) {
+        console.error("Error fetching orders:", err);
+        setError("Failed to fetch orders");
+        setSnackbar({
+            open: true,
+            message: err.response?.data?.error || err.message || 'Failed to fetch orders',
+            severity: 'error',
+        });
+    } finally {
+        setLoading(false);
+    }
+};
 
     // Fetch options on mount (replaces dummies)
 const fetchOptions = async () => {
@@ -609,6 +648,7 @@ const getStatusColors = (status) => {
         return receivers.map(rec => ({
             primary: rec.receiver_name,
             status: rec.status,
+            eta: rec.eta ? `ETA: ${new Date(rec.eta).toLocaleDateString()}` : null,
             receivers
         }));
     };
@@ -682,7 +722,7 @@ const getStatusColors = (status) => {
                             >
                                 <Stack direction="row" alignItems="center" spacing={1.5} sx={{ width: '100%' }}>
                                     {/* Avatar - Slightly larger for better touch targets */}
-                                    <Avatar
+                                    {/* <Avatar
                                         sx={{
                                             width: 32,
                                             height: 32,
@@ -692,7 +732,7 @@ const getStatusColors = (status) => {
                                         }}
                                     >
                                         {item.primary ? item.primary.charAt(0).toUpperCase() : '?'}
-                                    </Avatar>
+                                    </Avatar> */}
                                     {/* Content - Flexible box for text wrapping */}
                                     <Box sx={{ flex: 1, minWidth: 0 }}>
                                         <Typography
@@ -701,17 +741,19 @@ const getStatusColors = (status) => {
                                             noWrap
                                             sx={{
                                                 color: 'text.primary',
-                                                overflow: 'hidden',
+                                                // overflow: 'hidden',
                                                 textOverflow: 'ellipsis',
                                                 whiteSpace: 'nowrap'
                                             }}
                                         >
                                             {item.primary || 'Unnamed Item'}
                                         </Typography>
+                                      
                                         {item.secondary && (
                                             <Typography
                                                 variant="caption"
                                                 sx={{
+                                                    backgroundColor: '#00695c',
                                                     color: 'text.secondary',
                                                     display: 'block',
                                                     mt: 0.25
@@ -720,9 +762,13 @@ const getStatusColors = (status) => {
                                                 {item.secondary}
                                             </Typography>
                                         )}
+
+                                       
+
                                     </Box>
                                     {/* Status Badge - Aligned to the right */}
                                     {item.status && (
+                                        <Box sx={{ ml: 'auto' }}>
                                         <StatusChip
                                             status={item.status}
                                             size="small"
@@ -734,8 +780,29 @@ const getStatusColors = (status) => {
                                                 '& .MuiChip-label': { px: 0.5 }
                                             }}
                                         />
+
+                                      
+                                       
+                                    </Box>
                                     )}
+                                 
                                 </Stack>
+                                <Divider sx={{ mt: 1 }} />
+                                <Box sx={{  }}>
+                                           <Typography
+                                       variant="body2"
+                                            fontWeight="medium"
+                                        sx={{
+                                            color: '#000',
+                                            display: 'block',
+                                            mt: 1,   
+                                            marginRight: 10
+                                        }}
+                                    >
+                                        {item.eta}
+                                    </Typography>
+                                </Box>
+                           
                             </Card>
                         ))
                     ) : (
@@ -1155,7 +1222,7 @@ const getStatusColors = (status) => {
                     </DialogContent>
                     <DialogActions>
                         <Button onClick={handleCloseStatusDialog}>Cancel</Button>
-                        <Button onClick={handleConfirmStatusUpdate} variant="contained">
+                        <Button onClick={handleConfirmStatusUpdate} variant="contained" >
                             Update & Notify
                         </Button>
                     </DialogActions>

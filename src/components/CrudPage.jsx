@@ -30,9 +30,9 @@ export default function CrudPage({ title, endpoint, columns, formFields, idKey =
   const load = async () => {
     try {
       setLoading(true); // start loader
-      const { data } = await api.get(endpoint);
-      console.log("Data loaded from", endpoint, data);
-      setRows(data);
+      const params = new URLSearchParams({ search: 'All', limit: 50 });
+      const response = await api.get(`/api/customers?${params}`);
+      setRows(response.data);
     } catch (err) {
       console.error("Failed to load data", err);
       showToast("Failed to load data", "error");
@@ -43,7 +43,7 @@ export default function CrudPage({ title, endpoint, columns, formFields, idKey =
 
   useEffect(() => {
     load();
-  }, [endpoint]);
+  }, [  ]);
 
   const startAdd = () => {
     const route = `/${title.toLowerCase()}/add`;

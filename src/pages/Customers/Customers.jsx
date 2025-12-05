@@ -4,7 +4,7 @@ export default function Customers() {
   return (
   <CrudPage
   title="Customers"
-  endpoint="/api/customers"
+  endpoint="/api/customers/Panal"
   columns={[
     { key: "zoho_id", label: "Zoho ID" },
     // { key: "name", label: "Name" },

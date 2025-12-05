@@ -1384,7 +1384,7 @@ const generatePDFWithCanvas = async () => {
                     display: 'flex', 
                     justifyContent: 'space-between', 
                     alignItems: 'center', 
-                    bgcolor: 'linear-gradient(135deg, #0d6c6a 0%, #0a5250 100%)', 
+                    bgcolor: '#0d6c6a', 
                     color: 'white', 
                     py: 3,
                     px: 4,

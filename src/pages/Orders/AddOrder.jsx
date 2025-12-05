@@ -3159,6 +3159,96 @@ const OrderForm = () => {
     const requiredFields = [
         'rglBookingNumber', 'pointOfOrigin', 'placeOfLoading', 'finalDestination', 'placeOfDelivery'
     ];
+
+
+     const [options2, setOptions2] = useState([]);
+     const [searchTerm, setSearchTerm] = useState('');
+    const [options3, setOptions3] = useState([]);
+     const [searchTerm3, setSearchTerm3] = useState('');
+
+                // Fetch customers on mount or search change
+                useEffect(() => {
+                  const fetchCustomers = async () => {
+                    // setLoading(true);
+                    try {
+                      const params = new URLSearchParams({ search: searchTerm3 ? searchTerm3 : 'All', limit: 50 });
+                      const response = await api.get(`/api/customers?${params}`); // Adjust endpoint as needed
+                    //   const data = await response.json();
+                      setOptions3(response.data);
+                    } catch (error) {
+                      console.error('Error fetching customers:', error);
+                    } finally {
+                      setLoading(false);
+                    }
+                  };
+
+                  if (searchTerm3.length >= 2 || options3.length === 0) { // Debounce: search after 2 chars or initial load
+                    fetchCustomers();
+                  }
+                }, [searchTerm3]);
+
+                // Fetch customers on mount or search change
+                                useEffect(() => {
+                                  const fetchCustomers = async () => {
+                                    // setLoading(true);
+                                    try {
+                                      const params = new URLSearchParams({ search: searchTerm ? searchTerm : 'All', limit: 50 });
+                                      const response = await api.get(`/api/customers?${params}`); // Adjust endpoint as needed
+                                ;
+                                      console.log('Fetched customers for options2:', response.data);
+                                      setOptions2(response.data);
+                                    } catch (err) {
+                                      console.error('Error fetching customers:', err);
+                                    } finally {
+                                      setLoading(false);
+                                    }
+                                  };
+                            
+                                  if (searchTerm.length >= 2 || options2.length === 0) { // Debounce: search after 2 chars or initial load
+                                    fetchCustomers();
+                                  }
+                                }, [searchTerm]);
+                            
+                                const typePrefix = formData.senderType === 'receiver' ? 'Receiver' : 'Sender';
+                                const fieldPrefix = formData.senderType === 'sender' ? 'sender' : 'receiver';
+                            
+                                const handleSelectOwner = async (event, value) => {
+console.log('Selected customer value:', value);
+                                    //   const fetchCustomer = async () => {
+                                            try {
+                                              const res = await api.get(`/api/customers/${value.zoho_id || value.id}`);
+                                              console.log('Customer data:', res);
+                                        
+                                  if (res && res.data.contact_persons) {
+                                       const c = res.data;
+                                    setFormData(prev => ({
+                                      ...prev,
+                                    //   [`${fieldPrefix}Name`]: res.data.name || '',
+                                      [`${fieldPrefix}Contact`]: c.contact_persons[0].phone || c.contact || '', // Assume primary_phone or fallback
+                                      [`${fieldPrefix}Address`]: c.contact_persons[0].name || c.billing_address || '',
+                                      [`${fieldPrefix}Email`]: c.email || '',
+                                      [`${fieldPrefix}Ref`]: c.zoho_id || '', // Or custom ref field
+                                      [`${fieldPrefix}Remarks`]: c.zoho_notes || c.system_notes || '',
+                                      selectedSenderOwner: c.zoho_id || c.id, // Use unique ID
+                                    }));
+                                  } else {
+                                    // Clear on deselect
+                                    setFormData(prev => ({
+                                      ...prev,
+                                    //   [`${fieldPrefix}Name`]: '',
+                                      [`${fieldPrefix}Contact`]: '',
+                                      [`${fieldPrefix}Address`]: '',
+                                      [`${fieldPrefix}Email`]: '',
+                                      [`${fieldPrefix}Ref`]: '',
+                                      [`${fieldPrefix}Remarks`]: '',
+                                      selectedSenderOwner: '',
+                                    }));
+                                  }
+                                        } catch (error) {
+                                            console.error('Error fetching customer details:', error);
+                                        }   
+                                };
+                            
     // Helper to convert snake_case to camelCase
     const snakeToCamel = (str) => str.replace(/(_[a-z])/g, g => g[1].toUpperCase());
     // Helper to convert camelCase to snake_case
@@ -3217,114 +3307,126 @@ const OrderForm = () => {
             })
         }));
     }, [remainingDep, formData.senderType]);
-    const validateForm = () => {
-        const newErrors = {};
-        // Core required fields
-        const coreRequired = ['rglBookingNumber', 'pointOfOrigin', 'placeOfLoading', 'placeOfDelivery', 'finalDestination'];
-        coreRequired.forEach(field => {
-            if (!formData[field]?.trim()) {
-                newErrors[field] = `${field.replace(/([A-Z])/g, ' $1').trim()} is required`;
-            }
-        });
-        // Validate owner name
-        const ownerNameKey = formData.senderType === 'sender' ? 'senderName' : 'receiverName';
+
+    const ownerNameKey = formData.senderType === 'sender' ? 'senderName' : 'receiverName';
+useEffect(() => {
+    if (isEditMode && formData.selectedSenderOwner) {
+        // const ownerNameKey = formData.senderType === 'sender' ? 'senderName' : 'receiverName';
         if (!formData[ownerNameKey]?.trim()) {
-            newErrors[ownerNameKey] = 'Owner name is required';
+            // Auto-fetch customer details if name empty but ID present
+            handleSelectOwner(null, { zoho_id: formData.selectedSenderOwner }); // Mock event/value to trigger fetch
         }
-        const ownerContactKey = formData.senderType === 'sender' ? 'senderContact' : 'receiverContact';
-        if (!formData[ownerContactKey]?.trim()) {
-            newErrors[ownerContactKey] = 'Owner contact is required';
+    }
+}, [isEditMode, formData.selectedSenderOwner, formData.senderType]); 
+    const validateForm = () => {
+    const newErrors = {};
+    // Core required fields
+    const coreRequired = ['rglBookingNumber', 'pointOfOrigin', 'placeOfLoading', 'placeOfDelivery', 'finalDestination'];
+    coreRequired.forEach(field => {
+        if (!formData[field]?.trim()) {
+            newErrors[field] = `${field.replace(/([A-Z])/g, ' $1').trim()} is required`;
         }
-        const ownerAddressKey = formData.senderType === 'sender' ? 'senderAddress' : 'receiverAddress';
-        if (!formData[ownerAddressKey]?.trim()) {
-            newErrors[ownerAddressKey] = 'Owner address is required';
-        }
-        // Validate senderType
-        if (!formData.senderType) {
-            newErrors.senderType = 'Sender Type is required';
-        }
-        // Dynamic validation for panel2
-        const isSenderMode = formData.senderType === 'receiver';
-        const items = isSenderMode ? formData.senders : formData.receivers;
-        const itemsKey = isSenderMode ? 'senders' : 'receivers';
-        const itemPrefix = isSenderMode ? 'Sender' : 'Receiver';
-        if (items.length === 0) {
-            newErrors[itemsKey] = `At least one ${itemPrefix.toLowerCase()} is required`;
-        } else {
-            items.forEach((item, i) => {
-                const nameField = isSenderMode ? 'senderName' : 'receiverName';
-                const contactField = isSenderMode ? 'senderContact' : 'receiverContact';
-                const addressField = isSenderMode ? 'senderAddress' : 'receiverAddress';
-                const emailField = isSenderMode ? 'senderEmail' : 'receiverEmail';
-                if (!item[nameField]?.trim()) {
-                    newErrors[`${itemsKey}[${i}].${nameField}`] = `${itemPrefix} ${i + 1} name is required`;
-                }
-                if (!item[contactField]?.trim()) {
-                    newErrors[`${itemsKey}[${i}].${contactField}`] = `${itemPrefix} ${i + 1} contact is required`;
-                }
-                if (!item[addressField]?.trim()) {
-                    newErrors[`${itemsKey}[${i}].${addressField}`] = `${itemPrefix} ${i + 1} address is required`;
-                }
-                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-                if (item[emailField] && !emailRegex.test(item[emailField])) {
-                    newErrors[`${itemsKey}[${i}].${emailField}`] = `Invalid ${itemPrefix.toLowerCase()} ${i + 1} email format`;
-                }
-                // if (!item.eta?.trim()) {
-                //     newErrors[`${itemsKey}[${i}].eta`] = `ETA is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
-                // }
-                // if (!item.etd?.trim()) {
-                //     newErrors[`${itemsKey}[${i}].etd`] = `ETD is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
-                // }
-                // if (!item.shippingLine?.trim()) {
-                // newErrors[`${itemsKey}[${i}].shippingLine`] = `Shipping Line is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
-                // }
-                // Validate each shippingDetail
-                const shippingDetails = item.shippingDetails || [];
-                if (shippingDetails.length === 0) {
-                    newErrors[`${itemsKey}[${i}].shippingDetails`] = `At least one shipping detail is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
-                } else {
-                    shippingDetails.forEach((sd, j) => {
-                        const shippingRequiredFields = ['pickupLocation', 'category', 'subcategory', 'type', 'deliveryAddress', 'totalNumber', 'weight'];
-                        shippingRequiredFields.forEach(field => {
-                            if (!sd[field]?.trim()) {
-                                newErrors[`${itemsKey}[${i}].shippingDetails[${j}].${field}`] = `${field.replace(/([A-Z])/g, ' $1').trim()} is required for shipping detail ${j + 1}`;
-                            }
-                        });
-                        const totalNum = parseInt(sd.totalNumber);
-                        if (isNaN(totalNum) || totalNum <= 0) {
-                            newErrors[`${itemsKey}[${i}].shippingDetails[${j}].totalNumber`] = `Total Number must be a positive number`;
-                        }
-                        if (sd.weight && (isNaN(parseFloat(sd.weight)) || parseFloat(sd.weight) <= 0)) {
-                            newErrors[`${itemsKey}[${i}].shippingDetails[${j}].weight`] = `Weight must be a positive number`;
-                        }
-                    });
-                }
-                // Validate full/partial
-                if (item.fullPartial === 'Partial') {
-                    if (!item.qtyDelivered?.trim()) {
-                        newErrors[`${itemsKey}[${i}].qtyDelivered`] = `Qty Delivered is required for partial ${itemPrefix.toLowerCase()} ${i + 1}`;
-                    } else {
-                        const del = parseInt(item.qtyDelivered);
-                        const recTotal = (item.shippingDetails || []).reduce((sum, sd) => sum + (parseInt(sd.totalNumber || 0) || 0), 0);
-                        if (isNaN(del) || del <= 0) {
-                            newErrors[`${itemsKey}[${i}].qtyDelivered`] = `Qty Delivered must be a positive number`;
-                        } else if (del > recTotal) {
-                            newErrors[`${itemsKey}[${i}].qtyDelivered`] = `Qty Delivered (${del}) cannot exceed total number (${recTotal})`;
-                        }
-                    }
-                }
-            });
-        }
-        // No transport validations (optional)
-        // Email and mobile validations
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        const ownerEmailKey = formData.senderType === 'sender' ? 'senderEmail' : 'receiverEmail';
-        if (formData[ownerEmailKey] && !emailRegex.test(formData[ownerEmailKey])) {
-            newErrors[ownerEmailKey] = 'Invalid owner email format';
-        }
-        setErrors(newErrors);
-        return Object.keys(newErrors).length === 0;
-    };
+    });
+
+    // Validate owner name
+
+    if (!formData[ownerNameKey]?.trim() && formData.selectedSenderOwner) {
+    newErrors[ownerNameKey] = 'Owner name is recommended (fetch from selected ID)';
+}
+    const ownerContactKey = formData.senderType === 'sender' ? 'senderContact' : 'receiverContact';
+    // if (!formData[ownerContactKey]?.trim()) {
+    //     newErrors[ownerContactKey] = 'Owner contact is required';
+    // }
+    const ownerAddressKey = formData.senderType === 'sender' ? 'senderAddress' : 'receiverAddress';
+    // if (!formData[ownerAddressKey]?.trim()) {
+    //     newErrors[ownerAddressKey] = 'Owner address is required';
+    // }
+    // Validate senderType
+    if (!formData.senderType) {
+        newErrors.senderType = 'Sender Type is required';
+    }
+    // Dynamic validation for panel2
+    const isSenderMode = formData.senderType === 'receiver';
+    const items = isSenderMode ? formData.senders : formData.receivers;
+    const itemsKey = isSenderMode ? 'senders' : 'receivers';
+    const itemPrefix = isSenderMode ? 'Sender' : 'Receiver';
+    // if (items.length === 0) {
+    //     newErrors[itemsKey] = `At least one ${itemPrefix.toLowerCase()} is required`;
+    // } else {
+    //     items.forEach((item, i) => {
+    //         const nameField = isSenderMode ? 'senderName' : 'receiverName';
+    //         const contactField = isSenderMode ? 'senderContact' : 'receiverContact';
+    //         const addressField = isSenderMode ? 'senderAddress' : 'receiverAddress';
+    //         const emailField = isSenderMode ? 'senderEmail' : 'receiverEmail';
+    //         if (!item[nameField]?.trim()) {
+    //             newErrors[`${itemsKey}[${i}].${nameField}`] = `${itemPrefix} ${i + 1} name is required`;
+    //         }
+    //         if (!item[contactField]?.trim()) {
+    //             newErrors[`${itemsKey}[${i}].${contactField}`] = `${itemPrefix} ${i + 1} contact is required`;
+    //         }
+    //         if (!item[addressField]?.trim()) {
+    //             newErrors[`${itemsKey}[${i}].${addressField}`] = `${itemPrefix} ${i + 1} address is required`;
+    //         }
+    //         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    //         if (item[emailField] && !emailRegex.test(item[emailField])) {
+    //             newErrors[`${itemsKey}[${i}].${emailField}`] = `Invalid ${itemPrefix.toLowerCase()} ${i + 1} email format`;
+    //         }
+    //         // if (!item.eta?.trim()) {
+    //         //     newErrors[`${itemsKey}[${i}].eta`] = `ETA is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
+    //         // }
+    //         // if (!item.etd?.trim()) {
+    //         //     newErrors[`${itemsKey}[${i}].etd`] = `ETD is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
+    //         // }
+    //         // if (!item.shippingLine?.trim()) {
+    //         // newErrors[`${itemsKey}[${i}].shippingLine`] = `Shipping Line is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
+    //         // }
+    //         // Validate each shippingDetail
+    //         const shippingDetails = item.shippingDetails || [];
+    //         if (shippingDetails.length === 0) {
+    //             newErrors[`${itemsKey}[${i}].shippingDetails`] = `At least one shipping detail is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
+    //         } else {
+    //             shippingDetails.forEach((sd, j) => {
+    //                 const shippingRequiredFields = ['pickupLocation', 'category', 'subcategory', 'type', 'deliveryAddress', 'totalNumber', 'weight'];
+    //                 shippingRequiredFields.forEach(field => {
+    //                     if (!sd[field]?.trim()) {
+    //                         newErrors[`${itemsKey}[${i}].shippingDetails[${j}].${field}`] = `${field.replace(/([A-Z])/g, ' $1').trim()} is required for shipping detail ${j + 1}`;
+    //                     }
+    //                 });
+    //                 const totalNum = parseInt(sd.totalNumber);
+    //                 if (isNaN(totalNum) || totalNum <= 0) {
+    //                     newErrors[`${itemsKey}[${i}].shippingDetails[${j}].totalNumber`] = `Total Number must be a positive number`;
+    //                 }
+    //                 if (sd.weight && (isNaN(parseFloat(sd.weight)) || parseFloat(sd.weight) <= 0)) {
+    //                     newErrors[`${itemsKey}[${i}].shippingDetails[${j}].weight`] = `Weight must be a positive number`;
+    //                 }
+    //             });
+    //         }
+    //         // Validate full/partial
+    //         if (item.fullPartial === 'Partial') {
+    //             if (!item.qtyDelivered?.trim()) {
+    //                 newErrors[`${itemsKey}[${i}].qtyDelivered`] = `Qty Delivered is required for partial ${itemPrefix.toLowerCase()} ${i + 1}`;
+    //             } else {
+    //                 const del = parseInt(item.qtyDelivered);
+    //                 const recTotal = (item.shippingDetails || []).reduce((sum, sd) => sum + (parseInt(sd.totalNumber || 0) || 0), 0);
+    //                 if (isNaN(del) || del <= 0) {
+    //                     newErrors[`${itemsKey}[${i}].qtyDelivered`] = `Qty Delivered must be a positive number`;
+    //                 } else if (del > recTotal) {
+    //                     newErrors[`${itemsKey}[${i}].qtyDelivered`] = `Qty Delivered (${del}) cannot exceed total number (${recTotal})`;
+    //                 }
+    //             }
+    //         }
+    //     });
+    // }
+    // No transport validations (optional)
+    // Email and mobile validations
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const ownerEmailKey = formData.senderType === 'sender' ? 'senderEmail' : 'receiverEmail';
+    if (formData[ownerEmailKey] && !emailRegex.test(formData[ownerEmailKey])) {
+        newErrors[ownerEmailKey] = 'Invalid owner email format';
+    }
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+};
     // Fetch options on mount (replaces dummies)
 const fetchOptions = async () => {
     try {
@@ -3429,200 +3531,224 @@ const fetchOptions = async () => {
             setLoadingContainers(false);
         }
     };
-    const fetchOrder = async (id) => {
-        setLoading(true);
-        try {
-            const response = await api.get(`/api/orders/${id}`, { params: { includeContainer: true } });
-            if (!response.data) {
-                throw new Error('Invalid response data');
-            }
-             console.log('Fetched order data:', response.data);
-              setSelectedOrder(response.data);
-            // Map snake_case to camelCase for core fields
-            const camelData = {};
-            Object.keys(response.data).forEach(apiKey => {
-                let value = response.data[apiKey];
-                if (value === null || value === undefined) value = '';
-                if (['eta', 'etd', 'drop_date', 'delivery_date'].includes(apiKey)) {
-                    if (value) {
-                        const date = new Date(value);
-                        if (!isNaN(date.getTime())) {
-                            value = date.toISOString().split('T')[0]; // YYYY-MM-DD
-                        }
-                    } else {
-                        value = '';
+  const fetchOrder = async (id) => {
+    setLoading(true);
+    try {
+        const response = await api.get(`/api/orders/${id}`, { params: { includeContainer: true } });
+        if (!response.data) {
+            throw new Error('Invalid response data');
+        }
+        console.log('Fetched order data:', response.data);
+        setSelectedOrder(response.data);
+        // Map snake_case to camelCase for core fields
+        const camelData = {};
+        Object.keys(response.data).forEach(apiKey => {
+            let value = response.data[apiKey];
+            if (value === null || value === undefined) value = '';
+            if (['eta', 'etd', 'drop_date', 'delivery_date'].includes(apiKey)) {
+                if (value) {
+                    const date = new Date(value);
+                    if (!isNaN(date.getTime())) {
+                        value = date.toISOString().split('T')[0]; // YYYY-MM-DD
                     }
-                }
-                const camelKey = snakeToCamel(apiKey);
-                camelData[camelKey] = value;
-            });
-            // Set senderType from API
-            camelData.senderType = response.data.sender_type || 'sender';
-            // Map owner fields
-            const ownerPrefix = camelData.senderType === 'sender' ? 'sender' : 'receiver';
-            const ownerFields = ['name', 'contact', 'address', 'email', 'ref', 'remarks'];
-            ownerFields.forEach(field => {
-                const apiKey = `${ownerPrefix}_${field}`;
-                const snakeVal = response.data[apiKey];
-                if (snakeVal !== null && snakeVal !== undefined) {
-                    camelData[`${ownerPrefix}${field.charAt(0).toUpperCase() + field.slice(1)}`] = snakeVal;
-                }
-            });
-            // Handle panel2 - dynamic based on senderType
-            // API always provides 'receivers' array, which maps to panel2 items
-            const panel2ApiKey = 'receivers';
-            const panel2Prefix = camelData.senderType === 'sender' ? 'receiver' : 'sender';
-            const panel2ListKey = camelData.senderType === 'sender' ? 'receivers' : 'senders';
-            const initialItem = panel2Prefix === 'receiver' ? initialReceiver : initialSenderObject;
-            let mappedPanel2 = [];
-            if (response.data[panel2ApiKey]) {
-                mappedPanel2 = (response.data[panel2ApiKey] || []).map(rec => {
-                    if (!rec) return null;
-                    const camelRec = {
-                        ...initialItem,
-                        shippingDetails: [],
-                        isNew: false,
-                        validationWarnings: null
-                    };
-                    Object.keys(rec).forEach(apiKey => {
-                        let val = rec[apiKey];
-                        if (val === null || val === undefined) val = '';
-                        const camelKey = snakeToCamel(apiKey);
-                        if (['name', 'contact', 'address', 'email'].includes(camelKey)) {
-                            camelRec[`${panel2Prefix}${camelKey.charAt(0).toUpperCase() + camelKey.slice(1)}`] = val;
-                        } else {
-                            camelRec[camelKey] = val;
-                        }
-                    });
-                    // Handle legacy shipping_detail to array
-                    if (rec.shipping_detail) {
-                        const sd = { ...rec.shipping_detail };
-                        Object.keys(sd).forEach(key => {
-                            const camelKey = snakeToCamel(key);
-                            sd[camelKey] = sd[key];
-                            delete sd[key];
-                        });
-                        camelRec.shippingDetails = [sd];
-                    }
-                    // If no shippingDetails, create default one from receiver-level totals
-                    if (!camelRec.shippingDetails || camelRec.shippingDetails.length === 0) {
-                        camelRec.shippingDetails = [{
-                            ...initialShippingDetail,
-                            totalNumber: rec.total_number || '',
-                            weight: rec.total_weight || ''
-                        }];
-                    }
-                    camelRec.status = rec.status || "Created";
-                    // New fields default
-                    camelRec.fullPartial = camelRec.fullPartial || '';
-                    camelRec.qtyDelivered = camelRec.qtyDelivered != null ? String(camelRec.qtyDelivered) : '0';
-                    return camelRec;
-                }).filter(Boolean);
-            }
-            // Fallback panel2 fields to order-level if empty
-            mappedPanel2.forEach(rec => {
-                if (rec.eta === '' && camelData.eta) {
-                    rec.eta = camelData.eta;
-                }
-                if (rec.etd === '' && camelData.etd) {
-                    rec.etd = camelData.etd;
-                }
-                if (rec.shippingLine === '' && camelData.shippingLine) {
-                    rec.shippingLine = camelData.shippingLine;
-                }
-            });
-            // Compute remainingItems on load
-            mappedPanel2 = mappedPanel2.map(rec => {
-                const shippingDetails = rec.shippingDetails || [];
-                const recTotal = shippingDetails.reduce((sum, sd) => sum + (parseInt(sd.totalNumber || 0) || 0), 0);
-                const delivered = parseInt(rec.qtyDelivered || 0) || 0;
-                const recRemaining = Math.max(0, recTotal - delivered);
-                let updatedDetails = shippingDetails;
-                if (rec.fullPartial === 'Partial' && recTotal > 0) {
-                    updatedDetails = shippingDetails.map(sd => {
-                        const sdTotal = parseInt(sd.totalNumber || 0) || 0;
-                        const sdRemaining = Math.round((sdTotal / recTotal) * recRemaining);
-                        return { ...sd, remainingItems: sdRemaining.toString() };
-                    });
                 } else {
-                    updatedDetails = shippingDetails.map(sd => ({ ...sd, remainingItems: (parseInt(sd.totalNumber || 0) || 0).toString() }));
+                    value = '';
                 }
-                rec.shippingDetails = updatedDetails;
-                // Validation warnings
-                let warnings = null;
-                const isInvalidTotal = recTotal <= 0;
-                const isPartialInvalid = rec.fullPartial === 'Partial' && delivered > recTotal;
-                if (isInvalidTotal || isPartialInvalid) {
-                    warnings = {};
-                    if (isInvalidTotal) warnings.total_number = 'Must be positive';
-                    if (isPartialInvalid) warnings.qty_delivered = 'Cannot exceed total_number';
+            }
+            const camelKey = snakeToCamel(apiKey);
+            camelData[camelKey] = value;
+        });
+        // Set senderType from API
+        camelData.senderType = response.data.sender_type || 'sender';
+        // Map owner fields
+        const ownerPrefix = camelData.senderType === 'sender' ? 'sender' : 'receiver';
+        const ownerFields = ['name', 'contact', 'address', 'email', 'ref', 'remarks'];
+        ownerFields.forEach(field => {
+            const apiKey = `${ownerPrefix}_${field}`;
+            const snakeVal = response.data[apiKey];
+            if (snakeVal !== null && snakeVal !== undefined) {
+                camelData[`${ownerPrefix}${field.charAt(0).toUpperCase() + field.slice(1)}`] = snakeVal;
+            }
+        });
+
+        // NEW: Auto-populate owner fields if selected_sender_owner exists but name is empty
+        const ownerNameKey = `${ownerPrefix}Name`;
+        if (camelData.selectedSenderOwner && !camelData[ownerNameKey]?.trim()) {
+            try {
+                console.log(`Auto-populating owner from ID: ${camelData.selectedSenderOwner}`); // Debug log
+                const customerRes = await api.get(`/api/customers/${camelData.selectedSenderOwner}`);
+                if (customerRes?.data) {
+                    const customer = customerRes.data;
+                    // Map customer fields to owner (adjust paths based on your API response structure)
+                    camelData[ownerNameKey] = customer.contact_name || customer.contact_persons?.[0]?.name || '';
+                    camelData[`${ownerPrefix}Contact`] = customer.primary_phone || customer.contact_persons?.[0]?.phone || '';
+                    camelData[`${ownerPrefix}Address`] = customer.zoho_notes || customer.billing_address || '';
+                    camelData[`${ownerPrefix}Email`] = customer.email || customer.contact_persons?.[0]?.email || '';
+                    camelData[`${ownerPrefix}Ref`] = customer.zoho_id || customer.ref || '';
+                    camelData[`${ownerPrefix}Remarks`] = customer.zoho_notes || customer.system_notes || '';
+                    console.log(`Auto-populated ${ownerNameKey}:`, camelData[ownerNameKey]); // Debug log
                 }
-                rec.validationWarnings = warnings;
-                return rec;
-            });
-            camelData[panel2ListKey] = mappedPanel2;
-            if (!camelData[panel2ListKey] || camelData[panel2ListKey].length === 0) {
-                camelData[panel2ListKey] = [{
+            } catch (autoErr) {
+                console.error('Auto-populate owner failed:', autoErr);
+                // Fallback: Don't override with empty—keep whatever was there
+            }
+        }
+
+        // Handle panel2 - dynamic based on senderType
+        // API always provides 'receivers' array, which maps to panel2 items
+        const panel2ApiKey = 'receivers';
+        const panel2Prefix = camelData.senderType === 'sender' ? 'receiver' : 'sender';
+        const panel2ListKey = camelData.senderType === 'sender' ? 'receivers' : 'senders';
+        const initialItem = panel2Prefix === 'receiver' ? initialReceiver : initialSenderObject;
+        let mappedPanel2 = [];
+        if (response.data[panel2ApiKey]) {
+            mappedPanel2 = (response.data[panel2ApiKey] || []).map(rec => {
+                if (!rec) return null;
+                const camelRec = {
                     ...initialItem,
                     shippingDetails: [],
-                    isNew: true
-                }];
-            }
-            // Ensure the other list is empty
-            const otherListKey = panel2ListKey === 'receivers' ? 'senders' : 'receivers';
-            camelData[otherListKey] = [];
-            // Attachments/gatepass
-            const cleanAttachments = (paths) => (paths || []).map(path => {
-                if (typeof path === 'string' && path.startsWith('function wrap()')) {
-                    return path.substring(62);
-                }
-                return path;
-            });
-            camelData.attachments = cleanAttachments(camelData.attachments || []);
-            camelData.gatepass = cleanAttachments(camelData.gatepass || []);
-            const apiBase = import.meta.env.VITE_API_URL;
-            camelData.attachments = camelData.attachments.map(path =>
-                path.startsWith('http') ? path : `${apiBase}${path}`
-            );
-            camelData.gatepass = camelData.gatepass.map(path =>
-                path.startsWith('http') ? path : `${apiBase}${path}`
-            );
-            setFormData(camelData);
-            // Set initial errors from validation warnings
-            const initialErrors = {};
-            mappedPanel2.forEach((rec, i) => {
-                if (rec.validationWarnings) {
-                    if (rec.validationWarnings.total_number) {
-                        initialErrors[`${panel2ListKey}[${i}].totalNumber`] = rec.validationWarnings.total_number;
+                    isNew: false,
+                    validationWarnings: null
+                };
+                Object.keys(rec).forEach(apiKey => {
+                    let val = rec[apiKey];
+                    if (val === null || val === undefined) val = '';
+                    const camelKey = snakeToCamel(apiKey);
+                    if (['name', 'contact', 'address', 'email'].includes(camelKey)) {
+                        camelRec[`${panel2Prefix}${camelKey.charAt(0).toUpperCase() + camelKey.slice(1)}`] = val;
+                    } else {
+                        camelRec[camelKey] = val;
                     }
-                    if (rec.validationWarnings.qty_delivered) {
-                        initialErrors[`${panel2ListKey}[${i}].qtyDelivered`] = rec.validationWarnings.qty_delivered;
-                    }
-                }
-            });
-            setErrors(initialErrors);
-            const hasWarnings = mappedPanel2.some(r => r && r.validationWarnings);
-            if (hasWarnings) {
-                setSnackbar({
-                    open: true,
-                    message: 'Some receiver data needs attention (check totals/deliveries)',
-                    severity: 'warning',
                 });
+                // Handle legacy shipping_detail to array
+                if (rec.shipping_detail) {
+                    const sd = { ...rec.shipping_detail };
+                    Object.keys(sd).forEach(key => {
+                        const camelKey = snakeToCamel(key);
+                        sd[camelKey] = sd[key];
+                        delete sd[key];
+                    });
+                    camelRec.shippingDetails = [sd];
+                }
+                // If no shippingDetails, create default one from receiver-level totals
+                if (!camelRec.shippingDetails || camelRec.shippingDetails.length === 0) {
+                    camelRec.shippingDetails = [{
+                        ...initialShippingDetail,
+                        totalNumber: rec.total_number || '',
+                        weight: rec.total_weight || ''
+                    }];
+                }
+                camelRec.status = rec.status || "Created";
+                // New fields default
+                camelRec.fullPartial = camelRec.fullPartial || '';
+                camelRec.qtyDelivered = camelRec.qtyDelivered != null ? String(camelRec.qtyDelivered) : '0';
+                return camelRec;
+            }).filter(Boolean);
+        }
+        // Fallback panel2 fields to order-level if empty
+        mappedPanel2.forEach(rec => {
+            if (rec.eta === '' && camelData.eta) {
+                rec.eta = camelData.eta;
             }
-        } catch (err) {
-            console.error("Error fetching order:", err);
+            if (rec.etd === '' && camelData.etd) {
+                rec.etd = camelData.etd;
+            }
+            if (rec.shippingLine === '' && camelData.shippingLine) {
+                rec.shippingLine = camelData.shippingLine;
+            }
+        });
+        // Compute remainingItems on load
+        mappedPanel2 = mappedPanel2.map(rec => {
+            const shippingDetails = rec.shippingDetails || [];
+            const recTotal = shippingDetails.reduce((sum, sd) => sum + (parseInt(sd.totalNumber || 0) || 0), 0);
+            const delivered = parseInt(rec.qtyDelivered || 0) || 0;
+            const recRemaining = Math.max(0, recTotal - delivered);
+            let updatedDetails = shippingDetails;
+            if (rec.fullPartial === 'Partial' && recTotal > 0) {
+                updatedDetails = shippingDetails.map(sd => {
+                    const sdTotal = parseInt(sd.totalNumber || 0) || 0;
+                    const sdRemaining = Math.round((sdTotal / recTotal) * recRemaining);
+                    return { ...sd, remainingItems: sdRemaining.toString() };
+                });
+            } else {
+                updatedDetails = shippingDetails.map(sd => ({ ...sd, remainingItems: (parseInt(sd.totalNumber || 0) || 0).toString() }));
+            }
+            rec.shippingDetails = updatedDetails;
+            // Validation warnings
+            let warnings = null;
+            const isInvalidTotal = recTotal <= 0;
+            const isPartialInvalid = rec.fullPartial === 'Partial' && delivered > recTotal;
+            if (isInvalidTotal || isPartialInvalid) {
+                warnings = {};
+                if (isInvalidTotal) warnings.total_number = 'Must be positive';
+                if (isPartialInvalid) warnings.qty_delivered = 'Cannot exceed total_number';
+            }
+            rec.validationWarnings = warnings;
+            return rec;
+        });
+        camelData[panel2ListKey] = mappedPanel2;
+        if (!camelData[panel2ListKey] || camelData[panel2ListKey].length === 0) {
+            camelData[panel2ListKey] = [{
+                ...initialItem,
+                shippingDetails: [],
+                isNew: true
+            }];
+        }
+        // Ensure the other list is empty
+        const otherListKey = panel2ListKey === 'receivers' ? 'senders' : 'receivers';
+        camelData[otherListKey] = [];
+        // Attachments/gatepass
+        const cleanAttachments = (paths) => (paths || []).map(path => {
+            if (typeof path === 'string' && path.startsWith('function wrap()')) {
+                return path.substring(62);
+            }
+            return path;
+        });
+        camelData.attachments = cleanAttachments(camelData.attachments || []);
+        camelData.gatepass = cleanAttachments(camelData.gatepass || []);
+        const apiBase = import.meta.env.VITE_API_URL;
+        camelData.attachments = camelData.attachments.map(path =>
+            path.startsWith('http') ? path : `${apiBase}${path}`
+        );
+        camelData.gatepass = camelData.gatepass.map(path =>
+            path.startsWith('http') ? path : `${apiBase}${path}`
+        );
+        setFormData(camelData);
+        // Set initial errors from validation warnings
+        const initialErrors = {};
+        mappedPanel2.forEach((rec, i) => {
+            if (rec.validationWarnings) {
+                if (rec.validationWarnings.total_number) {
+                    initialErrors[`${panel2ListKey}[${i}].totalNumber`] = rec.validationWarnings.total_number;
+                }
+                if (rec.validationWarnings.qty_delivered) {
+                    initialErrors[`${panel2ListKey}[${i}].qtyDelivered`] = rec.validationWarnings.qty_delivered;
+                }
+            }
+        });
+        setErrors(initialErrors);
+        const hasWarnings = mappedPanel2.some(r => r && r.validationWarnings);
+        if (hasWarnings) {
             setSnackbar({
                 open: true,
-                message: err.response?.data?.error || err.message || 'Failed to fetch order',
-                severity: 'error',
+                message: 'Some receiver data needs attention (check totals/deliveries)',
+                severity: 'warning',
             });
-            if (err.response?.status === 404) {
-                navigate('/orders');
-            }
-        } finally {
-            setLoading(false);
         }
-    };
+    } catch (err) {
+        console.error("Error fetching order:", err);
+        setSnackbar({
+            open: true,
+            message: err.response?.data?.error || err.message || 'Failed to fetch order',
+            severity: 'error',
+        });
+        if (err.response?.status === 404) {
+            navigate('/orders');
+        }
+    } finally {
+        setLoading(false);
+    }
+};
     const handleChange = (e) => {
         const { name, value } = e.target;
         setFormData((prev) => {
@@ -4166,6 +4292,8 @@ const validateShippingDetails = (index) => {
   setErrors(newErrors);
   return isValid;
 };
+
+
     // Sender handlers (similar)
     const addSender = useCallback(() => {
         setFormData((prev) => ({
@@ -4203,6 +4331,7 @@ const validateShippingDetails = (index) => {
             setErrors((prev) => ({ ...prev, [errorKey]: '' }));
         }
     }, [errors]);
+
     const handleSenderShippingChange = useCallback((index, j, field) => (event) => {
         const value = event.target.value;
         setFormData((prev) => ({
@@ -4289,6 +4418,8 @@ const validateShippingDetails = (index) => {
         setFormData((prev) => ({ ...prev, gatepass: [...(Array.isArray(prev.gatepass) ? prev.gatepass : []), ...files] }));
     };
 const handleSave = async () => {
+    // console.log("Submitting form data:", formData);
+    console.log('Saving owner name:', formData[ownerNameKey]); // Debug
     if (!validateForm()) {
         setSnackbar({
             open: true,
@@ -4410,6 +4541,8 @@ const handleSave = async () => {
         setLoading(false);
     }
 };
+
+
     const handleCancel = () => {
         navigate(-1);
     };
@@ -4606,171 +4739,208 @@ sx={{
                     <Divider sx={{ my: 3, borderColor: "#e0e0e0" }} />
                     {/* Accordion Sections */}
                     <Stack spacing={2}>
-                        <Accordion
-                            expanded={expanded.has("panel1")}
-                            onChange={handleAccordionChange("panel1")}
-                            sx={{
-                                borderRadius: 2,
-                                boxShadow: "none",
-                                "&:before": { display: "none" },
-                                "&.Mui-expanded": { boxShadow: "0 2px 8px rgba(0,0,0,0.1)" },
-                            }}
-                        >
-                            <AccordionSummary
-                                expandIcon={<ExpandMoreIcon />}
-                                sx={{
-                                    bgcolor: expanded.has("panel1") ? "#0d6c6a" : "#fff3e0",
-                                    borderRadius: 2,
-                                    "& .MuiAccordionSummary-content": { fontWeight: "bold", color: expanded.has("panel1") ? "#fff" : "#f58220" },
-                                }}
+                       <Accordion
+    expanded={expanded.has("panel1")}
+    onChange={handleAccordionChange("panel1")}
+    sx={{
+        borderRadius: 2,
+        boxShadow: "none",
+        "&:before": { display: "none" },
+        "&.Mui-expanded": { boxShadow: "0 2px 8px rgba(0,0,0,0.1)" },
+    }}
+>
+    <AccordionSummary
+        expandIcon={<ExpandMoreIcon />}
+        sx={{
+            bgcolor: expanded.has("panel1") ? "#0d6c6a" : "#fff3e0",
+            borderRadius: 2,
+            "& .MuiAccordionSummary-content": { fontWeight: "bold", color: expanded.has("panel1") ? "#fff" : "#f58220" },
+        }}
+    >
+        1. Owner Details
+    </AccordionSummary>
+    <AccordionDetails sx={{ p: 3, bgcolor: "#fff" }}>
+        <Stack spacing={2}>
+            {(() => {
+                const ownerNameKey = formData.senderType === 'sender' ? 'senderName' : 'receiverName';
+                const ownerContactKey = formData.senderType === 'sender' ? 'senderContact' : 'receiverContact';
+                const ownerAddressKey = formData.senderType === 'sender' ? 'senderAddress' : 'receiverAddress';
+                const ownerEmailKey = formData.senderType === 'sender' ? 'senderEmail' : 'receiverEmail';
+                const ownerRefKey = formData.senderType === 'sender' ? 'senderRef' : 'receiverRef';
+                const ownerRemarksKey = formData.senderType === 'sender' ? 'senderRemarks' : 'receiverRemarks';
+                const typePrefix = formData.senderType === 'sender' ? 'Sender' : 'Receiver';
+                const fieldPrefix = formData.senderType === 'sender' ? 'sender' : 'receiver';
+
+                const handleOwnerNameChange = (event, newValue) => {
+                    if (typeof newValue === 'string') {
+                        // Manual entry or existing value
+                        handleChange({ target: { name: ownerNameKey, value: newValue } });
+                    } else if (newValue) {
+                        // Selected option, fetch details
+                        handleSelectOwner(event, newValue);
+                    } else {
+                        // Cleared
+                        const fieldMap = {
+                            [ownerNameKey]: '',
+                            [ownerContactKey]: '',
+                            [ownerAddressKey]: '',
+                            [ownerEmailKey]: '',
+                            [ownerRefKey]: '',
+                            [ownerRemarksKey]: '',
+                        };
+                        Object.entries(fieldMap).forEach(([formKey, value]) => {
+                            handleChange({ target: { name: formKey, value } });
+                        });
+                        handleChange({ target: { name: 'selectedSenderOwner', value: '' } });
+                    }
+                };
+
+                const handleSelectOwner = async (event, value) => {
+                    if (value && typeof value !== 'string') {
+                        try {
+                            const res = await api.get(`/api/customers/${value.zoho_id || value.id}`);
+
+                            if (res && res.data) {
+                                const fieldMap = {
+                                    [ownerNameKey]: res.data.contact_name || res.data.contact_persons[0].name || '',
+                                    [ownerContactKey]: res.data.primary_phone || res.data.contact_persons[0].phone || '',
+                                    [ownerAddressKey]: res.data.zoho_notes || res.data.billing_address || '',
+                                    [ownerEmailKey]: res.data.email || res.data.contact_persons[0].email || '',
+                                    [ownerRefKey]: res.data.zoho_id || res.data.ref || '',
+                                    [ownerRemarksKey]: res.data.zoho_notes || res.data.system_notes || '',
+                                };
+                                Object.entries(fieldMap).forEach(([formKey, dbValue]) => {
+                                    handleChange({ target: { name: formKey, value: dbValue } });
+                                });
+                                // Set unique ID for reference
+                                handleChange({ target: { name: 'selectedSenderOwner', value: res.data.zoho_id || res.data.id } });
+                            }
+                        } catch (error) {
+                            console.error('Error fetching owner details:', error);
+                        }
+                    }
+                };
+
+                return (
+                    <>
+                        <FormControl component="fieldset" error={!!errors.senderType}>
+                            <Typography variant="subtitle1" fontWeight="bold" color="#f58220" gutterBottom>
+                                Select Type
+                            </Typography>
+                            <RadioGroup
+                                name="senderType"
+                                value={formData.senderType}
+                                onChange={handleChange}
+                                sx={{ flexDirection: 'row', gap: 3, mb: 1 }}
+                                defaultValue="sender"
                             >
-                                1. Owner Details
-                            </AccordionSummary>
-                            <AccordionDetails sx={{ p: 3, bgcolor: "#fff" }}>
-                                <Stack spacing={2}>
-                                    {(() => {
-                                        const sendersList = [
-                                            { id: 1, name: 'John Doe Sender', contact: '+1-234-5678', address: '123 Sender St, City', email: 'john.sender@example.com', ref: 'SREF001', remarks: 'Preferred sender' },
-                                            { id: 2, name: 'Jane Smith Sender', contact: '+1-876-5432', address: '456 Sender Ave, Town', email: 'jane.sender@example.com', ref: 'SREF002', remarks: 'Regular sender' }
-                                        ];
-                                        const receiversList = [
-                                            { id: 1, name: 'Alice Receiver', contact: '+1-111-2222', address: '789 Receiver Blvd, Village', email: 'alice.receiver@example.com', ref: 'RREF001', remarks: 'Main receiver' },
-                                            { id: 2, name: 'Bob Receiver', contact: '+1-333-4444', address: '101 Receiver Rd, Hamlet', email: 'bob.receiver@example.com', ref: 'RREF002', remarks: 'Secondary receiver' }
-                                        ];
-                                        const typePrefix = formData.senderType === 'receiver' ? 'Receiver' : 'Sender';
-                                        const fieldPrefix = formData.senderType === 'sender' ? 'sender' : 'receiver';
-                                        return (
-                                            <>
-                                                <FormControl component="fieldset" error={!!errors.senderType}>
-                                                    <Typography variant="subtitle1" fontWeight="bold" color="#f58220" gutterBottom>
-                                                        Select Type
-                                                    </Typography>
-                                                    <RadioGroup
-                                                        name="senderType"
-                                                        value={formData.senderType}
-                                                        onChange={handleChange}
-                                                        sx={{ flexDirection: 'row', gap: 3, mb: 1 }}
-                                                        defaultValue="sender"
-                                                    >
-                                                        <FormControlLabel value="sender" control={<Radio />} label="Sender Details" />
-                                                        <FormControlLabel value="receiver" control={<Radio />} label="Receiver Details" />
-                                                    </RadioGroup>
-                                                    {errors.senderType && <Typography variant="caption" color="error">{errors.senderType}</Typography>}
-                                                </FormControl>
-                                                <CustomSelect
-                                                    label={`Select ${typePrefix}`}
-                                                    name="selectedSenderOwner"
-                                                    value={formData.selectedSenderOwner || ""}
-                                                    onChange={(e) => {
-                                                        const value = e.target.value;
-                                                        handleChange(e);
-                                                        if (value) {
-                                                            const list = formData.senderType === 'sender' ? sendersList : receiversList;
-                                                            const item = list.find(l => l.id.toString() === value);
-                                                            if (item) {
-                                                                setFormData(prev => ({
-                                                                    ...prev,
-                                                                    [`${fieldPrefix}Name`]: item.name || '',
-                                                                    [`${fieldPrefix}Contact`]: item.contact || '',
-                                                                    [`${fieldPrefix}Address`]: item.address || '',
-                                                                    [`${fieldPrefix}Email`]: item.email || '',
-                                                                    [`${fieldPrefix}Ref`]: item.ref || '',
-                                                                    [`${fieldPrefix}Remarks`]: item.remarks || '',
-                                                                }));
-                                                            }
-                                                        } else {
-                                                            setFormData(prev => ({
-                                                                ...prev,
-                                                                [`${fieldPrefix}Name`]: '',
-                                                                [`${fieldPrefix}Contact`]: '',
-                                                                [`${fieldPrefix}Address`]: '',
-                                                                [`${fieldPrefix}Email`]: '',
-                                                                [`${fieldPrefix}Ref`]: '',
-                                                                [`${fieldPrefix}Remarks`]: '',
-                                                            }));
-                                                        }
-                                                    }}
-                                                    renderValue={(selected) => {
-                                                        if (!selected) return `Select ${typePrefix}`;
-                                                        const list = formData.senderType === 'sender' ? sendersList : receiversList;
-                                                        const item = list.find(l => l.id.toString() === selected);
-                                                        return item ? item.name : `Select ${typePrefix}`;
-                                                    }}
-                                                >
-                                                    <MenuItem value="">Select from List</MenuItem>
-                                                    {(formData.senderType === 'sender' ? sendersList : receiversList).map((item) => (
-                                                        <MenuItem key={item.id} value={item.id.toString()}>
-                                                            {item.name}
-                                                        </MenuItem>
-                                                    ))}
-                                                </CustomSelect>
-                                                <Stack spacing={2}>
-                                                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                                        <CustomTextField
-                                                            label={`${typePrefix} Name`}
-                                                            name={`${fieldPrefix}Name`}
-                                                            value={formData[`${fieldPrefix}Name`] || ""}
-                                                            onChange={handleChange}
-                                                            error={!!errors[`${fieldPrefix}Name`]}
-                                                            helperText={errors[`${fieldPrefix}Name`]}
-                                                            required
-                                                        />
-                                                        <CustomTextField
-                                                            label={`${typePrefix} Contact`}
-                                                            name={`${fieldPrefix}Contact`}
-                                                            value={formData[`${fieldPrefix}Contact`] || ""}
-                                                            onChange={handleChange}
-                                                            error={!!errors[`${fieldPrefix}Contact`]}
-                                                            helperText={errors[`${fieldPrefix}Contact`]}
-                                                            required
-                                                        />
-                                                    </Box>
-                                                    <CustomTextField
-                                                        label={`${typePrefix} Address`}
-                                                        name={`${fieldPrefix}Address`}
-                                                        value={formData[`${fieldPrefix}Address`] || ""}
-                                                        onChange={handleChange}
-                                                        error={!!errors[`${fieldPrefix}Address`]}
-                                                        helperText={errors[`${fieldPrefix}Address`]}
-                                                        multiline
-                                                        rows={2}
-                                                        required
-                                                    />
-                                                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                                        <CustomTextField
-                                                            label={`${typePrefix} Email`}
-                                                            name={`${fieldPrefix}Email`}
-                                                            value={formData[`${fieldPrefix}Email`] || ""}
-                                                            onChange={handleChange}
-                                                            error={!!errors[`${fieldPrefix}Email`]}
-                                                            helperText={errors[`${fieldPrefix}Email`]}
-                                                        />
-                                                        <CustomTextField
-                                                            label={`${typePrefix} Ref`}
-                                                            name={`${fieldPrefix}Ref`}
-                                                            value={formData[`${fieldPrefix}Ref`] || ""}
-                                                            onChange={handleChange}
-                                                            error={!!errors[`${fieldPrefix}Ref`]}
-                                                            helperText={errors[`${fieldPrefix}Ref`]}
-                                                        />
-                                                    </Box>
-                                                    <CustomTextField
-                                                        label={`${typePrefix} Remarks`}
-                                                        name={`${fieldPrefix}Remarks`}
-                                                        value={formData[`${fieldPrefix}Remarks`] || ""}
-                                                        onChange={handleChange}
-                                                        error={!!errors[`${fieldPrefix}Remarks`]}
-                                                        helperText={errors[`${fieldPrefix}Remarks`]}
-                                                        multiline
-                                                        rows={2}
-                                                    />
-                                                </Stack>
-                                            </>
-                                        );
-                                    })()}
-                                </Stack>
-                            </AccordionDetails>
-                        </Accordion>
+                                <FormControlLabel value="sender" control={<Radio />} label="Sender Details" />
+                                <FormControlLabel value="receiver" control={<Radio />} label="Receiver Details" />
+                            </RadioGroup>
+                            {errors.senderType && <Typography variant="caption" color="error">{errors.senderType}</Typography>}
+                        </FormControl>
+
+                        <Stack spacing={2}>
+                            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+
+
+                                
+                                <Autocomplete
+                                    options={options2}
+                                    loading={loading}
+                                    freeSolo={true}
+                                    getOptionLabel={(option) => typeof option === 'string' ? option : (option.contact_name || '')}
+                                    isOptionEqualToValue={(option, value) => {
+                                        if (typeof value === 'string') {
+                                            return typeof option === 'string' ? option === value : (option.contact_name || '') === value;
+                                        }
+                                        return typeof option !== 'string' && (option.zoho_id === value.zoho_id || option.id === value.id);
+                                    }}
+                                    value={formData[ownerNameKey] || null}
+                                    onChange={handleOwnerNameChange}
+                                    onInputChange={(_, newInputValue) => setSearchTerm(newInputValue)}
+                                    renderInput={(params) => (
+                                       <CustomTextField
+        {...params}
+        label={`Search & Select ${typePrefix}`}
+        error={!!errors[ownerNameKey] || !!errors.selectedSenderOwner} // Add name-specific error
+        helperText={errors[ownerNameKey] || errors.selectedSenderOwner || (loading ? 'Loading...' : '')}
+        // required (if needed)
+
+           disabled={isFieldDisabled('selectedSenderOwner')}
+        style={{ width: '100%' }}
+    />
+                                    )}
+                                    renderOption={(props, option) => (
+                                        <li {...props} key={typeof option === 'string' ? option : (option.zoho_id || option.id)}>
+                                            <div>
+                                                <strong>{typeof option === 'string' ? option : (option.contact_name || '')}</strong>
+                                                {typeof option !== 'string' && option.email && <div style={{ fontSize: '0.875em', color: '#666' }}>{option.email}</div>}
+                                                {typeof option !== 'string' && option.primary_phone && <div style={{ fontSize: '0.875em', color: '#666' }}>{option.primary_phone}</div>}
+                                            </div>
+                                        </li>
+                                    )}
+                                    noOptionsText={searchTerm ? `No ${typePrefix.toLowerCase()}s found for "${searchTerm}"` : `Type to search ${typePrefix.toLowerCase()}s`}
+                                    clearOnBlur={false}
+                                    selectOnFocus={true}
+                                    style={{ width: '60%' }}
+                                />
+                                <CustomTextField 
+                                    label={`${typePrefix} Contact`}
+                                    name={ownerContactKey}
+                                    value={formData[ownerContactKey] || ""}
+                                    onChange={handleChange}
+                                    error={!!errors[ownerContactKey]}
+                                    helperText={errors[ownerContactKey]}
+                                    // required
+                                />
+                            </Box>
+                            <CustomTextField
+                                label={`${typePrefix} Address`}
+                                name={ownerAddressKey}
+                                value={formData[ownerAddressKey] || ""}
+                                onChange={handleChange}
+                                error={!!errors[ownerAddressKey]}
+                                helperText={errors[ownerAddressKey]}
+                                multiline
+                                rows={2}
+                                // required
+                            />
+                            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                <CustomTextField
+                                    label={`${typePrefix} Email`}
+                                    name={ownerEmailKey}
+                                    value={formData[ownerEmailKey] || ""}
+                                    onChange={handleChange}
+                                    error={!!errors[ownerEmailKey]}
+                                    helperText={errors[ownerEmailKey]}
+                                />
+                                <CustomTextField
+                                    label={`${typePrefix} Ref`}
+                                    name={ownerRefKey}
+                                    value={formData[ownerRefKey] || ""}
+                                    onChange={handleChange}
+                                    error={!!errors[ownerRefKey]}
+                                    helperText={errors[ownerRefKey]}
+                                />
+                            </Box>
+                            <CustomTextField
+                                label={`${typePrefix} Remarks`}
+                                name={ownerRemarksKey}
+                                value={formData[ownerRemarksKey] || ""}
+                                onChange={handleChange}
+                                error={!!errors[ownerRemarksKey]}
+                                helperText={errors[ownerRemarksKey]}
+                                multiline
+                                rows={2}
+                            />
+                        </Stack>
+                    </>
+                );
+            })()}
+        </Stack>
+    </AccordionDetails>
+</Accordion>
 <Accordion
     expanded={expanded.has("panel2")}
     onChange={handleAccordionChange("panel2")}
@@ -4826,6 +4996,7 @@ sx={{
                 </Stack>
             )}
             {(() => {
+             
                 const currentList = formData.senderType === 'sender' ? formData.receivers : formData.senders;
                 const isSenderMode = formData.senderType === 'receiver';
                 const typePrefix = isSenderMode ? 'Sender' : 'Receiver';
@@ -4858,6 +5029,70 @@ sx={{
                         addShippingFn(i);
                         handleShippingChangeFn(i, 0, field)({ target: { value } });
                     };
+                    const nameField = isSenderMode ? 'senderName' : 'receiverName';
+                    const handleNameChange = (event, newValue) => {
+                        if (typeof newValue === 'string') {
+                            // Manual entry or existing value
+                            handleChangeFn(i, nameField)({ target: { value: newValue } });
+                        } else if (newValue) {
+                            // Selected option, fetch details
+                            handleSelect(event, newValue);
+                        } else {
+                            // Cleared
+                            const fieldMap = isSenderMode ? {
+                                senderName: '',
+                                senderContact: '',
+                                senderAddress: '',
+                                senderEmail: '',
+                                senderRef: '',
+                                senderRemarks: '',
+                            } : {
+                                receiverName: '',
+                                receiverContact: '',
+                                receiverAddress: '',
+                                receiverEmail: '',
+                                receiverRef: '',
+                                receiverRemarks: '',
+                            };
+                            Object.entries(fieldMap).forEach(([formKey, value]) => {
+                                handleChangeFn(i, formKey)({ target: { value } });
+                            });
+                            handleChangeFn(i, 'selectedSenderOwner')({ target: { value: '' } });
+                        }
+                    };
+                    const handleSelect = async(event, value) => {
+                        if (value && typeof value !== 'string') {
+                            try {
+                                const res = await api.get(`/api/customers/${value.zoho_id || value.id}`);
+
+                                if (res && res.data) {
+                                    const fieldMap = isSenderMode ? {
+                                        senderName: res.data.contact_name || res.data.contact_persons[0].name || '',
+                                        senderContact: res.data.primary_phone || res.data.contact_persons[0].phone || '',
+                                        senderAddress: res.data.zoho_notes || res.data.billing_address || '',
+                                        senderEmail: res.data.email || '',
+                                        senderRef: res.data.zoho_id || res.data.ref || '',
+                                        senderRemarks: res.data.zoho_notes || res.data.system_notes || '',
+                                    } : {
+                                        receiverName: res.data.contact_name || res.data.contact_persons[0].name || '',
+                                        receiverContact: res.data.primary_phone || res.data.contact_persons[0].phone || '',
+                                        receiverAddress: res.data.zoho_notes || res.data.contact_persons[0].name || '',
+                                        receiverEmail: res.data.email ||  res.data.contact_persons[0].email || '',
+                                        receiverRef: res.data.zoho_id || res.data.ref || '',
+                                        receiverRemarks: res.data.zoho_notes || res.data.system_notes || '',
+                                    };
+                                    Object.entries(fieldMap).forEach(([formKey, dbValue]) => {
+                                        const updateFn = handleChangeFn(i, formKey);
+                                        updateFn({ target: { value: dbValue } });
+                                    });
+                                    // Set unique ID for reference
+                                    handleChangeFn(i, 'selectedSenderOwner')({ target: { value: res.data.zoho_id || res.data.id } });
+                                }
+                            } catch (error) {
+                                console.error('Error fetching customer details:', error);
+                            }
+                        }
+                    }
                     const renderShippingSection = () => (
                         <Stack spacing={2}>
                             <Typography variant="subtitle1" color="primary" fontWeight={"bold"} mb={1}>
@@ -4939,7 +5174,7 @@ sx={{
                                                 onChange={(e) => handleEmptySdChange('pickupLocation', e.target.value)}
                                                 error={!!errors[`${listKey}[${i}].shippingDetails[0].pickupLocation`]}
                                                 helperText={errors[`${listKey}[${i}].shippingDetails[0].pickupLocation`]}
-                                                required
+                                                // required
                                                 disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].pickupLocation`)}
                                             />
                                             <CustomSelect
@@ -4948,7 +5183,7 @@ sx={{
                                                 onChange={(e) => handleEmptySdChange('category', e.target.value)}
                                                 error={!!errors[`${listKey}[${i}].shippingDetails[0].category`]}
                                                 helperText={errors[`${listKey}[${i}].shippingDetails[0].category`]}
-                                                required
+                                                // required
                                                 disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].category`)}
                                                 renderValue={(selected) => selected || "Select Category"}
                                             >
@@ -4967,7 +5202,7 @@ sx={{
                                                 onChange={(e) => handleEmptySdChange('subcategory', e.target.value)}
                                                 error={!!errors[`${listKey}[${i}].shippingDetails[0].subcategory`]}
                                                 helperText={errors[`${listKey}[${i}].shippingDetails[0].subcategory`]}
-                                                required
+                                                // required
                                                 disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].subcategory`)}
                                                 renderValue={(selected) => selected || "Select Subcategory"}
                                             >
@@ -4984,7 +5219,7 @@ sx={{
                                                 onChange={(e) => handleEmptySdChange('type', e.target.value)}
                                                 error={!!errors[`${listKey}[${i}].shippingDetails[0].type`]}
                                                 helperText={errors[`${listKey}[${i}].shippingDetails[0].type`]}
-                                                required
+                                                // required
                                                 disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].type`)}
                                                 renderValue={(selected) => selected || "Select Type"}
                                             >
@@ -5003,7 +5238,7 @@ sx={{
                                                 onChange={(e) => handleEmptySdChange('totalNumber', e.target.value)}
                                                 error={!!errors[`${listKey}[${i}].shippingDetails[0].totalNumber`]}
                                                 helperText={errors[`${listKey}[${i}].shippingDetails[0].totalNumber`]}
-                                                required
+                                                // required
                                                 disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].totalNumber`)}
                                             />
                                             <CustomTextField
@@ -5012,7 +5247,7 @@ sx={{
                                                 onChange={(e) => handleEmptySdChange('weight', e.target.value)}
                                                 error={!!errors[`${listKey}[${i}].shippingDetails[0].weight`]}
                                                 helperText={errors[`${listKey}[${i}].shippingDetails[0].weight`]}
-                                                required
+                                                // required
                                                 disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].weight`)}
                                             />
                                         </Box>
@@ -5023,7 +5258,7 @@ sx={{
                                                 onChange={(e) => handleEmptySdChange('deliveryAddress', e.target.value)}
                                                 error={!!errors[`${listKey}[${i}].shippingDetails[0].deliveryAddress`]}
                                                 helperText={errors[`${listKey}[${i}].shippingDetails[0].deliveryAddress`]}
-                                                required
+                                                // required
                                                 fullWidth
                                                 disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].deliveryAddress`)}
                                             />
@@ -5067,7 +5302,7 @@ sx={{
                                                     onChange={(e) => handleShippingChangeFn(i, j, 'pickupLocation')(e)}
                                                     error={!!errors[`${listKey}[${i}].shippingDetails[${j}].pickupLocation`]}
                                                     helperText={errors[`${listKey}[${i}].shippingDetails[${j}].pickupLocation`]}
-                                                    required
+                                                    // required
                                                     // disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[${j}].pickupLocation`)}
                                                 />
                                                 <CustomSelect
@@ -5076,7 +5311,7 @@ sx={{
                                                     onChange={(e) => handleShippingChangeFn(i, j, 'category')(e)}
                                                     error={!!errors[`${listKey}[${i}].shippingDetails[${j}].category`]}
                                                     helperText={errors[`${listKey}[${i}].shippingDetails[${j}].category`]}
-                                                    required
+                                                    // required
                                                     // disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[${j}].category`)}
                                                     renderValue={(selected) => selected || "Select Category"}
                                                 >
@@ -5095,7 +5330,7 @@ sx={{
                                                     onChange={(e) => handleShippingChangeFn(i, j, 'subcategory')(e)}
                                                     error={!!errors[`${listKey}[${i}].shippingDetails[${j}].subcategory`]}
                                                     helperText={errors[`${listKey}[${i}].shippingDetails[${j}].subcategory`]}
-                                                    required
+                                                    // required
                                                     // disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[${j}].subcategory`)}
                                                     renderValue={(selected) => selected || "Select Subcategory"}
                                                 >
@@ -5112,7 +5347,7 @@ sx={{
                                                     onChange={(e) => handleShippingChangeFn(i, j, 'type')(e)}
                                                     error={!!errors[`${listKey}[${i}].shippingDetails[${j}].type`]}
                                                     helperText={errors[`${listKey}[${i}].shippingDetails[${j}].type`]}
-                                                    required
+                                                    // required
                                                     // disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[${j}].type`)}
                                                     renderValue={(selected) => selected || "Select Type"}
                                                 >
@@ -5131,7 +5366,7 @@ sx={{
                                                     onChange={(e) => handleShippingChangeFn(i, j, 'totalNumber')(e)}
                                                     error={!!errors[`${listKey}[${i}].shippingDetails[${j}].totalNumber`]}
                                                     helperText={errors[`${listKey}[${i}].shippingDetails[${j}].totalNumber`]}
-                                                    required
+                                                    // required
                                                     // disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[${j}].totalNumber`)}
                                                 />
                                                 <CustomTextField
@@ -5140,7 +5375,7 @@ sx={{
                                                     onChange={(e) => handleShippingChangeFn(i, j, 'weight')(e)}
                                                     error={!!errors[`${listKey}[${i}].shippingDetails[${j}].weight`]}
                                                     helperText={errors[`${listKey}[${i}].shippingDetails[${j}].weight`]}
-                                                    required
+                                                    // required
                                                     // disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[${j}].weight`)}
                                                 />
                                             </Box>
@@ -5151,7 +5386,7 @@ sx={{
                                                     onChange={(e) => handleShippingChangeFn(i, j, 'deliveryAddress')(e)}
                                                     error={!!errors[`${listKey}[${i}].shippingDetails[${j}].deliveryAddress`]}
                                                     helperText={errors[`${listKey}[${i}].shippingDetails[${j}].deliveryAddress`]}
-                                                    required
+                                                    // required
                                                     fullWidth
                                                     // disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[${j}].deliveryAddress`)}s
                                                 />
@@ -5222,22 +5457,57 @@ sx={{
                                     alignItems: 'stretch',
                                 }}
                             >
-                                <CustomTextField
-                                    label={`${typePrefix} Name`}
-                                    value={isSenderMode ? rec.senderName : rec.receiverName}
-                                    onChange={handleChangeFn(i, isSenderMode ? 'senderName' : 'receiverName')}
-                                    error={!!errors[`${listKey}[${i}].${isSenderMode ? 'senderName' : 'receiverName'}`]}
-                                    helperText={errors[`${listKey}[${i}].${isSenderMode ? 'senderName' : 'receiverName'}`]}
-                                    required
+                                <Autocomplete
+                                    options={options3}
+                                    loading={loading}
+                                    freeSolo={true}
+                                    getOptionLabel={(option) => typeof option === 'string' ? option : (option.contact_name || '')}
+                                    isOptionEqualToValue={(option, value) => {
+                                        if (typeof value === 'string') {
+                                            return typeof option === 'string' ? option === value : (option.contact_name || '') === value;
+                                        }
+                                        return typeof option !== 'string' && (option.zoho_id === value.zoho_id || option.id === value.id);
+                                    }}
+                                    value={rec[nameField] || null}
+                                    onChange={handleNameChange}
                                     disabled={isFieldDisabled(`${recDisabledPrefix}.${isSenderMode ? 'senderName' : 'receiverName'}`)}
+
+                                    onInputChange={(_, newInputValue) => setSearchTerm3(newInputValue)}
+                                    renderInput={(params) => (
+                                        <TextField
+                                            {...params}
+                                            label={`${typePrefix} Name`}
+                                            error={!!errors[`${listKey}[${i}].${nameField}`]}
+                                            helperText={errors[`${listKey}[${i}].${nameField}`]}
+                                            // required
+                                    disabled={isFieldDisabled(`${recDisabledPrefix}.${isSenderMode ? 'senderName' : 'receiverName'}`)}
+
+                                            fullWidth
+                                        />
+                                    )}
+                                    renderOption={(props, option) => (
+                                        <li {...props} key={typeof option === 'string' ? option : (option.zoho_id || option.id)}>
+                                            <div>
+                                                <strong>{typeof option === 'string' ? option : (option.contact_name || '')}</strong>
+                                                {typeof option !== 'string' && option.email && <div style={{ fontSize: '0.875em', color: '#666' }}>{option.email}</div>}
+                                                {typeof option !== 'string' && option.primary_phone && <div style={{ fontSize: '0.875em', color: '#666' }}>{option.primary_phone}</div>}
+                                            </div>
+                                        </li>
+                                    )}
+                                    noOptionsText={searchTerm3 ? `No ${typePrefix.toLowerCase()}s found for "${searchTerm3}"` : `Type to search ${typePrefix.toLowerCase()}s`}
+                                    clearOnBlur={false}
+                                    selectOnFocus={true}
+                                    // fullWidth
+                                    style={{width: '50%'}}
                                 />
                                 <CustomTextField
                                     label={`${typePrefix} Contact`}
+                                    d
                                     value={isSenderMode ? rec.senderContact : rec.receiverContact}
                                     onChange={handleChangeFn(i, isSenderMode ? 'senderContact' : 'receiverContact')}
                                     error={!!errors[`${listKey}[${i}].${isSenderMode ? 'senderContact' : 'receiverContact'}`]}
                                     helperText={errors[`${listKey}[${i}].${isSenderMode ? 'senderContact' : 'receiverContact'}`]}
-                                    required
+                                    // required
                                     disabled={isFieldDisabled(`${recDisabledPrefix}.${isSenderMode ? 'senderContact' : 'receiverContact'}`)}
                                 />
                             </Box>
@@ -5256,7 +5526,7 @@ sx={{
                                     onChange={handleChangeFn(i, isSenderMode ? 'senderAddress' : 'receiverAddress')}
                                     error={!!errors[`${listKey}[${i}].${isSenderMode ? 'senderAddress' : 'receiverAddress'}`]}
                                     helperText={errors[`${listKey}[${i}].${isSenderMode ? 'senderAddress' : 'receiverAddress'}`]}
-                                    required
+                                    // required
                                     disabled={isFieldDisabled(`${recDisabledPrefix}.${isSenderMode ? 'senderAddress' : 'receiverAddress'}`)}
                                 />
                                 <CustomTextField
@@ -5268,16 +5538,17 @@ sx={{
                                     disabled={isFieldDisabled(`${recDisabledPrefix}.${isSenderMode ? 'senderEmail' : 'receiverEmail'}`)}
                                 />
                             </Box>
-                            {renderShippingSection()}
-                            {/* <CustomTextField
+                            <CustomTextField
                                 label="Remarks"
                                 value={rec.remarks || ""}
                                 onChange={handleChangeFn(i, 'remarks')}
                                 multiline
-                                rows={2}
+                                rows={3}
                                 fullWidth
                                 disabled={isFieldDisabled(`${recDisabledPrefix}.remarks`)}
-                            /> */}
+                            />
+                            {renderShippingSection()}
+
                         </Box>
                     );
                 };

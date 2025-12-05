@@ -173,7 +173,7 @@ export default function Consignments() {
       key: "consignment_number", 
       label: "Consignment",
       sortable: true,
-      render: (item) => <Typography variant="body1" sx={{ fontSize: '0.875rem' }} noWrap>{item.consignment_number || "N/A"}</Typography>
+      render: (item) => <Typography variant="body1" noWrap sx={{ fontSize: '0.875rem' }}>{item.consignment_number || "N/A"}</Typography>
     },
     { 
       key: "shipper", 
