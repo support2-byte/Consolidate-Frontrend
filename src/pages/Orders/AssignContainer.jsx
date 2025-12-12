@@ -1,2931 +1,989 @@
-import React, { useState, useEffect,useCallback,useMemo } from 'react';
-// From @mui/material (core components)
-import {
-    Dialog, DialogTitle, DialogContent, DialogActions,
-    Grid, Card, CardContent, Box, Typography, Chip, Button, IconButton,
-    Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
-    FormControl, InputLabel, Select, MenuItem, Alert, AlertTitle, Collapse, TextField,
-    Tooltip, CircularProgress, Stack,
-    Popover, Checkbox, FormControlLabel, Divider, List, ListItem, ListItemIcon, ListItemText,
-    Accordion, AccordionSummary, AccordionDetails, // New: For expandable shipping details
-    IconButton as MuiIconButton, // Alias to avoid conflict
-} from '@mui/material';
-import { Add } from '@mui/icons-material';
-import{ LinearProgress } from '@mui/material';
-// Icons
-import ClearIcon from '@mui/icons-material/Clear';
+// import React, { useState, useEffect, useMemo, useCallback } from 'react';
+// import {
+//   Dialog, DialogTitle, DialogContent, DialogActions,
+//   Box, Grid, Stack, Card, CardContent, Typography,
+//   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
+//   Chip, Button, IconButton, TextField, Select, MenuItem, InputLabel, FormControl,
+//   Tooltip, Popover, List, ListItem, ListItemText, Checkbox, Divider,
+//   Alert, AlertTitle, LinearProgress, Collapse, Accordion, AccordionSummary, AccordionDetails,
+//   CircularProgress,
+// } from '@mui/material';
+// import { Snackbar, } from "@mui/material";
+// import {
+//   Close as CloseIcon, LocalShipping as LocalShippingIcon, Person as PersonIcon, Inventory as InventoryIcon, Assignment as AssignmentIcon,
+//   ViewColumn as ViewColumnIcon, Edit as EditIcon, Delete as DeleteIcon, ExpandMore as ExpandMoreIcon, ExpandLess as ExpandLessIcon,
+//   Check as CheckIcon, Info as InfoIcon, Save as SaveIcon, Add as AddIcon,
+// } from '@mui/icons-material';
 import ExpandMore from '@mui/icons-material/ExpandMore';
 import ExpandLess from '@mui/icons-material/ExpandLess';
-import { Remove } from '@mui/icons-material';
-import { api } from '../../api';
-import AssignmentIcon from '@mui/icons-material/Assignment';
-import InventoryIcon from '@mui/icons-material/Inventory';
-import CheckIcon from '@mui/icons-material/Check';
-import EditIcon from '@mui/icons-material/Edit';
-import ViewColumnIcon from '@mui/icons-material/ViewColumn';
-import PersonIcon from '@mui/icons-material/Person';
+
+
+
+import{api} from '../../api'; // Assume api is a configured axios instance
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import {
+  Dialog, DialogTitle, DialogContent, DialogActions,
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
+  Card, CardContent,
+  Grid, Stack, Box, Typography,
+  TextField, Select, MenuItem, FormControl, InputLabel,
+  Button, IconButton, Chip, Alert, LinearProgress, Divider,
+  Popover, ListItem, ListItemText, Checkbox,
+  Accordion, AccordionSummary, AccordionDetails,Tooltip,
+  Snackbar,
+  CircularProgress,
+} from '@mui/material';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
-import InfoIcon from '@mui/icons-material/Info';
-import CargoIcon from '@mui/icons-material/LocalShipping';
+import AssignmentIcon from '@mui/icons-material/Assignment';
 import CloseIcon from '@mui/icons-material/Close';
-import RefreshIcon from '@mui/icons-material/Refresh';
+import ViewColumnIcon from '@mui/icons-material/ViewColumn';
+import EditIcon from '@mui/icons-material/Edit';
+import DeleteIcon from '@mui/icons-material/Delete';
+import AddIcon from '@mui/icons-material/Add';
 import SaveIcon from '@mui/icons-material/Save';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore'; // For accordion
-import DeleteIcon from '@mui/icons-material/Delete'; // For remove
+// Assume api is imported from your API config
+// import api from '../api'; // Adjust path as needed
+
 const AssignModal = ({
-    onUpdateAssignedQty,
-    onRemoveContainers,
-    openAssignModal,
-    setOpenAssignModal,
-    selectedOrders,
-    orders,
-    containers,
-    selectedContainers: propSelectedContainers, // Can be ignored now
-    setSelectedContainers: setPropSelectedContainers, // Can be ignored now
-    loadingContainers,
-    fetchContainers,
-    // editingAssignReceiverId ,
-    // setEditingAssignReceiverId,
-    handleAssign, // Now receives nested assignments as single arg
-    handleReceiverAction, // This can now be removed if we handle edit internally, but keeping for compatibility
-    onUpdateReceiver, // New prop: callback to update receiver in parent state
-    onRefreshOrders // New prop: callback to refresh parent orders data (optional)
+  onUpdateAssignedQty,
+  onRemoveContainers,
+  openAssignModal,
+  setOpenAssignModal,
+  selectedOrders,
+  orders,
+  containers,
+  loadingContainers,
+  fetchContainers,
+  handleAssign,
+  handleReceiverAction, // Kept for compatibility
+  onUpdateReceiver,
+  onRefreshOrders,
 }) => {
-    // Utility function for snake_case to camelCase conversion
-    const snakeToCamel = (str) => {
-        if (!str) return str;
-        return str.replace(/([-_][a-z])/g, (group) => group.toUpperCase().replace('-', '').replace('_', ''));
+  // Simplified theme colors
+  const theme = {
+    primary: '#f58220',
+    secondary: '#1a9c8f',
+    background: '#f8f9fa',
+    surface: '#ffffff',
+    border: '#e0e0e0',
+    textPrimary: '#212121',
+    textSecondary: '#757575',
+    success: '#4caf50',
+    warning: '#ff9800',
+    error: '#f44336',
+    divider: '#e0e0e0',
+  };
+const getStatusColors = (status) => {
+    // Extend your existing getStatusColors function to handle new statuses
+    const colorMap = {
+      'Order Created': { bg: '#e3f2fd', text: '#1565c0' },
+        'Ready for Loading': { bg: '#f3e5f5', text: '#7b1fa2' },
+        'Loaded Into container': { bg: '#e0f2f1', text: '#00695c' },
+        'Shipment Processing': { bg: '#fff3e0', text: '#ef6c00' },
+        'Shipment In Transit': { bg: '#e1f5fe', text: '#0277bd' },
+        'Under Processing': { bg: '#fff3e0', text: '#f57c00' },
+        'Arrived at Sort Facility': { bg: '#f1f8e9', text: '#689f38' },
+        'Ready for Delivery': { bg: '#fce4ec', text: '#c2185b' },
+        'Shipment Delivered': { bg: '#e8f5e8', text: '#2e7d32' },
+        // Fallback for unknown
+        default: { bg: '#f5f5f5', text: '#666' }
     };
-    // Initial objects for mapping
-    const initialReceiver = {
-        id: null,
-        receiverName: '',
-        receiverContact: '',
-        receiverEmail: '',
-        receiverAddress: '',
-        category: '',
-        totalNumber: 0,
-        totalWeight: 0,
-        status: 'Created',
-        fullPartial: '',
-        qtyDelivered: '0',
-        eta: '',
-        etd: '',
-        shippingLine: '',
-        shippingDetails: [],
-        isNew: false,
-        validationWarnings: null,
-    };
-    const initialSenderObject = {
-        id: null,
-        senderName: '',
-        senderContact: '',
-        senderEmail: '',
-        senderAddress: '',
-        status: 'Created',
-        fullPartial: '',
-        qtyDelivered: '0',
-        eta: '',
-        etd: '',
-        shippingLine: '',
-        shippingDetails: [],
-        isNew: false,
-        validationWarnings: null,
-    };
-    const initialShippingDetail = {
-        deliveryAddress: '',
-        pickupLocation: '',
-        category: '',
-        totalNumber: '',
-        weight: '',
-        remainingItems: '',
-        deliveredItems: '0',
-    };
-    const [showAllColumns, setShowAllColumns] = useState(false); // Default to compact for better mobile
-    const [columnVisibility, setColumnVisibility] = useState({
-        id: true,
-        name: true,
-        booking_ref: true,
-        category: true,
-        totalPC: true,
-        wt: true,
-        assigned: true,
-        remainingQty: true,
-        deliveredQty: true, // New: Delivered Qty column
-        address: true,
-        contact: true,
-        email: true,
-        containers: true,
-        action: true
-    });
-    const [columnAnchorEl, setColumnAnchorEl] = useState(null);
-    const [editingReceiverId, setEditingReceiverId] = useState(null);
-    const [tempQty, setTempQty] = useState(0);
-    // New states for edit receiver modal
-    const [openEditModal, setOpenEditModal] = useState(false);
-    const [selectedReceiver, setSelectedReceiver] = useState(null);
-    const [editForm, setEditForm] = useState({
-        receiverName: '',
-        receiverContact: '',
-        receiverEmail: '',
-        receiverAddress: '',
-        category: '', // Receiver-level category if needed
-        totalNumber: 0,
-        totalWeight: 0,
-        status: 'Created',
-        shippingDetails: [] // Array for multiple shipping details
-    });
-    const [editErrors, setEditErrors] = useState({});
-    // Updated: Quantities for assignment per receiver per shipping detail
-    const [assignmentQuantities, setAssignmentQuantities] = useState({}); // { [`${orderId}-${receiverId}-${detailIdx}`]: qty }
-    // New: Local state for detailed orders data (fetched on demand)
-    const [detailedOrders, setDetailedOrders] = useState({}); // { [orderId]: fullOrderData }
-    const [fetchingDetails, setFetchingDetails] = useState(false);
-    // New: Containers selection per detail
-    const [selectedContainersPerDetail, setSelectedContainersPerDetail] = useState({}); // { [`${orderId}-${recId}-${detailIdx}`]: [cid1, ...] }
-    // New: Expanded receivers for inline details
-    const [expandedReceivers, setExpandedReceivers] = useState(new Set());
-    const [editingAssignReceiverId, setEditingAssignReceiverId] = useState(null);
-    const [tempAssignQty, setTempAssignQty] = useState(0);
-    const availableContainers = useMemo(() => containers.filter(c => c.derived_status === 'Available'), [containers]);
-    // Column visibility handlers
-    const handleColumnMenuOpen = (event) => {
-        setColumnAnchorEl(event.currentTarget);
-    };
-    const handleColumnMenuClose = () => {
-        setColumnAnchorEl(null);
-    };
-    const handleColumnToggle = (event, column) => {
-        setColumnVisibility(prev => ({ ...prev, [column]: event.target.checked }));
-    };
-    // Utility functions
-    const getDetailKey = useCallback((orderId, recId, detailIdx) => `${orderId}-${recId}-${detailIdx}`, []);
-    const getGloballySelectedCids = useCallback(() => Object.values(selectedContainersPerDetail).flat(), [selectedContainersPerDetail]);
-    const getAvailableContainersForKey = useCallback((key) => {
-        const globalSelected = getGloballySelectedCids();
-        const currentSelected = selectedContainersPerDetail[key] || [];
-        return availableContainers.filter(c => !globalSelected.includes(c.cid) || currentSelected.includes(c.cid));
-    }, [selectedContainersPerDetail, availableContainers, getGloballySelectedCids]);
-    // Handle container change
-    const handleContainerChange = useCallback((key, newValue) => {
-        setSelectedContainersPerDetail(prev => ({ ...prev, [key]: newValue }));
-    }, []);
-    // Handle quantity change for detail
-    const handleQuantityChange = (key, value) => {
-        const qty = Math.max(0, parseInt(value) || 0);
-        setAssignmentQuantities(prev => ({
-            ...prev,
-            [key]: qty
-        }));
-    };
-    // Handle toggle expanded for receiver details
-    const toggleExpanded = useCallback((orderId, recId) => {
-        const key = `${orderId}-${recId}`;
-        setExpandedReceivers(prev => {
-            const newSet = new Set(prev);
-            if (newSet.has(key)) {
-                newSet.delete(key);
-            } else {
-                newSet.add(key);
-            }
-            return newSet;
-        });
-    }, []);
-    // Handle remove containers for a receiver (clear all details for this rec)
-    const handleRemoveContainersForReceiver = (recId, orderId) => {
-        setSelectedContainersPerDetail(prev => {
-            const newState = { ...prev };
-            Object.keys(newState).forEach(k => {
-                if (k.startsWith(`${orderId}-${recId}-`)) {
-                    delete newState[k];
-                }
-            });
-            return newState;
-        });
-        // Optionally clear quantities too
-        setAssignmentQuantities(prev => {
-            const newState = { ...prev };
-            Object.keys(newState).forEach(k => {
-                if (k.startsWith(`${orderId}-${recId}-`)) {
-                    delete newState[k];
-                }
-            });
-            return newState;
-        });
-        // Collapse if expanded
-        toggleExpanded(orderId, recId);
-    };
-    // Handle remove specific detail assignment
-    const handleRemoveDetailAssignment = (orderId, recId, detailIdx) => {
-        const key = getDetailKey(orderId, recId, detailIdx);
-        setSelectedContainersPerDetail(prev => {
-            const newState = { ...prev };
-            delete newState[key];
-            return newState;
-        });
-        setAssignmentQuantities(prev => {
-            const newState = { ...prev };
-            delete newState[key];
-            return newState;
-        });
-    };
-    // Added: fetchOrder function (integrated for single order fetch)
-    const fetchOrder = async (id) => {
-        setFetchingDetails(true);
-        try {
-            const response = await api.get(`/api/orders/${id}`, { params: { includeContainer: true } });
-            if (!response.data) {
-                throw new Error('Invalid response data');
-            }
-            console.log('Fetched order data:', response.data);
-            // Map snake_case to camelCase for core fields
-            const camelData = {};
-            Object.keys(response.data).forEach(apiKey => {
-                let value = response.data[apiKey];
-                if (value === null || value === undefined) value = '';
-                if (['eta', 'etd', 'drop_date', 'delivery_date'].includes(apiKey)) {
-                    if (value) {
-                        const date = new Date(value);
-                        if (!isNaN(date.getTime())) {
-                            value = date.toISOString().split('T')[0]; // YYYY-MM-DD
-                        }
-                    } else {
-                        value = '';
-                    }
-                }
-                const camelKey = snakeToCamel(apiKey);
-                camelData[camelKey] = value;
-            });
-            // Set senderType from API
-            camelData.senderType = response.data.sender_type || 'sender';
-            // Map owner fields
-            const ownerPrefix = camelData.senderType === 'sender' ? 'sender' : 'receiver';
-            const ownerFields = ['name', 'contact', 'address', 'email', 'ref', 'remarks'];
-            ownerFields.forEach(field => {
-                const apiKey = `${ownerPrefix}_${field}`;
-                const snakeVal = response.data[apiKey];
-                if (snakeVal !== null && snakeVal !== undefined) {
-                    camelData[`${ownerPrefix}${field.charAt(0).toUpperCase() + field.slice(1)}`] = snakeVal;
-                }
-            });
-            // Handle panel2 - dynamic based on senderType
-            // API always provides 'receivers' array, which maps to panel2 items
-            const panel2ApiKey = 'receivers';
-            const panel2Prefix = camelData.senderType === 'sender' ? 'receiver' : 'sender';
-            const panel2ListKey = camelData.senderType === 'sender' ? 'receivers' : 'senders';
-            const initialItem = panel2Prefix === 'receiver' ? initialReceiver : initialSenderObject;
-            let mappedPanel2 = [];
-            if (response.data[panel2ApiKey]) {
-                mappedPanel2 = (response.data[panel2ApiKey] || []).map(rec => {
-                    if (!rec) return null;
-                    const camelRec = {
-                        ...initialItem,
-                        shippingDetails: [],
-                        isNew: false,
-                        validationWarnings: null
-                    };
-                    Object.keys(rec).forEach(apiKey => {
-                        let val = rec[apiKey];
-                        if (val === null || val === undefined) val = '';
-                        const camelKey = snakeToCamel(apiKey);
-                        if (['name', 'contact', 'address', 'email'].includes(camelKey)) {
-                            camelRec[`${panel2Prefix}${camelKey.charAt(0).toUpperCase() + camelKey.slice(1)}`] = val;
-                        } else {
-                            camelRec[camelKey] = val;
-                        }
-                    });
-                    // Handle legacy shipping_detail to array
-                    if (rec.shipping_detail) {
-                        const sd = { ...rec.shipping_detail };
-                        Object.keys(sd).forEach(key => {
-                            const camelKey = snakeToCamel(key);
-                            sd[camelKey] = sd[key];
-                            delete sd[key];
-                        });
-                        camelRec.shippingDetails = [sd];
-                    }
-                    // If no shippingDetails, create default one from receiver-level totals
-                    if (!camelRec.shippingDetails || camelRec.shippingDetails.length === 0) {
-                        camelRec.shippingDetails = [{
-                            ...initialShippingDetail,
-                            totalNumber: rec.total_number || '',
-                            weight: rec.total_weight || ''
-                        }];
-                    }
-                    camelRec.status = rec.status || "Created";
-                    // New fields default
-                    camelRec.fullPartial = camelRec.fullPartial || '';
-                    camelRec.qtyDelivered = camelRec.qtyDelivered != null ? String(camelRec.qtyDelivered) : '0';
-                    console.log('Mapped panel2 record:', camelRec);
-                    return camelRec;
-                }).filter(Boolean);
-            }
-            // Fallback panel2 fields to order-level if empty
-            mappedPanel2.forEach(rec => {
-                if (rec.eta === '' && camelData.eta) {
-                    rec.eta = camelData.eta;
-                }
-                if (rec.etd === '' && camelData.etd) {
-                    rec.etd = camelData.etd;
-                }
-                if (rec.shippingLine === '' && camelData.shippingLine) {
-                    rec.shippingLine = camelData.shippingLine;
-                }
-            });
-            // Updated: Compute remainingItems and deliveredItems proportionally always
-            mappedPanel2 = mappedPanel2.map(rec => {
-                const shippingDetails = rec.shippingDetails || [];
-                const recTotal = shippingDetails.reduce((sum, sd) => sum + (parseInt(sd.totalNumber || 0) || 0), 0);
-                const delivered = parseInt(rec.qtyDelivered || 0) || 0;
-                const recRemaining = Math.max(0, recTotal - delivered);
-                const updatedDetails = shippingDetails.map(sd => {
-                    const sdTotal = parseInt(sd.totalNumber || 0) || 0;
-                    const proportion = recTotal > 0 ? sdTotal / recTotal : 0;
-                    const sdRemaining = Math.round(proportion * recRemaining);
-                    const sdDelivered = Math.round(proportion * delivered);
-                    return { ...sd, remainingItems: sdRemaining.toString(), deliveredItems: sdDelivered.toString() };
-                });
-                rec.shippingDetails = updatedDetails;
-                // Validation warnings
-                let warnings = null;
-                const isInvalidTotal = recTotal <= 0;
-                const isPartialInvalid = rec.fullPartial === 'Partial' && delivered > recTotal;
-                if (isInvalidTotal || isPartialInvalid) {
-                    warnings = {};
-                    if (isInvalidTotal) warnings.totalNumber = 'Must be positive';
-                    if (isPartialInvalid) warnings.qtyDelivered = 'Cannot exceed totalNumber';
-                }
-                rec.validationWarnings = warnings;
-                return rec;
-            });
-            camelData[panel2ListKey] = mappedPanel2;
-            if (!camelData[panel2ListKey] || camelData[panel2ListKey].length === 0) {
-                camelData[panel2ListKey] = [{
-                    ...initialItem,
-                    shippingDetails: [],
-                    isNew: true
-                }];
-            }
-            // Ensure the other list is empty
-            const otherListKey = panel2ListKey === 'receivers' ? 'senders' : 'receivers';
-            camelData[otherListKey] = [];
-            // Attachments/gatepass
-            const cleanAttachments = (paths) => (paths || []).map(path => {
-                if (typeof path === 'string' && path.startsWith('function wrap()')) {
-                    return path.substring(62);
-                }
-                return path;
-            });
-            camelData.attachments = cleanAttachments(camelData.attachments || []);
-            camelData.gatepass = cleanAttachments(camelData.gatepass || []);
-            const apiBase = import.meta.env.VITE_API_URL;
-            camelData.attachments = camelData.attachments.map(path =>
-                path.startsWith('http') ? path : `${apiBase}${path}`
-            );
-            camelData.gatepass = camelData.gatepass.map(path =>
-                path.startsWith('http') ? path : `${apiBase}${path}`
-            );
-            return camelData; // Return for use in modal
-        } catch (err) {
-            console.error("Error fetching order:", err);
-            throw err; // Re-throw for caller to handle
-        } finally {
-            setFetchingDetails(false);
-        }
-    };
-    // New: Fetch detailed data for all selected orders on modal open
-    useEffect(() => {
-        if (openAssignModal && selectedOrders.length > 0) {
-            const fetchAllDetails = async () => {
-                const updatedOrders = { ...detailedOrders };
-                for (const orderId of selectedOrders) {
-                    if (!updatedOrders[orderId]) {
-                        try {
-                            const fullOrder = await fetchOrder(orderId);
-                            updatedOrders[orderId] = fullOrder;
-                        } catch (err) {
-                            console.error(`Failed to fetch details for order ${orderId}:`, err);
-                        }
-                    }
-                }
-                setDetailedOrders(updatedOrders);
-                if (onRefreshOrders) onRefreshOrders(); // Optional parent refresh
-            };
-            fetchAllDetails();
-        }
-    }, [openAssignModal, selectedOrders]); // Trigger on open and selection change
-    // Updated handleEditReceiver to use detailed data
-    const handleEditReceiver = async (rec) => {
-        try {
-            // Fetch fresh data for this order to get full receiver details
-            const orderId = rec.orderId;
-            if (!detailedOrders[orderId]) {
-                await fetchOrder(orderId); // This updates detailedOrders
-            }
-            const fullOrder = detailedOrders[orderId] || orders.find(o => o.id === orderId);
-            const fullRec = fullOrder.receivers?.find(r => r.id === rec.id);
-            console.log('Editing receiver, fetched fullRec:', fullRec);
-            if (fullRec) {
-                setSelectedReceiver(fullRec);
-                setEditForm({
-                    receiverName: fullRec.receiverName || '',
-                    receiverContact: fullRec.receiverContact || '',
-                    receiverEmail: fullRec.receiverEmail || '',
-                    receiverAddress: fullRec.receiverAddress || '',
-                    category: fullRec.category || '',
-                    totalNumber: fullRec.totalNumber || 0,
-                    totalWeight: fullRec.totalWeight || 0,
-                    status: fullRec.status || 'Created',
-                    shippingDetails: fullRec.shippingDetails || [] // Full array from fetch
-                });
-            } else {
-                // Fallback to prop data
-                setEditForm({
-                    receiverName: rec.receiverName || '',
-                    receiverContact: rec.receiverContact || '',
-                    receiverEmail: rec.receiverEmail || '',
-                    receiverAddress: rec.receiverAddress || '',
-                    category: rec.category || '',
-                    totalNumber: rec.totalNumber || 0,
-                    totalWeight: rec.totalWeight || 0,
-                    status: rec.status || 'Created',
-                    shippingDetails: rec.shippingDetails || []
-                });
-            }
-            setEditErrors({});
-            setOpenEditModal(true);
-        } catch (err) {
-            console.error('Error fetching receiver details:', err);
-            // Fallback to basic edit
-            setEditForm({
-                receiverName: rec.receiverName || '',
-                receiverContact: rec.receiverContact || '',
-                receiverEmail: rec.receiverEmail || '',
-                receiverAddress: rec.receiverAddress || '',
-                category: rec.category || '',
-                totalNumber: rec.totalNumber || 0,
-                totalWeight: rec.totalWeight || 0,
-                status: rec.status || 'Created',
-                shippingDetails: rec.shippingDetails || []
-            });
-            setEditErrors({});
-            setOpenEditModal(true);
-        }
-    };
-    // Handle form changes
-    const handleEditChange = (e) => {
-        const { name, value } = e.target;
-        setEditForm(prev => ({ ...prev, [name]: value }));
-        // Clear error on change
-        if (editErrors[name]) {
-            setEditErrors(prev => ({ ...prev, [name]: '' }));
-        }
-    };
-    // Validate form
-    const validateForm = () => {
-        const errors = {};
-        if (!editForm.receiverName.trim()) errors.receiverName = 'Receiver name is required';
-        if (!editForm.receiverAddress.trim()) errors.receiverAddress = 'Address is required';
-        if (!editForm.receiverContact.trim()) errors.receiverContact = 'Contact is required';
-        if (!editForm.receiverEmail.trim() || !/\S+@\S+\.\S+/.test(editForm.receiverEmail)) {
-            errors.receiverEmail = 'Valid email is required';
-        }
-        setEditErrors(errors);
-        return Object.keys(errors).length === 0;
-    };
-    // Handle save/update
-    const handleSaveReceiver = () => {
-        if (!validateForm()) return;
-        // Call parent callback to update
-        if (onUpdateReceiver && selectedReceiver) {
-            onUpdateReceiver({
-                ...selectedReceiver,
-                ...editForm
-            });
-        }
-        // Close modal
-        setOpenEditModal(false);
-        setSelectedReceiver(null);
-        setEditForm({
-            receiverName: '',
-            receiverContact: '',
-            receiverEmail: '',
-            receiverAddress: '',
-            category: '',
-            totalNumber: 0,
-            totalWeight: 0,
-            status: 'Created',
-            shippingDetails: []
-        }); // Reset form
-    };
-    // Updated: Enhanced handleAssign to build nested assignments per detail
-    const enhancedHandleAssign = () => {
-        if (selectedOrders.length === 0) return;
-        const assignments = selectedOrders.reduce((acc, orderId) => {
-            acc[orderId] = {};
-            const fullOrder = detailedOrders[orderId] || orders.find(o => o.id === orderId);
-            if (fullOrder?.receivers) {
-                fullOrder.receivers.forEach(rec => {
-                    const details = rec.shippingDetails || [];
-                    acc[orderId][rec.id] = details.reduce((recAcc, _, idx) => {
-                        const key = getDetailKey(orderId, rec.id, idx);
-                        const qty = assignmentQuantities[key] || 0;
-                        const conts = selectedContainersPerDetail[key] || [];
-                        if (qty > 0 && conts.length > 0) {
-                            recAcc[idx] = { qty, containers: conts };
-                        }
-                        return recAcc;
-                    }, {});
-                    if (Object.keys(acc[orderId][rec.id]).length === 0) {
-                        delete acc[orderId][rec.id];
-                    }
-                });
-                if (Object.keys(acc[orderId]).length === 0) {
-                    delete acc[orderId];
-                }
-            }
-            return acc;
-        }, {});
-        // Check if any assignments are set
-        if (Object.keys(assignments).length === 0) {
-            alert('Please specify quantities and containers for at least one shipping detail before assigning.');
-            return;
-        }
-        // Call handleAssign with nested assignments
-        handleAssign(assignments);
-    };
-    const totalReceivers = selectedOrders.reduce((total, orderId) => {
-        const order = orders.find(o => o.id === orderId);
-        console.log('Calculating receivers for order:', orderId, order);
-        return total + (order ? (order.receivers ? order.receivers.length : 0) : 0);
-    }, 0);
-    console.log('Available Containers:', selectedOrders, availableContainers);
-    // Compute summary for right card
-    const totalAssignedDetails = useMemo(() => {
-        let count = 0;
-        selectedOrders.forEach(orderId => {
-            const fullOrder = detailedOrders[orderId] || orders.find(o => o.id === orderId);
-            if (fullOrder?.receivers) {
-                fullOrder.receivers.forEach(rec => {
-                    const details = rec.shippingDetails || [];
-                    details.forEach((_, idx) => {
-                        const key = getDetailKey(orderId, rec.id, idx);
-                        const qty = assignmentQuantities[key] || 0;
-                        const conts = selectedContainersPerDetail[key] || [];
-                        if (qty > 0 && conts.length > 0) count++;
-                    });
-                });
-            }
-        });
-        return count;
-    }, [selectedOrders, detailedOrders, orders, assignmentQuantities, selectedContainersPerDetail, getDetailKey]);
-    const totalContainersUsed = useMemo(() => new Set(getGloballySelectedCids()).size, [getGloballySelectedCids]);
-    // New: Total delivered across all
-    const totalDelivered = useMemo(() => {
-        let sum = 0;
-        selectedOrders.forEach(orderId => {
-            const fullOrder = detailedOrders[orderId] || orders.find(o => o.id === orderId);
-            if (fullOrder?.receivers) {
-                fullOrder.receivers.forEach(rec => {
-                    sum += parseInt(rec.qtyDelivered || 0);
-                });
-            }
-        });
-        return sum;
-    }, [selectedOrders, detailedOrders, orders]);
-    // Compute detailed assignments for the preview table
-    const detailedAssignments = useMemo(() => {
-        const assignments = [];
-        selectedOrders.forEach(orderId => {
-            const fullOrder = detailedOrders[orderId] || orders.find(o => o.id === orderId);
-            if (fullOrder?.receivers) {
-                fullOrder.receivers.forEach(rec => {
-                    const details = rec.shippingDetails || [];
-                    details.forEach((detail, idx) => {
-                        const key = getDetailKey(orderId, rec.id, idx);
-                        const qty = assignmentQuantities[key] || 0;
-                        const conts = selectedContainersPerDetail[key] || [];
-                        if (qty > 0 && conts.length > 0) {
-                            const containerNumbers = conts.map(cid => availableContainers.find(c => c.cid === cid)?.container_number || cid).join(', ');
-                            assignments.push({
-                                orderRef: fullOrder.bookingRef || 'N/A',
-                                receiverName: rec.receiverName || 'N/A',
-                                detailAddress: detail.deliveryAddress || `Detail ${idx + 1}`,
-                                qty,
-                                containers: containerNumbers,
-                                detailIdx: idx,
-                                recId: rec.id,
-                                orderId
-                            });
-                        }
-                    });
-                });
-            }
-        });
-        return assignments;
-    }, [selectedOrders, detailedOrders, orders, assignmentQuantities, selectedContainersPerDetail, availableContainers, getDetailKey]);
-    // Improved theme colors for better visual appeal
-    const themeColors = {
-        primary: '#f58220',
-        secondary: '#1a9c8f',
-        background: '#f8f9fa',
-        surface: '#ffffff',
-        border: '#e0e0e0',
-        textPrimary: '#212121',
-        textSecondary: '#757575',
-        success: '#4caf50',
-        warning: '#ff9800',
-        error: '#f44336'
-    };
-    return (
-        <>
-            <Dialog
-                open={openAssignModal}
-                onClose={() => setOpenAssignModal(false)}
-                maxWidth={'xl'}
-                fullWidth
-                aria-labelledby="assign-modal-title"
-                aria-describedby="assign-modal-description"
-                PaperProps={{
-                    sx: {
-                        borderRadius: 3,
-                        maxHeight: '95vh',
-                        overflow: 'hidden',
-                        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.12)',
-                    }
-                }}
-            >
-                <DialogTitle sx={{
-                    bgcolor: "#0d6c6a",
-                    // bgcolor: `linear-gradient(135deg, #0d6c6a, 0%, #0d6c6a, 100%)`,
-                    color: 'common.white',
-                    borderRadius: '12px 12px 0 0',
-                    py: { xs: 2, sm: 2.5 },
-                    px: { xs: 2, sm: 3 },
-                    position: 'relative',
-                    '&::after': {
-                        content: '""',
-                        position: 'absolute',
-                        bottom: 0,
-                        left: 0,
-                        right: 0,
-                        height: '2px',
-                        bgcolor: '#0d6c6a',
-                    }
-                }} id="assign-modal-title">
-                    <Stack direction="row" justifyContent="space-between" alignItems="center">
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                            <LocalShippingIcon sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }} aria-hidden="true" />
-                            <Typography variant={{ xs: 'h6', sm: 'h5' }} fontWeight="bold">
-                                Assign Selected Orders to Container
-                            </Typography>
-                            <Chip
-                                label={`(${selectedOrders.length} Orders)`}
-                                size="small"
-                                color="secondary"
-                                variant="filled"
-                                sx={{
-                                    ml: 1,
-                                    fontSize: { xs: '0.7rem', sm: '0.8rem' },
-                                    bgcolor: 'rgba(255, 255, 255, 0.2)',
-                                    color: 'white',
-                                }}
-                            />
-                        </Box>
-                        <IconButton
-                            onClick={() => setOpenAssignModal(false)}
-                            aria-label="Close assign modal"
-                            sx={{
-                                color: 'white',
-                                '&:hover': {
-                                    bgcolor: 'rgba(255,255,255,0.1)',
-                                    transform: 'scale(1.05)',
-                                    transition: 'all 0.2s ease',
-                                }
-                            }}
-                        >
-                            <CloseIcon />
-                        </IconButton>
-                    </Stack>
-                </DialogTitle>
-          <DialogContent sx={{
-    mt: 2,
-    p: { xs: 2, sm: 3 },
-    overflow: 'auto',
-    height: '80vh',
-    maxHeight: '80vh',
-    bgcolor: themeColors.background,
-}} id="assign-modal-description">
-    <Grid justifyContent="space-between" mb={3} spacing={{ xs: 2, sm: 3 }}>
-        <Grid item xs={12}>
-            <Card sx={{
-                boxShadow: '0 4px 20px rgba(13, 108, 106, 0.08)',
-                borderRadius: 3,
-                border: `1px solid ${themeColors.border}`,
-                '&:hover': {
-                    boxShadow: '0 8px 32px rgba(245, 130, 32, 0.12)',
-                    transform: 'translateY(-2px)',
-                    transition: 'all 0.3s ease',
-                },
-                bgcolor: themeColors.surface,
-            }}>
-                <CardContent sx={{ width: '100%' }}>
-                    <Stack direction="row" alignItems="center" justifyContent="space-between" mb={3} flexWrap="wrap" gap={1}>
-                        <Stack direction="row" alignItems="center" gap={1.5}>
-                            <PersonIcon color="primary" sx={{ fontSize: { xs: '1.2rem', sm: '1.5rem' } }} aria-hidden="true" />
-                            <Typography variant={{ xs: 'h6', sm: 'h5' }} fontWeight="bold" color={themeColors.primary}>
-                                All Receivers Details
-                            </Typography>
-                            <Chip
-                                label={`(${totalReceivers})`}
-                                size="small"
-                                color="info"
-                                sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}
-                            />
-                        </Stack>
-                        <Stack direction="row" gap={1.5}>
-                            <Tooltip title={showAllColumns ? "Switch to Compact View" : "Show All Columns"}>
-                                <Button
-                                    variant="text"
-                                    size="small"
-                                    onClick={() => setShowAllColumns(!showAllColumns)}
-                                    aria-label={`Toggle view to ${showAllColumns ? 'full' : 'compact'}`}
-                                    sx={{
-                                        color: themeColors.primary,
-                                        minWidth: 'auto',
-                                        fontSize: { xs: '0.75rem', sm: '0.875rem' },
-                                        '&:hover': { bgcolor: 'rgba(245, 130, 32, 0.08)' },
-                                    }}
-                                >
-                                    <ViewColumnIcon fontSize="small" sx={{ mr: 0.5 }} />
-                                    {showAllColumns ? 'Compact' : 'Full'}
-                                </Button>
-                            </Tooltip>
-                            <Tooltip title="Customize Columns">
-                                <Button
-                                    variant="outlined"
-                                    size="small"
-                                    onClick={handleColumnMenuOpen}
-                                    aria-label="Customize visible columns"
-                                    sx={{
-                                        color: themeColors.primary,
-                                        borderColor: themeColors.primary,
-                                        minWidth: 'auto',
-                                        px: 2,
-                                        fontSize: { xs: '0.75rem', sm: '0.875rem' },
-                                        '&:hover': {
-                                            borderColor: themeColors.primary,
-                                            bgcolor: 'rgba(245, 130, 32, 0.08)',
-                                        },
-                                    }}
-                                >
-                                    Columns
-                                </Button>
-                            </Tooltip>
-                        </Stack>
-                    </Stack>
-                    <TableContainer sx={{
-                        maxHeight: { xs: 320, sm: 380 },
-                        overflow: 'auto',
-                        overflowX: 'scroll',
-                        borderRadius: 2,
-                        border: `1px solid ${themeColors.border}`,
-                        bgcolor: themeColors.surface,
-                        '&::-webkit-scrollbar': {
-                            height: '6px',
-                            width: '6px',
-                        },
-                        '&::-webkit-scrollbar-thumb': {
-                            backgroundColor: themeColors.primary,
-                            borderRadius: '3px',
-                        },
-                        '&::-webkit-scrollbar-track': {
-                            backgroundColor: themeColors.background,
-                        },
-                    }} role="table" aria-label="Receivers details table">
-                        <Table size="small" stickyHeader sx={{ minWidth: { xs: 800, sm: 1400 } }}>
-                            <TableHead sx={{
-                                bgcolor: `linear-gradient(135deg, ${themeColors.background} 0%, #e9ecef 100%)`,
-                                position: 'sticky',
-                                top: 0,
-                                zIndex: 1,
-                            }}>
-                                <TableRow>
-                                    <TableCell sx={{
-                                        fontWeight: 700,
-                                        color: themeColors.primary,
-                                        px: { xs: 1.5, sm: 2 },
-                                        py: 1.75,
-                                        fontSize: { xs: '0.8rem', sm: '0.875rem' },
-                                        borderBottom: `2px solid ${themeColors.border}`,
-                                        display: columnVisibility.id ? 'table-cell' : 'none'
-                                    }} aria-sort="none">ID</TableCell>
-                                    <TableCell sx={{
-                                        fontWeight: 700,
-                                        color: themeColors.primary,
-                                        px: { xs: 1.5, sm: 2 },
-                                        py: 1.75,
-                                        fontSize: { xs: '0.8rem', sm: '0.875rem' },
-                                        borderBottom: `2px solid ${themeColors.border}`,
-                                        display: columnVisibility.name ? 'table-cell' : 'none'
-                                    }} aria-sort="none">Name</TableCell>
-                                    <TableCell sx={{
-                                        fontWeight: 700,
-                                        color: themeColors.primary,
-                                        px: { xs: 1.5, sm: 2 },
-                                        py: 1.75,
-                                        fontSize: { xs: '0.8rem', sm: '0.875rem' },
-                                        borderBottom: `2px solid ${themeColors.border}`,
-                                        display: columnVisibility.booking_ref ? 'table-cell' : 'none'
-                                    }} aria-sort="none">Order Ref</TableCell>
-                                    {/* <TableCell sx={{
-                                        fontWeight: 700,
-                                        color: themeColors.primary,
-                                        px: { xs: 1.5, sm: 2 },
-                                        py: 1.75,
-                                        fontSize: { xs: '0.8rem', sm: '0.875rem' },
-                                        borderBottom: `2px solid ${themeColors.border}`,
-                                        display: columnVisibility.category ? 'table-cell' : 'none'
-                                    }} aria-sort="none">Category</TableCell> */}
-                                    <TableCell sx={{
-                                        fontWeight: 700,
-                                        color: themeColors.primary,
-                                        px: { xs: 1.5, sm: 2 },
-                                        py: 1.75,
-                                        fontSize: { xs: '0.8rem', sm: '0.875rem' },
-                                        borderBottom: `2px solid ${themeColors.border}`,
-                                        display: { xs: showAllColumns && columnVisibility.address ? 'table-cell' : 'none', sm: columnVisibility.address ? 'table-cell' : 'none' }
-                                    }} aria-sort="none">Address</TableCell>
-                                    <TableCell sx={{
-                                        fontWeight: 700,
-                                        color: themeColors.primary,
-                                        px: { xs: 1.5, sm: 2 },
-                                        py: 1.75,
-                                        fontSize: { xs: '0.8rem', sm: '0.875rem' },
-                                        borderBottom: `2px solid ${themeColors.border}`,
-                                        display: { xs: showAllColumns && columnVisibility.contact ? 'table-cell' : 'none', sm: columnVisibility.contact ? 'table-cell' : 'none' }
-                                    }} aria-sort="none">Contact</TableCell>
-                                    <TableCell sx={{
-                                        fontWeight: 700,
-                                        color: themeColors.primary,
-                                        px: { xs: 1.5, sm: 2 },
-                                        py: 1.75,
-                                        fontSize: { xs: '0.8rem', sm: '0.875rem' },
-                                        borderBottom: `2px solid ${themeColors.border}`,
-                                        display: { xs: showAllColumns && columnVisibility.email ? 'table-cell' : 'none', sm: columnVisibility.email ? 'table-cell' : 'none' }
-                                    }} aria-sort="none">Email</TableCell>
-                                    <TableCell sx={{
-                                        fontWeight: 700,
-                                        color: themeColors.primary,
-                                        px: { xs: 1.5, sm: 2 },
-                                        py: 1.75,
-                                        fontSize: { xs: '0.8rem', sm: '0.875rem' },
-                                        borderBottom: `2px solid ${themeColors.border}`,
-                                        display: { xs: showAllColumns && columnVisibility.wt ? 'table-cell' : 'none', sm: columnVisibility.wt ? 'table-cell' : 'none' }
-                                    }} aria-sort="none">Wt (kg)</TableCell>
-                                    <TableCell sx={{
-                                        fontWeight: 700,
-                                        color: themeColors.primary,
-                                        px: { xs: 1.5, sm: 2 },
-                                        py: 1.75,
-                                        fontSize: { xs: '0.8rem', sm: '0.875rem' },
-                                        borderBottom: `2px solid ${themeColors.border}`,
-                                        display: columnVisibility.totalPC ? 'table-cell' : 'none'
-                                    }} aria-sort="none">Total PC</TableCell>
-                                    <TableCell sx={{
-                                        fontWeight: 700,
-                                        color: themeColors.primary,
-                                        px: { xs: 1.5, sm: 2 },
-                                        py: 1.75,
-                                        fontSize: { xs: '0.8rem', sm: '0.875rem' },
-                                        borderBottom: `2px solid ${themeColors.border}`,
-                                        display: columnVisibility.deliveredQty ? 'table-cell' : 'none' // New: Delivered Qty column
-                                    }} aria-sort="none">Delivered</TableCell>
-                                    <TableCell sx={{
-                                        fontWeight: 700,
-                                        color: themeColors.primary,
-                                        px: { xs: 1.5, sm: 2 },
-                                        py: 1.75,
-                                        fontSize: { xs: '0.8rem', sm: '0.875rem' },
-                                        borderBottom: `2px solid ${themeColors.border}`,
-                                        display: columnVisibility.remainingQty ? 'table-cell' : 'none'
-                                    }} aria-sort="none">Remaining</TableCell>
-                                    {/* Hidden Assigned Qty column */}
-                                    <TableCell sx={{
-                                        fontWeight: 700,
-                                        color: themeColors.primary,
-                                        px: { xs: 1.5, sm: 2 },
-                                        py: 1.75,
-                                        fontSize: { xs: '0.8rem', sm: '0.875rem' },
-                                        borderBottom: `2px solid ${themeColors.border}`,
-                                        display: 'none'
-                                    }} aria-sort="none">Assigned Qty</TableCell>
-                                    <TableCell sx={{
-                                        fontWeight: 700,
-                                        color: themeColors.primary,
-                                        px: { xs: 1.5, sm: 2 },
-                                        py: 1.75,
-                                        fontSize: { xs: '0.8rem', sm: '0.875rem' },
-                                        borderBottom: `2px solid ${themeColors.border}`
-                                    }} aria-label="Assign quantity">Assign Qty</TableCell>
-                                    <TableCell sx={{
-                                        fontWeight: 700,
-                                        color: themeColors.primary,
-                                        px: { xs: 1.5, sm: 2 },
-                                        py: 1.75,
-                                        fontSize: { xs: '0.8rem', sm: '0.875rem' },
-                                        borderBottom: `2px solid ${themeColors.border}`,
-                                        display: { xs: showAllColumns && columnVisibility.containers ? 'table-cell' : 'none', sm: columnVisibility.containers ? 'table-cell' : 'none' }
-                                    }} aria-sort="none">Containers</TableCell>
-                                    {/* Hidden Actions column */}
-                                 
-                                </TableRow>
-                            </TableHead>
-                            <TableBody>
-                                {(() => {
-                                    const allReceivers = selectedOrders.flatMap(orderId => {
-                                        const order = orders.find(o => o.id === orderId);
-                                        return order && order.receivers ? order.receivers.map(rec => ({
-                                            ...rec,
-                                            booking_ref: order.booking_ref,
-                                            orderId: orderId // Add orderId for unique key
-                                        })) : [];
-                                    });
-                                    return allReceivers.map((rec, globalIndex) => {
-// const isEditingAssign = editingAssignReceiverId === rec.id;
-                                        const fullOrder = detailedOrders[rec.orderId] || orders.find(o => o.id === rec.orderId);
-                                        const fullRec = fullOrder?.receivers?.find(r => r.id === rec.id) || rec;
-                                        const shippingDetails = fullRec.shippingDetails || [];
-                                        const totalPC = shippingDetails.reduce((sum, sd) => sum + (parseInt(sd.totalNumber || '0') || 0), 0);
-                                        const totalWeight = shippingDetails.reduce((sum, sd) => sum + (parseFloat(sd.weight || '0') || 0), 0);
-                                        // Fixed: Prioritize fullRec data, cap delivered at totalPC
-                                        let delivered = fullRec && fullRec.qtyDelivered !== undefined ? parseInt(fullRec.qtyDelivered) || 0 : parseInt(rec.qty_delivered || '0') || 0;
-                                        delivered = Math.min(delivered, totalPC);
-                                        const recStatus = fullRec.status || rec.status || 'Created'; // Receiver status
-                                        const recRemaining = Math.max(0, totalPC - delivered);
-                                        const address = shippingDetails.map(detail => detail.deliveryAddress || '').filter(Boolean).join(', ') || fullRec.receiverAddress || rec.receiverAddress || 'N/A';
-                                        const contact = fullRec.receiverContact || rec.receiverContact || 'N/A';
-                                        const email = fullRec.receiverEmail || rec.receiverEmail || 'N/A';
-                                        const category = fullRec.category || rec.category || 'N/A';
-console.log('Rendering receiver row:', rec, 'FullRec:', fullRec, 'ShippingDetails:', shippingDetails);
-                                        // Sum assigned qty for this receiver from details
-                                        const totalAssignedQty = shippingDetails.reduce((sum, _, idx) => {
-                                            const key = getDetailKey(rec.orderId, rec.id, idx);
-                                            return sum + (assignmentQuantities[key] || 0);
-                                        }, 0);
-                                        // Sum containers for this receiver
-                                        const totalContForRec = shippingDetails.reduce((sum, _, idx) => {
-                                            const key = getDetailKey(rec.orderId, rec.id, idx);
-                                            return sum + ((selectedContainersPerDetail[key] || []).length);
-                                        }, 0);
-                                        // Local remaining for this row (updates on edit)
-                                        const assignedForRemaining = editingAssignReceiverId === rec.id ? tempAssignQty : totalAssignedQty;
-                                        const localRemaining = Math.max(0, totalPC - delivered - assignedForRemaining);
-                                        // Assigned containers preview for this receiver (from local state)
-                                        const assignedContainersPreview = shippingDetails.reduce((acc, _, idx) => {
-                                            const key = getDetailKey(rec.orderId, rec.id, idx);
-                                            const conts = selectedContainersPerDetail[key] || [];
-                                            return [...acc, ...conts.map(cid => availableContainers.find(c => c.cid === cid)?.container_number || cid)];
-                                        }, []).filter(Boolean);
-                                        const isExpanded = expandedReceivers.has(`${rec.orderId}-${rec.id}`);
-                                        const isEditingAssign = editingAssignReceiverId === rec.id;
-                                        const handleAssignBlur = () => {
-                                            // Distribute tempAssignQty proportionally to details
-                                            const recTotal = totalPC;
-                                            if (recTotal > 0) {
-                                                shippingDetails.forEach((sd, idx) => {
-                                                    const sdTotal = parseInt(sd.totalNumber || 0) || 0;
-                                                    const proportion = sdTotal / recTotal;
-                                                    const newQty = Math.max(0, Math.round(proportion * tempAssignQty));
-                                                    const key = getDetailKey(rec.orderId, rec.id, idx);
-                                                    setAssignmentQuantities(prev => ({ ...prev, [key]: newQty }));
-                                                });
-                                            } else if (shippingDetails.length > 0) {
-                                                // If no total, assign equally or to first
-                                                const equalQty = Math.floor(tempAssignQty / shippingDetails.length);
-                                                shippingDetails.forEach((_, idx) => {
-                                                    const key = getDetailKey(rec.orderId, rec.id, idx);
-                                                    const qty = idx === 0 ? tempAssignQty - (equalQty * (shippingDetails.length - 1)) : equalQty;
-                                                    setAssignmentQuantities(prev => ({ ...prev, [key]: qty }));
-                                                });
-                                            }
-                                            setEditingAssignReceiverId(null);
-                                        };
-                                        const handleAssignKeyDown = (e) => {
-                                            if (e.key === 'Enter') {
-                                                // Distribute tempAssignQty proportionally to details (duplicate logic for Enter)
-                                                const recTotal = totalPC;
-                                                if (recTotal > 0) {
-                                                    shippingDetails.forEach((sd, idx) => {
-                                                        const sdTotal = parseInt(sd.totalNumber || 0) || 0;
-                                                        const proportion = sdTotal / recTotal;
-                                                        const newQty = Math.max(0, Math.round(proportion * tempAssignQty));
-                                                        const key = getDetailKey(rec.orderId, rec.id, idx);
-                                                        setAssignmentQuantities(prev => ({ ...prev, [key]: newQty }));
-                                                    });
-                                                } else if (shippingDetails.length > 0) {
-                                                    const equalQty = Math.floor(tempAssignQty / shippingDetails.length);
-                                                    shippingDetails.forEach((_, idx) => {
-                                                        const key = getDetailKey(rec.orderId, rec.id, idx);
-                                                        const qty = idx === 0 ? tempAssignQty - (equalQty * (shippingDetails.length - 1)) : equalQty;
-                                                        setAssignmentQuantities(prev => ({ ...prev, [key]: qty }));
-                                                    });
-                                                }
-                                                setEditingAssignReceiverId(null);
-                                            } else if (e.key === 'Escape') {
-                                                setEditingAssignReceiverId(null);
-                                            }
-                                        };
-                                        return (
-                                            <>
-                                                <TableRow
-                                                    key={`${rec.orderId}-${rec.id || globalIndex}`} // More unique key using orderId
-                                                    hover
-                                                    sx={{
-                                                        '&:hover': {
-                                                            bgcolor: `rgba(${themeColors.primary}, 0.04)`,
-                                                            transform: 'scale(1.01)',
-                                                        },
-                                                        transition: 'all 0.2s ease',
-                                                        borderBottom: `1px solid ${themeColors.border}`,
-                                                        bgcolor: 'white',
-                                                    }}
-                                                    role="row"
-                                                >
-                                                    <TableCell sx={{
-                                                        px: { xs: 1.5, sm: 2 },
-                                                        py: 1.75,
-                                                        fontSize: { xs: '0.85rem', sm: '0.9rem' },
-                                                        borderBottom: `1px solid ${themeColors.border}`,
-                                                        display: columnVisibility.id ? 'table-cell' : 'none'
-                                                    }} role="cell">{rec.id || 'N/A'}</TableCell>
-                                                    <TableCell sx={{
-                                                        px: { xs: 1.5, sm: 2 },
-                                                        py: 1.75,
-                                                        fontWeight: 600,
-                                                        fontSize: { xs: '0.85rem', sm: '0.9rem' },
-                                                        borderBottom: `1px solid ${themeColors.border}`,
-                                                        display: columnVisibility.name ? 'table-cell' : 'none'
-                                                    }} role="cell">{fullRec.receiverName || rec.receiverName}</TableCell>
-                                                    <TableCell sx={{
-                                                        px: { xs: 1.5, sm: 2 },
-                                                        py: 1.75,
-                                                        fontSize: { xs: '0.85rem', sm: '0.9rem' },
-                                                        borderBottom: `1px solid ${themeColors.border}`,
-                                                        display: columnVisibility.booking_ref ? 'table-cell' : 'none'
-                                                    }} role="cell">{rec.booking_ref}</TableCell>
-                                                        {/* <TableCell sx={{
-                                                            px: { xs: 1.5, sm: 2 },
-                                                            py: 1.75,
-                                                            fontSize: { xs: '0.85rem', sm: '0.9rem' },
-                                                            borderBottom: `1px solid ${themeColors.border}`,
-                                                            display: columnVisibility.category ? 'table-cell' : 'none'
-                                                        }} role="cell">{category}</TableCell> */}
-                                                    <TableCell sx={{
-                                                        px: { xs: 1, sm: 2 },
-                                                        py: 1,
-                                                        fontSize: { xs: '0.8rem', sm: '0.85rem' },
-                                                        maxWidth: { xs: 120, sm: 160 },
-                                                        overflow: 'hidden',
-                                                        textOverflow: 'ellipsis',
-                                                        borderBottom: `1px solid ${themeColors.border}`,
-                                                        display: { xs: showAllColumns && columnVisibility.address ? 'table-cell' : 'none', sm: columnVisibility.address ? 'table-cell' : 'none' }
-                                                    }} role="cell">
-                                                        <Tooltip
-                                                            title={
-                                                                <Box sx={{ p: 1.5, maxWidth: 300 }}>
-                                                                    <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1.5, color: themeColors.textPrimary }}>Shipping Details ({shippingDetails.length || 0}):</Typography>
-                                                                    {shippingDetails.length > 0 ? (
-                                                                        shippingDetails.map((detail, idx) => (
-                                                                            <Box key={idx} sx={{ mb: 1.5, p: 1.5, border: `1px solid ${themeColors.border}`, borderRadius: 2, bgcolor: themeColors.background }}>
-                                                                                <Typography variant="body2" fontWeight="medium" sx={{ mb: 0.5 }}><strong>Detail {idx + 1}:</strong> {detail.deliveryAddress || 'N/A'}</Typography>
-                                                                                <Typography variant="caption" sx={{ display: 'block', mt: 0.5, color: themeColors.textSecondary }}>Pickup: {detail.pickupLocation || 'N/A'} | Category: {detail.category || 'N/A'}</Typography>
-                                                                                <Typography variant="caption" sx={{ display: 'block', color: themeColors.textSecondary }}>Pieces: {detail.totalNumber || 0} | Weight: {detail.weight || 0} kg</Typography>
-                                                                            </Box>
-                                                                        ))
-                                                                    ) : (
-                                                                        <Typography variant="body2" color={themeColors.textSecondary}>No shipping details</Typography>
-                                                                    )}
-                                                                </Box>
-                                                            }
-                                                            arrow
-                                                            placement="top"
-                                                            componentsProps={{
-                                                                tooltip: {
-                                                                    sx: {
-                                                                        bgcolor: themeColors.surface,
-                                                                        color: themeColors.textPrimary,
-                                                                        '& .MuiTooltip-arrow': { color: themeColors.surface }
-                                                                    }
-                                                                }
-                                                            }}
-                                                        >
-                                                            <Typography variant="body2" noWrap sx={{ maxWidth: 140, cursor: 'help', color: themeColors.textSecondary }}>
-                                                                {shippingDetails.length > 1 && <sup style={{ color: themeColors.primary }}>({shippingDetails.length})</sup>}
-                                                 
-                                                                {address.length > 50 ? `${address.substring(0, 50)}...` : address}
-                                                            </Typography>
-                                                        </Tooltip>
-                                                    </TableCell>
-                                                    <TableCell sx={{
-                                                        px: { xs: 1.5, sm: 2 },
-                                                        py: 1.75,
-                                                        fontSize: { xs: '0.85rem', sm: '0.9rem' },
-                                                        maxWidth: { xs: 80, sm: 100 },
-                                                        overflow: 'hidden',
-                                                        textOverflow: 'ellipsis',
-                                                        borderBottom: `1px solid ${themeColors.border}`,
-                                                        display: { xs: showAllColumns && columnVisibility.contact ? 'table-cell' : 'none', sm: columnVisibility.contact ? 'table-cell' : 'none' }
-                                                    }} role="cell">
-                                                        <Typography variant="body2" color={themeColors.textPrimary}>{contact}</Typography>
-                                                    </TableCell>
-                                                    <TableCell sx={{
-                                                        px: { xs: 1.5, sm: 2 },
-                                                        py: 1.75,
-                                                        fontSize: { xs: '0.8rem', sm: '0.85rem' },
-                                                        maxWidth: { xs: 100, sm: 140 },
-                                                        overflow: 'hidden',
-                                                        textOverflow: 'ellipsis',
-                                                        borderBottom: `1px solid ${themeColors.border}`,
-                                                        display: { xs: showAllColumns && columnVisibility.email ? 'table-cell' : 'none', sm: columnVisibility.email ? 'table-cell' : 'none' }
-                                                    }} role="cell">
-                                                        <Typography variant="body2" color={themeColors.textSecondary} noWrap>{email}</Typography>
-                                                    </TableCell>
-                                                    <TableCell sx={{
-                                                        px: { xs: 1.5, sm: 2 },
-                                                        py: 1.75,
-                                                        fontSize: { xs: '0.85rem', sm: '0.9rem' },
-                                                        borderBottom: `1px solid ${themeColors.border}`,
-                                                        display: { xs: showAllColumns && columnVisibility.wt ? 'table-cell' : 'none', sm: columnVisibility.wt ? 'table-cell' : 'none' },
-                                                        color: themeColors.primary
-                                                    }} role="cell">
-                                                        <Typography variant="body2" fontWeight="600">{totalWeight || 0}</Typography>
-                                                    </TableCell>
-                                                    <TableCell sx={{
-                                                        px: { xs: 1.5, sm: 2 },
-                                                        py: 1.75,
-                                                        fontSize: { xs: '0.85rem', sm: '0.9rem' },
-                                                        borderBottom: `1px solid ${themeColors.border}`,
-                                                        display: columnVisibility.totalPC ? 'table-cell' : 'none',
-                                                        color: themeColors.success
-                                                    }} role="cell">
-                                                        <Typography variant="body2" fontWeight="600">{totalPC}</Typography>
-                                                    </TableCell>
-                                                    {/* New: Delivered Qty Column */}
-                                                    <TableCell sx={{
-                                                        px: { xs: 1.5, sm: 2 },
-                                                        py: 1.75,
-                                                        fontSize: { xs: '0.85rem', sm: '0.9rem' },
-                                                        color: themeColors.success,
-                                                        borderBottom: `1px solid ${themeColors.border}`,
-                                                        display: columnVisibility.deliveredQty ? 'table-cell' : 'none'
-                                                    }} role="cell">
-                                                        <Chip
-                                                            label={delivered}
-                                                            size="small"
-                                                            color="success"
-                                                            variant="filled"
-                                                            sx={{
-                                                                fontSize: '0.75rem',
-                                                                fontWeight: 600,
-                                                            }}
-                                                            aria-label={`Delivered pieces: ${delivered}`}
-                                                        />
-                                                    </TableCell>
-                                                    <TableCell sx={{
-                                                        px: { xs: 1.5, sm: 2 },
-                                                        py: 1.75,
-                                                        fontSize: { xs: '0.85rem', sm: '0.9rem' },
-                                                        color: localRemaining > 0 ? themeColors.warning : themeColors.success,
-                                                        borderBottom: `1px solid ${themeColors.border}`,
-                                                        display: columnVisibility.remainingQty ? 'table-cell' : 'none'
-                                                    }} role="cell">
-                                                        <Chip
-                                                            label={localRemaining}
-                                                            size="small"
-                                                            color={localRemaining > 0 ? "warning" : "success"}
-                                                            variant="outlined"
-                                                            sx={{
-                                                                fontSize: '0.75rem',
-                                                                fontWeight: 600,
-                                                            }}
-                                                            aria-label={`Remaining pieces: ${localRemaining}`}
-                                                        />
-                                                    </TableCell>
-                                                    {/* Hidden Assigned Qty cell */}
-                                                    {/* <TableCell sx={{ }} role="cell"></TableCell> */}
-                                               <TableCell sx={{
-    px: { xs: 1.5, sm: 2 },
-    py: 1.75,
-    fontSize: { xs: '0.85rem', sm: '0.9rem' },
-    borderBottom: `1px solid ${themeColors.border}`
-}} role="cell">
-    <Stack direction="row" gap={1.5} alignItems="center" justifyContent="flex-start">
-        {/* Assign Qty editable box */}
-        <Box
-            sx={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                gap: 0.5,
-                p: 1,
-                borderRadius: 2,
-                bgcolor: themeColors.background,
-                border: `1px solid ${themeColors.border}`,
-                transition: 'all 0.2s ease',
-                minWidth: 80,
-                '&:hover': {
-                    bgcolor: `rgba(${themeColors.primary}, 0.08)`,
-                    borderColor: themeColors.primary,
-                    transform: 'scale(1.02)',
-                },
-                '&:focus': {
-                    outline: `2px solid ${themeColors.primary}`,
-                    outlineOffset: '2px'
-                }
-            }}
-            onClick={(e) => {
-                e.stopPropagation();
-                if (editingAssignReceiverId !== rec.id) {
-                    setEditingAssignReceiverId(rec.id);
-                    setTempAssignQty(totalAssignedQty);
-                }
-            }}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    if (editingAssignReceiverId !== rec.id) {
-                        setEditingAssignReceiverId(rec.id);
-                        setTempAssignQty(totalAssignedQty);
-                    }
-                }
-            }}
-            aria-label={`Edit assign quantity, current value ${totalAssignedQty}`}
-        >
-            {isEditingAssign ? (
-                <Stack direction="row" alignItems="center" gap={0.5}>
-                    <TextField
-                        size="small"
-                        type="number"
-                        value={tempAssignQty}
-                        onChange={(e) => setTempAssignQty(Math.max(0, Math.min(recRemaining, parseInt(e.target.value) || 0)))}
-                        onBlur={handleAssignBlur}
-                        onKeyDown={handleAssignKeyDown}
-                        inputProps={{
-                            min: 0,
-                            max: recRemaining,
-                            style: {
-                                fontSize: '0.85rem',
-                                width: 60,
-                                textAlign: 'center',
-                                py: 0.5
-                            }
-                        }}
-                        sx={{
-                            '& .MuiInputBase-root': {
-                                minHeight: 32,
-                                bgcolor: 'white',
-                                borderRadius: 1,
-                            },
-                            '& .MuiInputBase-input': { py: 0.5 },
-                            '& .MuiInputBase-root:focus': {
-                                borderColor: themeColors.primary,
-                                boxShadow: `0 0 0 2px rgba(${themeColors.primary}, 0.1)`,
-                            }
-                        }}
-                        autoFocus
-                        aria-label="Edit assign quantity input"
-                    />
-                    <Tooltip title="Cancel">
-                        <IconButton
-                            size="small"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                setEditingAssignReceiverId(null);
-                            }}
-                            sx={{
-                                p: 0.25,
-                                color: themeColors.error,
-                                '&:hover': {
-                                    bgcolor: 'rgba(244, 67, 54, 0.1)',
-                                    transform: 'scale(1.1)',
-                                }
-                            }}
-                            aria-label="Cancel edit"
-                        >
-                            <CloseIcon fontSize="small" />
-                        </IconButton>
-                    </Tooltip>
-                </Stack>
-            ) : (
-                <Stack direction="row" alignItems="center" gap={0.5}>
-                    {/* <Typography variant="body2" fontWeight="600" color={themeColors.textPrimary}>{`Delivered: ${delivered}`}</Typography> */}
-                    <Tooltip title="Edit Assign Qty"
-                 
-                    >
-                        <IconButton
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                setEditingAssignReceiverId(rec.id);
-                            }}
-                            size="small"
-                            sx={{
-                                p: 0.25,
-                                color: themeColors.primary,
-                                '&:hover': {
-                                    bgcolor: `rgba(${themeColors.primary}, 0.1)`,
-                                    transform: 'scale(1.1)',
-                                }
-                            }}
-                            aria-label="Edit assign quantity"
-                        >
-                            <EditIcon fontSize="small" />
-                        </IconButton>
-                    </Tooltip>
-                </Stack>
-            )}
-        </Box>
-    </Stack>
-</TableCell>
-<TableCell sx={{
-    px: { xs: 1.5, sm: 2 },
-    py: 1.75,
-    borderBottom: `1px solid ${themeColors.border}`,
-    display: { xs: showAllColumns && columnVisibility.containers ? 'table-cell' : 'none', sm: columnVisibility.containers ? 'table-cell' : 'none' },
-    whiteSpace: 'nowrap'
-}} role="cell">
-    <Stack direction="row" gap={1.5} alignItems="center" justifyContent="flex-start" flexWrap="wrap">
-        {totalContForRec > 0 && (
-            <Tooltip title={`Selected: ${assignedContainersPreview.join(', ')}`}>
-                <Chip
-                    label={assignedContainersPreview.length > 1 ? `${assignedContainersPreview.slice(0, 1)}... (${totalContForRec})` : assignedContainersPreview.join(', ')}
-                    size="small"
-                    variant="outlined"
-                    color="success"
-                    sx={{
-                        fontSize: { xs: '0.75rem', sm: '0.8rem' },
-                        maxWidth: { xs: 100, sm: 120 },
-                        flexShrink: 0,
-                        borderColor: themeColors.success,
-                        color: themeColors.success,
-                    }}
-                    aria-label={`Selected containers: ${assignedContainersPreview.join(', ')}`}
-                />
-            </Tooltip>
-        )}
-        <Tooltip title={`Click to ${isExpanded ? 'collapse' : 'expand'} shipping details for per-detail assignment`}>
-            <IconButton
-                size="medium"
-                onClick={(e) => {
-                    e.stopPropagation();
-                    toggleExpanded(rec.orderId, rec.id);
-                }}
-                sx={{
-                    color: totalAssignedQty > 0 || totalContForRec > 0 ? themeColors.primary : 'action.active',
-                    '&:hover': {
-                        bgcolor: `rgba(${themeColors.primary}, 0.08)`,
-                        transform: 'scale(1.1)',
-                    },
-                    '&:focus': {
-                        outline: `2px solid ${themeColors.primary}`,
-                        outlineOffset: '2px'
-                    }
-                }}
-                aria-label={`Toggle shipping details ${isExpanded ? 'collapse' : 'expand'}`}
-                aria-expanded={isExpanded}
-            >
-                {isExpanded ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />}
-            </IconButton>
-        </Tooltip>
-        {shippingDetails.length === 1 && totalContForRec === 0 && !rec.containers?.length && (
-            (() => {
-                const detail = shippingDetails[0];
-                console.log('Single detail for receiver:', detail);
-                const key = getDetailKey(rec.orderId, rec.id, 0);
-                const currentCont = selectedContainersPerDetail[key]?.[0] || ''; // Single value for single select
-                const availConts = getAvailableContainersForKey(key); // Only available containers
-                return (
-                    <FormControl size="small" sx={{ minWidth: 120, flex: 1 }}>
-                        <InputLabel shrink>Container</InputLabel>
-                        <Select
-                            value={currentCont}
-                            onChange={(e) => handleContainerChange(key, e.target.value ? [e.target.value] : [])} // Wrap single value in array for consistency
-                            renderValue={(selected) => {
-                                if (!selected) return 'Select';
-                                const name = availConts.find(c => c.cid === selected)?.container_number || selected;
-                                return name;
-                            }}
-                            displayEmpty
-                            sx={{
-                                fontSize: '0.85rem',
-                                '& .MuiSelect-select': {
-                                    py: 0.75,
-                                }
-                            }}
-                            aria-label="Select container"
-                        >
-                            <MenuItem value="" sx={{ fontSize: '0.85rem' }}>
-                                <em>Select Container</em>
-                            </MenuItem>
-                            {availConts.map(c => (
-                                <MenuItem key={c.cid} value={c.cid} sx={{ fontSize: '0.85rem' }}>
-                                    {c.container_number}
-                                </MenuItem>
-                            ))}
-                        </Select>
-                    </FormControl>
-                );
-            })()
-        )}
-        {totalContForRec === 0 && rec.containers && rec.containers.length > 0 ? (
-            <Stack direction="row" alignItems="center" gap={0.5}>
-                <Chip
-                    label={rec.containers.length > 1 ? `${rec.containers.slice(0, 1).join(', ')}...` : rec.containers.join(', ')}
-                    size="small"
-                    variant="outlined"
-                    color="info"
-                    sx={{
-                        fontSize: { xs: '0.75rem', sm: '0.8rem' },
-                        maxWidth: { xs: 100, sm: 120 },
-                        flexShrink: 0,
-                        borderColor: themeColors.secondary,
-                        color: themeColors.secondary,
-                    }}
-                />
-                <Tooltip title="Remove Existing Containers">
-                    <IconButton
-                        size="small"
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onRemoveContainers(rec.id);
-                        }}
-                        sx={{
-                            p: 0.25,
-                            color: themeColors.primary,
-                            '&:hover': {
-                                bgcolor: `rgba(${themeColors.primary}, 0.1)`,
-                                transform: 'scale(1.1)',
-                            }
-                        }}
-                        aria-label="Remove existing containers"
-                    >
-                        <CloseIcon fontSize="small" />
-                    </IconButton>
-                </Tooltip>
-            </Stack>
-        ) : totalContForRec === 0 && !rec.containers?.length ? (
+    return colorMap[status] || colorMap.default;
+};
+  // Initial objects (kept for mapping)
+  const initialReceiver = {
+    id: null, receiverName: '', receiverContact: '', receiverEmail: '', receiverAddress: '',
+    category: '', totalNumber: 0, totalWeight: 0, status: 'Created', fullPartial: '',
+    qtyDelivered: '0', eta: '', etd: '', shippingLine: '', shippingDetails: [], isNew: false,
+    validationWarnings: null,
+  };
+  const initialSenderObject = {
+    id: null, senderName: '', senderContact: '', senderEmail: '', senderAddress: '',
+    status: 'Created', fullPartial: '', qtyDelivered: '0', eta: '', etd: '', shippingLine: '',
+    shippingDetails: [], isNew: false, validationWarnings: null,
+  };
+  const initialShippingDetail = {
+    deliveryAddress: '', pickupLocation: '', category: '', totalNumber: '', weight: '',
+    remainingItems: '', deliveredItems: '0',
+  };
+
+  // States (consolidated and optimized)
+  const [showAllColumns, setShowAllColumns] = useState(false);
+  const [columnVisibility, setColumnVisibility] = useState({
+    id: false, name: true, booking_ref: true, category: true, totalPC: true, wt: true,
+    assigned: false, remainingQty: true, deliveredQty: true, address: true,
+    contact: false, email: false, containers: true, action: true,
+    assignQty: true, // Always visible
+  });
+  const [columnAnchorEl, setColumnAnchorEl] = useState(null);
+  const [openEditModal, setOpenEditModal] = useState(false);
+  const [selectedReceiver, setSelectedReceiver] = useState(null);
+  const [editForm, setEditForm] = useState({
+    receiverName: '', receiverContact: '', receiverEmail: '', receiverAddress: '',
+    category: '', totalNumber: 0, totalWeight: 0, status: 'Created', shippingDetails: [],
+  });
+  const [editErrors, setEditErrors] = useState({});
+  const [assignmentQuantities, setAssignmentQuantities] = useState({});
+  const [selectedContainersPerDetail, setSelectedContainersPerDetail] = useState({});
+  const [expandedReceivers, setExpandedReceivers] = useState(new Set());
+  const [detailedOrders, setDetailedOrders] = useState({});
+  const [fetchingDetails, setFetchingDetails] = useState(false);
+  const [editingAssignReceiverId, setEditingAssignReceiverId] = useState(null);
+  const [tempAssignQty, setTempAssignQty] = useState(0);
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: "",
+    severity: "success",
+  });
+  const availableContainers = useMemo(() => containers.filter(c => c.derived_status === 'Available'), [containers]);
+
+  // Column configuration
+  const headerCols = [
+    'id', 'name', 'booking_ref', 'address', 'contact', 'email', 'wt',
+    'totalPC', 'deliveredQty', 'remainingQty', 'assignQty', 'containers', 'action'
+  ];
+  const displayNames = {
+    id: 'ID',
+    name: 'Receiver',
+    booking_ref: 'Booking Ref',
+    address: 'Address',
+    contact: 'Contact',
+    email: 'Email',
+    wt: 'Weight',
+    totalPC: 'Units (Remaining)',
+    deliveredQty: 'Delivered',
+    remainingQty: 'Remaining',
+    assignQty: 'Assign Qty',
+    containers: 'Containers',
+    action: 'Actions',
+  };
+  const visibleColumnCount = useMemo(
+    () => headerCols.filter(col => columnVisibility[col] !== false).length,
+    [columnVisibility, headerCols]
+  );
+
+  // Utility functions
+  const snakeToCamel = useCallback((str) => {
+    if (!str) return str;
+    return str.replace(/([-_][a-z])/g, (group) => group.toUpperCase().replace('-', '').replace('_', ''));
+  }, []);
+
+  const getDetailKey = useCallback((orderId, recId, detailIdx) => `${orderId}-${recId}-${detailIdx}`, []);
+  const getGloballySelectedCids = useCallback(() => Object.values(selectedContainersPerDetail).flat(), [selectedContainersPerDetail]);
+
+  const getAvailableContainersForKey = useCallback((key) => {
+    const globalSelected = getGloballySelectedCids();
+    const currentSelected = selectedContainersPerDetail[key] || [];
+    return availableContainers.filter(c => !globalSelected.includes(c.cid) || currentSelected.includes(c.cid));
+  }, [selectedContainersPerDetail, availableContainers, getGloballySelectedCids]);
+
+
+      const StatusChip = ({ status }) => {
+        const colors = getStatusColors(status);
+        return (
             <Chip
-                label="None"
+                label={status}
                 size="small"
-                color="default"
-                variant="outlined"
                 sx={{
-                    fontSize: { xs: '0.75rem', sm: '0.8rem' },
-                    borderColor: themeColors.textSecondary,
-                    color: themeColors.textSecondary,
+                    height: 25,
+                    fontSize: 12,
+                    marginLeft: 0,
+                    backgroundColor: colors.bg,
+                    color: colors.text,
                 }}
-                aria-label="No containers assigned"
             />
-        ) : null}
-    </Stack>
-</TableCell>
-                                                    {/* Hidden Actions cell */}
-                                                    {/* <TableCell sx={{ display: 'none' }} role="cell"></TableCell> */}
-                                                </TableRow>
-                                                {isExpanded && shippingDetails.length > 1 && shippingDetails.map((detail, idx) => {
-                                                    const key = getDetailKey(rec.orderId, rec.id, idx);
-                                                    const currentCont = selectedContainersPerDetail[key]?.[0] || ''; // Single value for single select
-                                                    const availConts = getAvailableContainersForKey(key); // Only available containers
-                                                    const detailRemaining = parseInt(detail.remainingItems || '0') || 0;
-                                                    const detailDelivered = parseInt(detail.deliveredItems || '0') || 0;
-                                                    const hasAssignment = (assignmentQuantities[key] || 0) > 0 || currentCont;
-                                                    const detailAssignQty = assignmentQuantities[key] || 0;
-                                                    console.log('Detail assignment state:', { detail, detailAssignQty, currentCont });
-                                                    return (
-                                                        <TableRow
-                                                            key={`sub-${rec.orderId}-${rec.id}-${idx}`}
-                                                            sx={{
-                                                                bgcolor: `rgba(${themeColors.background}, 0.6)`,
-                                                                '&:hover': {
-                                                                    bgcolor: themeColors.background
-                                                                },
-                                                                borderBottom: `2px solid ${themeColors.border}`,
-                                                            }}
-                                                            role="row"
-                                                        >
-                                                            <TableCell colSpan={13} sx={{ p: 3, borderTop: `2px solid ${themeColors.border}` }}> {/* Increased colspan for new column */}
-                                                                <Stack direction={{ xs: 'column', md: 'row' }} gap={2.5} alignItems={{ xs: 'stretch', md: 'center' }} justifyContent="space-between">
-                                                                    <Box sx={{ flex: 1 }}>
-                                                                        <Typography
-                                                                            variant="h6"
-                                                                            fontWeight="bold"
-                                                                            color={themeColors.primary}
-                                                                            gutterBottom
-                                                                            sx={{
-                                                                                fontSize: { xs: '1.1rem', sm: '1.25rem' },
-                                                                                mb: 1.5,
-                                                                            }}
-                                                                        >
-                                                                            Shipping Detail {idx + 1}
-                                                                        </Typography>
-                                                                        <Typography
-                                                                            variant="body1"
-                                                                            sx={{
-                                                                                mb: 1.5,
-                                                                                fontSize: { xs: '0.95rem', sm: '1rem' },
-                                                                                color: themeColors.textPrimary,
-                                                                                lineHeight: 1.4,
-                                                                            }}
-                                                                        >{detail.deliveryAddress || 'N/A'}
-                                                                        </Typography>
-                                                                        <Box // Changed from Typography to Box to avoid <p> wrapper for inline elements
-                                                                            sx={{
-                                                                                fontSize: { xs: '0.85rem', sm: '0.9rem' },
-                                                                                display: 'flex',
-                                                                                alignItems: 'center',
-                                                                                flexWrap: 'wrap',
-                                                                                gap: 1,
-                                                                                color: themeColors.textSecondary,
-                                                                            }}
-                                                                        >
-                                                                            <Chip
-                                                                                label={recStatus}
-                                                                                size="small"
-                                                                                color={recStatus === 'Delivered' ? "success" : recStatus === 'In Transit' ? "info" : "default"}
-                                                                                variant="filled"
-                                                                                sx={{
-                                                                                    fontSize: '0.75rem',
-                                                                                    fontWeight: 600,
-                                                                                }}
-                                                                                aria-label={`Status: ${recStatus}`}
-                                                                            /> |
-                                                                            Category: <Chip
-                                                                                label={detail.category || 'N/A'}
-                                                                                size="small"
-                                                                                color="info"
-                                                                                variant="outlined"
-                                                                                sx={{
-                                                                                    fontSize: '0.75rem',
-                                                                                    borderColor: themeColors.secondary,
-                                                                                    color: themeColors.secondary,
-                                                                                    ml: 0.5,
-                                                                                    mr: 1,
-                                                                                }}
-                                                                                aria-label={`Category: ${detail.category || 'N/A'}`}
-                                                                            /> |
-                                                                            Total Pieces: <strong style={{ color: themeColors.textPrimary }}>{detail.totalNumber || 0}</strong> |
-                                                                            Delivered: <strong style={{ color: themeColors.success }}>{detailDelivered}</strong> pcs | {/* Enhanced: Show delivered */}
-                                                                            Remaining: <strong style={{ color: themeColors.warning }}>{detailRemaining}</strong> pcs |
-                                                                            Weight: <strong style={{ color: themeColors.textPrimary }}>{detail.weight || 0} kg</strong>
-                                                                        </Box>
-                                                                        {/* New: Progress Bar for Delivery Status */}
-                                                                        <LinearProgress
-                                                                            variant="determinate"
-                                                                            value={(detailDelivered / (parseInt(detail.totalNumber || 0) || 1)) * 100}
-                                                                            sx={{
-                                                                                mt: 1.5,
-                                                                                height: 8,
-                                                                                borderRadius: 4,
-                                                                                bgcolor: themeColors.background,
-                                                                                '& .MuiLinearProgress-bar': {
-                                                                                    borderRadius: 4,
-                                                                                    bgcolor: themeColors.success,
-                                                                                }
-                                                                            }}
-                                                                            aria-label={`Delivery progress: ${detailDelivered} of ${detail.totalNumber}`}
-                                                                        />
-                                                                        <Typography variant="caption" sx={{ mt: 0.5, display: 'block', color: themeColors.textSecondary, textAlign: 'center' }}>
-                                                                            {detailDelivered} / {detail.totalNumber} delivered ({Math.round((detailDelivered / (parseInt(detail.totalNumber || 0) || 1)) * 100)}%)
-                                                                        </Typography>
-                                                                    </Box>
-                                                                    <Stack
-                                                                        direction="row"
-                                                                        gap={1.5}
-                                                                        alignItems="flex-end"
-                                                                        justifyContent="flex-start"
-                                                                        sx={{
-                                                                            minWidth: { xs: '100%', md: 'auto' },
-                                                                            flexWrap: 'wrap',
-                                                                        }}
-                                                                    >
-                                                                        <TextField
-                                                                            size="small"
-                                                                            type="number"
-                                                                            label="Assign Qty"
-                                                                            value={assignmentQuantities[key] || ''}
-                                                                            onChange={(e) => {
-                                                                                const val = parseInt(e.target.value) || 0;
-                                                                                const qty = Math.max(0, Math.min(detailRemaining, val));
-                                                                                handleQuantityChange(key, qty);
-                                                                            }}
-                                                                            inputProps={{
-                                                                                min: 0,
-                                                                                max: detailRemaining,
-                                                                                style: {
-                                                                                    width: 120,
-                                                                                    fontSize: '0.9rem'
-                                                                                }
-                                                                            }}
-                                                                            helperText={`Max: ${detailRemaining}`}
-                                                                            sx={{
-                                                                                width: { xs: '100%', md: 'auto' },
-                                                                                minWidth: 120,
-                                                                                flex: 1,
-                                                                                maxWidth: { md: 140 },
-                                                                                '& .MuiInputBase-root': {
-                                                                                    minHeight: 44,
-                                                                                    bgcolor: 'white',
-                                                                                    borderRadius: 2,
-                                                                                },
-                                                                                '& .MuiInputBase-input': { py: 1 },
-                                                                                '& .MuiFormHelperText-root': {
-                                                                                    fontSize: '0.8rem',
-                                                                                    mt: 0.75,
-                                                                                    color: themeColors.textSecondary,
-                                                                                },
-                                                                                '& .MuiInputBase-root:focus': {
-                                                                                    borderColor: themeColors.primary,
-                                                                                    boxShadow: `0 0 0 2px rgba(${themeColors.primary}, 0.1)`,
-                                                                                }
-                                                                            }}
-                                                                            aria-label={`Assign quantity for detail ${idx + 1}`}
-                                                                        />
-                                                                        <FormControl size="small" sx={{
-                                                                            minWidth: 160,
-                                                                            flex: 1,
-                                                                            maxWidth: { md: 180 },
-                                                                            '& .MuiFormControl-root': {
-                                                                                minHeight: 44,
-                                                                            }
-                                                                        }}>
-                                                                            <InputLabel shrink>Container</InputLabel>
-                                                                            <Select
-                                                                                value={currentCont}
-                                                                                onChange={(e) => handleContainerChange(key, e.target.value ? [e.target.value] : [])} // Wrap single value in array for consistency
-                                                                                label="Container"
-                                                                                renderValue={(selected) => {
-                                                                                    if (!selected) return 'Select container';
-                                                                                    const name = availConts.find(c => c.cid === selected)?.container_number || selected;
-                                                                                    return name;
-                                                                                }}
-                                                                                displayEmpty
-                                                                                sx={{
-                                                                                    fontSize: '0.9rem',
-                                                                                    minHeight: 44,
-                                                                                    '& .MuiSelect-select': {
-                                                                                        py: 1,
-                                                                                    },
-                                                                                    '& .MuiOutlinedInput-root': {
-                                                                                        minHeight: 44,
-                                                                                    },
-                                                                                    '& .MuiOutlinedInput-root:focus': {
-                                                                                        borderColor: themeColors.primary,
-                                                                                        boxShadow: `0 0 0 2px rgba(${themeColors.primary}, 0.1)`,
-                                                                                    }
-                                                                                }}
-                                                                                aria-label={`Select container for detail ${idx + 1}`}
-                                                                            >
-                                                                                <MenuItem value="" sx={{ fontSize: '0.9rem' }}>
-                                                                                    <em>Select Container</em>
-                                                                                </MenuItem>
-                                                                                {availConts.map(c => (
-                                                                                    <MenuItem key={c.cid} value={c.cid} sx={{ fontSize: '0.9rem' }}>
-                                                                                        <Stack direction="row" alignItems="center" gap={1}>
-                                                                                            <Typography variant="body2" fontWeight="600">{c.container_number}</Typography>
-                                                                                            <Typography variant="caption" color="text.secondary">({c.location || 'N/A'})</Typography>
-                                                                                        </Stack>
-                                                                                    </MenuItem>
-                                                                                ))}
-                                                                            </Select>
-                                                                        </FormControl>
-                                                                        {hasAssignment && currentCont && (
-                                                                            <Tooltip title={`Selected: ${availConts.find(c => c.cid === currentCont)?.container_number || currentCont}`}>
-                                                                                <Chip
-                                                                                    label={availConts.find(c => c.cid === currentCont)?.container_number || currentCont}
-                                                                                    size="small"
-                                                                                    variant="outlined"
-                                                                                    color="success"
-                                                                                    sx={{
-                                                                                        fontSize: { xs: '0.75rem', sm: '0.8rem' },
-                                                                                        maxWidth: { xs: 100, sm: 120 },
-                                                                                        flexShrink: 0,
-                                                                                        borderColor: themeColors.success,
-                                                                                        color: themeColors.success,
-                                                                                    }}
-                                                                                    aria-label={`Selected container: ${availConts.find(c => c.cid === currentCont)?.container_number || currentCont}`}
-                                                                                />
-                                                                            </Tooltip>
-                                                                        )}
-                                                                        {hasAssignment && (
-                                                                            <Tooltip title={`Remove assignment: ${detailAssignQty} pcs, ${currentCont ? 1 : 0} cont`}>
-                                                                                <IconButton
-                                                                                    size="small"
-                                                                                    onClick={(e) => {
-                                                                                        e.stopPropagation();
-                                                                                        handleRemoveDetailAssignment(rec.orderId, rec.id, idx);
-                                                                                    }}
-                                                                                    color="error"
-                                                                                    sx={{
-                                                                                        p: 0.75,
-                                                                                        minHeight: 44,
-                                                                                        minWidth: 44,
-                                                                                        alignSelf: 'flex-end',
-                                                                                        '&:hover': {
-                                                                                            bgcolor: themeColors.error,
-                                                                                            color: 'white',
-                                                                                            transform: 'scale(1.1)',
-                                                                                        },
-                                                                                        '&:focus': {
-                                                                                            outline: `2px solid ${themeColors.primary}`,
-                                                                                            outlineOffset: '2px'
-                                                                                        }
-                                                                                    }}
-                                                                                    aria-label={`Remove assignment for detail ${idx + 1}`}
-                                                                                >
-                                                                                    <DeleteIcon fontSize="small" />
-                                                                                </IconButton>
-                                                                            </Tooltip>
-                                                                        )}
-                                                                    </Stack>
-                                                                </Stack>
-                                                            </TableCell>
-                                                        </TableRow>
-                                                    );
-                                                })}
-                                            </>
-                                        );
-                                    });
-                                })()}
-                            </TableBody>
-                        </Table>
-                    </TableContainer>
-                    {selectedOrders.length === 0 ? (
-                        <Alert
-                            severity="warning"
-                            sx={{
-                                mt: 3,
-                                borderRadius: 2,
-                                boxShadow: '0 4px 12px rgba(255, 152, 0, 0.15)',
-                                border: `1px solid ${themeColors.warning}`,
-                                bgcolor: `rgba(${themeColors.warning}, 0.08)`,
-                            }}
-                            role="alert"
-                        >
-                            <AlertTitle>No Orders Selected</AlertTitle>
-                            <Typography variant="body2" color={themeColors.textSecondary}>Please select orders from the main table to assign containers.</Typography>
-                        </Alert>
-                    ) : totalReceivers === 0 ? (
-                        <Alert
-                            severity="info"
-                            sx={{
-                                mt: 3,
-                                borderRadius: 2,
-                                boxShadow: '0 4px 12px rgba(33, 150, 243, 0.15)',
-                                border: `1px solid ${themeColors.secondary}`,
-                                bgcolor: `rgba(${themeColors.secondary}, 0.08)`,
-                            }}
-                            role="alert"
-                        >
-                            <AlertTitle>No Receivers Found</AlertTitle>
-                            <Typography variant="body2" color={themeColors.textSecondary}>The selected orders have no associated receivers.</Typography>
-                        </Alert>
-                    ) : null}
-                </CardContent>
-            </Card>
-        </Grid>
-    </Grid>
-    {/* New: Detailed Assignments Preview Table */}
-    {detailedAssignments.length > 0 && (
-        <Grid item xs={12}>
-            <Card sx={{
-                boxShadow: '0 4px 20px rgba(13, 108, 106, 0.08)',
-                borderRadius: 3,
-                border: `1px solid ${themeColors.border}`,
-                '&:hover': {
-                    boxShadow: '0 8px 32px rgba(245, 130, 32, 0.12)',
-                    transform: 'translateY(-2px)',
-                    transition: 'all 0.3s ease',
-                },
-                bgcolor: themeColors.surface,
-            }}>
-                <CardContent sx={{ p: { xs: 2.5, sm: 3 } }}>
-                    <Stack direction="row" alignItems="center" gap={1.5} mb={3}>
-                        <AssignmentIcon color="primary" sx={{ fontSize: { xs: '1.2rem', sm: '1.5rem' } }} aria-hidden="true" />
-                        <Typography variant={{ xs: 'h6', sm: 'h5' }} fontWeight="bold" color={themeColors.primary}>
-                            Current Assignments Preview ({detailedAssignments.length})
-                        </Typography>
-                    </Stack>
-                    <TableContainer sx={{
-                        maxHeight: 240,
-                        overflow: 'auto',
-                        overflowX: 'auto',
-                        borderRadius: 2,
-                        border: `1px solid ${themeColors.border}`,
-                        bgcolor: themeColors.surface,
-                        '&::-webkit-scrollbar': {
-                            height: '6px',
-                            width: '6px',
-                        },
-                        '&::-webkit-scrollbar-thumb': {
-                            backgroundColor: themeColors.primary,
-                            borderRadius: '3px',
-                        },
-                        '&::-webkit-scrollbar-track': {
-                            backgroundColor: themeColors.background,
-                        },
-                    }} role="table" aria-label="Assignments preview table">
-                        <Table size="small" stickyHeader sx={{ minWidth: 1000 }}>
-                            <TableHead sx={{
-                                bgcolor: `linear-gradient(135deg, ${themeColors.background} 0%, #e9ecef 100%)`,
-                                position: 'sticky',
-                                top: 0,
-                                zIndex: 1,
-                            }}>
-                                <TableRow>
-                                    <TableCell sx={{
-                                        fontWeight: 700,
-                                        color: themeColors.primary,
-                                        px: 2.5,
-                                        py: 1.75,
-                                        fontSize: '0.9rem',
-                                        borderBottom: `2px solid ${themeColors.border}`,
-                                    }} aria-sort="none">Order Ref</TableCell>
-                                    <TableCell sx={{
-                                        fontWeight: 700,
-                                        color: themeColors.primary,
-                                        px: 2.5,
-                                        py: 1.75,
-                                        fontSize: '0.9rem',
-                                        borderBottom: `2px solid ${themeColors.border}`,
-                                    }} aria-sort="none">Receiver</TableCell>
-                                    <TableCell sx={{
-                                        fontWeight: 700,
-                                        color: themeColors.primary,
-                                        px: 2.5,
-                                        py: 1.75,
-                                        fontSize: '0.9rem',
-                                        borderBottom: `2px solid ${themeColors.border}`,
-                                    }} aria-sort="none">Shipping Detail</TableCell>
-                                    <TableCell sx={{
-                                        fontWeight: 700,
-                                        color: themeColors.primary,
-                                        px: 2.5,
-                                        py: 1.75,
-                                        fontSize: '0.9rem',
-                                        borderBottom: `2px solid ${themeColors.border}`,
-                                    }} aria-sort="none">Qty</TableCell>
-                                    <TableCell sx={{
-                                        fontWeight: 700,
-                                        color: themeColors.primary,
-                                        px: 2.5,
-                                        py: 1.75,
-                                        fontSize: '0.9rem',
-                                        borderBottom: `2px solid ${themeColors.border}`,
-                                    }} aria-sort="none">Containers</TableCell>
-                                    <TableCell sx={{
-                                        fontWeight: 700,
-                                        color: themeColors.primary,
-                                        px: 2.5,
-                                        py: 1.75,
-                                        fontSize: '0.9rem',
-                                        borderBottom: `2px solid ${themeColors.border}`,
-                                    }} aria-sort="none">Action</TableCell> {/* Existing action */}
-                                </TableRow>
-                            </TableHead>
-                            <TableBody>
-                                {detailedAssignments.map((assign, index) => (
-                                    <TableRow
-                                        key={index}
-                                        hover
-                                        sx={{
-                                            '&:hover': {
-                                                bgcolor: `rgba(${themeColors.primary}, 0.04)`,
-                                                transform: 'scale(1.01)',
-                                            },
-                                            transition: 'all 0.2s ease',
-                                            borderBottom: `1px solid ${themeColors.border}`,
-                                            bgcolor: 'white',
-                                        }}
-                                        role="row"
-                                    >
-                                        <TableCell sx={{ px: 2.5, py: 1.75, fontSize: '0.9rem', borderBottom: `1px solid ${themeColors.border}` }} role="cell">{assign.orderRef}</TableCell>
-                                        <TableCell sx={{ px: 2.5, py: 1.75, fontSize: '0.9rem', fontWeight: 600, borderBottom: `1px solid ${themeColors.border}` }} role="cell">{assign.receiverName}</TableCell>
-                                        <TableCell sx={{ px: 2.5, py: 1.75, fontSize: '0.9rem', borderBottom: `1px solid ${themeColors.border}` }} role="cell">
-                                            <Tooltip title={assign.detailAddress} arrow placement="top">
-                                                <Typography
-                                                    variant="body2"
-                                                    noWrap
-                                                    sx={{
-                                                        maxWidth: 180,
-                                                        color: themeColors.textSecondary,
-                                                        fontSize: '0.85rem',
-                                                    }}
-                                                >
-                                                    {assign.detailAddress.length > 25 ? `${assign.detailAddress.substring(0, 25)}...` : assign.detailAddress}
-                                                </Typography>
-                                            </Tooltip>
-                                        </TableCell>
-                                        <TableCell sx={{
-                                            px: 2.5,
-                                            py: 1.75,
-                                            fontSize: '0.9rem',
-                                            color: themeColors.success,
-                                            fontWeight: 'bold',
-                                            borderBottom: `1px solid ${themeColors.border}`,
-                                        }} role="cell">
-                                            <Chip
-                                                label={assign.qty}
-                                                size="small"
-                                                color="success"
-                                                variant="filled"
-                                                sx={{
-                                                    fontSize: '0.8rem',
-                                                    fontWeight: 600,
-                                                }}
-                                                aria-label={`Quantity: ${assign.qty}`}
-                                            />
-                                        </TableCell>
-                                        <TableCell sx={{ px: 2.5, py: 1.75, fontSize: '0.9rem', borderBottom: `1px solid ${themeColors.border}` }} role="cell">
-                                            <Tooltip title={assign.containers} arrow placement="top">
-                                                <Chip
-                                                    label={assign.containers.length > 20 ? `${assign.containers.substring(0, 20)}...` : assign.containers}
-                                                    size="small"
-                                                    color="info"
-                                                    variant="outlined"
-                                                    sx={{
-                                                        fontSize: '0.8rem',
-                                                        borderColor: themeColors.secondary,
-                                                        color: themeColors.secondary,
-                                                    }}
-                                                    aria-label={`Containers: ${assign.containers}`}
-                                                />
-                                            </Tooltip>
-                                        </TableCell>
-                                        <TableCell sx={{ px: 2.5, py: 1.75, borderBottom: `1px solid ${themeColors.border}` }} role="cell">
-                                            <Tooltip title="Remove Assignment">
-                                                <IconButton
-                                                    size="small"
-                                                    onClick={() => handleRemoveDetailAssignment(assign.orderId, assign.recId, assign.detailIdx)}
-                                                    sx={{
-                                                        color: themeColors.error,
-                                                        '&:hover': {
-                                                            bgcolor: themeColors.error,
-                                                            color: 'white',
-                                                            transform: 'scale(1.1)',
-                                                        },
-                                                        '&:focus': {
-                                                            outline: `2px solid ${themeColors.primary}`,
-                                                            outlineOffset: '2px'
-                                                        }
-                                                    }}
-                                                    aria-label={`Remove assignment for ${assign.receiverName}`}
-                                                >
-                                                    <DeleteIcon fontSize="small" />
-                                                </IconButton>
-                                            </Tooltip>
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
-                    </TableContainer>
-                </CardContent>
-            </Card>
-        </Grid>
-    )}
-<Grid container flexDirection={'row'} justifyContent={'space-between'} sx={{ mt: 3 }}>
-    <Box width={{ xs: '100%', sm: '69%' }} xs={6} sm={6}>
-        <Card sx={{
-            boxShadow: '0 4px 20px rgba(13, 108, 106, 0.08)',
-            borderRadius: 3,
-            border: `1px solid ${themeColors.border}`,
-            '&:hover': {
-                boxShadow: '0 8px 32px rgba(245, 130, 32, 0.12)',
-                transform: 'translateY(-2px)',
-                transition: 'all 0.3s ease',
-            },
-            bgcolor: themeColors.surface,
-        }}>
-            <CardContent sx={{ p: { xs: 2.5, sm: 3 } }}>
-                <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}>
-                    <Stack direction="row" alignItems="center" gap={1.5}>
-                        <InventoryIcon color="primary" sx={{ fontSize: { xs: '1.2rem', sm: '1.5rem' } }} aria-hidden="true" />
-                        <Typography variant={{ xs: 'h6', sm: 'h5' }} fontWeight="bold" color={themeColors.primary}>
-                            Available Open Containers ({containers.length})
-                        </Typography>
-                        {totalContainersUsed > 0 && (
-                            <Chip
-                                label={`Used: ${totalContainersUsed}`}
-                                size="small"
-                                color="warning"
-                                sx={{
-                                    fontSize: '0.75rem',
-                                    borderColor: themeColors.warning,
-                                    color: themeColors.warning,
-                                }}
-                                aria-label={`Containers used: ${totalContainersUsed}`}
-                            />
-                        )}
-                    </Stack>
-                    <Button
-                        variant="outlined"
-                        size="small"
-                        onClick={fetchContainers}
-                        disabled={loadingContainers}
-                        startIcon={loadingContainers ? <CircularProgress size={16} color="primary" /> : <RefreshIcon />}
-                        sx={{
-                            minWidth: 'auto',
-                            fontSize: { xs: '0.75rem', sm: '0.875rem' },
-                            borderColor: themeColors.primary,
-                            color: themeColors.primary,
-                            borderRadius: 2,
-                            px: 2,
-                            '&:hover': {
-                                borderColor: themeColors.primary,
-                                bgcolor: `rgba(${themeColors.primary}, 0.08)`,
-                            },
-                            '&:focus': {
-                                outline: `2px solid ${themeColors.primary}`,
-                                outlineOffset: '2px'
-                            }
-                        }}
-                        aria-label="Refresh containers list"
-                    >
-                        {loadingContainers ? 'Loading...' : 'Refresh'}
-                    </Button>
-                </Stack>
-                {loadingContainers ? (
-                    <Stack direction="row" justifyContent="center" alignItems="center" py={4} spacing={2}>
-                        <CircularProgress size={24} color="primary" aria-label="Loading containers" />
-                        <Typography variant="body2" color={themeColors.textSecondary} sx={{ fontSize: { xs: '0.85rem', sm: '0.9rem' } }}>
-                            Fetching containers...
-                        </Typography>
-                    </Stack>
-                ) : containers.length === 0 ? (
-                    <Alert
-                        severity="info"
-                        icon={<InfoIcon />}
-                        sx={{
-                            borderRadius: 2,
-                            boxShadow: '0 4px 12px rgba(33, 150, 243, 0.15)',
-                            border: `1px solid ${themeColors.secondary}`,
-                            bgcolor: `rgba(${themeColors.secondary}, 0.08)`,
-                        }}
-                        role="alert"
-                    >
-                        <AlertTitle>No Containers Available</AlertTitle>
-                        <Typography variant="body2" sx={{ fontSize: '0.875rem', color: themeColors.textSecondary }}>No open containers found. Try refreshing or check if any are marked as 'Available'.</Typography>
-                    </Alert>
-                ) : (
-                    <TableContainer sx={{
-                        maxHeight: { xs: 300, sm: 340 },
-                        overflow: 'auto',
-                        overflowX: 'clip',
-                        borderRadius: 2,
-                        border: `1px solid ${themeColors.border}`,
-                        bgcolor: themeColors.surface,
-                        '&::-webkit-scrollbar': {
-                            height: '6px',
-                            width: '6px',
-                        },
-                        '&::-webkit-scrollbar-thumb': {
-                            backgroundColor: themeColors.primary,
-                            borderRadius: '3px',
-                        },
-                        '&::-webkit-scrollbar-track': {
-                            backgroundColor: themeColors.background,
-                        },
-                    }} role="table" aria-label="Available containers table">
-                        <Table size="small" stickyHeader sx={{ minWidth: { xs: 500, sm: 800 } }}>
-                            <TableHead sx={{
-                                bgcolor: `linear-gradient(135deg, ${themeColors.background} 0%, #e9ecef 100%)`,
-                                position: 'sticky',
-                                top: 0,
-                                zIndex: 1,
-                            }}>
-                                <TableRow>
-                                    <TableCell sx={{
-                                        fontWeight: 700,
-                                        color: themeColors.primary,
-                                        px: { xs: 1.5, sm: 2.5 },
-                                        py: 1.75,
-                                        fontSize: '0.9rem',
-                                        borderBottom: `2px solid ${themeColors.border}`,
-                                    }} aria-sort="none">Container No</TableCell>
-                                    <TableCell sx={{
-                                        fontWeight: 700,
-                                        color: themeColors.primary,
-                                        px: { xs: 1.5, sm: 2.5 },
-                                        py: 1.75,
-                                        fontSize: '0.9rem',
-                                        borderBottom: `2px solid ${themeColors.border}`,
-                                    }} aria-sort="none">Status</TableCell>
-                                    <TableCell sx={{
-                                        fontWeight: 700,
-                                        color: themeColors.primary,
-                                        px: { xs: 1.5, sm: 2.5 },
-                                        py: 1.75,
-                                        fontSize: '0.9rem',
-                                        borderBottom: `2px solid ${themeColors.border}`,
-                                    }} aria-sort="none">Location</TableCell>
-                                    <TableCell sx={{
-                                        fontWeight: 700,
-                                        color: themeColors.primary,
-                                        px: { xs: 1.5, sm: 2.5 },
-                                        py: 1.75,
-                                        fontSize: '0.9rem',
-                                        borderBottom: `2px solid ${themeColors.border}`,
-                                    }} aria-sort="none">Owner Type</TableCell>
-                                </TableRow>
-                            </TableHead>
-                            <TableBody>
-                                {containers.map((container) => (
-                                    <TableRow
-                                        key={container.cid}
-                                        hover
-                                        sx={{
-                                            '&:hover': {
-                                                bgcolor: `rgba(${themeColors.primary}, 0.04)`,
-                                                transform: 'scale(1.01)',
-                                            },
-                                            transition: 'all 0.2s ease',
-                                            borderBottom: `1px solid ${themeColors.border}`,
-                                            bgcolor: 'white',
-                                        }}
-                                        role="row"
-                                    >
-                                        <TableCell sx={{
-                                            px: { xs: 1.5, sm: 2.5 },
-                                            py: 1.75,
-                                            fontWeight: 600,
-                                            fontSize: { xs: '0.85rem', sm: '0.9rem' },
-                                            borderBottom: `1px solid ${themeColors.border}`,
-                                        }} role="cell">
-                                            <Stack direction="row" alignItems="center" gap={1}>
-                                                <Typography variant="body2" fontWeight="600" color={themeColors.textPrimary}>{container.container_number}</Typography>
-                                                {getGloballySelectedCids().includes(container.cid) && (
-                                                    <Chip
-                                                        label="Assigned"
-                                                        size="small"
-                                                        color="success"
-                                                        variant="filled"
-                                                        sx={{
-                                                            fontSize: '0.75rem',
-                                                            fontWeight: 600,
-                                                        }}
-                                                        aria-label="Container assigned"
-                                                    />
-                                                )}
-                                            </Stack>
-                                        </TableCell>
-                                        <TableCell sx={{ px: { xs: 1.5, sm: 2.5 }, py: 1.75, borderBottom: `1px solid ${themeColors.border}` }} role="cell">
-                                            <Chip
-                                                label={container.derived_status}
-                                                size="small"
-                                                color={container.derived_status === 'Available' ? 'success' : 'default'}
-                                                variant="filled"
-                                                sx={{
-                                                    fontSize: { xs: '0.8rem', sm: '0.85rem' },
-                                                    fontWeight: 600,
-                                                    borderRadius: 1.5,
-                                                }}
-                                                aria-label={`Status: ${container.derived_status}`}
-                                            />
-                                        </TableCell>
-                                        <TableCell sx={{
-                                            px: { xs: 1.5, sm: 2.5 },
-                                            py: 1.75,
-                                            fontSize: { xs: '0.85rem', sm: '0.9rem' },
-                                            color: themeColors.textSecondary,
-                                            borderBottom: `1px solid ${themeColors.border}`,
-                                        }} role="cell">{container.location || 'N/A'}</TableCell>
-                                        <TableCell sx={{ px: { xs: 1.5, sm: 2.5 }, py: 1.75, borderBottom: `1px solid ${themeColors.border}` }} role="cell">
-                                            <Chip
-                                                label={container.owner_type?.toUpperCase()}
-                                                size="small"
-                                                variant="outlined"
-                                                color="info"
-                                                sx={{
-                                                    fontSize: { xs: '0.8rem', sm: '0.85rem' },
-                                                    fontWeight: 600,
-                                                    borderColor: themeColors.secondary,
-                                                    color: themeColors.secondary,
-                                                    borderRadius: 1.5,
-                                                }}
-                                                aria-label={`Owner type: ${container.owner_type}`}
-                                            />
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
-                    </TableContainer>
-                )}
-            </CardContent>
-        </Card>
-    </Box>
-    <Box width={{ xs: '100%', sm: '30%' }} xs={6} sm={6}>
-        <Card sx={{
-            boxShadow: '0 4px 20px rgba(13, 108, 106, 0.08)',
-            borderRadius: 3,
-            border: `1px solid ${themeColors.border}`,
-            '&:hover': {
-                boxShadow: '0 8px 32px rgba(245, 130, 32, 0.12)',
-                transform: 'translateY(-2px)',
-                transition: 'all 0.3s ease',
-            },
-            bgcolor: themeColors.surface,
-        }}>
-            <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
-                <Stack direction="row" alignItems="center" gap={1.5} mb={3}>
-                    <InventoryIcon color="primary" sx={{ fontSize: { xs: '1.2rem', sm: '1.5rem' } }} aria-hidden="true" />
-                    <Typography variant={{ xs: 'h6', sm: 'h5' }} fontWeight="bold" color={themeColors.primary}>
-                        Assignment Summary
-                    </Typography>
-                </Stack>
-                <Stack spacing={2.5}>
-                    <Stack direction="row" justifyContent="space-between" sx={{ py: 1, px: 1, borderRadius: 2, bgcolor: `rgba(${themeColors.primary}, 0.04)` }}>
-                        <Typography variant="body1" fontWeight="600" color={themeColors.textPrimary} sx={{ fontSize: { xs: '0.9rem', sm: '1rem' } }}>Orders:</Typography>
-                        <Chip
-                            label={selectedOrders.length}
-                            color="primary"
-                            size="small"
-                            variant="outlined"
-                            sx={{
-                                fontSize: '0.8rem',
-                                borderColor: themeColors.primary,
-                                color: themeColors.primary,
-                            }}
-                            aria-label={`Orders: ${selectedOrders.length}`}
-                        />
-                    </Stack>
-                    <Stack direction="row" justifyContent="space-between" sx={{ py: 1, px: 1, borderRadius: 2, bgcolor: `rgba(${themeColors.secondary}, 0.04)` }}>
-                        <Typography variant="body1" fontWeight="600" color={themeColors.textPrimary} sx={{ fontSize: { xs: '0.9rem', sm: '1rem' } }}>Receivers:</Typography>
-                        <Chip
-                            label={totalReceivers}
-                            color="info"
-                            size="small"
-                            variant="outlined"
-                            sx={{
-                                fontSize: '0.8rem',
-                                borderColor: themeColors.secondary,
-                                color: themeColors.secondary,
-                            }}
-                            aria-label={`Receivers: ${totalReceivers}`}
-                        />
-                    </Stack>
-                    {/* New: Total Delivered in Summary */}
-                    <Stack direction="row" justifyContent="space-between" sx={{ py: 1, px: 1, borderRadius: 2, bgcolor: `rgba(${themeColors.success}, 0.04)` }}>
-                        <Typography variant="body1" fontWeight="600" color={themeColors.textPrimary} sx={{ fontSize: { xs: '0.9rem', sm: '1rem' } }}>Total Delivered:</Typography>
-                        <Chip
-                            label={totalDelivered}
-                            color="success"
-                            size="small"
-                            variant="filled"
-                            sx={{
-                                fontSize: '0.8rem',
-                                fontWeight: 600,
-                            }}
-                            aria-label={`Total delivered: ${totalDelivered}`}
-                        />
-                    </Stack>
-                    <Stack direction="row" justifyContent="space-between" sx={{ py: 1, px: 1, borderRadius: 2, bgcolor: `rgba(${themeColors.success}, 0.04)` }}>
-                        <Typography variant="body1" fontWeight="600" color={themeColors.textPrimary} sx={{ fontSize: { xs: '0.9rem', sm: '1rem' } }}>Assigned Details:</Typography>
-                        <Chip
-                            label={totalAssignedDetails}
-                            color="success"
-                            size="small"
-                            variant="filled"
-                            sx={{
-                                fontSize: '0.8rem',
-                                fontWeight: 600,
-                            }}
-                            aria-label={`Assigned details: ${totalAssignedDetails}`}
-                        />
-                    </Stack>
-                    <Stack direction="row" justifyContent="space-between" sx={{ py: 1, px: 1, borderRadius: 2, bgcolor: `rgba(${themeColors.warning}, 0.04)` }}>
-                        <Typography variant="body1" fontWeight="600" color={themeColors.textPrimary} sx={{ fontSize: { xs: '0.9rem', sm: '1rem' } }}>Containers Used:</Typography>
-                        <Chip
-                            label={totalContainersUsed}
-                            color="warning"
-                            size="small"
-                            variant="outlined"
-                            sx={{
-                                fontSize: '0.8rem',
-                                borderColor: themeColors.warning,
-                                color: themeColors.warning,
-                            }}
-                            aria-label={`Containers used: ${totalContainersUsed}`}
-                        />
-                    </Stack>
-                    <Stack direction="row" justifyContent="space-between" sx={{ py: 1, px: 1, borderRadius: 2, bgcolor: `rgba(${themeColors.primary}, 0.06)` }}>
-                        <Typography variant="body1" fontWeight="600" color={themeColors.textPrimary} sx={{ fontSize: { xs: '0.9rem', sm: '1rem' } }}>Total Qty:</Typography>
-                        <Chip
-                            label={detailedAssignments.reduce((sum, a) => sum + a.qty, 0)}
-                            color="primary"
-                            size="small"
-                            variant="filled"
-                            sx={{
-                                fontSize: '0.8rem',
-                                fontWeight: 600,
-                            }}
-                            aria-label={`Total quantity: ${detailedAssignments.reduce((sum, a) => sum + a.qty, 0)}`}
-                        />
-                    </Stack>
-                </Stack>
-                {totalAssignedDetails === 0 && availableContainers.length > 0 && (
-                    <Alert
-                        severity="info"
-                        sx={{
-                            mt: 3,
-                            borderRadius: 2,
-                            boxShadow: '0 4px 12px rgba(33, 150, 243, 0.15)',
-                            border: `1px solid ${themeColors.secondary}`,
-                            bgcolor: `rgba(${themeColors.secondary}, 0.08)`,
-                        }}
-                        role="alert"
-                        icon={<InfoIcon />}
-                    >
-                        <Typography variant="body2" sx={{ fontSize: '0.875rem', color: themeColors.textSecondary }}>Assign quantities and containers per shipping detail in the table above (expand rows with multiple details for inline editing).</Typography>
-                    </Alert>
-                )}
-            </CardContent>
-        </Card>
-    </Box>
-</Grid>
-    <Grid container spacing={2} sx={{ mt: 3 }}>
-        {selectedOrders.length > 0 && totalAssignedDetails > 0 && (
-            <Grid item xs={12}>
-                <Collapse in={true} timeout={300}>
-                    <Alert
-                        severity="success"
-                        icon={<CheckIcon />}
-                        sx={{
-                            mt: 2,
-                            borderRadius: 3,
-                            boxShadow: '0 4px 20px rgba(76, 175, 80, 0.15)',
-                            animation: 'slideIn 0.3s ease-out',
-                            bgcolor: `rgba(${themeColors.success}, 0.06)`,
-                            border: `1px solid ${themeColors.success}`,
-                            '& .MuiAlert-icon': { fontSize: '1.5rem' },
-                            '& .MuiAlert-message': { py: 1.5 },
-                        }}
-                        role="alert"
-                    >
-                        <AlertTitle sx={{ fontSize: '1.1rem', fontWeight: 700, color: themeColors.success }}>Ready to Assign</AlertTitle>
-                        <Typography variant="body1" sx={{ fontWeight: '600', fontSize: '0.95rem', color: themeColors.textPrimary }}>
-                            This will assign <strong style={{ color: themeColors.primary }}>{totalContainersUsed}</strong> containers to <strong style={{ color: themeColors.primary }}>{totalAssignedDetails}</strong> shipping details across <strong style={{ color: themeColors.primary }}>{selectedOrders.length}</strong> orders. See preview table above for details.
-                        </Typography>
-                    </Alert>
-                </Collapse>
-            </Grid>
-        )}
-    </Grid>
-</DialogContent>
-                <DialogActions sx={{
-                    p: { xs: 2.5, sm: 3 },
-                    bgcolor: `linear-gradient(135deg, ${themeColors.background} 0%, #e9ecef 100%)`,
-                    borderTop: `1px solid ${themeColors.border}`,
-                    justifyContent: 'space-between',
-                    gap: 2,
-                }}>
-                    <Button
-                        onClick={() => setOpenAssignModal(false)}
-                        variant="outlined"
-                        size="medium"
-                        sx={{
-                            borderRadius: 3,
-                            borderColor: themeColors.primary,
-                            color: themeColors.primary,
-                            px: 4,
-                            py: 1.25,
-                            fontSize: '0.9rem',
-                            fontWeight: 600,
-                            textTransform: 'none',
-                            '&:hover': {
-                                borderColor: themeColors.primary,
-                                bgcolor: `rgba(${themeColors.primary}, 0.08)`,
-                                boxShadow: `0 4px 12px rgba(${themeColors.primary}, 0.2)`,
-                                transform: 'scale(1.02)',
-                            },
-                            '&:focus': {
-                                outline: `2px solid ${themeColors.primary}`,
-                                outlineOffset: '2px'
-                            }
-                        }}
-                        aria-label="Cancel assignment"
-                    >
-                        Cancel
-                    </Button>
-                    <Button
-                        onClick={enhancedHandleAssign}
-                        variant="contained"
-                        size="medium"
-                        disabled={selectedOrders.length === 0 || totalAssignedDetails === 0}
-                        sx={{
-                            borderRadius: 3,
-                            bgcolor: `linear-gradient(135deg, ${themeColors.primary} 0%, #e65100 100%)`,
-                            px: 5,
-                            py: 1.25,
-                            fontSize: '0.9rem',
-                            fontWeight: 700,
-                            textTransform: 'none',
-                            boxShadow: totalAssignedDetails > 0 ? `0 4px 16px rgba(${themeColors.primary}, 0.3)` : 'none',
-                            '&:hover': {
-                                bgcolor: `linear-gradient(135deg, #e65100 0%, #d84315 100%)`,
-                                boxShadow: `0 6px 20px rgba(${themeColors.primary}, 0.4)`,
-                                transform: 'scale(1.02)',
-                            },
-                            '&.Mui-disabled': {
-                                bgcolor: 'grey.400',
-                                boxShadow: 'none',
-                                transform: 'none',
-                            },
-                            '&:focus': {
-                                outline: `2px solid ${themeColors.primary}`,
-                                outlineOffset: '2px'
-                            }
-                        }}
-                        startIcon={<AssignmentIcon />}
-                        aria-label={`Assign ${selectedOrders.length} orders`}
-                    >
-                        Assign ({selectedOrders.length} Orders)
-                    </Button>
-                </DialogActions>
-                {/* Column Visibility Popover */}
-                <Popover
-                    open={Boolean(columnAnchorEl)}
-                    anchorEl={columnAnchorEl}
-                    onClose={handleColumnMenuClose}
-                    anchorOrigin={{
-                        vertical: 'bottom',
-                        horizontal: 'right',
-                    }}
-                    transformOrigin={{
-                        vertical: 'top',
-                        horizontal: 'right',
-                    }}
-                    sx={{ mt: 1 }}
-                    PaperProps={{
-                        sx: {
-                            borderRadius: 2,
-                            boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
-                            bgcolor: themeColors.surface,
-                            border: `1px solid ${themeColors.border}`,
-                        }
-                    }}
-                    aria-labelledby="column-menu-title"
-                >
-                    <Box sx={{ p: 2.5, minWidth: 240 }}>
-                        <Typography id="column-menu-title" variant="subtitle1" sx={{ mb: 2, fontWeight: '700', color: themeColors.primary }}>Visible Columns</Typography>
-                        <Divider sx={{ mb: 2, borderColor: themeColors.border }} />
-                        <List dense role="list">
-                            {Object.keys(columnVisibility).map((column) => (
-                                <ListItem key={column} disablePadding sx={{ py: 1, borderRadius: 1, '&:hover': { bgcolor: `rgba(${themeColors.primary}, 0.04)` } }} role="listitem">
-                                    <ListItemIcon sx={{ minWidth: 36 }}>
-                                        <Checkbox
-                                            edge="start"
-                                            checked={columnVisibility[column]}
-                                            onChange={(e) => handleColumnToggle(e, column)}
+        );
+    };
+  // Handlers
+  const handleColumnMenuOpen = useCallback((event) => setColumnAnchorEl(event.currentTarget), []);
+  const handleColumnMenuClose = useCallback(() => setColumnAnchorEl(null), []);
+  const handleColumnToggle = useCallback((event, column) => {
+    setColumnVisibility(prev => ({ ...prev, [column]: event.target.checked }));
+  }, []);
+
+  const handleContainerChange = useCallback((key, newValue) => {
+    setSelectedContainersPerDetail(prev => ({ ...prev, [key]: newValue }));
+  }, []);
+
+  const handleQuantityChange = useCallback((key, value, max = Infinity) => {
+    const qty = Math.max(0, Math.min(max, parseInt(value) || 0));
+    setAssignmentQuantities(prev => ({ ...prev, [key]: qty }));
+  }, []);
+
+  const toggleExpanded = useCallback((orderId, recId) => {
+    const key = `${orderId}-${recId}`;
+    setExpandedReceivers(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(key)) newSet.delete(key); else newSet.add(key);
+      return newSet;
+    });
+  }, []);
+
+  const handleRemoveContainersForReceiver = useCallback((recId, orderId) => {
+    setSelectedContainersPerDetail(prev => {
+      const newState = { ...prev };
+      Object.keys(newState).forEach(k => { if (k.startsWith(`${orderId}-${recId}-`)) delete newState[k]; });
+      return newState;
+    });
+    setAssignmentQuantities(prev => {
+      const newState = { ...prev };
+      Object.keys(newState).forEach(k => { if (k.startsWith(`${orderId}-${recId}-`)) delete newState[k]; });
+      return newState;
+    });
+    toggleExpanded(orderId, recId);
+  }, [toggleExpanded]);
+
+  const handleRemoveDetailAssignment = useCallback((orderId, recId, detailIdx) => {
+    const key = getDetailKey(orderId, recId, detailIdx);
+    setSelectedContainersPerDetail(prev => { const newState = { ...prev }; delete newState[key]; return newState; });
+    setAssignmentQuantities(prev => { const newState = { ...prev }; delete newState[key]; return newState; });
+  }, [getDetailKey]);
+
+  // Fetch order
+  const fetchOrder = useCallback(async (id) => {
+    try {
+      const response = await api.get(`/api/orders/${id}`, { params: { includeContainer: true } });
+      if (!response.data) throw new Error('Invalid response data');
+
+      const camelData = {};
+      Object.keys(response.data).forEach(apiKey => {
+        let value = response.data[apiKey];
+        if (value === null || value === undefined) value = '';
+        if (['eta', 'etd', 'drop_date', 'delivery_date'].includes(apiKey)) {
+          if (value) {
+            const date = new Date(value);
+            if (!isNaN(date.getTime())) value = date.toISOString().split('T')[0];
+          } else value = '';
+        }
+        camelData[snakeToCamel(apiKey)] = value;
+      });
+
+      camelData.senderType = response.data.sender_type || 'sender';
+      const ownerPrefix = camelData.senderType === 'sender' ? 'sender' : 'receiver';
+      const ownerFields = ['name', 'contact', 'address', 'email', 'ref', 'remarks'];
+      ownerFields.forEach(field => {
+        const apiKey = `${ownerPrefix}_${field}`;
+        const snakeVal = response.data[apiKey];
+        if (snakeVal !== null && snakeVal !== undefined) {
+          camelData[`${ownerPrefix}${field.charAt(0).toUpperCase() + field.slice(1)}`] = snakeVal;
+        }
+      });
+
+      const panel2ApiKey = 'receivers';
+      const panel2Prefix = camelData.senderType === 'sender' ? 'receiver' : 'sender';
+      const panel2ListKey = camelData.senderType === 'sender' ? 'receivers' : 'senders';
+      const initialItem = panel2Prefix === 'receiver' ? initialReceiver : initialSenderObject;
+      let mappedPanel2 = [];
+      if (response.data[panel2ApiKey] && Array.isArray(response.data[panel2ApiKey])) {
+        mappedPanel2 = response.data[panel2ApiKey].map(rec => {
+          if (!rec) return null;
+          const camelRec = { ...initialItem, shippingDetails: [], isNew: false, validationWarnings: null };
+          Object.keys(rec).forEach(apiKey => {
+            let val = rec[apiKey] ?? '';
+            const camelKey = snakeToCamel(apiKey);
+            if (['name', 'contact', 'address', 'email'].includes(camelKey)) {
+              camelRec[`${panel2Prefix}${camelKey.charAt(0).toUpperCase() + camelKey.slice(1)}`] = val;
+            } else {
+              camelRec[camelKey] = val;
+            }
+          });
+          // Fixed: Map shippingDetails array properly
+          if (rec.shippingdetails && Array.isArray(rec.shippingdetails)) {
+            camelRec.shippingDetails = rec.shippingdetails.map(sd => {
+              const camelSd = { ...initialShippingDetail };
+              Object.keys(sd).forEach(k => {
+                camelSd[snakeToCamel(k)] = sd[k];
+              });
+              return camelSd;
+            });
+          } else if (!camelRec.shippingDetails?.length) {
+            camelRec.shippingDetails = [{ ...initialShippingDetail, totalNumber: rec.total_number || '', weight: rec.total_weight || '' }];
+          }
+          camelRec.status = rec.status || 'Created';
+          camelRec.fullPartial = camelRec.fullPartial || '';
+          camelRec.qtyDelivered = String(camelRec.qtyDelivered ?? 0);
+          // Validation based on original totals and delivered
+          const shippingDetails = camelRec.shippingDetails;
+          const recTotalOriginal = shippingDetails.reduce((sum, sd) => sum + (parseInt(sd.totalNumber || 0) || 0), 0);
+          const delivered = parseInt(camelRec.qtyDelivered || 0);
+          let warnings = null;
+          if (recTotalOriginal <= 0) warnings = { totalNumber: 'Must be positive' };
+          else if (delivered > recTotalOriginal) warnings = { ...warnings, qtyDelivered: 'Cannot exceed totalNumber' };
+          camelRec.validationWarnings = warnings;
+          return camelRec;
+        }).filter(Boolean);
+      }
+
+      mappedPanel2.forEach(rec => {
+        if (rec.eta === '' && camelData.eta) rec.eta = camelData.eta;
+        if (rec.etd === '' && camelData.etd) rec.etd = camelData.etd;
+        if (rec.shippingLine === '' && camelData.shippingLine) rec.shippingLine = camelData.shippingLine;
+      });
+
+      camelData[panel2ListKey] = mappedPanel2.length ? mappedPanel2 : [{ ...initialItem, shippingDetails: [], isNew: true }];
+      const otherListKey = panel2ListKey === 'receivers' ? 'senders' : 'receivers';
+      camelData[otherListKey] = [];
+
+      const cleanAttachments = (paths) => (paths || []).map(path => 
+        typeof path === 'string' && path.startsWith('function wrap()') ? path.substring(62) : path
+      ).filter(Boolean);
+      const apiBase = import.meta.env.VITE_API_URL;
+      camelData.attachments = cleanAttachments(camelData.attachments || []).map(path => 
+        path.startsWith('http') ? path : `${apiBase}${path}`
+      );
+      camelData.gatepass = cleanAttachments(camelData.gatepass || []).map(path => 
+        path.startsWith('http') ? path : `${apiBase}${path}`
+      );
+
+      return camelData;
+    } catch (err) {
+      console.error('Error fetching order:', err);
+      throw err;
+    }
+  }, [snakeToCamel]);
+
+  // Optimized useEffect for fetching
+  useEffect(() => {
+    if (!openAssignModal || selectedOrders.length === 0) return;
+
+    const fetchAllDetails = async () => {
+      if (fetchingDetails) return;
+      setFetchingDetails(true);
+
+      const updatedOrders = { ...detailedOrders };
+      let needsUpdate = false;
+      for (const orderId of selectedOrders) {
+        if (!updatedOrders[orderId]) {
+          try {
+            updatedOrders[orderId] = await fetchOrder(orderId);
+            needsUpdate = true;
+          } catch (err) {
+            console.error(`Failed to fetch details for order ${orderId}:`, err);
+          }
+        }
+      }
+
+      if (needsUpdate) {
+        setDetailedOrders(updatedOrders);
+      }
+      if (onRefreshOrders) onRefreshOrders();
+      setFetchingDetails(false);
+    };
+
+    fetchAllDetails();
+  }, [openAssignModal, selectedOrders, fetchOrder, onRefreshOrders, fetchingDetails, detailedOrders]);
+
+  // Edit receiver handlers
+  const handleEditReceiver = useCallback(async (rec) => {
+    try {
+      const orderId = rec.orderId;
+      if (!detailedOrders[orderId]) await fetchOrder(orderId);
+      const fullOrder = detailedOrders[orderId] || orders.find(o => o.id === orderId);
+      const fullRec = fullOrder?.receivers?.find(r => r.id === rec.id) || rec;
+      setSelectedReceiver(fullRec);
+      setEditForm({
+        receiverName: fullRec.receiverName || '',
+        receiverContact: fullRec.receiverContact || '',
+        receiverEmail: fullRec.receiverEmail || '',
+        receiverAddress: fullRec.receiverAddress || '',
+        category: fullRec.category || '',
+        totalNumber: fullRec.totalNumber || 0,
+        totalWeight: fullRec.totalWeight || 0,
+        status: fullRec.status || 'Created',
+        shippingDetails: fullRec.shippingDetails || [],
+      });
+      setEditErrors({});
+      setOpenEditModal(true);
+    } catch (err) {
+      console.error('Error fetching receiver details:', err);
+      setEditForm({
+        receiverName: rec.receiverName || '',
+        receiverContact: rec.receiverContact || '',
+        receiverEmail: rec.receiverEmail || '',
+        receiverAddress: rec.receiverAddress || '',
+        category: rec.category || '',
+        totalNumber: rec.totalNumber || 0,
+        totalWeight: rec.totalWeight || 0,
+        status: rec.status || 'Created',
+        shippingDetails: rec.shippingDetails || [],
+      });
+      setEditErrors({});
+      setOpenEditModal(true);
+    }
+  }, [detailedOrders, orders, fetchOrder]);
+
+  const handleEditChange = useCallback((e) => {
+    const { name, value } = e.target;
+    setEditForm(prev => ({ ...prev, [name]: value }));
+    if (editErrors[name]) setEditErrors(prev => ({ ...prev, [name]: '' }));
+  }, [editErrors]);
+
+  const validateForm = useCallback(() => {
+    const errors = {};
+    if (!editForm.receiverName.trim()) errors.receiverName = 'Receiver name is required';
+    if (!editForm.receiverAddress.trim()) errors.receiverAddress = 'Address is required';
+    if (!editForm.receiverContact.trim()) errors.receiverContact = 'Contact is required';
+    if (!editForm.receiverEmail.trim() || !/\S+@\S+\.\S+/.test(editForm.receiverEmail)) {
+      errors.receiverEmail = 'Valid email is required';
+    }
+    setEditErrors(errors);
+    return Object.keys(errors).length === 0;
+  }, [editForm.receiverName, editForm.receiverAddress, editForm.receiverContact, editForm.receiverEmail, editErrors]);
+
+  const handleSaveReceiver = useCallback(() => {
+    if (!validateForm()) return;
+    if (onUpdateReceiver && selectedReceiver) {
+      onUpdateReceiver({ ...selectedReceiver, ...editForm });
+    }
+    setOpenEditModal(false);
+    setSelectedReceiver(null);
+    setEditForm({
+      receiverName: '', receiverContact: '', receiverEmail: '', receiverAddress: '',
+      category: '', totalNumber: 0, totalWeight: 0, status: 'Created', shippingDetails: [],
+    });
+  }, [validateForm, onUpdateReceiver, selectedReceiver, editForm]);
+
+  const showToast = useCallback((message, severity = "success") => {
+    setSnackbar({ open: true, message, severity });
+  }, []);
+
+  // Enhanced assign handler
+  const enhancedHandleAssign = useCallback(() => {
+    console.log('Assignment Quantities:', assignmentQuantities);
+    if (selectedOrders.length === 0) return;
+
+    const assignments = selectedOrders.reduce((acc, orderId) => {
+      acc[orderId] = {};
+      const fullOrder = detailedOrders[orderId] || orders.find(o => o.id === orderId);
+      if (fullOrder?.receivers) {
+        fullOrder.receivers.forEach(rec => {
+          const details = rec.shippingDetails || [];
+          acc[orderId][rec.id] = details.reduce((recAcc, _, idx) => {
+            const key = getDetailKey(orderId, rec.id, idx);
+            const qty = assignmentQuantities[key] || 0;
+            const conts = selectedContainersPerDetail[key] || [];
+            if (qty > 0 && conts.length > 0) {
+              recAcc[idx] = { qty, containers: conts };
+            }
+            return recAcc;
+          }, {});
+          if (Object.keys(acc[orderId][rec.id]).length === 0) delete acc[orderId][rec.id];
+        });
+        if (Object.keys(acc[orderId]).length === 0) delete acc[orderId];
+      }
+      return acc;
+    }, {});
+
+    if (Object.keys(assignments).length === 0) {
+      showToast('Please assign at least one detail.', 'warning');
+      return;
+    }
+
+    console.log('Built assignments payload:', assignments);
+    handleAssign(assignments);
+    setOpenAssignModal(false);
+  }, [selectedOrders, detailedOrders, orders, assignmentQuantities, selectedContainersPerDetail, getDetailKey, handleAssign, setOpenAssignModal, showToast]);
+
+  // Computed values
+  const totalReceivers = useMemo(() => selectedOrders.reduce((total, id) => total + (orders.find(o => o.id === id)?.receivers?.length || 0), 0), [selectedOrders, orders]);
+  const totalAssignedDetails = useMemo(() => {
+    let count = 0;
+    selectedOrders.forEach(orderId => {
+      const fullOrder = detailedOrders[orderId] || orders.find(o => o.id === orderId);
+      fullOrder?.receivers?.forEach(rec => {
+        rec.shippingDetails?.forEach((_, idx) => {
+          const key = getDetailKey(orderId, rec.id, idx);
+          if ((assignmentQuantities[key] || 0) > 0 && (selectedContainersPerDetail[key] || []).length > 0) count++;
+        });
+      });
+    });
+    return count;
+  }, [selectedOrders, detailedOrders, orders, assignmentQuantities, selectedContainersPerDetail, getDetailKey]);
+  const totalContainersUsed = useMemo(() => new Set(getGloballySelectedCids()).size, [getGloballySelectedCids]);
+  const totalDelivered = useMemo(() => {
+    let sum = 0;
+    selectedOrders.forEach(orderId => {
+      const fullOrder = detailedOrders[orderId] || orders.find(o => o.id === orderId);
+      fullOrder?.receivers?.forEach(rec => sum += parseInt(rec.qtyDelivered || 0));
+    });
+    return sum;
+  }, [selectedOrders, detailedOrders, orders]);
+
+  const detailedAssignments = useMemo(() => {
+    const ass = [];
+    selectedOrders.forEach(orderId => {
+      const fullOrder = detailedOrders[orderId] || orders.find(o => o.id === orderId);
+      fullOrder?.receivers?.forEach(rec => {
+        rec.shippingDetails?.forEach((detail, idx) => {
+          const key = getDetailKey(orderId, rec.id, idx);
+          const qty = assignmentQuantities[key] || 0;
+          const conts = selectedContainersPerDetail[key] || [];
+          if (qty > 0 && conts.length > 0) {
+            const containerNumbers = conts.map(cid => availableContainers.find(c => c.cid === cid)?.container_number || String(cid)).join(', ');
+            ass.push({ orderRef: fullOrder.bookingRef || 'N/A', receiverName: rec.receiverName || 'N/A', detailAddress: detail.deliveryAddress || `Detail ${idx + 1}`, qty, containers: containerNumbers, detailIdx: idx, recId: rec.id, orderId });
+          }
+        });
+      });
+    });
+    return ass;
+  }, [selectedOrders, detailedOrders, orders, assignmentQuantities, selectedContainersPerDetail, availableContainers, getDetailKey]);
+
+  // Enhanced ReceiverRow with Accordion for Hierarchy
+  const ReceiverRow = ({ rec, globalIndex }) => {
+    const fullOrder = detailedOrders[rec.orderId] || orders.find(o => o.id === rec.orderId);
+    const fullRec = fullOrder?.receivers?.find(r => r.id === rec.id) || rec;
+    const shippingDetails = fullRec.shippingDetails || [];
+    const totalPC = shippingDetails.reduce((sum, sd) => sum + (parseInt(sd.remainingItems || sd.totalNumber || 0) || 0), 0); // Sum of remaining
+    const totalWeight = shippingDetails.reduce((sum, sd) => sum + parseFloat(sd.weight || 0), 0);
+    let delivered = parseInt(fullRec.qtyDelivered || rec.qty_delivered || 0) || 0;
+    delivered = Math.min(delivered, totalPC + totalPC); // Cap reasonably, but since remaining is post-delivered
+    const totalNewAssignedQty = shippingDetails.reduce((sum, _, idx) => sum + (assignmentQuantities[getDetailKey(rec.orderId, rec.id, idx)] || 0), 0);
+    const localRemaining = Math.max(0, totalPC - totalNewAssignedQty);
+    const isEditingAssign = editingAssignReceiverId === rec.id;
+    const address = shippingDetails.map(d => d.deliveryAddress).filter(Boolean).join(', ') || fullRec.receiverAddress || 'N/A';
+    const contact = fullRec.receiverContact || 'N/A';
+    const email = fullRec.receiverEmail || 'N/A';
+
+    const existingContainers = shippingDetails.flatMap(sd =>
+      (sd.containerDetails || sd.container_details || []).map(cd => cd.container?.cid).filter(Boolean)
+    );
+    const totalExistingCont = existingContainers.length;
+    const existingContainersPreview = existingContainers.map(cid =>
+      availableContainers.find(c => String(c.cid) === String(cid))?.container_number || String(cid)
+    ).filter(Boolean);
+    const totalSelectedCont = shippingDetails.reduce((sum, _, idx) => sum + ((selectedContainersPerDetail[getDetailKey(rec.orderId, rec.id, idx)] || []).length), 0);
+    const totalContForRec = totalExistingCont + totalSelectedCont;
+    const assignedContainersPreview = shippingDetails.reduce((acc, _, idx) => [...acc, ...((selectedContainersPerDetail[getDetailKey(rec.orderId, rec.id, idx)] || []).map(cid => availableContainers.find(c => String(c.cid) === String(cid))?.container_number || String(cid)))], []).filter(Boolean);
+    const allContainersPreview = [...new Set([...existingContainersPreview, ...assignedContainersPreview])];
+    const hasShippingDetails = shippingDetails.length > 0;
+    const isExpanded = expandedReceivers.has(`${rec.orderId}-${rec.id}`);
+
+    const handleAssignBlur = useCallback(() => {
+      if (totalPC > 0) {
+        shippingDetails.forEach((sd, idx) => {
+          const detailRemaining = parseInt(sd.remainingItems || sd.totalNumber || 0);
+          const proportion = detailRemaining / totalPC;
+          const newQty = Math.min(detailRemaining, Math.round(proportion * tempAssignQty));
+          setAssignmentQuantities(prev => ({ ...prev, [getDetailKey(rec.orderId, rec.id, idx)]: newQty }));
+        });
+      } else if (shippingDetails.length > 0) {
+        const equalQty = Math.floor(tempAssignQty / shippingDetails.length);
+        shippingDetails.forEach((sd, idx) => {
+          const detailRemaining = parseInt(sd.remainingItems || sd.totalNumber || 0);
+          const qty = Math.min(detailRemaining, idx === 0 ? tempAssignQty - (equalQty * (shippingDetails.length - 1)) : equalQty);
+          setAssignmentQuantities(prev => ({ ...prev, [getDetailKey(rec.orderId, rec.id, idx)]: qty }));
+        });
+      }
+      setEditingAssignReceiverId(null);
+    }, [totalPC, shippingDetails, tempAssignQty, getDetailKey, rec.orderId, rec.id]);
+
+    const handleAssignKeyDown = useCallback((e) => {
+      if (e.key === 'Enter') handleAssignBlur();
+      else if (e.key === 'Escape') setEditingAssignReceiverId(null);
+    }, [handleAssignBlur]);
+
+    // Generate subrows array
+    const subRows = isExpanded && hasShippingDetails ? shippingDetails.map((detail, idx) => {
+      const key = getDetailKey(rec.orderId, rec.id, idx);
+      const detailRemaining = parseInt(detail.remainingItems || detail.totalNumber || 0);
+      const originalTotal = parseInt(detail.totalNumber || 0);
+      const progressValue = originalTotal > 0 ? ((originalTotal - detailRemaining) / originalTotal * 100) : 0;
+      return (
+        <TableRow key={`detail-${key}`} sx={{ bgcolor: theme.background }}>
+          <TableCell colSpan={visibleColumnCount}>
+            <Accordion defaultExpanded sx={{ boxShadow: 'none', '&:before': { display: 'none' } }}>
+              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                <Typography variant="subtitle1" fontWeight="bold">
+                  Shipping Detail {idx + 1}: {detail.deliveryAddress || 'N/A'} ({detail.category} - {detailRemaining} pcs remaining, {detail.weight} kg)
+                </Typography>
+              </AccordionSummary>
+              <AccordionDetails sx={{ p: 2 }}>
+                <Grid container p={3} sx={{ bgcolor: theme.background, width: '100%',justifyContent:"space-evenly" }} spacing={3}>
+                  <Grid item>
+                    <Typography variant="body2" color={theme.primary} mb={1}>Existing Assignments:</Typography>
+                    <Stack sx={{ bgcolor: theme.background, width:900 }} spacing={1}>
+                      {(detail.containerDetails || []).map((contDetail, contIdx) => (
+                        <Card key={contIdx} variant="outlined" sx={{ p: 1, bgcolor: theme.surface }}>
+                          <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2}>
+                            <Stack>
+                              <Typography variant="body2" fontWeight="bold">{contDetail.container?.container_number || 'N/A'}</Typography>
+                              <Typography variant="caption" color={theme.textSecondary}>Track No: {detail?.itemRef}</Typography>
+                              <Typography variant="caption" color={theme.textSecondary}>Location: {contDetail.container?.location}</Typography>
+                          <StatusChip
+                                            status={contDetail.status}
                                             size="small"
                                             sx={{
-                                                '& .MuiSvgIcon-root': { fontSize: '1.1rem' },
-                                                color: themeColors.primary,
+                                                fontSize: 10,
+                                                height: 35,
+                                                minWidth: 40,
+                                                flexShrink: 0,
+                                                '& .MuiChip-label': { p: 3 }
                                             }}
-                                            aria-label={`Toggle ${column} column visibility`}
                                         />
-                                    </ListItemIcon>
-                                    <ListItemText
-                                        primary={column.charAt(0).toUpperCase() + column.slice(1).replace(/([A-Z])/g, ' $1')}
-                                        primaryTypographyProps={{
-                                            fontSize: '0.9rem',
-                                            fontWeight: 600,
-                                            color: themeColors.textPrimary,
-                                        }}
-                                    />
-                                </ListItem>
-                            ))}
-                        </List>
-                    </Box>
-                </Popover>
-            </Dialog>
-            {/* New Edit Receiver Modal */}
-            <Dialog
-                open={openEditModal}
-                onClose={() => {
-                    setOpenEditModal(false);
-                    setSelectedReceiver(null);
-                    setEditForm({
-                        receiverName: '',
-                        receiverContact: '',
-                        receiverEmail: '',
-                        receiverAddress: '',
-                        category: '',
-                        totalNumber: 0,
-                        totalWeight: 0,
-                        status: 'Created',
-                        shippingDetails: []
-                    });
-                    setEditErrors({});
-                }}
-                maxWidth="sm"
-                fullWidth
-                aria-labelledby="edit-receiver-title"
-                aria-describedby="edit-receiver-description"
-                PaperProps={{
-                    sx: {
-                        borderRadius: 3,
-                        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.12)',
-                    }
-                }}
-            >
-                <DialogTitle sx={{
-                    bgcolor: `linear-gradient(135deg, ${themeColors.primary} 0%, #e65100 100%)`,
-                    color: 'common.white',
-                    borderRadius: '12px 12px 0 0',
-                    py: 2.5,
-                    '&::after': {
-                        content: '""',
-                        position: 'absolute',
-                        bottom: 0,
-                        left: 0,
-                        right: 0,
-                        height: '2px',
-                        bgcolor: 'rgba(255, 255, 255, 0.2)',
-                    }
-                }} id="edit-receiver-title">
-                    <Stack direction="row" justifyContent="space-between" alignItems="center">
-                        <Typography variant="h5" fontWeight="bold">
-                            Edit Receiver
-                        </Typography>
-                        <IconButton
-                            onClick={() => setOpenEditModal(false)}
-                            sx={{
-                                color: 'white',
-                                '&:hover': {
-                                    bgcolor: 'rgba(255,255,255,0.1)',
-                                    transform: 'scale(1.05)',
-                                }
-                            }}
-                            aria-label="Close edit receiver modal"
+
+                           </Stack>
+                            <Stack direction="column" alignSelf="center" alignItems="center" gap={1}>
+                             
+                           
+                            </Stack>
+                            <Stack direction="row" gap={1} alignItems="center" justifyContent="center">
+                             <Stack
+                              direction="row"
+                              spacing={1}
+                              alignItems="center"
+                              justifyContent="center"
+                             >
+                              <Chip label={`${contDetail.assign_total_box || 0} Units`} style={{ width: 100 }} size="large" color="success" />
+                              <Chip label={`${contDetail.assign_weight || 0} kg`} style={{ width: 100 }} size="large" color="primary" variant="outlined" />
+                             </Stack>
+                              <IconButton size="small" color="error" onClick={() => {/* Remove existing */ }}><DeleteIcon fontSize="small" /></IconButton>
+                            </Stack>
+                          </Stack>
+                        </Card>
+                      )) || <Typography variant="body2" color={theme.textSecondary}>No existing assignments</Typography>}
+                    </Stack>
+                  </Grid>
+                  <Grid item xs={12 }sx={{ bgcolor: theme.background, width:300}} spacing={1} md={6}>
+                    <Typography variant="body2" color={theme.textSecondary} mb={1}>New Assignment:</Typography>
+                    <Stack spacing={2}>
+                      <TextField
+                        size="small"
+                        label="New Boxes to Assign"
+                        type="number"
+                        value={assignmentQuantities[key] || ''}
+                        onChange={(e) => handleQuantityChange(key, e.target.value, detailRemaining)}
+                        inputProps={{ min: 0, max: detailRemaining }}
+                        sx={{ minWidth: 150 }}
+                      />
+                      <FormControl size="small" sx={{ minWidth: 200 }}>
+                        <InputLabel>Select Container</InputLabel>
+                        <Select
+                          multiple
+                          value={selectedContainersPerDetail[key] || []}
+                          onChange={(e) => handleContainerChange(key, e.target.value)}
+                          label="Select Container"
+                          renderValue={(selected) => selected.length ? `${selected.length} containers` : 'Choose...'}
                         >
-                            <CloseIcon />
-                        </IconButton>
-                    </Stack>
-                </DialogTitle>
-                <DialogContent sx={{ p: 3, bgcolor: themeColors.surface }} id="edit-receiver-description">
-                    <Stack spacing={3} sx={{ mt: 1 }}>
-                        <TextField
-                            fullWidth
-                            label="Receiver Name *"
-                            name="receiverName"
-                            value={editForm.receiverName}
-                            onChange={handleEditChange}
-                            error={!!editErrors.receiverName}
-                            helperText={editErrors.receiverName}
-                            variant="outlined"
-                            size="medium"
-                            sx={{
-                                '& .MuiInputLabel-root': {
-                                    fontSize: '0.95rem',
-                                    color: themeColors.textSecondary,
-                                },
-                                '& .MuiInputBase-input': {
-                                    fontSize: '0.95rem',
-                                    py: 1.25,
-                                },
-                                '& .MuiOutlinedInput-root': {
-                                    borderRadius: 2,
-                                    bgcolor: 'white',
-                                },
-                                '& .MuiOutlinedInput-root:focus': {
-                                    borderColor: themeColors.primary,
-                                    boxShadow: `0 0 0 2px rgba(${themeColors.primary}, 0.1)`,
-                                },
-                                '& .MuiFormHelperText-root': {
-                                    fontSize: '0.8rem',
-                                    mt: 0.5,
-                                }
-                            }}
-                            aria-required="true"
-                            aria-invalid={!!editErrors.receiverName}
+                          {getAvailableContainersForKey(key).map(c => (
+                            <MenuItem key={c.cid} value={c.cid}>
+                              {c.container_number} ({c.location})
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                      {(selectedContainersPerDetail[key] || []).length > 0 && (
+                        <Chip
+                          label={`${(selectedContainersPerDetail[key] || []).length} new containers`}
+                          color="warning"
+                          variant="outlined"
+                          onDelete={() => handleContainerChange(key, [])}
                         />
-                        <TextField
-                            fullWidth
-                            label="Receiver Address *"
-                            name="receiverAddress"
-                            value={editForm.receiverAddress}
-                            onChange={handleEditChange}
-                            error={!!editErrors.receiverAddress}
-                            helperText={editErrors.receiverAddress}
-                            variant="outlined"
-                            size="medium"
-                            multiline
-                            rows={3}
-                            sx={{
-                                '& .MuiInputLabel-root': {
-                                    fontSize: '0.95rem',
-                                    color: themeColors.textSecondary,
-                                },
-                                '& .MuiInputBase-input': {
-                                    fontSize: '0.95rem',
-                                    py: 1.25,
-                                },
-                                '& .MuiOutlinedInput-root': {
-                                    borderRadius: 2,
-                                    bgcolor: 'white',
-                                },
-                                '& .MuiOutlinedInput-root:focus': {
-                                    borderColor: themeColors.primary,
-                                    boxShadow: `0 0 0 2px rgba(${themeColors.primary}, 0.1)`,
-                                },
-                                '& .MuiFormHelperText-root': {
-                                    fontSize: '0.8rem',
-                                    mt: 0.5,
-                                }
-                            }}
-                            aria-required="true"
-                            aria-invalid={!!editErrors.receiverAddress}
-                        />
-                        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-                            <TextField
-                                fullWidth
-                                label="Contact Number *"
-                                name="receiverContact"
-                                value={editForm.receiverContact}
-                                onChange={handleEditChange}
-                                error={!!editErrors.receiverContact}
-                                helperText={editErrors.receiverContact}
-                                variant="outlined"
-                                size="medium"
-                                sx={{
-                                    '& .MuiInputLabel-root': {
-                                        fontSize: '0.95rem',
-                                        color: themeColors.textSecondary,
-                                    },
-                                    '& .MuiInputBase-input': {
-                                        fontSize: '0.95rem',
-                                        py: 1.25,
-                                    },
-                                    '& .MuiOutlinedInput-root': {
-                                        borderRadius: 2,
-                                        bgcolor: 'white',
-                                    },
-                                    '& .MuiOutlinedInput-root:focus': {
-                                        borderColor: themeColors.primary,
-                                        boxShadow: `0 0 0 2px rgba(${themeColors.primary}, 0.1)`,
-                                    },
-                                    '& .MuiFormHelperText-root': {
-                                        fontSize: '0.8rem',
-                                        mt: 0.5,
-                                    }
-                                }}
-                                aria-required="true"
-                                aria-invalid={!!editErrors.receiverContact}
-                            />
-                            <TextField
-                                fullWidth
-                                label="Email *"
-                                name="receiverEmail"
-                                value={editForm.receiverEmail}
-                                onChange={handleEditChange}
-                                error={!!editErrors.receiverEmail}
-                                helperText={editErrors.receiverEmail}
-                                variant="outlined"
-                                size="medium"
-                                sx={{
-                                    '& .MuiInputLabel-root': {
-                                        fontSize: '0.95rem',
-                                        color: themeColors.textSecondary,
-                                    },
-                                    '& .MuiInputBase-input': {
-                                        fontSize: '0.95rem',
-                                        py: 1.25,
-                                    },
-                                    '& .MuiOutlinedInput-root': {
-                                        borderRadius: 2,
-                                        bgcolor: 'white',
-                                    },
-                                    '& .MuiOutlinedInput-root:focus': {
-                                        borderColor: themeColors.primary,
-                                        boxShadow: `0 0 0 2px rgba(${themeColors.primary}, 0.1)`,
-                                    },
-                                    '& .MuiFormHelperText-root': {
-                                        fontSize: '0.8rem',
-                                        mt: 0.5,
-                                    }
-                                }}
-                                aria-required="true"
-                                aria-invalid={!!editErrors.receiverEmail}
-                            />
-                        </Stack>
-                        <TextField
-                            fullWidth
-                            label="Category"
-                            name="category"
-                            value={editForm.category}
-                            onChange={handleEditChange}
-                            variant="outlined"
-                            size="medium"
-                            sx={{
-                                '& .MuiInputLabel-root': {
-                                    fontSize: '0.95rem',
-                                    color: themeColors.textSecondary,
-                                },
-                                '& .MuiInputBase-input': {
-                                    fontSize: '0.95rem',
-                                    py: 1.25,
-                                },
-                                '& .MuiOutlinedInput-root': {
-                                    borderRadius: 2,
-                                    bgcolor: 'white',
-                                },
-                                '& .MuiOutlinedInput-root:focus': {
-                                    borderColor: themeColors.primary,
-                                    boxShadow: `0 0 0 2px rgba(${themeColors.primary}, 0.1)`,
-                                }
-                            }}
-                        />
-                        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-                            <TextField
-                                fullWidth
-                                label="Total Pieces"
-                                name="totalNumber"
-                                type="number"
-                                value={editForm.totalNumber}
-                                onChange={handleEditChange}
-                                variant="outlined"
-                                size="medium"
-                                inputProps={{ min: 0 }}
-                                sx={{
-                                    '& .MuiInputLabel-root': {
-                                        fontSize: '0.95rem',
-                                        color: themeColors.textSecondary,
-                                    },
-                                    '& .MuiInputBase-input': {
-                                        fontSize: '0.95rem',
-                                        py: 1.25,
-                                    },
-                                    '& .MuiOutlinedInput-root': {
-                                        borderRadius: 2,
-                                        bgcolor: 'white',
-                                    },
-                                    '& .MuiOutlinedInput-root:focus': {
-                                        borderColor: themeColors.primary,
-                                        boxShadow: `0 0 0 2px rgba(${themeColors.primary}, 0.1)`,
-                                    }
-                                }}
-                            />
-                            <TextField
-                                fullWidth
-                                label="Total Weight (kg)"
-                                name="totalWeight"
-                                type="number"
-                                value={editForm.totalWeight}
-                                onChange={handleEditChange}
-                                variant="outlined"
-                                size="medium"
-                                inputProps={{ min: 0, step: 0.01 }}
-                                sx={{
-                                    '& .MuiInputLabel-root': {
-                                        fontSize: '0.95rem',
-                                        color: themeColors.textSecondary,
-                                    },
-                                    '& .MuiInputBase-input': {
-                                        fontSize: '0.95rem',
-                                        py: 1.25,
-                                    },
-                                    '& .MuiOutlinedInput-root': {
-                                        borderRadius: 2,
-                                        bgcolor: 'white',
-                                    },
-                                    '& .MuiOutlinedInput-root:focus': {
-                                        borderColor: themeColors.primary,
-                                        boxShadow: `0 0 0 2px rgba(${themeColors.primary}, 0.1)`,
-                                    }
-                                }}
-                            />
-                        </Stack>
-                        <FormControl fullWidth size="medium" variant="outlined">
-                            <InputLabel sx={{ fontSize: '0.95rem', color: themeColors.textSecondary }}>Status</InputLabel>
-                            <Select
-                                name="status"
-                                value={editForm.status}
-                                onChange={handleEditChange}
-                                label="Status"
-                                sx={{
-                                    '& .MuiInputBase-input': {
-                                        fontSize: '0.95rem',
-                                        py: 1.25,
-                                    },
-                                    '& .MuiOutlinedInput-root': {
-                                        borderRadius: 2,
-                                        bgcolor: 'white',
-                                    },
-                                    '& .MuiOutlinedInput-root:focus': {
-                                        borderColor: themeColors.primary,
-                                        boxShadow: `0 0 0 2px rgba(${themeColors.primary}, 0.1)`,
-                                    }
-                                }}
-                                aria-label="Status select"
-                            >
-                                <MenuItem value="Created" sx={{ fontSize: '0.95rem' }}>Created</MenuItem>
-                                <MenuItem value="In Transit" sx={{ fontSize: '0.95rem' }}>In Transit</MenuItem>
-                                <MenuItem value="Delivered" sx={{ fontSize: '0.95rem' }}>Delivered</MenuItem>
-                            </Select>
-                        </FormControl>
-                    </Stack>
-                </DialogContent>
-                <DialogActions sx={{
-                    p: 3,
-                    pt: 0,
-                    justifyContent: 'flex-end',
-                    gap: 2,
-                    bgcolor: themeColors.background,
-                    borderTop: `1px solid ${themeColors.border}`,
-                }}>
-                    <Button
-                        onClick={() => {
-                            setOpenEditModal(false);
-                            setSelectedReceiver(null);
-                            setEditForm({
-                                receiverName: '',
-                                receiverContact: '',
-                                receiverEmail: '',
-                                receiverAddress: '',
-                                category: '',
-                                totalNumber: 0,
-                                totalWeight: 0,
-                                status: 'Created',
-                                shippingDetails: []
-                            });
-                            setEditErrors({});
-                        }}
-                        variant="outlined"
-                        size="medium"
-                        color="inherit"
-                        sx={{
-                            borderRadius: 3,
-                            px: 4,
-                            py: 1.25,
-                            fontSize: '0.9rem',
-                            fontWeight: 600,
-                            textTransform: 'none',
-                            borderColor: themeColors.primary,
-                            color: themeColors.primary,
-                            '&:hover': {
-                                borderColor: themeColors.primary,
-                                bgcolor: `rgba(${themeColors.primary}, 0.08)`,
-                            },
-                            '&:focus': {
-                                outline: `2px solid ${themeColors.primary}`,
-                                outlineOffset: '2px'
-                            }
-                        }}
-                        aria-label="Cancel editing receiver"
-                    >
-                        Cancel
-                    </Button>
-                    <Button
-                        onClick={handleSaveReceiver}
+                      )}
+                      <Button
                         variant="contained"
-                        size="medium"
-                        startIcon={<SaveIcon />}
-                        disabled={Object.keys(editErrors).length > 0}
-                        sx={{
-                            borderRadius: 3,
-                            bgcolor: `linear-gradient(135deg, ${themeColors.primary} 0%, #e65100 100%)`,
-                            px: 4,
-                            py: 1.25,
-                            fontSize: '0.9rem',
-                            fontWeight: 700,
-                            textTransform: 'none',
-                            boxShadow: '0 4px 16px rgba(245, 130, 32, 0.3)',
-                            '&:hover': {
-                                bgcolor: `linear-gradient(135deg, #e65100 0%, #d84315 100%)`,
-                                boxShadow: '0 6px 20px rgba(245, 130, 32, 0.4)',
-                                transform: 'scale(1.02)',
-                            },
-                            '&.Mui-disabled': {
-                                bgcolor: 'grey.400',
-                                boxShadow: 'none',
-                                transform: 'none',
-                            },
-                            '&:focus': {
-                                outline: `2px solid ${themeColors.primary}`,
-                                outlineOffset: '2px'
-                            }
-                        }}
-                        aria-label="Update receiver details"
-                    >
-                        Update Receiver
-                    </Button>
-                </DialogActions>
-            </Dialog>
-        </>
+                        startIcon={<AddIcon />}
+                        onClick={() => {/* Preview in Summary */ }}
+                        disabled={!(assignmentQuantities[key] || 0) > 0 || (selectedContainersPerDetail[key] || []).length === 0}
+                        size="small"
+                      >
+                        Preview Assignment
+                      </Button>
+                    </Stack>
+                  </Grid>
+                </Grid>
+                <Divider sx={{ my: 2 }} />
+                <LinearProgress variant="determinate" value={progressValue} sx={{ height: 8 }} color="primary" />
+                <Typography variant="caption" sx={{ display: 'block', textAlign: 'center', mt: 1, color: theme.textSecondary }}>
+                  Progress: {originalTotal - detailRemaining} / {originalTotal}
+                </Typography>
+              </AccordionDetails>
+            </Accordion>
+          </TableCell>
+        </TableRow>
+      );
+    }) : [];
+
+    return (
+      <>
+        <TableRow key={`${rec.orderId}-${rec.id || globalIndex}`} hover sx={{ '&:hover': { bgcolor: `rgba(${theme.primary}, 0.04)` } }}>
+          <TableCell key="id" sx={{ display: columnVisibility.id ? 'table-cell' : 'none' }}>{rec.id || 'N/A'}</TableCell>
+          <TableCell key="name" sx={{ display: columnVisibility.name ? 'table-cell' : 'none' }}>{fullRec.receiverName || rec.receiverName}</TableCell>
+          <TableCell key="booking_ref" sx={{ display: columnVisibility.booking_ref ? 'table-cell' : 'none' }}>{rec.booking_ref}</TableCell>
+          <TableCell key="address" sx={{ display: columnVisibility.address ? 'table-cell' : 'none', maxWidth: 150 }}>
+            <Tooltip title={address}>
+              <Typography variant="body2" noWrap>{address.length > 20 ? `${address.substring(0, 20)}...` : address}</Typography>
+            </Tooltip>
+          </TableCell>
+          <TableCell key="contact" sx={{ display: columnVisibility.contact ? 'table-cell' : 'none' }}>{contact}</TableCell>
+          <TableCell key="email" sx={{ display: columnVisibility.email ? 'table-cell' : 'none' }}>{email}</TableCell>
+          <TableCell key="wt" sx={{ display: columnVisibility.wt ? 'table-cell' : 'none' }}>{totalWeight || 0} kg</TableCell>
+          <TableCell key="totalPC" sx={{ display: columnVisibility.totalPC ? 'table-cell' : 'none', color: theme.success }}>{totalPC}</TableCell>
+          <TableCell key="deliveredQty" sx={{ display: columnVisibility.deliveredQty ? 'table-cell' : 'none' }}>
+            <Chip label={delivered} size="small" color="success" />
+          </TableCell>
+          <TableCell key="remainingQty" sx={{ display: columnVisibility.remainingQty ? 'table-cell' : 'none' }}>
+            <Chip label={localRemaining} size="small" color={localRemaining > 0 ? "warning" : "success"} variant="outlined" />
+          </TableCell>
+          <TableCell key="assignQty">
+            {/* <Stack direction="row" gap={1} alignItems="center">
+              {isEditingAssign ? (
+                <TextField
+                  size="small"
+                  type="number"
+                  value={tempAssignQty}
+                  onChange={(e) => setTempAssignQty(Math.min(totalPC, Math.max(0, parseInt(e.target.value) || 0)))}
+                  onBlur={handleAssignBlur}
+                  onKeyDown={handleAssignKeyDown}
+                  inputProps={{ min: 0, max: totalPC }}
+                  sx={{ width: 80 }}
+                />
+              ) : ( */}
+                <Typography variant="body2" fontWeight="bold">{totalNewAssignedQty}</Typography>
+              {/* )} */}
+              {/* <IconButton size="small" onClick={() => { setEditingAssignReceiverId(rec.id); setTempAssignQty(totalNewAssignedQty); }}>
+                <EditIcon fontSize="small" />
+              </IconButton> */}
+            {/* </Stack> */}
+          </TableCell>
+          <TableCell key="containers">
+            <Stack direction="row" gap={1} alignItems="center">
+              {totalContForRec > 0 ? (
+                <Chip label={allContainersPreview.length > 1 ? `${allContainersPreview[0]}... (${allContainersPreview.length})` : allContainersPreview.join(', ')} size="small" color="success" variant="outlined" />
+              ) : (
+                <Chip label="None" size="small" color="default" variant="outlined" />
+              )}
+              
+            </Stack>
+          </TableCell>
+          <TableCell key="action">
+            <Stack direction="row" gap={0.5}>
+            {hasShippingDetails && (
+                <IconButton size="small" onClick={() => toggleExpanded(rec.orderId, rec.id)}>
+                  {isExpanded ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+                </IconButton>
+              )}
+              {/* <IconButton size="small" onClick={() => handleEditReceiver(rec)} title="Edit">
+                <EditIcon fontSize="small" />
+              </IconButton> */}
+              {totalContForRec > 0 && (
+                <IconButton size="small" onClick={() => handleRemoveContainersForReceiver(rec.id, rec.orderId)} color="error" title="Remove">
+                  <DeleteIcon fontSize="small" />
+                </IconButton>
+              )}
+            </Stack>
+          </TableCell>
+        </TableRow>
+        {subRows}
+      </>
     );
+  };
+
+  // If no assignments, show preview table
+  const PreviewTable = ({ assignments }) => (
+    <Card sx={{ mt: 2,background:'transparent' }}>
+      <CardContent>
+        <Typography variant="h6" color={theme.primary}>Preview ({assignments.length} Assignments)</Typography>
+        <TableContainer sx={{ maxHeight: 200, mt: 1 }}>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Order</TableCell>
+                <TableCell>Receiver</TableCell>
+                <TableCell>Detail</TableCell>
+                <TableCell>Qty</TableCell>
+                <TableCell>Containers</TableCell>
+                <TableCell>Action</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {assignments.map((a, i) => (
+                <TableRow key={i}>
+                  <TableCell>{a.orderRef}</TableCell>
+                  <TableCell>{a.receiverName}</TableCell>
+                  <TableCell>{a.detailAddress}</TableCell>
+                  <TableCell><Chip label={a.qty} color="success" size="small" /></TableCell>
+                  <TableCell>{a.containers}</TableCell>
+                  <TableCell>
+                    <IconButton size="small" onClick={() => handleRemoveDetailAssignment(a.orderId, a.recId, a.detailIdx)} color="error">
+                      <DeleteIcon />
+                    </IconButton>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </CardContent>
+    </Card>
+  );
+
+  // Summary Card
+  // const SummaryCard = () => (
+  //   <Card sx={{ p:0,bgcolor:"transparent" }}>
+  //     <Grid container spacing={1}>
+  //       <Grid item xs={6}><Typography variant="body2">Orders</Typography><Chip label={selectedOrders.length} color="primary" size="small" /></Grid>
+  //       <Grid item xs={6}><Typography variant="body2">Receivers</Typography><Chip label={totalReceivers} color="info" size="small" /></Grid>
+  //       <Grid item xs={6}><Typography variant="body2">Delivered</Typography><Chip label={totalDelivered} color="success" size="small" /></Grid>
+  //       <Grid item xs={6}><Typography variant="body2">Assigned Details</Typography><Chip label={totalAssignedDetails} color="success" size="small" /></Grid>
+  //       <Grid item xs={6}><Typography variant="body2">Containers</Typography><Chip label={totalContainersUsed} color="warning" size="small" /></Grid>
+  //       <Grid item xs={6}><Typography variant="body2">Total Qty</Typography><Chip label={detailedAssignments.reduce((s, a) => s + a.qty, 0)} color="primary" size="small" /></Grid>
+  //     </Grid>
+  //     {totalAssignedDetails === 0 && <Alert severity="info" sx={{ mt: 2 }}>Assign details to see preview.</Alert>}
+  //     {detailedAssignments.length > 0 && <PreviewTable assignments={detailedAssignments} />}
+  //   </Card>
+  // );
+
+  if (fetchingDetails) {
+    return (
+      <Dialog open={openAssignModal} onClose={() => setOpenAssignModal(false)} maxWidth="md" fullWidth>
+        <DialogContent sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 200 }}>
+          <CircularProgress size={40} />
+          <Typography sx={{ ml: 2 }}>Loading details...</Typography>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  return (
+    <>
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={3000}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+        anchorOrigin={{ vertical: "top", horizontal: "center" }}
+      >
+        <Alert
+          onClose={() => setSnackbar({ ...snackbar, open: false })}
+          severity={snackbar.severity}
+          sx={{ width: "100%" }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
+      <Dialog open={openAssignModal} onClose={() => setOpenAssignModal(false)} maxWidth="xl" fullWidth>
+        <DialogTitle sx={{ bgcolor: theme.primary, color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Stack direction="row" alignItems="center" gap={1}>
+            <LocalShippingIcon />
+            <Typography variant="h5">Assign Orders to Containers ({selectedOrders.length})</Typography>
+          </Stack>
+              {/* <SummaryCard /> */}
+
+          <IconButton onClick={() => setOpenAssignModal(false)} sx={{ color: 'white' }}><CloseIcon /></IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ p: 0, height: '70vh' }}>
+          <Grid container sx={{ height: '100%' }}>
+            <Grid item xs={12} md={8}>
+              <Card sx={{ height: '100%', borderRadius: 0 }}>
+                <CardContent sx={{ p: 2, height: '100%' }}>
+                  <Stack direction="row" justifyContent="space-between" mb={2}>
+                    <Typography variant="h6" color={theme.primary}>Receivers ({totalReceivers})</Typography>
+                    <Stack direction="row" gap={1}>
+                      <Button size="small" onClick={() => setShowAllColumns(!showAllColumns)} startIcon={<ViewColumnIcon />}>
+                        {showAllColumns ? 'Compact' : 'Full'}
+                      </Button>
+                      <Button size="small" onClick={handleColumnMenuOpen} variant="outlined">Columns</Button>
+                    </Stack>
+                  </Stack>
+                  <TableContainer sx={{ flex: 1, overflow: 'auto' }}>
+                    <Table stickyHeader size="small">
+                      <TableHead>
+                        <TableRow>
+                          {headerCols.map(col => (
+                            <TableCell
+                              key={col}
+                              sx={{
+                                display: columnVisibility[col] !== false ? 'table-cell' : 'none',
+                                fontWeight: 'bold',
+                                color: theme.primary,
+                              }}
+                            >
+                              {displayNames[col]}
+                            </TableCell>
+                          ))}
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {(() => {
+                          const allReceivers = selectedOrders.flatMap(id => {
+                            const fullOrder = detailedOrders[id] || orders.find(o => o.id === id);
+                            return (fullOrder?.receivers || []).map(rec => ({ ...rec, booking_ref: fullOrder?.booking_ref, orderId: id }));
+                          });
+                          return allReceivers.map((rec, i) => <ReceiverRow key={i} rec={rec} globalIndex={i} />);
+                        })()}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                  {selectedOrders.length === 0 && <Alert severity="warning" sx={{ mt: 2 }}>Select orders to assign.</Alert>}
+                  {totalReceivers === 0 && <Alert severity="info" sx={{ mt: 2 }}>No receivers found.</Alert>}
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} md={4} >
+              {/* <SummaryCard /> */}
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, justifyContent: 'space-between' }}>
+          <Button onClick={() => setOpenAssignModal(false)} variant="outlined">Cancel</Button>
+          <Button onClick={enhancedHandleAssign} variant="contained" disabled={totalAssignedDetails === 0} startIcon={<AssignmentIcon />}>
+            Assign ({totalAssignedDetails})
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Column Popover */}
+      <Popover open={Boolean(columnAnchorEl)} anchorEl={columnAnchorEl} onClose={handleColumnMenuClose} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}>
+        <Box sx={{ p: 2, minWidth: 200 }}>
+          <Typography variant="subtitle1" fontWeight="bold" mb={1}>Columns</Typography>
+          {Object.keys(columnVisibility)
+            .filter(col => !['assignQty', 'containers', 'action'].includes(col)) // Hide always-visible
+            .map(col => (
+              <ListItem key={col} onClick={() => handleColumnToggle({ target: { checked: !columnVisibility[col] } }, col)}>
+                <Checkbox checked={columnVisibility[col]} />
+                <ListItemText primary={displayNames[col]} />
+              </ListItem>
+            ))}
+        </Box>
+      </Popover>
+
+      {/* Edit Modal - Simplified */}
+      <Dialog open={openEditModal} onClose={() => setOpenEditModal(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ bgcolor: theme.primary, color: 'white' }}>Edit Receiver</DialogTitle>
+        <DialogContent sx={{ p: 3 }}>
+          <Stack spacing={2}>
+            <TextField fullWidth label="Name *" value={editForm.receiverName} onChange={handleEditChange} name="receiverName" error={!!editErrors.receiverName} helperText={editErrors.receiverName} />
+            <TextField fullWidth label="Address *" multiline rows={3} value={editForm.receiverAddress} onChange={handleEditChange} name="receiverAddress" error={!!editErrors.receiverAddress} helperText={editErrors.receiverAddress} />
+            <Stack direction="row" spacing={2}>
+              <TextField fullWidth label="Contact *" value={editForm.receiverContact} onChange={handleEditChange} name="receiverContact" error={!!editErrors.receiverContact} helperText={editErrors.receiverContact} />
+              <TextField fullWidth label="Email *" type="email" value={editForm.receiverEmail} onChange={handleEditChange} name="receiverEmail" error={!!editErrors.receiverEmail} helperText={editErrors.receiverEmail} />
+            </Stack>
+            <Stack direction="row" spacing={2}>
+              <TextField fullWidth label="Total Pieces" type="number" value={editForm.totalNumber} onChange={handleEditChange} name="totalNumber" inputProps={{ min: 0 }} />
+              <TextField fullWidth label="Total Weight (kg)" type="number" value={editForm.totalWeight} onChange={handleEditChange} name="totalWeight" inputProps={{ min: 0, step: 0.01 }} />
+            </Stack>
+            <TextField fullWidth label="Category" value={editForm.category} onChange={handleEditChange} name="category" />
+            <FormControl fullWidth>
+              <InputLabel>Status</InputLabel>
+              <Select value={editForm.status} onChange={handleEditChange} name="status" label="Status">
+                <MenuItem value="Created">Created</MenuItem>
+                <MenuItem value="In Process">In Process</MenuItem>
+                <MenuItem value="Ready for Loading">Ready for Loading</MenuItem>
+                <MenuItem value="Loaded into Container">Loaded into Container</MenuItem>
+                <MenuItem value="Delivered">Delivered</MenuItem>
+                <MenuItem value="Cancelled">Cancelled</MenuItem>
+              </Select>
+            </FormControl>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenEditModal(false)}>Cancel</Button>
+          <Button onClick={handleSaveReceiver} variant="contained" startIcon={<SaveIcon />}>Save</Button>
+        </DialogActions>
+      </Dialog>
+    </>
+  );
 };
+
 export default AssignModal;

@@ -131,6 +131,7 @@ const modalStyle = {
         api.get('/api/containers/types'),
         api.get('/api/containers/ownership-types')
       ]);
+      console.log('Fetched options:',statusRes)
       setStatuses(statusRes.data || []);
       setLocations(locationRes.data || []);
       setSizes(sizeRes.data || []);

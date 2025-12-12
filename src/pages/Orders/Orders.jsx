@@ -303,23 +303,23 @@ const getPlaceName = (placeId) => {
         );
         // Optional: Show success snackbar
     };
-    // Fetch open containers
-    const fetchContainers = async () => {
-        if (loadingContainers) return; // Prevent multiple calls
-        setLoadingContainers(true);
-        setAssignmentError(null);
-        try {
-            const response = await api.get('/api/containers');
-            console.log('Fetched containers:', response);
-            setContainers(response.data.data || []);
-        } catch (err) {
-            console.error("Error fetching containers:", err);
-            setAssignmentError('Failed to fetch containers. Please check the backend query for table "cm".');
-            setSnackbar({ open: true, message: 'Failed to fetch containers', severity: 'error' });
-        } finally {
-            setLoadingContainers(false);
-        }
-    };
+        // Fetch open containers
+        const fetchContainers = async () => {
+            if (loadingContainers) return; // Prevent multiple calls
+            setLoadingContainers(true);
+            setAssignmentError(null);
+            try {
+                const response = await api.get('/api/containers');
+                console.log('Fetched containers:', response);
+                setContainers(response.data.data || []);
+            } catch (err) {
+                console.error("Error fetching containers:", err);
+                setAssignmentError('Failed to fetch containers. Please check the backend query for table "cm".');
+                setSnackbar({ open: true, message: 'Failed to fetch containers', severity: 'error' });
+            } finally {
+                setLoadingContainers(false);
+            }
+        };
     const fetchOrderDetails = async (orderId) => {
         setModalLoading(true);
         setModalError(null);
@@ -359,51 +359,79 @@ const getPlaceName = (placeId) => {
         setSelectedOrders([]);
     };
     const isSelected = (id) => selectedOrders.indexOf(id) !== -1;
-    const handleAssign = async (containerId, quantities) => {
-        console.log('selected', containerId, selectedOrders, quantities);
-        if (selectedOrders.length === 0 || !containerId) {
-            setSnackbar({
-                open: true,
-                message: 'Please select orders and a container.',
-                severity: 'warning',
-            });
-            return;
+    const handleAssign = async (assignments) => {
+    console.log('handleAssign called with assignments:', assignments);
+    if (!assignments || Object.keys(assignments).length === 0) {
+        setSnackbar({
+            open: true,
+            message: 'No valid assignments provided.',
+            severity: 'warning',
+        });
+        return;
+    }
+
+    // Validate: Ensure at least one order and one detail with qty > 0 and containers
+    let hasValidAssignment = false;
+    for (const orderAssign of Object.values(assignments)) {
+        for (const recAssign of Object.values(orderAssign)) {
+            for (const detailAssign of Object.values(recAssign)) {
+                if (detailAssign.qty > 0 && Array.isArray(detailAssign.containers) && detailAssign.containers.length > 0) {
+                    hasValidAssignment = true;
+                    break;
+                }
+            }
+            if (hasValidAssignment) break;
         }
-        // Validate quantities if provided
-        if (quantities && Object.keys(quantities).length === 0) {
+        if (hasValidAssignment) break;
+    }
+
+    if (!hasValidAssignment) {
+        setSnackbar({
+            open: true,
+            message: 'Please specify quantities and containers for at least one detail.',
+            severity: 'warning',
+        });
+        return;
+    }
+
+    try {
+        // FIXED: Send assignments directly (no wrapping key)
+        const res = await api.post('/api/orders/assign-container', assignments);  // <-- Changed: assignments, not { assignments }
+
+        const { success, message, updatedOrders, tracking } = res.data;
+        if (success) {
             setSnackbar({
                 open: true,
-                message: 'Please specify quantities for at least one receiver.',
-                severity: 'warning',
-            });
-            return;
-        }
-        try {
-            const res = await api.post('/api/orders/assign-container', {
-                order_ids: selectedOrders,
-                container_id: containerId,
-                quantities, // Include quantities object
-            });
-            setSnackbar({
-                open: true,
-                message: `Successfully assigned container & quantities to ${res.data.tracking?.length || selectedOrders.length} receivers across ${selectedOrders.length} orders.`,
+                message: message || `Successfully assigned to ${tracking?.length || 0} receivers across ${Object.keys(assignments).length} orders.`,
                 severity: 'success',
             });
-            console.log('response', res);
-            fetchContainers(); // Refresh containers
+            console.log('Assignment response:', res.data);
+
+            // Refresh data
+            fetchContainers(); // Refresh available containers
             setOpenAssignModal(false);
-            setSelectedOrders([]); // Clear selection after assign
-            setSelectedContainer('');
-            fetchOrders(); // Refresh list
-        } catch (err) {
-            console.error('Error assigning container:', err);
-            setSnackbar({
-                open: true,
-                message: err.response?.data?.error || err.message || 'Failed to assign container',
-                severity: 'error',
-            });
+            setSelectedOrders([]); // Clear order selection
+            setSelectedContainer(''); // Clear if single-container mode, but deprecated
+
+            // Optional: Update local orders state with updatedOrders if needed
+            // if (updatedOrders && onRefreshOrders) {
+            //     onRefreshOrders(updatedOrders);
+            // }
+
+            fetchOrders(); // Refresh full orders list
+        } else {
+            throw new Error(message || 'Assignment failed');
         }
-    };
+    } catch (err) {
+        console.error('Error assigning containers:', err);
+        const errorMsg = err.response?.data?.error || err.response?.data?.details || err.message || 'Failed to assign containers';
+        setSnackbar({
+            open: true,
+            message: errorMsg,
+            severity: 'error',
+        });
+    }
+};
     const onUpdateAssignedQty = (receiverId, newQty) => {
         setOrders(prevOrders => prevOrders.map(order => ({
             ...order,
@@ -1001,149 +1029,217 @@ const getStatusColors = (status) => {
                         </Select>
                     </FormControl>
                 </Stack>
-                <TableContainer sx={{ borderRadius: 2, overflow: 'hidden', boxShadow: 2 }}>
-                    <Table stickyHeader>
-                        <TableHead >
-                            <TableRow sx={{ bgcolor: '#0d6c6a' }} >
-                                <TableCell padding="checkbox" sx={{ bgcolor: '#0d6c6a', color: '#fff' }}>
-                                    <Checkbox
-                                        color="primary"
-                                        indeterminate={numSelected > 0 && numSelected < rowCount}
-                                        checked={rowCount > 0 && numSelected === rowCount}
-                                        onChange={handleSelectAllClick}
-                                    />
-                                </TableCell>
-                                {[
-                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="ref">Booking Ref</StyledTableHeadCell>,
-                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="loading">POL</StyledTableHeadCell>,
-                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="dest">POD</StyledTableHeadCell>,
-                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="sender">Sender</StyledTableHeadCell>,
-                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="receivers">Receivers</StyledTableHeadCell>, // Multiple receivers with status
-                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="containers">Containers</StyledTableHeadCell>,
-                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="status">Status</StyledTableHeadCell>,
-                                    // <TableCell key="assoc">Associated Container</TableCell>,
-                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="created">Created At</StyledTableHeadCell>,
-                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="actions">Actions</StyledTableHeadCell>
-                                ]}
-                            </TableRow>
-                        </TableHead>
-                        <TableBody>
-                            {orders.map((order) => {
-                                console.log('Rendering order:', order.receivers);
-                                const isItemSelected = isSelected(order.id);
-                                // renderReceivers( order.receivers);
-                                const containersList = order.receiver_containers_json ? order.receiver_containers_json.split(', ').map(cont => ({ primary: cont })) : []; // Simple for containers
-                                const status = order.overall_status || order.status || 'Created';
-                                const colors = getStatusColors(status);
-                                return (
-                                    <StyledTableRow
-                                        key={order.id}
-                                        onClick={() => handleClick(order.id)}
-                                        role="checkbox"
-                                        aria-checked={isItemSelected}
-                                        selected={isItemSelected}
-                                        sx={{ cursor: 'pointer' }}
-                                    >
-                                        <TableCell padding="checkbox">
-                                            <Checkbox
-                                                checked={isItemSelected}
-                                                onChange={(event) => {
-                                                    handleClick(order.id);
-                                                    event.stopPropagation();
-                                                }}
-                                                inputProps={{
-                                                    'aria-labelledby': `enhanced-table-checkbox-${order.id}`,
-                                                }}
-                                            />
-                                        </TableCell>
-                                        <StyledTableCell>{order.booking_ref}</StyledTableCell>
-                                        <StyledTableCell>{getPlaceName(order?.place_of_loading)}</StyledTableCell>
-                                        <StyledTableCell>{getPlaceName(order.place_of_delivery)}</StyledTableCell>
-                                        <StyledTableCell>{order.sender_name}</StyledTableCell>
-                                        <StyledTableCell>
-                                            <StyledTooltip
-                                                title={<PrettyList items={parseSummaryToList(order.receivers,order)} title="Receivers" />}
-                                                arrow
-                                                placement="top"
-                                                PopperProps={{
-                                                    sx: { '& .MuiTooltip-tooltip': { border: '1px solid #e0e0e0' } }
-                                                }}
-                                            >
-                                                <Typography variant="body2" noWrap sx={{ maxWidth: 120, cursor: 'help', fontWeight: 'medium' }}>
-                                                    {order.receivers.length > 0
-                                                        ? <>{order.receivers.length > 1 && <sup style={{ padding: 4, borderRadius: 50, float: 'left', background: '#00695c', color: '#fff' }}>({order.receivers.length})</sup>}
-                                                            <span style={{ padding: 0 }}>{order.receivers.map(c => c.receiver_name || '').join(', ').substring(0, 25)}...</span></>
-                                                        : '-'
-                                                    }
-                                                </Typography>
-                                            </StyledTooltip>
-                                        </StyledTableCell>
-                                      <TableCell>
-                                                                        <Tooltip
-                                                                          // title={<PrettyContainersList items={parseContainersToList(order.receiver_containers_json)} title="Containers" />}
-                                                                          title={<PrettyList items={parseContainersToList(order.receiver_containers_json || '')} title="Containers" />}
-                                                                          arrow
-                                                                          placement="top"
-                                                                        >
-                                                                          <Typography variant="body2" noWrap sx={{ maxWidth: 120, cursor: 'help', fontWeight: 'medium' }}>
-                                                                            {order.receiver_containers_json
-                                                                              ? <>{containersList.length > 1 && <sup style={{ padding: 4, borderRadius: 50, float: 'left', background: '#00695c', color: '#fff' }}>({containersList.length})</sup>}
-                                                                                <span style={{ padding: 0 }}>{containersList.map(c => c.primary || '').join(', ').substring(0, 25)}...</span></>
-                                                                              : '-'
-                                                                            }
-                                                                          </Typography>
-                                                                        </Tooltip>
-                                                                      </TableCell>
-                                                                      <TableCell>
-                                                                        <Chip
-                                                                          label={`${status.substring(0, 15)}...`} // Internal status for admin
-                                                                          // size="small"
-                                                                          sx={{
-                                                                            flexShrink: 0,
-                                                                            backgroundColor: colors.bg,
-                                                                            color: colors.text
-                                                                          }}
-                                                                        />
-                                                                      </TableCell>
-                                        <StyledTableCell>{new Date(order.created_at).toLocaleDateString()}</StyledTableCell>
-                                        <StyledTableCell>
-                                            <Stack direction="row" spacing={1}>
-                                                <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleStatusUpdate(order.id, order); }} title="Update Status">
-                                                    <UpdateIcon />
-                                                </IconButton>
-                                                <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleView(order.id); }} title="View Details">
-                                                    <VisibilityIcon />
-                                                </IconButton>
-                                                <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleEdit(order.id); }} title="Edit">
-                                                    <EditIcon />
-                                                </IconButton>
-                                            </Stack>
-                                        </StyledTableCell>
-                                    </StyledTableRow>
-                                );
-                            })}
-                        </TableBody>
-                    </Table>
-                </TableContainer>
-                <TablePagination
-                    rowsPerPageOptions={[5, 10, 25]}
-                    component="div"
-                    count={total}
-                    rowsPerPage={rowsPerPage}
-                    page={page}
-                    onPageChange={handleChangePage}
-                    onRowsPerPageChange={handleChangeRowsPerPage}
-                    sx={{
-                        borderTop: '1px solid rgba(224, 224, 224, 1)',
-                        '& .MuiTablePagination-selectLabel, & .MuiTablePagination-displayedRows': {
-                            color: '#f58220',
-                            fontWeight: 'medium',
-                        },
-                        '& .MuiTablePagination-actions button': {
-                            color: '#0d6c6a',
-                        }
-                    }}
-                />
+        <TableContainer sx={{ borderRadius: 2, overflow: 'hidden', boxShadow: 2 }}>
+    <Table stickyHeader>
+        <TableHead>
+            <TableRow sx={{ bgcolor: '#0d6c6a' }}>
+                <TableCell padding="checkbox" sx={{ bgcolor: '#0d6c6a', color: '#fff' }}>
+                    <Checkbox
+                        color="primary"
+                        indeterminate={numSelected > 0 && numSelected < rowCount}
+                        checked={rowCount > 0 && numSelected === rowCount}
+                        onChange={handleSelectAllClick}
+                    />
+                </TableCell>
+                {[
+                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="ref">Booking Ref</StyledTableHeadCell>,
+                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="loading">POL</StyledTableHeadCell>,
+                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="dest">POD</StyledTableHeadCell>,
+                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="sender">Sender</StyledTableHeadCell>,
+                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="receivers">Receivers</StyledTableHeadCell>, // Multiple receivers with status
+                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="containers">Containers</StyledTableHeadCell>,
+                    // New column for Products (weight, category, item products, total number)
+                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="products">Products</StyledTableHeadCell>,
+                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="created">Total Weight</StyledTableHeadCell>,
+                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="actions">Total Items</StyledTableHeadCell>,
+                
+                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="status">Status</StyledTableHeadCell>,
+                    // <TableCell key="assoc">Associated Container</TableCell>,
+                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="created">Created At</StyledTableHeadCell>,
+                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="actions">Actions</StyledTableHeadCell>
+                ]}
+            </TableRow>
+        </TableHead>
+        <TableBody>
+            {orders.map((order) => {
+                console.log('Rendering order: conatiners', order.receivers);
+                const isItemSelected = isSelected(order.id);
+                // renderReceivers( order.receivers);
+                const containersList = order.receiver_containers_json ? order.receiver_containers_json.split(', ').map(cont => ({ primary: cont })) : []; // Simple for containers
+                const status = order.overall_status || order.status || 'Created';
+                const colors = getStatusColors(status);
+
+                // Updated: Compute products summary from receivers[].shippingDetails (corrected field names to snake_case)
+                const productsSummary = order.receivers.flatMap(receiver => 
+                    (receiver.shippingDetails || []).map(detail => ({
+                        category: detail.category || 'Unknown',
+                        subcategory: detail.subcategory || '',
+                        type: detail.type || 'Package', // Item type (e.g., "Package")
+                        weight: parseFloat(detail.weight || 0),
+                        total_number: parseInt(detail.total_number || 0),
+                        item_ref: detail.item_ref || ''
+                    }))
+                );
+                const totalItems = productsSummary.reduce((sum, p) => sum + p.total_number, 0);
+                const totalWeight = productsSummary.reduce((sum, p) => sum + p.weight, 0);
+                const categoryList = [...new Set(productsSummary.map(p => p.category))].join(', '); // Unique categories
+
+                return (
+                    <StyledTableRow
+                        key={order.id}
+                        onClick={() => handleClick(order.id)}
+                        role="checkbox"
+                        aria-checked={isItemSelected}
+                        selected={isItemSelected}
+                        sx={{ cursor: 'pointer' }}
+                    >
+                        <TableCell padding="checkbox">
+                            <Checkbox
+                                checked={isItemSelected}
+                                onChange={(event) => {
+                                    handleClick(order.id);
+                                    event.stopPropagation();
+                                }}
+                                inputProps={{
+                                    'aria-labelledby': `enhanced-table-checkbox-${order.id}`,
+                                }}
+                            />
+                        </TableCell>
+                        <StyledTableCell>{order.booking_ref}</StyledTableCell>
+                        <StyledTableCell>{getPlaceName(order?.place_of_loading)}</StyledTableCell>
+                        <StyledTableCell>{getPlaceName(order.place_of_delivery)}</StyledTableCell>
+                        <StyledTableCell>{order.sender_name}</StyledTableCell>
+                        <StyledTableCell>
+                            <StyledTooltip
+                                title={<PrettyList items={parseSummaryToList(order.receivers,order)} title="Receivers" />}
+                                arrow
+                                placement="top"
+                                PopperProps={{
+                                    sx: { '& .MuiTooltip-tooltip': { border: '1px solid #e0e0e0' } }
+                                }}
+                            >
+                                <Typography variant="body2" noWrap sx={{ maxWidth: 120, cursor: 'help', fontWeight: 'medium' }}>
+                                    {order.receivers.length > 0
+                                        ? <>{order.receivers.length > 1 && <sup style={{ padding: 4, borderRadius: 50, float: 'left', background: '#00695c', color: '#fff' }}>({order.receivers.length})</sup>}
+                                            <span style={{ padding: 0 }}>{order.receivers.map(c => c.receiver_name || '').join(', ').substring(0, 25)}...</span></>
+                                        : '-'
+                                    }
+                                </Typography>
+                            </StyledTooltip>
+                        </StyledTableCell>
+                        <TableCell>
+                            <Tooltip
+                                // title={<PrettyContainersList items={parseContainersToList(order.receiver_containers_json)} title="Containers" />}
+                                title={<PrettyList items={parseContainersToList(order.receiver_containers_json || '')} title="Containers" />}
+                                arrow
+                                placement="top"
+                            >
+                                <Typography variant="body2" noWrap sx={{ maxWidth: 120, cursor: 'help', fontWeight: 'medium' }}>
+                                    {order.receiver_containers_json
+                                        ? <>{containersList.length > 1 && <sup style={{ padding: 4, borderRadius: 50, float: 'left', background: '#00695c', color: '#fff' }}>({containersList.length})</sup>}
+                                            <span style={{ padding: 0 }}>{containersList.map(c => c.primary || '').join(', ').substring(0, 25)}...</span></>
+                                        : '-'
+                                    }
+                                </Typography>
+                            </Tooltip>
+                        </TableCell>
+                        {/* Updated Products column using actual shippingDetails data (corrected field names) */}
+                        <StyledTableCell>
+                            <Tooltip
+                                title={
+                                    <Box sx={{ minWidth: 250 }}>
+                                        <Typography variant="subtitle2" gutterBottom>Product Details</Typography>
+                                        {productsSummary.length > 0 ? (
+                                            productsSummary.map((product, idx) => (
+                                                <Box key={idx} sx={{ mb: 1, p: 1, border: '1px solid #e0e0e0', borderRadius: 1 }}>
+                                                    <Typography variant="body2"><strong>Category:</strong> {product.category}</Typography>
+                                                    <Typography variant="body2"><strong>Subcategory:</strong> {product.subcategory || '-'}</Typography>
+                                                    <Typography variant="body2"><strong>Item Type:</strong> {product.type}</Typography>
+                                                    <Typography variant="body2"><strong>Weight:</strong> {product.weight} kg</Typography>
+                                                    <Typography variant="body2"><strong>Total Number:</strong> {product.total_number}</Typography>
+                                                    {product.item_ref && <Typography variant="body2"><strong>Item Ref:</strong> {product.item_ref}</Typography>}
+                                                </Box>
+                                            ))
+                                        ) : (
+                                            <Typography variant="body2">-</Typography>
+                                        )}
+                                        {productsSummary.length > 0 && (
+                                            <Box sx={{ mt: 1, pt: 1, borderTop: '1px solid #e0e0e0' }}>
+                                                <Typography variant="body2"><strong>Total Weight:</strong> {totalWeight.toFixed(1)} kg</Typography>
+                                                <Typography variant="body2"><strong>Total Items:</strong>{totalItems}</Typography>
+                                            </Box>
+                                        )}
+                                    </Box>
+                                }
+                                arrow
+                                placement="top"
+                            >
+                                <Typography variant="body2" noWrap sx={{ maxWidth: 120, cursor: 'help', fontWeight: 'medium' }}>
+                                    {productsSummary.length > 0 ? (
+                                        <>
+                                            {productsSummary.length > 1 && <sup style={{ padding: 2, borderRadius: 50, float: 'left', background: '#00695c', color: '#fff', fontSize: '0.75rem' }}>({productsSummary.length})</sup>}
+                                            <span style={{ paddingLeft: productsSummary.length > 1 ? 20 : 0 }}>
+                                                Cat: {categoryList.substring(0, 10)}... | Wt: {totalWeight.toFixed(0)}kg | Items: {totalItems}
+                                            </span>
+                                        </>
+                                    ) : '-'}
+                                </Typography>
+                            </Tooltip>
+                        </StyledTableCell>
+                        <StyledTableCell>{totalWeight.toFixed(1)} kg</StyledTableCell>
+                        <StyledTableCell>{totalItems.toFixed()} </StyledTableCell>
+
+
+                        <TableCell>
+                            <Chip
+                                label={`${status.substring(0, 15)}...`} // Internal status for admin
+                                // size="small"
+                                sx={{
+                                    flexShrink: 0,
+                                    backgroundColor: colors.bg,
+                                    color: colors.text
+                                }}
+                            />
+                        </TableCell>
+                        <StyledTableCell>{new Date(order.created_at).toLocaleDateString()}</StyledTableCell>
+                        <StyledTableCell>
+                            <Stack direction="row" spacing={1}>
+                                {/* <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleStatusUpdate(order.id, order); }} title="Update Status">
+                                    <UpdateIcon />
+                                </IconButton> */}
+                                <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleView(order.id); }} title="View Details">
+                                    <VisibilityIcon />
+                                </IconButton>
+                                <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleEdit(order.id); }} title="Edit">
+                                    <EditIcon />
+                                </IconButton>
+                            </Stack>
+                        </StyledTableCell>
+                    </StyledTableRow>
+                );
+            })}
+        </TableBody>
+    </Table>
+</TableContainer>
+<TablePagination
+    rowsPerPageOptions={[5, 10, 25]}
+    component="div"
+    count={total}
+    rowsPerPage={rowsPerPage}
+    page={page}
+    onPageChange={handleChangePage}
+    onRowsPerPageChange={handleChangeRowsPerPage}
+    sx={{
+        borderTop: '1px solid rgba(224, 224, 224, 1)',
+        '& .MuiTablePagination-selectLabel, & .MuiTablePagination-displayedRows': {
+            color: '#f58220',
+            fontWeight: 'medium',
+        },
+        '& .MuiTablePagination-actions button': {
+            color: '#0d6c6a',
+        }
+    }}
+/>
                 <OrderModalView
                     openModal={openModal}
                     handleCloseModal={handleCloseModal}

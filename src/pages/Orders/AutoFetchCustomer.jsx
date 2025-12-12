@@ -13,7 +13,7 @@ import { Autocomplete, TextField } from '@mui/material'; // Assuming MUI is used
       const fetchCustomers = async () => {
         setLoading(true);
         try {
-          const params = new URLSearchParams({ search: searchTerm, limit: 50 });
+          const params = new URLSearchParams({ search: searchTerm, limit: 5000 });
           const response = await fetch(`/api/customers?${params}`); // Adjust endpoint as needed
           const data = await response.json();
           setOptions(data);

@@ -2286,7 +2286,7 @@
 //                                                                 {typePrefix} {i + 1}
 //                                                             </Typography>
 //                                                             <Stack direction="row" spacing={1}>
-                                                
+
 //                                                                     <>
 //                                                                         <IconButton
 //                                                                             onClick={() => duplicateRecFn(i)}
@@ -2305,7 +2305,7 @@
 //                                                                             </IconButton>
 //                                                                         )}
 //                                                                     </>
-                                                            
+
 //                                                             </Stack>
 //                                                         </Stack>
 //                                                         {/* Show validation warnings if present */}
@@ -3042,6 +3042,9 @@ const OrderForm = () => {
     const [companies, setCompanies] = useState([]);
     const orderId = location.state?.orderId;
     const [isEditMode, setIsEditMode] = useState(!!orderId);
+    const containerOptions = location.state?.containers || [];
+    const getStatusColors = location.state?.getStatusColors || (() => ({}));
+    // const ownerName = location.state?.ownerName || '';
     // console.log('Order ID from state:', orderId);
     // Snackbar state for error/success messages
     const [snackbar, setSnackbar] = useState({
@@ -3161,105 +3164,122 @@ const OrderForm = () => {
     ];
 
 
-     const [options2, setOptions2] = useState([]);
-     const [searchTerm, setSearchTerm] = useState('');
+    const [options2, setOptions2] = useState([]);
+    const [searchTerm, setSearchTerm] = useState('');
     const [options3, setOptions3] = useState([]);
-     const [searchTerm3, setSearchTerm3] = useState('');
+    const [searchTerm3, setSearchTerm3] = useState('');
 
-                // Fetch customers on mount or search change
-                useEffect(() => {
-                  const fetchCustomers = async () => {
-                    // setLoading(true);
-                    try {
-                      const params = new URLSearchParams({ search: searchTerm3 ? searchTerm3 : 'All', limit: 50 });
-                      const response = await api.get(`/api/customers?${params}`); // Adjust endpoint as needed
-                    //   const data = await response.json();
-                      setOptions3(response.data);
-                    } catch (error) {
-                      console.error('Error fetching customers:', error);
-                    } finally {
-                      setLoading(false);
-                    }
-                  };
+    // Fetch customers on mount or search change
+    useEffect(() => {
+        const fetchCustomers = async () => {
+            // setLoading(true);
+            try {
+                const params = new URLSearchParams({ search: searchTerm3 ? searchTerm3 : 'All', limit: 5000 });
+                const response = await api.get(`/api/customers?${params}`); // Adjust endpoint as needed
+                //   const data = await response.json();
+                setOptions3(response.data);
+            } catch (error) {
+                console.error('Error fetching customers:', error);
+            } finally {
+                setLoading(false);
+            }
+        };
 
-                  if (searchTerm3.length >= 2 || options3.length === 0) { // Debounce: search after 2 chars or initial load
-                    fetchCustomers();
-                  }
-                }, [searchTerm3]);
+        if (searchTerm3.length >= 2 || options3.length === 0) { // Debounce: search after 2 chars or initial load
+            fetchCustomers();
+        }
+    }, [searchTerm3]);
 
-                // Fetch customers on mount or search change
-                                useEffect(() => {
-                                  const fetchCustomers = async () => {
-                                    // setLoading(true);
-                                    try {
-                                      const params = new URLSearchParams({ search: searchTerm ? searchTerm : 'All', limit: 50 });
-                                      const response = await api.get(`/api/customers?${params}`); // Adjust endpoint as needed
-                                ;
-                                      console.log('Fetched customers for options2:', response.data);
-                                      setOptions2(response.data);
-                                    } catch (err) {
-                                      console.error('Error fetching customers:', err);
-                                    } finally {
-                                      setLoading(false);
-                                    }
-                                  };
-                            
-                                  if (searchTerm.length >= 2 || options2.length === 0) { // Debounce: search after 2 chars or initial load
-                                    fetchCustomers();
-                                  }
-                                }, [searchTerm]);
-                            
-                                const typePrefix = formData.senderType === 'receiver' ? 'Receiver' : 'Sender';
-                                const fieldPrefix = formData.senderType === 'sender' ? 'sender' : 'receiver';
-                            
-                                const handleSelectOwner = async (event, value) => {
-console.log('Selected customer value:', value);
-                                    //   const fetchCustomer = async () => {
-                                            try {
-                                              const res = await api.get(`/api/customers/${value.zoho_id || value.id}`);
-                                              console.log('Customer data:', res);
-                                        
-                                  if (res && res.data.contact_persons) {
-                                       const c = res.data;
-                                    setFormData(prev => ({
-                                      ...prev,
-                                    //   [`${fieldPrefix}Name`]: res.data.name || '',
-                                      [`${fieldPrefix}Contact`]: c.contact_persons[0].phone || c.contact || '', // Assume primary_phone or fallback
-                                      [`${fieldPrefix}Address`]: c.contact_persons[0].name || c.billing_address || '',
-                                      [`${fieldPrefix}Email`]: c.email || '',
-                                      [`${fieldPrefix}Ref`]: c.zoho_id || '', // Or custom ref field
-                                      [`${fieldPrefix}Remarks`]: c.zoho_notes || c.system_notes || '',
-                                      selectedSenderOwner: c.zoho_id || c.id, // Use unique ID
-                                    }));
-                                  } else {
-                                    // Clear on deselect
-                                    setFormData(prev => ({
-                                      ...prev,
-                                    //   [`${fieldPrefix}Name`]: '',
-                                      [`${fieldPrefix}Contact`]: '',
-                                      [`${fieldPrefix}Address`]: '',
-                                      [`${fieldPrefix}Email`]: '',
-                                      [`${fieldPrefix}Ref`]: '',
-                                      [`${fieldPrefix}Remarks`]: '',
-                                      selectedSenderOwner: '',
-                                    }));
-                                  }
-                                        } catch (error) {
-                                            console.error('Error fetching customer details:', error);
-                                        }   
-                                };
-                            
+    // Fetch customers on mount or search change
+    useEffect(() => {
+        const fetchCustomers = async () => {
+            // setLoading(true);
+            try {
+                const params = new URLSearchParams({ search: searchTerm ? searchTerm : 'All', limit: 5000 });
+                const response = await api.get(`/api/customers?${params}`); // Adjust endpoint as needed
+                ;
+                console.log('Fetched customers for options2:', response.data);
+                setOptions2(response.data);
+            } catch (err) {
+                console.error('Error fetching customers:', err);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        if (searchTerm.length >= 2 || options2.length === 0) { // Debounce: search after 2 chars or initial load
+            fetchCustomers();
+        }
+    }, [searchTerm]);
+
+    const typePrefix = formData.senderType === 'receiver' ? 'Receiver' : 'Sender';
+    const fieldPrefix = formData.senderType === 'sender' ? 'sender' : 'receiver';
+
+    const handleSelectOwner = async (event, value) => {
+        console.log('Selected customer value:', value);
+        //   const fetchCustomer = async () => {
+        try {
+            const res = await api.get(`/api/customers/${value.zoho_id || value.id}`);
+            console.log('Customer data:', res);
+
+            if (res && res.data.contact_persons) {
+                const c = res.data;
+                setFormData(prev => ({
+                    ...prev,
+                    //   [`${fieldPrefix}Name`]: res.data.name || '',
+                    [`${fieldPrefix}Contact`]: c.contact_persons[0].phone || c.contact || '', // Assume primary_phone or fallback
+                    [`${fieldPrefix}Address`]: c.contact_persons[0].name || c.billing_address || '',
+                    [`${fieldPrefix}Email`]: c.email || '',
+                    [`${fieldPrefix}Ref`]: c.zoho_id || '', // Or custom ref field
+                    [`${fieldPrefix}Remarks`]: c.zoho_notes || c.system_notes || '',
+                    selectedSenderOwner: c.zoho_id || c.id, // Use unique ID
+                }));
+            } else {
+                // Clear on deselect
+                setFormData(prev => ({
+                    ...prev,
+                    //   [`${fieldPrefix}Name`]: '',
+                    [`${fieldPrefix}Contact`]: '',
+                    [`${fieldPrefix}Address`]: '',
+                    [`${fieldPrefix}Email`]: '',
+                    [`${fieldPrefix}Ref`]: '',
+                    [`${fieldPrefix}Remarks`]: '',
+                    selectedSenderOwner: '',
+                }));
+            }
+        } catch (error) {
+            console.error('Error fetching customer details:', error);
+        }
+    };
+
     // Helper to convert snake_case to camelCase
     const snakeToCamel = (str) => str.replace(/(_[a-z])/g, g => g[1].toUpperCase());
     // Helper to convert camelCase to snake_case
     const camelToSnake = (str) => str.replace(/([A-Z])/g, '_$1').toLowerCase();
-    // Auto generate bookingRef for new orders
+
+
+    // Auto generate bookingRef and rglBookingNumber for new orders
+    // Auto generate bookingRef, rgslBookingRef, and rglBookingNumber for new orders
     useEffect(() => {
         if (!isEditMode && !formData.bookingRef) {
+            const timestamp = Date.now();
+            const randomLast3 = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+            const timestampWithRandom = timestamp.toString().slice(0, 5);
+
             const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
-            const randomSuffix = Math.random().toString(36).substr(2, 5).toUpperCase();
-            const generatedRef = `ORD-${today}-${randomSuffix}`;
-            setFormData(prev => ({ ...prev, bookingRef: generatedRef }));
+            const randomSuffix = Math.random().toString(36).substr(2, 3).toUpperCase();
+            const autoPart = `${today}-${randomSuffix}`;
+
+            const bookingRef = `RGSL-${timestampWithRandom}-${randomLast3}`;
+            // const rgslBookingRef = `RGSL-ORD-${today}-${randomLast3}`;
+            const rglBookingNumber = `RGSL-ORD-${randomSuffix}${today}`;
+
+            setFormData(prev => ({
+                ...prev,
+                bookingRef,
+                // rgslBookingRef,
+                rglBookingNumber
+            }));
         }
     }, [isEditMode]);
     // Compute global totals dynamically
@@ -3309,191 +3329,211 @@ console.log('Selected customer value:', value);
     }, [remainingDep, formData.senderType]);
 
     const ownerNameKey = formData.senderType === 'sender' ? 'senderName' : 'receiverName';
-useEffect(() => {
-    if (isEditMode && formData.selectedSenderOwner) {
-        // const ownerNameKey = formData.senderType === 'sender' ? 'senderName' : 'receiverName';
-        if (!formData[ownerNameKey]?.trim()) {
-            // Auto-fetch customer details if name empty but ID present
-            handleSelectOwner(null, { zoho_id: formData.selectedSenderOwner }); // Mock event/value to trigger fetch
+    useEffect(() => {
+        if (isEditMode && formData.selectedSenderOwner) {
+            // const ownerNameKey = formData.senderType === 'sender' ? 'senderName' : 'receiverName';
+            if (!formData[ownerNameKey]?.trim()) {
+                // Auto-fetch customer details if name empty but ID present
+                handleSelectOwner(null, { zoho_id: formData.selectedSenderOwner }); // Mock event/value to trigger fetch
+            }
         }
-    }
-}, [isEditMode, formData.selectedSenderOwner, formData.senderType]); 
+    }, [isEditMode, formData.selectedSenderOwner, formData.senderType]);
     const validateForm = () => {
-    const newErrors = {};
-    // Core required fields
-    const coreRequired = ['rglBookingNumber', 'pointOfOrigin', 'placeOfLoading', 'placeOfDelivery', 'finalDestination'];
-    coreRequired.forEach(field => {
-        if (!formData[field]?.trim()) {
-            newErrors[field] = `${field.replace(/([A-Z])/g, ' $1').trim()} is required`;
+        const newErrors = {};
+        // Core required fields
+        const coreRequired = ['rglBookingNumber', 'pointOfOrigin', 'placeOfLoading', 'placeOfDelivery', 'finalDestination'];
+        coreRequired.forEach(field => {
+            if (!formData[field]?.trim()) {
+                newErrors[field] = `${field.replace(/([A-Z])/g, ' $1').trim()} is required`;
+            }
+        });
+
+        // Validate owner name
+        if (!formData[ownerNameKey]?.trim() && formData.selectedSenderOwner) {
+            newErrors[ownerNameKey] = 'Owner name is recommended (fetch from selected ID)';
         }
-    });
-
-    // Validate owner name
-
-    if (!formData[ownerNameKey]?.trim() && formData.selectedSenderOwner) {
-    newErrors[ownerNameKey] = 'Owner name is recommended (fetch from selected ID)';
-}
-    const ownerContactKey = formData.senderType === 'sender' ? 'senderContact' : 'receiverContact';
-    // if (!formData[ownerContactKey]?.trim()) {
-    //     newErrors[ownerContactKey] = 'Owner contact is required';
-    // }
-    const ownerAddressKey = formData.senderType === 'sender' ? 'senderAddress' : 'receiverAddress';
-    // if (!formData[ownerAddressKey]?.trim()) {
-    //     newErrors[ownerAddressKey] = 'Owner address is required';
-    // }
-    // Validate senderType
-    if (!formData.senderType) {
-        newErrors.senderType = 'Sender Type is required';
-    }
-    // Dynamic validation for panel2
-    const isSenderMode = formData.senderType === 'receiver';
-    const items = isSenderMode ? formData.senders : formData.receivers;
-    const itemsKey = isSenderMode ? 'senders' : 'receivers';
-    const itemPrefix = isSenderMode ? 'Sender' : 'Receiver';
-    // if (items.length === 0) {
-    //     newErrors[itemsKey] = `At least one ${itemPrefix.toLowerCase()} is required`;
-    // } else {
-    //     items.forEach((item, i) => {
-    //         const nameField = isSenderMode ? 'senderName' : 'receiverName';
-    //         const contactField = isSenderMode ? 'senderContact' : 'receiverContact';
-    //         const addressField = isSenderMode ? 'senderAddress' : 'receiverAddress';
-    //         const emailField = isSenderMode ? 'senderEmail' : 'receiverEmail';
-    //         if (!item[nameField]?.trim()) {
-    //             newErrors[`${itemsKey}[${i}].${nameField}`] = `${itemPrefix} ${i + 1} name is required`;
-    //         }
-    //         if (!item[contactField]?.trim()) {
-    //             newErrors[`${itemsKey}[${i}].${contactField}`] = `${itemPrefix} ${i + 1} contact is required`;
-    //         }
-    //         if (!item[addressField]?.trim()) {
-    //             newErrors[`${itemsKey}[${i}].${addressField}`] = `${itemPrefix} ${i + 1} address is required`;
-    //         }
-    //         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    //         if (item[emailField] && !emailRegex.test(item[emailField])) {
-    //             newErrors[`${itemsKey}[${i}].${emailField}`] = `Invalid ${itemPrefix.toLowerCase()} ${i + 1} email format`;
-    //         }
-    //         // if (!item.eta?.trim()) {
-    //         //     newErrors[`${itemsKey}[${i}].eta`] = `ETA is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
-    //         // }
-    //         // if (!item.etd?.trim()) {
-    //         //     newErrors[`${itemsKey}[${i}].etd`] = `ETD is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
-    //         // }
-    //         // if (!item.shippingLine?.trim()) {
-    //         // newErrors[`${itemsKey}[${i}].shippingLine`] = `Shipping Line is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
-    //         // }
-    //         // Validate each shippingDetail
-    //         const shippingDetails = item.shippingDetails || [];
-    //         if (shippingDetails.length === 0) {
-    //             newErrors[`${itemsKey}[${i}].shippingDetails`] = `At least one shipping detail is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
-    //         } else {
-    //             shippingDetails.forEach((sd, j) => {
-    //                 const shippingRequiredFields = ['pickupLocation', 'category', 'subcategory', 'type', 'deliveryAddress', 'totalNumber', 'weight'];
-    //                 shippingRequiredFields.forEach(field => {
-    //                     if (!sd[field]?.trim()) {
-    //                         newErrors[`${itemsKey}[${i}].shippingDetails[${j}].${field}`] = `${field.replace(/([A-Z])/g, ' $1').trim()} is required for shipping detail ${j + 1}`;
-    //                     }
-    //                 });
-    //                 const totalNum = parseInt(sd.totalNumber);
-    //                 if (isNaN(totalNum) || totalNum <= 0) {
-    //                     newErrors[`${itemsKey}[${i}].shippingDetails[${j}].totalNumber`] = `Total Number must be a positive number`;
-    //                 }
-    //                 if (sd.weight && (isNaN(parseFloat(sd.weight)) || parseFloat(sd.weight) <= 0)) {
-    //                     newErrors[`${itemsKey}[${i}].shippingDetails[${j}].weight`] = `Weight must be a positive number`;
-    //                 }
-    //             });
-    //         }
-    //         // Validate full/partial
-    //         if (item.fullPartial === 'Partial') {
-    //             if (!item.qtyDelivered?.trim()) {
-    //                 newErrors[`${itemsKey}[${i}].qtyDelivered`] = `Qty Delivered is required for partial ${itemPrefix.toLowerCase()} ${i + 1}`;
-    //             } else {
-    //                 const del = parseInt(item.qtyDelivered);
-    //                 const recTotal = (item.shippingDetails || []).reduce((sum, sd) => sum + (parseInt(sd.totalNumber || 0) || 0), 0);
-    //                 if (isNaN(del) || del <= 0) {
-    //                     newErrors[`${itemsKey}[${i}].qtyDelivered`] = `Qty Delivered must be a positive number`;
-    //                 } else if (del > recTotal) {
-    //                     newErrors[`${itemsKey}[${i}].qtyDelivered`] = `Qty Delivered (${del}) cannot exceed total number (${recTotal})`;
-    //                 }
-    //             }
-    //         }
-    //     });
-    // }
-    // No transport validations (optional)
-    // Email and mobile validations
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    const ownerEmailKey = formData.senderType === 'sender' ? 'senderEmail' : 'receiverEmail';
-    if (formData[ownerEmailKey] && !emailRegex.test(formData[ownerEmailKey])) {
-        newErrors[ownerEmailKey] = 'Invalid owner email format';
-    }
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-};
+        const ownerContactKey = formData.senderType === 'sender' ? 'senderContact' : 'receiverContact';
+        // if (!formData[ownerContactKey]?.trim()) {
+        //     newErrors[ownerContactKey] = 'Owner contact is required';
+        // }
+        const ownerAddressKey = formData.senderType === 'sender' ? 'senderAddress' : 'receiverAddress';
+        // if (!formData[ownerAddressKey]?.trim()) {
+        //     newErrors[ownerAddressKey] = 'Owner address is required';
+        // }
+        // Validate senderType
+        if (!formData.senderType) {
+            newErrors.senderType = 'Sender Type is required';
+        }
+        // Dynamic validation for panel2
+        const isSenderMode = formData.senderType === 'receiver';
+        const items = isSenderMode ? formData.senders : formData.receivers;
+        const itemsKey = isSenderMode ? 'senders' : 'receivers';
+        const itemPrefix = isSenderMode ? 'Sender' : 'Receiver';
+        // if (items.length === 0) {
+        //     newErrors[itemsKey] = `At least one ${itemPrefix.toLowerCase()} is required`;
+        // } else {
+        //     items.forEach((item, i) => {
+        //         const nameField = isSenderMode ? 'senderName' : 'receiverName';
+        //         const contactField = isSenderMode ? 'senderContact' : 'receiverContact';
+        //         const addressField = isSenderMode ? 'senderAddress' : 'receiverAddress';
+        //         const emailField = isSenderMode ? 'senderEmail' : 'receiverEmail';
+        //         if (!item[nameField]?.trim()) {
+        //             newErrors[`${itemsKey}[${i}].${nameField}`] = `${itemPrefix} ${i + 1} name is required`;
+        //         }
+        //         if (!item[contactField]?.trim()) {
+        //             newErrors[`${itemsKey}[${i}].${contactField}`] = `${itemPrefix} ${i + 1} contact is required`;
+        //         }
+        //         if (!item[addressField]?.trim()) {
+        //             newErrors[`${itemsKey}[${i}].${addressField}`] = `${itemPrefix} ${i + 1} address is required`;
+        //         }
+        //         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        //         if (item[emailField] && !emailRegex.test(item[emailField])) {
+        //             newErrors[`${itemsKey}[${i}].${emailField}`] = `Invalid ${itemPrefix.toLowerCase()} ${i + 1} email format`;
+        //         }
+        //         // if (!item.eta?.trim()) {
+        //         //     newErrors[`${itemsKey}[${i}].eta`] = `ETA is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
+        //         // }
+        //         // if (!item.etd?.trim()) {
+        //         //     newErrors[`${itemsKey}[${i}].etd`] = `ETD is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
+        //         // }
+        //         // if (!item.shippingLine?.trim()) {
+        //         // newErrors[`${itemsKey}[${i}].shippingLine`] = `Shipping Line is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
+        //         // }
+        //         // Validate each shippingDetail
+        //         const shippingDetails = item.shippingDetails || [];
+        //         if (shippingDetails.length === 0) {
+        //             newErrors[`${itemsKey}[${i}].shippingDetails`] = `At least one shipping detail is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
+        //         } else {
+        //             shippingDetails.forEach((sd, j) => {
+        //                 const shippingRequiredFields = ['pickupLocation', 'category', 'subcategory', 'type', 'deliveryAddress', 'totalNumber', 'weight'];
+        //                 shippingRequiredFields.forEach(field => {
+        //                     if (!sd[field]?.trim()) {
+        //                         newErrors[`${itemsKey}[${i}].shippingDetails[${j}].${field}`] = `${field.replace(/([A-Z])/g, ' $1').trim()} is required for shipping detail ${j + 1}`;
+        //                     }
+        //                 });
+        //                 const totalNum = parseInt(sd.totalNumber);
+        //                 if (isNaN(totalNum) || totalNum <= 0) {
+        //                     newErrors[`${itemsKey}[${i}].shippingDetails[${j}].totalNumber`] = `Total Number must be a positive number`;
+        //                 }
+        //                 if (sd.weight && (isNaN(parseFloat(sd.weight)) || parseFloat(sd.weight) <= 0)) {
+        //                     newErrors[`${itemsKey}[${i}].shippingDetails[${j}].weight`] = `Weight must be a positive number`;
+        //                 }
+        //             });
+        //         }
+        //         // Validate full/partial
+        //         if (item.fullPartial === 'Partial') {
+        //             if (!item.qtyDelivered?.trim()) {
+        //                 newErrors[`${itemsKey}[${i}].qtyDelivered`] = `Qty Delivered is required for partial ${itemPrefix.toLowerCase()} ${i + 1}`;
+        //             } else {
+        //                 const del = parseInt(item.qtyDelivered);
+        //                 const recTotal = (item.shippingDetails || []).reduce((sum, sd) => sum + (parseInt(sd.totalNumber || 0) || 0), 0);
+        //                 if (isNaN(del) || del <= 0) {
+        //                     newErrors[`${itemsKey}[${i}].qtyDelivered`] = `Qty Delivered must be a positive number`;
+        //                 } else if (del > recTotal) {
+        //                     newErrors[`${itemsKey}[${i}].qtyDelivered`] = `Qty Delivered (${del}) cannot exceed total number (${recTotal})`;
+        //                 }
+        //             }
+        //         }
+        //     });
+        // }
+        // Transport validations
+        if (!formData.transportType) {
+            newErrors.transportType = 'Transport Type is required';
+        }
+        if (formData.transportType === 'Drop Off' && !formData.dropMethod?.trim()) {
+            newErrors.dropMethod = 'Drop Method is required';
+        }
+        // All other transport fields are optional - no additional validations
+        // Email and mobile validations
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        const ownerEmailKey = formData.senderType === 'sender' ? 'senderEmail' : 'receiverEmail';
+        if (formData[ownerEmailKey] && !emailRegex.test(formData[ownerEmailKey])) {
+            newErrors[ownerEmailKey] = 'Invalid owner email format';
+        }
+        setErrors(newErrors);
+        return Object.keys(newErrors).length === 0;
+    };
     // Fetch options on mount (replaces dummies)
-const fetchOptions = async () => {
-    try {
-        setLoading(true);
-        const [placesRes, companiesRes, categoriesRes, subcategoriesRes, statusesRes] = await Promise.all([
-            api.get('api/options/places/crud'),
-            api.get('api/options/thirdParty/crud'),
-            api.get('api/options/categories/crud'), // Assumed endpoint; adjust if different
-            api.get('api/options/subcategories/crud'), // For subcategories
-            api.get('api/options/statuses'),
-        ]);
-        // Places: assume data.places = [{id, name, is_destination, ...}]
-        console.log('optionssss', placesRes, companiesRes, categoriesRes, subcategoriesRes, statusesRes);
-        const allPlaces = placesRes?.data?.places || [];
-        setPlaces(allPlaces.map(p => ({ value: p.id.toString(), label: p.name })));
-        // Companies: third_parties for transport (filter if needed, e.g., type === 'transport')
-        const thirdParties = companiesRes?.data?.third_parties || [];
-        setCompanies(thirdParties.map(c => ({ value: c.id.toString(), label: c.company_name })));
-        // Categories: assume data.categories = [{id, name}]
-        const fetchedCategories = categoriesRes?.data?.categories || [];
-        setCategories(fetchedCategories.map(c => c.name));
-        console.log('Fetched Categories:', fetchedCategories);
-        // Subcategories: assume data.subcategories = [{id, name, category_id}]
-        const fetchedSubcategories = subcategoriesRes?.data?.subcategories || [];
-        console.log('Fetched Subcategories:', fetchedSubcategories);
-        // Build subMap by grouping subcategories by category_id
-        const subMap = {};
-        fetchedCategories.forEach(cat => {
-            console.log('Processing category:', cat);
-            subMap[cat.name] = fetchedSubcategories
-                .filter(s => s.category_id === cat.id)
-                .map(s => s.name);
-            console.log(`Subcats for ${cat.name}:`, subMap[cat.name]);
-        });
-        setCategorySubMap(subMap);
-          setTypes(["Package", "Box", "Bags"]);
-        // Types: assuming a separate endpoint is needed; for now, use fallback or adjust
-        // If types are from another endpoint, replace with api.get('api/options/types/crud')
-        // setTypes([]); // Or fetch properly
-        // Statuses: use statusOptions or statuses
-        setStatuses(statusesRes?.data?.statusOptions || statusesRes?.data?.statuses || []);
-    } catch (error) {
-        console.error('Error fetching options:', error);
-        setSnackbar({
-            open: true,
-            message: error.response?.data?.error || error.message || 'Failed to fetch options',
-            severity: 'error',
-        });
-        // Fallback to dummies if needed
-        setCategories(["Electronics", "Clothing", "Books"]);
-        setCategorySubMap({
-            "Electronics": ["Smartphones", "Laptops", "Accessories"],
-            "Clothing": ["Men's Wear", "Women's Wear", "Kids Wear"],
-            "Books": ["Fiction", "Non-Fiction", "Technical"],
-        });
-        setTypes(["Package", "Box", "Bags"]);
-        setStatuses(["Created", "In Transit", "Delivered", "Cancelled"]);
-        setPlaces([{ value: '', label: 'Select Place' }, { value: 'Singapore', label: 'Singapore' }, { value: 'Dubai', label: 'Dubai' }]); // Minimal fallback
-        setCompanies([{ value: '', label: 'Select 3rd party company' }, { value: 'Company A', label: 'Company A' }]);
-    } finally {
-        setLoading(false);
-    }
-};
+    const fetchOptions = async () => {
+        try {
+            setLoading(true);
+            const [placesRes, companiesRes, categoriesRes, subcategoriesRes, statusesRes] = await Promise.all([
+                api.get('api/options/places/crud'),
+                api.get('api/options/thirdParty/crud'),
+                api.get('api/options/categories/crud'), // Assumed endpoint; adjust if different
+                api.get('api/options/subcategories/crud'), // For subcategories
+                api.get('api/options/statuses'),
+            ]);
+            // Places: assume data.places = [{id, name, is_destination, ...}]
+            console.log('optionssss', placesRes, companiesRes, categoriesRes, subcategoriesRes, statusesRes);
+            const allPlaces = placesRes?.data?.places || [];
+            setPlaces(allPlaces.map(p => ({ value: p.id.toString(), label: p.name })));
+            // Companies: third_parties for transport (filter if needed, e.g., type === 'transport')
+            const thirdParties = companiesRes?.data?.third_parties || [];
+            setCompanies(thirdParties.map(c => ({ value: c.id.toString(), label: c.company_name })));
+            // Categories: assume data.categories = [{id, name}]
+            const fetchedCategories = categoriesRes?.data?.categories || [];
+            setCategories(fetchedCategories.map(c => c.name));
+            console.log('Fetched Categories:', fetchedCategories);
+            // Subcategories: assume data.subcategories = [{id, name, category_id}]
+            const fetchedSubcategories = subcategoriesRes?.data?.subcategories || [];
+            console.log('Fetched Subcategories:', fetchedSubcategories);
+            // Build subMap by grouping subcategories by category_id
+            const subMap = {};
+            fetchedCategories.forEach(cat => {
+                console.log('Processing category:', cat);
+                subMap[cat.name] = fetchedSubcategories
+                    .filter(s => s.category_id === cat.id)
+                    .map(s => s.name);
+                console.log(`Subcats for ${cat.name}:`, subMap[cat.name]);
+            });
+            setCategorySubMap(subMap);
+            setTypes(["Package", "Box", "Bags"]);
+            // Types: assuming a separate endpoint is needed; for now, use fallback or adjust
+            // If types are from another endpoint, replace with api.get('api/options/types/crud')
+            // setTypes([]); // Or fetch properly
+            // Statuses: use statusOptions or statuses
+            setStatuses(statusesRes?.data?.statusOptions || statusesRes?.data?.statuses || []);
+        } catch (error) {
+            console.error('Error fetching options:', error);
+            setSnackbar({
+                open: true,
+                message: error.response?.data?.error || error.message || 'Failed to fetch options',
+                severity: 'error',
+            });
+            // Fallback to dummies if needed
+            setCategories(["Electronics", "Clothing", "Books"]);
+            setCategorySubMap({
+                "Electronics": ["Smartphones", "Laptops", "Accessories"],
+                "Clothing": ["Men's Wear", "Women's Wear", "Kids Wear"],
+                "Books": ["Fiction", "Non-Fiction", "Technical"],
+            });
+            setTypes(["Package", "Box", "Bags"]);
+            setStatuses(["Created", "In Transit", "Delivered", "Cancelled"]);
+            setPlaces([{ value: '', label: 'Select Place' }, { value: 'Singapore', label: 'Singapore' }, { value: 'Dubai', label: 'Dubai' }]); // Minimal fallback
+            setCompanies([{ value: '', label: 'Select 3rd party company' }, { value: 'Company A', label: 'Company A' }]);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+
+    const themeColors = {
+        primary: '#f58220',
+        secondary: '#1a9c8f',
+        background: '#f8f9fa',
+        surface: '#ffffff',
+        border: '#e0e0e0',
+        textPrimary: '#212121',
+        textSecondary: '#757575',
+        success: '#4caf50',
+        warning: '#ff9800',
+        error: '#f44336'
+    };
     // Fetch containers on mount
     useEffect(() => {
         fetchOptions();
-        // fetchContainers();
+        fetchContainers();
         if (orderId) {
             fetchOrder(orderId);
         }
@@ -3516,7 +3556,8 @@ const fetchOptions = async () => {
         try {
             const params = {
                 page: 1,
-                limit: 50
+                limit: 50,
+                status: 'Available'
             };
             const response = await api.get('/api/containers', { params });
             setContainers(response.data.data || []);
@@ -3531,7 +3572,7 @@ const fetchOptions = async () => {
             setLoadingContainers(false);
         }
     };
-  const fetchOrder = async (id) => {
+const fetchOrder = async (id) => {
     setLoading(true);
     try {
         const response = await api.get(`/api/orders/${id}`, { params: { includeContainer: true } });
@@ -3620,15 +3661,39 @@ const fetchOptions = async () => {
                         camelRec[camelKey] = val;
                     }
                 });
-                // Handle legacy shipping_detail to array
-                if (rec.shipping_detail) {
-                    const sd = { ...rec.shipping_detail };
-                    Object.keys(sd).forEach(key => {
-                        const camelKey = snakeToCamel(key);
-                        sd[camelKey] = sd[key];
-                        delete sd[key];
+                // Handle shippingdetails array (plural, as per new API)
+                if (rec.shippingdetails) {
+                    const mappedShippingDetails = (rec.shippingdetails || []).map(sd => {
+                        const camelSd = { ...initialShippingDetail };
+                        Object.keys(sd).forEach(sdApiKey => {
+                            let sdVal = sd[sdApiKey];
+                            if (sdVal === null || sdVal === undefined) sdVal = '';
+                            const sdCamelKey = snakeToCamel(sdApiKey);
+                            camelSd[sdCamelKey] = sdVal;
+                        });
+                        // Map nested containerDetails
+                        if (sd.containerDetails) {
+                            const mappedContainerDetails = (sd.containerDetails || []).map(cd => {
+                                const camelCd = { totalNumber: '', container: null, status: '' };
+                                Object.keys(cd).forEach(cdApiKey => {
+                                    let cdVal = cd[cdApiKey];
+                                    if (cdVal === null || cdVal === undefined) cdVal = '';
+                                    const cdCamelKey = snakeToCamel(cdApiKey);
+                                    camelCd[cdCamelKey] = cdVal;
+                                });
+                                // Specific mapping for total_number -> totalNumber
+                                if ('total_number' in cd) {
+                                    camelCd.totalNumber = cd.total_number || '';
+                                }
+                                return camelCd;
+                            });
+                            camelSd.containerDetails = mappedContainerDetails;
+                        } else {
+                            camelSd.containerDetails = [{ totalNumber: '', container: null, status: '' }];
+                        }
+                        return camelSd;
                     });
-                    camelRec.shippingDetails = [sd];
+                    camelRec.shippingDetails = mappedShippingDetails;
                 }
                 // If no shippingDetails, create default one from receiver-level totals
                 if (!camelRec.shippingDetails || camelRec.shippingDetails.length === 0) {
@@ -3660,18 +3725,32 @@ const fetchOptions = async () => {
         // Compute remainingItems on load
         mappedPanel2 = mappedPanel2.map(rec => {
             const shippingDetails = rec.shippingDetails || [];
-            const recTotal = shippingDetails.reduce((sum, sd) => sum + (parseInt(sd.totalNumber || 0) || 0), 0);
+            const recTotal = shippingDetails.reduce((sum, sd) => {
+                return sum + ((sd.containerDetails || []).reduce((s, cd) => s + (parseInt(cd.totalNumber || 0) || 0), 0));
+            }, 0);
             const delivered = parseInt(rec.qtyDelivered || 0) || 0;
             const recRemaining = Math.max(0, recTotal - delivered);
             let updatedDetails = shippingDetails;
             if (rec.fullPartial === 'Partial' && recTotal > 0) {
                 updatedDetails = shippingDetails.map(sd => {
-                    const sdTotal = parseInt(sd.totalNumber || 0) || 0;
+                    const sdTotal = (sd.containerDetails || []).reduce((s, cd) => s + (parseInt(cd.totalNumber || 0) || 0), 0);
                     const sdRemaining = Math.round((sdTotal / recTotal) * recRemaining);
-                    return { ...sd, remainingItems: sdRemaining.toString() };
+                    return { 
+                        ...sd, 
+                        containerDetails: (sd.containerDetails || []).map(cd => ({ 
+                            ...cd, 
+                            remainingItems: Math.round((parseInt(cd.totalNumber || 0) / sdTotal) * sdRemaining).toString() 
+                        }))
+                    };
                 });
             } else {
-                updatedDetails = shippingDetails.map(sd => ({ ...sd, remainingItems: (parseInt(sd.totalNumber || 0) || 0).toString() }));
+                updatedDetails = shippingDetails.map(sd => ({ 
+                    ...sd, 
+                    containerDetails: (sd.containerDetails || []).map(cd => ({ 
+                        ...cd, 
+                        remainingItems: (parseInt(cd.totalNumber || 0) || 0).toString() 
+                    }))
+                }));
             }
             rec.shippingDetails = updatedDetails;
             // Validation warnings
@@ -3719,7 +3798,8 @@ const fetchOptions = async () => {
         mappedPanel2.forEach((rec, i) => {
             if (rec.validationWarnings) {
                 if (rec.validationWarnings.total_number) {
-                    initialErrors[`${panel2ListKey}[${i}].totalNumber`] = rec.validationWarnings.total_number;
+                    // Map to nested container totalNumber errors if needed; for simplicity, set at shipping level
+                    initialErrors[`${panel2ListKey}[${i}].shippingDetails[0].containerDetails[0].totalNumber`] = rec.validationWarnings.total_number;
                 }
                 if (rec.validationWarnings.qty_delivered) {
                     initialErrors[`${panel2ListKey}[${i}].qtyDelivered`] = rec.validationWarnings.qty_delivered;
@@ -3814,240 +3894,240 @@ const fetchOptions = async () => {
         }));
     };
 
-const loadImageAsBase64 = (url) =>
-  new Promise((resolve) => {
-    const img = new Image();
-    img.crossOrigin = "Anonymous";
-    img.src = url;
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext("2d");
-      ctx.drawImage(img, 0, 0);
-      resolve(canvas.toDataURL("image/png"));
+    const loadImageAsBase64 = (url) =>
+        new Promise((resolve) => {
+            const img = new Image();
+            img.crossOrigin = "Anonymous";
+            img.src = url;
+            img.onload = () => {
+                const canvas = document.createElement("canvas");
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const ctx = canvas.getContext("2d");
+                ctx.drawImage(img, 0, 0);
+                resolve(canvas.toDataURL("image/png"));
+            };
+            img.onerror = () => resolve(null);
+        });
+
+    const generateOrderPDF = async (order) => {
+        if (!order) return;
+
+        const doc = new jsPDF("p", "mm", "a4");
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const margin = 14;
+        const brandPrimary = [13, 108, 106]; // #0d6c6a
+        const brandLight = [220, 245, 243];
+        let y = 30;
+
+        // -------- HEADER --------
+        const logoBase64 = await loadImageAsBase64("./logo-2.png");
+        if (logoBase64) doc.addImage(logoBase64, "PNG", margin, 4, 60, 12);
+
+        doc.setFont("helvetica", "bold").setFontSize(16);
+        doc.setTextColor(...brandPrimary);
+        doc.text("ORDER DETAILS REPORT", pageWidth - margin, 10, { align: "right" });
+
+        doc.setFont("helvetica", "normal").setFontSize(9);
+        doc.text(`Booking Ref: ${order.booking_ref}`, pageWidth - margin, 17, { align: "right" });
+        doc.text(`Generated: ${new Date().toLocaleString()}`, pageWidth - margin, 22, { align: "right" });
+
+        // -------- SUMMARY CARDS --------
+        const cards = [
+            ["Order ID", order.id],
+            ["Status", order.status],
+            ["Drop Method", order.drop_method],
+            ["Point of Origin", order.point_of_origin],
+            ["Total Assigned Qty", order.total_assigned_qty],
+            ["Collection Scope", order.collection_scope],
+        ];
+        const cardWidth = (pageWidth - margin * 2 - 6) / 2;
+        const cardHeight = 16;
+
+        cards.forEach((item, i) => {
+            const col = i % 2;
+            const row = Math.floor(i / 2);
+            const x = margin + col * (cardWidth + 6);
+            const cardY = y + row * (cardHeight + 6);
+
+            doc.setDrawColor(220, 220, 220);
+            doc.setFillColor(...brandLight);
+            doc.roundedRect(x, cardY, cardWidth, cardHeight, 2, 2, "FD");
+
+            doc.setFillColor(...brandPrimary);
+            doc.rect(x, cardY, cardWidth, 5, "F");
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(9);
+            doc.setTextColor(255, 255, 255);
+            doc.text(item[0], x + 2, cardY + 4);
+
+            doc.setFont("helvetica", "normal");
+            doc.setTextColor(50, 50, 50);
+            doc.text(String(item[1]), x + 3, cardY + 11);
+        });
+
+        y += Math.ceil(cards.length / 2) * (cardHeight + 6) + 5;
+
+        // -------- ORDER DETAILS --------
+        const orderDetails = [
+            ["Booking Ref", order.booking_ref],
+            ["RGL Booking #", order.rgl_booking_number],
+            ["Place of Loading", order.place_of_loading],
+            ["Final Destination", order.final_destination],
+            ["Place of Delivery", order.place_of_delivery],
+            ["ETA", order.eta || "N/A"],
+            ["ETD", order.etd || "N/A"],
+            ["Shipping Line", order.shipping_line || "N/A"],
+            ["Plate No", order.plate_no],
+            ["Drop Off CNIC", order.drop_off_cnic],
+            ["Drop Off Mobile", order.drop_off_mobile],
+            ["Drop Date", order.drop_date ? new Date(order.drop_date).toLocaleString() : "N/A"],
+        ];
+
+        const drawKeyValueSection = (y, title, details) => {
+            doc.setFont("helvetica", "bold").setFontSize(14);
+            doc.setTextColor(...brandPrimary);
+            doc.text(title, margin, y);
+            y += 4;
+
+            doc.setDrawColor(...brandPrimary);
+            doc.setLineWidth(0.6);
+            doc.line(margin, y, pageWidth - margin, y);
+            y += 6;
+
+            const colWidth = (pageWidth - margin * 2 - 10) / 2;
+            const rowHeight = 8;
+
+            details.forEach((pair, index) => {
+                const col = index % 2;
+                const row = Math.floor(index / 2);
+                const x = margin + col * (colWidth + 10);
+                const dy = y + row * rowHeight;
+
+                doc.setFont("helvetica", "bold");
+                doc.setFontSize(10);
+                doc.setTextColor(...brandPrimary);
+                doc.text(pair[0], x, dy);
+
+                doc.setFont("helvetica", "normal");
+                doc.setTextColor(50, 50, 50);
+                doc.text(String(pair[1] || "N/A"), x, dy + 4);
+            });
+
+            return y + Math.ceil(details.length / 2) * rowHeight + 6;
+        };
+
+        y = drawKeyValueSection(y, "ORDER INFORMATION", orderDetails);
+
+        // -------- SENDER DETAILS --------
+        const senderDetails = [
+            ["Sender Name", order.sender_name],
+            ["Contact Number", order.sender_contact],
+            ["Email", order.sender_email],
+            ["Address", order.sender_address],
+            ["Sender Ref", order.sender_ref],
+            ["Sender Remarks", order.sender_remarks],
+            ["Selected Sender Owner", order.selected_sender_owner],
+        ];
+        y = drawKeyValueSection(y, "SENDER INFORMATION", senderDetails);
+
+        // -------- RECEIVERS TABLE --------
+        if (order.receivers?.length) {
+            doc.setFont("helvetica", "bold").setFontSize(14);
+            doc.setTextColor(...brandPrimary);
+            doc.text("RECEIVERS", margin, y);
+            y += 6;
+
+            autoTable(doc, {
+                startY: y,
+                head: [["Receiver", "Status", "Consignment #", "Qty", "Weight", "Contact", "Address", "Containers"]],
+                body: order.receivers.map((r) => [
+                    r.receiver_name,
+                    r.status,
+                    r.consignment_number,
+                    r.total_number,
+                    r.total_weight,
+                    r.receiver_contact,
+                    r.receiver_address,
+                    r.containers?.map(c => c.join(", ")).join("; ") || "N/A",
+                ]),
+                headStyles: { fillColor: brandPrimary, textColor: 255 },
+                bodyStyles: { fontSize: 9, cellPadding: 3 },
+                margin: { left: margin, right: margin },
+            });
+
+            y = doc.lastAutoTable.finalY + 6;
+
+            // -------- RECEIVER SHIPPING DETAILS TABLE --------
+            for (const receiver of order.receivers) {
+                if (!receiver.shippingDetails?.length) continue;
+
+                doc.setFont("helvetica", "bold").setFontSize(12);
+                doc.setTextColor(...brandPrimary);
+                doc.text(`Products Details for: ${receiver.receiver_name}`, margin, y);
+                y += 6;
+
+                autoTable(doc, {
+                    startY: y,
+                    head: [["Category", "Subcategory", "Type", "Total #", "Weight", "Pickup", "Delivery", "Item Ref", "Assigned Qty"]],
+                    body: receiver.shippingDetails.map((s) => [
+                        s.category,
+                        s.subcategory,
+                        s.type,
+                        s.totalNumber,
+                        s.weight,
+                        s.pickupLocation,
+                        s.deliveryAddress,
+                        s.itemRef,
+                        s.assignedQty
+                    ]),
+                    headStyles: { fillColor: brandPrimary, textColor: 255 },
+                    bodyStyles: { fontSize: 9, cellPadding: 3 },
+                    margin: { left: margin, right: margin },
+                });
+
+                y = doc.lastAutoTable.finalY + 6;
+            }
+        }
+
+        // -------- REMARKS --------
+        const drawBoxText = (y, title, text) => {
+            if (!text) return y;
+
+            const boxHeight = 20;
+            doc.setFillColor(248, 249, 250);
+            doc.roundedRect(margin, y, pageWidth - margin * 2, boxHeight, 2, 2, "F");
+
+            doc.setFont("helvetica", "bold").setFontSize(10);
+            doc.setTextColor(...brandPrimary);
+            doc.text(title, margin + 3, y + 6);
+
+            doc.setFont("helvetica", "normal").setFontSize(9);
+            doc.setTextColor(50, 50, 50);
+            const wrapped = doc.splitTextToSize(text, pageWidth - margin * 2 - 6);
+            doc.text(wrapped, margin + 3, y + 11);
+
+            return y + boxHeight + 6;
+        };
+
+        y = drawBoxText(y, "Order Remarks", order.order_remarks);
+
+        // -------- ATTACHMENTS --------
+        const attachmentsText = order.attachments?.length ? order.attachments.join(", ") : "None";
+        y = drawBoxText(y, "Attachments", attachmentsText);
+
+        // -------- FOOTER --------
+        const footerY = 275;
+        doc.setDrawColor(...brandPrimary);
+        doc.line(margin, footerY, pageWidth - margin, footerY);
+        doc.setFont("helvetica", "normal").setFontSize(9);
+        doc.setTextColor(80, 80, 80);
+        doc.text(`Generated: ${new Date().toLocaleString()}`, margin, footerY + 6);
+        doc.text(`Page ${doc.getCurrentPageInfo().pageNumber}`, pageWidth - margin, footerY + 6, { align: "right" });
+
+        // -------- SAVE PDF --------
+        doc.save(`Order_${order.booking_ref || "Unknown"}.pdf`);
     };
-    img.onerror = () => resolve(null);
-  });
-
-const generateOrderPDF = async (order) => {
-  if (!order) return;
-
-  const doc = new jsPDF("p", "mm", "a4");
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const margin = 14;
-  const brandPrimary = [13, 108, 106]; // #0d6c6a
-  const brandLight = [220, 245, 243];
-  let y = 30;
-
-  // -------- HEADER --------
-  const logoBase64 = await loadImageAsBase64("./logo-2.png");
-  if (logoBase64) doc.addImage(logoBase64, "PNG", margin, 4, 60, 12);
-
-  doc.setFont("helvetica", "bold").setFontSize(16);
-  doc.setTextColor(...brandPrimary);
-  doc.text("ORDER DETAILS REPORT", pageWidth - margin, 10, { align: "right" });
-
-  doc.setFont("helvetica", "normal").setFontSize(9);
-  doc.text(`Booking Ref: ${order.booking_ref}`, pageWidth - margin, 17, { align: "right" });
-  doc.text(`Generated: ${new Date().toLocaleString()}`, pageWidth - margin, 22, { align: "right" });
-
-  // -------- SUMMARY CARDS --------
-  const cards = [
-    ["Order ID", order.id],
-    ["Status", order.status],
-    ["Drop Method", order.drop_method],
-    ["Point of Origin", order.point_of_origin],
-    ["Total Assigned Qty", order.total_assigned_qty],
-    ["Collection Scope", order.collection_scope],
-  ];
-  const cardWidth = (pageWidth - margin * 2 - 6) / 2;
-  const cardHeight = 16;
-
-  cards.forEach((item, i) => {
-    const col = i % 2;
-    const row = Math.floor(i / 2);
-    const x = margin + col * (cardWidth + 6);
-    const cardY = y + row * (cardHeight + 6);
-
-    doc.setDrawColor(220, 220, 220);
-    doc.setFillColor(...brandLight);
-    doc.roundedRect(x, cardY, cardWidth, cardHeight, 2, 2, "FD");
-
-    doc.setFillColor(...brandPrimary);
-    doc.rect(x, cardY, cardWidth, 5, "F");
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(9);
-    doc.setTextColor(255, 255, 255);
-    doc.text(item[0], x + 2, cardY + 4);
-
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(50, 50, 50);
-    doc.text(String(item[1]), x + 3, cardY + 11);
-  });
-
-  y += Math.ceil(cards.length / 2) * (cardHeight + 6) + 5;
-
-  // -------- ORDER DETAILS --------
-  const orderDetails = [
-    ["Booking Ref", order.booking_ref],
-    ["RGL Booking #", order.rgl_booking_number],
-    ["Place of Loading", order.place_of_loading],
-    ["Final Destination", order.final_destination],
-    ["Place of Delivery", order.place_of_delivery],
-    ["ETA", order.eta || "N/A"],
-    ["ETD", order.etd || "N/A"],
-    ["Shipping Line", order.shipping_line || "N/A"],
-    ["Plate No", order.plate_no],
-    ["Drop Off CNIC", order.drop_off_cnic],
-    ["Drop Off Mobile", order.drop_off_mobile],
-    ["Drop Date", order.drop_date ? new Date(order.drop_date).toLocaleString() : "N/A"],
-  ];
-
-  const drawKeyValueSection = (y, title, details) => {
-    doc.setFont("helvetica", "bold").setFontSize(14);
-    doc.setTextColor(...brandPrimary);
-    doc.text(title, margin, y);
-    y += 4;
-
-    doc.setDrawColor(...brandPrimary);
-    doc.setLineWidth(0.6);
-    doc.line(margin, y, pageWidth - margin, y);
-    y += 6;
-
-    const colWidth = (pageWidth - margin * 2 - 10) / 2;
-    const rowHeight = 8;
-
-    details.forEach((pair, index) => {
-      const col = index % 2;
-      const row = Math.floor(index / 2);
-      const x = margin + col * (colWidth + 10);
-      const dy = y + row * rowHeight;
-
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(10);
-      doc.setTextColor(...brandPrimary);
-      doc.text(pair[0], x, dy);
-
-      doc.setFont("helvetica", "normal");
-      doc.setTextColor(50, 50, 50);
-      doc.text(String(pair[1] || "N/A"), x, dy + 4);
-    });
-
-    return y + Math.ceil(details.length / 2) * rowHeight + 6;
-  };
-
-  y = drawKeyValueSection(y, "ORDER INFORMATION", orderDetails);
-
-  // -------- SENDER DETAILS --------
-  const senderDetails = [
-    ["Sender Name", order.sender_name],
-    ["Contact Number", order.sender_contact],
-    ["Email", order.sender_email],
-    ["Address", order.sender_address],
-    ["Sender Ref", order.sender_ref],
-    ["Sender Remarks", order.sender_remarks],
-    ["Selected Sender Owner", order.selected_sender_owner],
-  ];
-  y = drawKeyValueSection(y, "SENDER INFORMATION", senderDetails);
-
-  // -------- RECEIVERS TABLE --------
-  if (order.receivers?.length) {
-    doc.setFont("helvetica", "bold").setFontSize(14);
-    doc.setTextColor(...brandPrimary);
-    doc.text("RECEIVERS", margin, y);
-    y += 6;
-
-    autoTable(doc, {
-      startY: y,
-      head: [["Receiver", "Status", "Consignment #", "Qty", "Weight", "Contact", "Address", "Containers"]],
-      body: order.receivers.map((r) => [
-        r.receiver_name,
-        r.status,
-        r.consignment_number,
-        r.total_number,
-        r.total_weight,
-        r.receiver_contact,
-        r.receiver_address,
-        r.containers?.map(c => c.join(", ")).join("; ") || "N/A",
-      ]),
-      headStyles: { fillColor: brandPrimary, textColor: 255 },
-      bodyStyles: { fontSize: 9, cellPadding: 3 },
-      margin: { left: margin, right: margin },
-    });
-
-    y = doc.lastAutoTable.finalY + 6;
-
-    // -------- RECEIVER SHIPPING DETAILS TABLE --------
-    for (const receiver of order.receivers) {
-      if (!receiver.shippingDetails?.length) continue;
-
-      doc.setFont("helvetica", "bold").setFontSize(12);
-      doc.setTextColor(...brandPrimary);
-      doc.text(`Products Details for: ${receiver.receiver_name}`, margin, y);
-      y += 6;
-
-      autoTable(doc, {
-        startY: y,
-        head: [["Category", "Subcategory", "Type", "Total #", "Weight", "Pickup", "Delivery", "Item Ref", "Assigned Qty"]],
-        body: receiver.shippingDetails.map((s) => [
-          s.category,
-          s.subcategory,
-          s.type,
-          s.totalNumber,
-          s.weight,
-          s.pickupLocation,
-          s.deliveryAddress,
-          s.itemRef,
-          s.assignedQty
-        ]),
-        headStyles: { fillColor: brandPrimary, textColor: 255 },
-        bodyStyles: { fontSize: 9, cellPadding: 3 },
-        margin: { left: margin, right: margin },
-      });
-
-      y = doc.lastAutoTable.finalY + 6;
-    }
-  }
-
-  // -------- REMARKS --------
-  const drawBoxText = (y, title, text) => {
-    if (!text) return y;
-
-    const boxHeight = 20;
-    doc.setFillColor(248, 249, 250);
-    doc.roundedRect(margin, y, pageWidth - margin * 2, boxHeight, 2, 2, "F");
-
-    doc.setFont("helvetica", "bold").setFontSize(10);
-    doc.setTextColor(...brandPrimary);
-    doc.text(title, margin + 3, y + 6);
-
-    doc.setFont("helvetica", "normal").setFontSize(9);
-    doc.setTextColor(50, 50, 50);
-    const wrapped = doc.splitTextToSize(text, pageWidth - margin * 2 - 6);
-    doc.text(wrapped, margin + 3, y + 11);
-
-    return y + boxHeight + 6;
-  };
-
-  y = drawBoxText(y, "Order Remarks", order.order_remarks);
-
-  // -------- ATTACHMENTS --------
-  const attachmentsText = order.attachments?.length ? order.attachments.join(", ") : "None";
-  y = drawBoxText(y, "Attachments", attachmentsText);
-
-  // -------- FOOTER --------
-  const footerY = 275;
-  doc.setDrawColor(...brandPrimary);
-  doc.line(margin, footerY, pageWidth - margin, footerY);
-  doc.setFont("helvetica", "normal").setFontSize(9);
-  doc.setTextColor(80, 80, 80);
-  doc.text(`Generated: ${new Date().toLocaleString()}`, margin, footerY + 6);
-  doc.text(`Page ${doc.getCurrentPageInfo().pageNumber}`, pageWidth - margin, footerY + 6, { align: "right" });
-
-  // -------- SAVE PDF --------
-  doc.save(`Order_${order.booking_ref || "Unknown"}.pdf`);
-};
 
 
 
@@ -4107,6 +4187,7 @@ const generateOrderPDF = async (order) => {
             });
         }
     };
+
     const handleReceiverPartialChange = (index, field) => (e) => {
         const value = e.target.value;
         setFormData(prev => {
@@ -4162,136 +4243,143 @@ const generateOrderPDF = async (order) => {
         }));
     };
     // Frontend: handleSaveShipping function (add this to your AddOrder.jsx component)
-// This function saves/updates shipping details for a specific receiver index without full form submission
-// It can be called on the "Save" button click for shipping section
-const handleSaveShipping = async (index) => {
-  if (!validateShippingDetails(index)) {
-    setSnackbar({
-      open: true,
-      message: 'Please fix shipping detail errors',
-      severity: 'error',
-    });
-    return;
-  }
-  setLoading(true);
-  const formDataToSend = new FormData();
-  // Dynamic panel2
-  const panel2FieldPrefix = formData.senderType === 'sender' ? 'receiver' : 'sender';
-  const listKey = formData.senderType === 'sender' ? 'receivers' : 'senders';
-  const currentList = formData[listKey];
-  const itemData = currentList[index];
-  const snakeRec = {
-    [`${panel2FieldPrefix}_name`]: formData.senderType === 'sender' ? itemData.receiverName || '' : itemData.senderName || '',
-    [`${panel2FieldPrefix}_contact`]: formData.senderType === 'sender' ? itemData.receiverContact || '' : itemData.senderContact || '',
-    [`${panel2FieldPrefix}_address`]: formData.senderType === 'sender' ? itemData.receiverAddress || '' : itemData.senderAddress || '',
-    [`${panel2FieldPrefix}_email`]: formData.senderType === 'sender' ? itemData.receiverEmail || '' : itemData.senderEmail || '',
-    eta: itemData.eta || '',
-    etd: itemData.etd || '',
-    remarks: itemData.remarks || '',
-    shipping_line: itemData.shippingLine || ''
-  };
-  // Append panel2 data as JSON
-  formDataToSend.append( `${panel2FieldPrefix}s`, JSON.stringify([snakeRec]) );
-  // Append shipping details as order_items flat list for this item
-  const orderItemsToSend = (itemData.shippingDetails || []).map((sd, j) => {
-    const snakeItem = {};
-    Object.keys(sd).forEach(key => {
-      if (key !== 'remainingItems') {
-        const snakeKey = camelToSnake(key);
-        snakeItem[snakeKey] = sd[key] || '';
-      }
-    });
-    snakeItem.item_ref = `ORDER-ITEM-REF-${index + 1}-${j + 1}-${Date.now()}`;
-    return snakeItem;
-  });
-  formDataToSend.append('order_items', JSON.stringify(orderItemsToSend));
-  // Append order_id for update
-  formDataToSend.append('order_id', orderId);
-  try {
-    const response = await api.put(`/api/orders/${orderId}/shipping`, formDataToSend, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    });
-    // Update local formData with response if needed
-    if (response.data.success) {
-      // Optionally refetch full order or update local state
-      await fetchOrder(orderId);
-      setSnackbar({
-        open: true,
-        message: 'Shipping details saved successfully',
-        severity: 'success',
-      });
-    }
-  } catch (err) {
-    console.error("[handleSaveShipping] Error:", err.response?.data || err.message);
-    const backendMsg = err.response?.data?.error || err.message || 'Failed to save shipping details';
-    setSnackbar({
-      open: true,
-      message: `Error: ${backendMsg}`,
-      severity: 'error',
-    });
-  } finally {
-    setLoading(false);
-  }
-};
-// Validation helper for shipping details (add this too)
-const validateShippingDetails = (index) => {
-  const panel2FieldPrefix = formData.senderType === 'sender' ? 'receiver' : 'sender';
-  const listKey = formData.senderType === 'sender' ? 'receivers' : 'senders';
-  const currentList = formData[listKey];
-  const itemData = currentList[index];
-  const shippingDetails = itemData.shippingDetails || [];
-  let isValid = true;
-  const newErrors = { ...errors };
-  // Validate item level
-  const nameField = formData.senderType === 'sender' ? 'receiverName' : 'senderName';
-  if (!itemData[nameField]?.trim()) {
-    newErrors[`${listKey}[${index}].${nameField}`] = `${panel2FieldPrefix} name required`;
-    isValid = false;
-  }
-  if (!itemData.eta) {
-    newErrors[`${listKey}[${index}].eta`] = 'ETA required';
-    isValid = false;
-  }
-  if (!itemData.etd) {
-    newErrors[`${listKey}[${index}].etd`] = 'ETD required';
-    isValid = false;
-  }
-  // Validate each shipping detail
-  shippingDetails.forEach((sd, j) => {
-    if (!sd.pickupLocation?.trim()) {
-      newErrors[`${listKey}[${index}].shippingDetails[${j}].pickupLocation`] = 'Pickup location required';
-      isValid = false;
-    }
-    if (!sd.category?.trim()) {
-      newErrors[`${listKey}[${index}].shippingDetails[${j}].category`] = 'Category required';
-      isValid = false;
-    }
-    if (!sd.subcategory?.trim()) {
-      newErrors[`${listKey}[${index}].shippingDetails[${j}].subcategory`] = 'Subcategory required';
-      isValid = false;
-    }
-    if (!sd.type?.trim()) {
-      newErrors[`${listKey}[${index}].shippingDetails[${j}].type`] = 'Type required';
-      isValid = false;
-    }
-    if (!sd.deliveryAddress?.trim()) {
-      newErrors[`${listKey}[${index}].shippingDetails[${j}].deliveryAddress`] = 'Delivery address required';
-      isValid = false;
-    }
-    const totalNum = parseInt(sd.totalNumber || 0);
-    if (!sd.totalNumber || totalNum <= 0) {
-      newErrors[`${listKey}[${index}].shippingDetails[${j}].totalNumber`] = 'Total number must be positive';
-      isValid = false;
-    }
-    const weight = parseFloat(sd.weight || 0);
-    if (!sd.weight || weight <= 0) {
-      newErrors[`${listKey}[${index}].shippingDetails[${j}].weight`] = 'Weight must be positive';
-      isValid = false;
-    }
-  });
-  setErrors(newErrors);
-  return isValid;
-};
+    // This function saves/updates shipping details for a specific receiver index without full form submission
+    // It can be called on the "Save" button click for shipping section
+    const handleSaveShipping = async (index) => {
+        if (!validateShippingDetails(index)) {
+            setSnackbar({
+                open: true,
+                message: 'Please fix shipping detail errors',
+                severity: 'error',
+            });
+            return;
+        }
+        setLoading(true);
+        const formDataToSend = new FormData();
+        // Dynamic panel2
+        const panel2FieldPrefix = formData.senderType === 'sender' ? 'receiver' : 'sender';
+        const listKey = formData.senderType === 'sender' ? 'receivers' : 'senders';
+        const currentList = formData[listKey];
+        const itemData = currentList[index];
+        const snakeRec = {
+            [`${panel2FieldPrefix}_name`]: formData.senderType === 'sender' ? itemData.receiverName || '' : itemData.senderName || '',
+            [`${panel2FieldPrefix}_contact`]: formData.senderType === 'sender' ? itemData.receiverContact || '' : itemData.senderContact || '',
+            [`${panel2FieldPrefix}_address`]: formData.senderType === 'sender' ? itemData.receiverAddress || '' : itemData.senderAddress || '',
+            [`${panel2FieldPrefix}_email`]: formData.senderType === 'sender' ? itemData.receiverEmail || '' : itemData.senderEmail || '',
+            eta: itemData.eta || '',
+            etd: itemData.etd || '',
+            remarks: itemData.remarks || '',
+            shipping_line: itemData.shippingLine || ''
+        };
+        // Append panel2 data as JSON
+        formDataToSend.append(`${panel2FieldPrefix}s`, JSON.stringify([snakeRec]));
+        // Append shipping details as order_items flat list for this item
+        const orderItemsToSend = (itemData.shippingDetails || []).map((sd, j) => {
+            const snakeItem = {};
+            Object.keys(sd).forEach(key => {
+                if (key !== 'remainingItems') {
+                    const snakeKey = camelToSnake(key);
+                    snakeItem[snakeKey] = sd[key] || '';
+                }
+            });
+            snakeItem.item_ref = `ORDER-ITEM-REF-${index + 1}-${j + 1}-${Date.now()}`;
+            return snakeItem;
+        });
+        formDataToSend.append('order_items', JSON.stringify(orderItemsToSend));
+        // Append order_id for update
+        formDataToSend.append('order_id', orderId);
+        try {
+            const response = await api.put(`/api/orders/${orderId}/shipping`, formDataToSend, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+            // Update local formData with response if needed
+            if (response.data.success) {
+                // Optionally refetch full order or update local state
+                await fetchOrder(orderId);
+                setSnackbar({
+                    open: true,
+                    message: 'Shipping details saved successfully',
+                    severity: 'success',
+                });
+            }
+        } catch (err) {
+            console.error("[handleSaveShipping] Error:", err.response?.data || err.message);
+            const backendMsg = err.response?.data?.error || err.message || 'Failed to save shipping details';
+            setSnackbar({
+                open: true,
+                message: `Error: ${backendMsg}`,
+                severity: 'error',
+            });
+        } finally {
+            setLoading(false);
+        }
+    };
+    // Validation helper for shipping details (add this too)
+    const validateShippingDetails = (index) => {
+        const panel2FieldPrefix = formData.senderType === 'sender' ? 'receiver' : 'sender';
+        const listKey = formData.senderType === 'sender' ? 'receivers' : 'senders';
+        const currentList = formData[listKey];
+        const itemData = currentList[index];
+        const shippingDetails = itemData.shippingDetails || [];
+        let isValid = true;
+        const newErrors = { ...errors };
+        // Validate item level
+        const nameField = formData.senderType === 'sender' ? 'receiverName' : 'senderName';
+        if (!itemData[nameField]?.trim()) {
+            newErrors[`${listKey}[${index}].${nameField}`] = `${panel2FieldPrefix} name required`;
+            isValid = false;
+        }
+        if (!itemData.eta) {
+            newErrors[`${listKey}[${index}].eta`] = 'ETA required';
+            isValid = false;
+        }
+        if (!itemData.etd) {
+            newErrors[`${listKey}[${index}].etd`] = 'ETD required';
+            isValid = false;
+        }
+        // Validate each shipping detail
+        shippingDetails.forEach((sd, j) => {
+            if (!sd.pickupLocation?.trim()) {
+                newErrors[`${listKey}[${index}].shippingDetails[${j}].pickupLocation`] = 'Pickup location required';
+                isValid = false;
+            }
+            if (!sd.category?.trim()) {
+                newErrors[`${listKey}[${index}].shippingDetails[${j}].category`] = 'Category required';
+                isValid = false;
+            }
+            if (!sd.subcategory?.trim()) {
+                newErrors[`${listKey}[${index}].shippingDetails[${j}].subcategory`] = 'Subcategory required';
+                isValid = false;
+            }
+            if (!sd.type?.trim()) {
+                newErrors[`${listKey}[${index}].shippingDetails[${j}].type`] = 'Type required';
+                isValid = false;
+            }
+            if (!sd.deliveryAddress?.trim()) {
+                newErrors[`${listKey}[${index}].shippingDetails[${j}].deliveryAddress`] = 'Delivery address required';
+                isValid = false;
+            }
+            const totalNum = parseInt(sd.totalNumber || 0);
+            if (!sd.totalNumber || totalNum <= 0) {
+                newErrors[`${listKey}[${index}].shippingDetails[${j}].totalNumber`] = 'Total number must be positive';
+                isValid = false;
+            }
+            const weight = parseFloat(sd.weight || 0);
+            if (!sd.weight || weight <= 0) {
+                newErrors[`${listKey}[${index}].shippingDetails[${j}].weight`] = 'Weight must be positive';
+                isValid = false;
+            }
+        });
+        setErrors(newErrors);
+        return isValid;
+    };
+
+    // Add this useEffect to auto-select "Drop Off" as default for transportType (place it near other useEffects, e.g., after form initialization)
+    useEffect(() => {
+        if (!isEditMode && !formData.transportType) {
+            setFormData(prev => ({ ...prev, transportType: 'Drop Off' }));
+        }
+    }, [isEditMode]);
 
 
     // Sender handlers (similar)
@@ -4417,6 +4505,8 @@ const validateShippingDetails = (index) => {
         const files = Array.from(e.target.files);
         setFormData((prev) => ({ ...prev, gatepass: [...(Array.isArray(prev.gatepass) ? prev.gatepass : []), ...files] }));
     };
+
+
 const handleSave = async () => {
     // console.log("Submitting form data:", formData);
     console.log('Saving owner name:', formData[ownerNameKey]); // Debug
@@ -4467,32 +4557,42 @@ const handleSave = async () => {
             eta: item.eta || '',
             etd: item.etd || '',
             shipping_line: item.shippingLine || '',
-            full_partial: item.fullPartial || '',
-            qty_delivered: item.qtyDelivered || '',
+            full_partial: item.full_partial || item.fullPartial || 'Full',
+            qty_delivered: item.qty_delivered || item.qtyDelivered || '',
             status: item.status || 'Created',
             remarks: item.remarks || '',
+      containers: Array.isArray(item.containers) ? item.containers.flat().flat() : [],
         };
         return snakeRec;
     });
     formDataToSend.append(panel2ArrayKey, JSON.stringify(panel2ToSend));
-    // Append order_items from all shippingDetails flat
+    // Append order_items from all shippingDetails flat, now with nested containers
     const orderItemsToSend = [];
     panel2Items.forEach((item, i) => {
         (item.shippingDetails || []).forEach((sd, j) => {
             const snakeItem = {};
             Object.keys(sd).forEach(key => {
-                if (key !== 'remainingItems') {
+                if (key !== 'remainingItems' && key !== 'containerDetails') {
                     const snakeKey = camelToSnake(key);
                     snakeItem[snakeKey] = sd[key] || '';
                 }
             });
-            snakeItem.item_ref = `ORDER-ITEM-REF-${i + 1}-${j + 1}-${Date.now()}`;
+            // NEW: Handle nested containerDetails as 'container_details' array of snake_case objects
+            snakeItem.container_details = (sd.containerDetails || []).map((cd) => {
+                const snakeCd = {};
+                Object.keys(cd).forEach(ck => {
+                    const snakeCk = camelToSnake(ck);
+                    snakeCd[snakeCk] = cd[ck]; // container is CID primitive
+                });
+                return snakeCd;
+            });
+            snakeItem.item_ref = `ORDER-ITEM-REF-${i + 1}-${j + 1}-DUMMY`;
             orderItemsToSend.push(snakeItem);
         });
     });
     formDataToSend.append('order_items', JSON.stringify(orderItemsToSend));
     // Append transport fields
-    const transportKeys = ['transportType','collection_scope', 'thirdPartyTransport', 'driverName', 'driverContact', 'driverNic', 'driverPickupLocation', 'truckNumber', 'dropMethod', 'dropoffName', 'dropOffCnic', 'dropOffMobile', 'plateNo', 'dropDate', 'collectionMethod', 'clientReceiverName', 'clientReceiverId', 'clientReceiverMobile', 'deliveryDate', 'gatepass'];
+    const transportKeys = ['transportType', 'collection_scope', 'thirdPartyTransport', 'driverName', 'driverContact', 'driverNic', 'driverPickupLocation', 'truckNumber', 'dropMethod', 'dropoffName', 'dropOffCnic', 'dropOffMobile', 'plateNo', 'dropDate', 'collectionMethod', 'clientReceiverName', 'clientReceiverId', 'clientReceiverMobile', 'deliveryDate', 'gatepass'];
     transportKeys.forEach(key => {
         const value = formData[key];
         const apiKey = camelToSnake(key);
@@ -4541,8 +4641,6 @@ const handleSave = async () => {
         setLoading(false);
     }
 };
-
-
     const handleCancel = () => {
         navigate(-1);
     };
@@ -4586,56 +4684,56 @@ const handleSave = async () => {
         <>
             <Paper sx={{ p: 3, borderRadius: 3, boxShadow: 3, bgcolor: "#fafafa" }}>
                 <Box sx={{ p: 3 }}>
-                 <Stack 
-    direction="row" 
-    justifyContent="space-between" 
-    alignItems="center" 
-    mb={3}
-    className="MuiStack-root css-twoet5"
-sx={{
-        position: 'sticky',
-        zIndex: 9999,
-        top: 63,
-        background: 'white',    
-    p: 2,
-    }}
-    
->
-    <Typography variant="h4" fontWeight="bold" color="#f58220">
-        {isEditMode ? "Edit" : "New"} Order Details
-    </Typography>
-    <Stack direction="row"
-    sx={{
-        position: 'sticky',
-        zIndex: 9999,
-        top: 63,
-        background: 'white',    
-    }}
-    gap={1}>
-        <Button
-            variant="outlined"
-            onClick={handleCancel}
-            sx={{ borderRadius: 2, borderColor: "#f58220", color: "#f58220", px: 3 }}
-            disabled={loading}
-        >
-            CANCEL
-        </Button>
-        <Button
-            variant="contained"
-            onClick={handleSave}
-            sx={{
-                borderRadius: 2,
-                backgroundColor: "#0d6c6a",
-                color: "#fff",
-                px: 3,
-                "&:hover": { backgroundColor: "#0d6c6a" },
-            }}
-            disabled={loading}
-        >
-            {loading ? "Saving..." : "SAVE"}
-        </Button>
-    </Stack>
-</Stack>
+                    <Stack
+                        direction="row"
+                        justifyContent="space-between"
+                        alignItems="center"
+                        mb={3}
+                        className="MuiStack-root css-twoet5"
+                        sx={{
+                            position: 'sticky',
+                            zIndex: 9999,
+                            top: 63,
+                            background: 'white',
+                            p: 2,
+                        }}
+
+                    >
+                        <Typography variant="h4" fontWeight="bold" color="#f58220">
+                            {isEditMode ? "Edit" : "New"} Order Details
+                        </Typography>
+                        <Stack direction="row"
+                            sx={{
+                                position: 'sticky',
+                                zIndex: 9999,
+                                top: 63,
+                                background: 'white',
+                            }}
+                            gap={1}>
+                            <Button
+                                variant="outlined"
+                                onClick={handleCancel}
+                                sx={{ borderRadius: 2, borderColor: "#f58220", color: "#f58220", px: 3 }}
+                                disabled={loading}
+                            >
+                                CANCEL
+                            </Button>
+                            <Button
+                                variant="contained"
+                                onClick={handleSave}
+                                sx={{
+                                    borderRadius: 2,
+                                    backgroundColor: "#0d6c6a",
+                                    color: "#fff",
+                                    px: 3,
+                                    "&:hover": { backgroundColor: "#0d6c6a" },
+                                }}
+                                disabled={loading}
+                            >
+                                {loading ? "Saving..." : "SAVE"}
+                            </Button>
+                        </Stack>
+                    </Stack>
                     {/* Top Order Fields */}
                     <Stack spacing={3} mb={4}>
                         <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
@@ -4739,208 +4837,208 @@ sx={{
                     <Divider sx={{ my: 3, borderColor: "#e0e0e0" }} />
                     {/* Accordion Sections */}
                     <Stack spacing={2}>
-                       <Accordion
-    expanded={expanded.has("panel1")}
-    onChange={handleAccordionChange("panel1")}
-    sx={{
-        borderRadius: 2,
-        boxShadow: "none",
-        "&:before": { display: "none" },
-        "&.Mui-expanded": { boxShadow: "0 2px 8px rgba(0,0,0,0.1)" },
-    }}
->
-    <AccordionSummary
-        expandIcon={<ExpandMoreIcon />}
-        sx={{
-            bgcolor: expanded.has("panel1") ? "#0d6c6a" : "#fff3e0",
-            borderRadius: 2,
-            "& .MuiAccordionSummary-content": { fontWeight: "bold", color: expanded.has("panel1") ? "#fff" : "#f58220" },
-        }}
-    >
-        1. Owner Details
-    </AccordionSummary>
-    <AccordionDetails sx={{ p: 3, bgcolor: "#fff" }}>
-        <Stack spacing={2}>
-            {(() => {
-                const ownerNameKey = formData.senderType === 'sender' ? 'senderName' : 'receiverName';
-                const ownerContactKey = formData.senderType === 'sender' ? 'senderContact' : 'receiverContact';
-                const ownerAddressKey = formData.senderType === 'sender' ? 'senderAddress' : 'receiverAddress';
-                const ownerEmailKey = formData.senderType === 'sender' ? 'senderEmail' : 'receiverEmail';
-                const ownerRefKey = formData.senderType === 'sender' ? 'senderRef' : 'receiverRef';
-                const ownerRemarksKey = formData.senderType === 'sender' ? 'senderRemarks' : 'receiverRemarks';
-                const typePrefix = formData.senderType === 'sender' ? 'Sender' : 'Receiver';
-                const fieldPrefix = formData.senderType === 'sender' ? 'sender' : 'receiver';
-
-                const handleOwnerNameChange = (event, newValue) => {
-                    if (typeof newValue === 'string') {
-                        // Manual entry or existing value
-                        handleChange({ target: { name: ownerNameKey, value: newValue } });
-                    } else if (newValue) {
-                        // Selected option, fetch details
-                        handleSelectOwner(event, newValue);
-                    } else {
-                        // Cleared
-                        const fieldMap = {
-                            [ownerNameKey]: '',
-                            [ownerContactKey]: '',
-                            [ownerAddressKey]: '',
-                            [ownerEmailKey]: '',
-                            [ownerRefKey]: '',
-                            [ownerRemarksKey]: '',
-                        };
-                        Object.entries(fieldMap).forEach(([formKey, value]) => {
-                            handleChange({ target: { name: formKey, value } });
-                        });
-                        handleChange({ target: { name: 'selectedSenderOwner', value: '' } });
-                    }
-                };
-
-                const handleSelectOwner = async (event, value) => {
-                    if (value && typeof value !== 'string') {
-                        try {
-                            const res = await api.get(`/api/customers/${value.zoho_id || value.id}`);
-
-                            if (res && res.data) {
-                                const fieldMap = {
-                                    [ownerNameKey]: res.data.contact_name || res.data.contact_persons[0].name || '',
-                                    [ownerContactKey]: res.data.primary_phone || res.data.contact_persons[0].phone || '',
-                                    [ownerAddressKey]: res.data.zoho_notes || res.data.billing_address || '',
-                                    [ownerEmailKey]: res.data.email || res.data.contact_persons[0].email || '',
-                                    [ownerRefKey]: res.data.zoho_id || res.data.ref || '',
-                                    [ownerRemarksKey]: res.data.zoho_notes || res.data.system_notes || '',
-                                };
-                                Object.entries(fieldMap).forEach(([formKey, dbValue]) => {
-                                    handleChange({ target: { name: formKey, value: dbValue } });
-                                });
-                                // Set unique ID for reference
-                                handleChange({ target: { name: 'selectedSenderOwner', value: res.data.zoho_id || res.data.id } });
-                            }
-                        } catch (error) {
-                            console.error('Error fetching owner details:', error);
-                        }
-                    }
-                };
-
-                return (
-                    <>
-                        <FormControl component="fieldset" error={!!errors.senderType}>
-                            <Typography variant="subtitle1" fontWeight="bold" color="#f58220" gutterBottom>
-                                Select Type
-                            </Typography>
-                            <RadioGroup
-                                name="senderType"
-                                value={formData.senderType}
-                                onChange={handleChange}
-                                sx={{ flexDirection: 'row', gap: 3, mb: 1 }}
-                                defaultValue="sender"
+                        <Accordion
+                            expanded={expanded.has("panel1")}
+                            onChange={handleAccordionChange("panel1")}
+                            sx={{
+                                borderRadius: 2,
+                                boxShadow: "none",
+                                "&:before": { display: "none" },
+                                "&.Mui-expanded": { boxShadow: "0 2px 8px rgba(0,0,0,0.1)" },
+                            }}
+                        >
+                            <AccordionSummary
+                                expandIcon={<ExpandMoreIcon />}
+                                sx={{
+                                    bgcolor: expanded.has("panel1") ? "#0d6c6a" : "#fff3e0",
+                                    borderRadius: 2,
+                                    "& .MuiAccordionSummary-content": { fontWeight: "bold", color: expanded.has("panel1") ? "#fff" : "#f58220" },
+                                }}
                             >
-                                <FormControlLabel value="sender" control={<Radio />} label="Sender Details" />
-                                <FormControlLabel value="receiver" control={<Radio />} label="Receiver Details" />
-                            </RadioGroup>
-                            {errors.senderType && <Typography variant="caption" color="error">{errors.senderType}</Typography>}
-                        </FormControl>
+                                1. Owner Details
+                            </AccordionSummary>
+                            <AccordionDetails sx={{ p: 3, bgcolor: "#fff" }}>
+                                <Stack spacing={2}>
+                                    {(() => {
+                                        const ownerNameKey = formData.senderType === 'sender' ? 'senderName' : 'receiverName';
+                                        const ownerContactKey = formData.senderType === 'sender' ? 'senderContact' : 'receiverContact';
+                                        const ownerAddressKey = formData.senderType === 'sender' ? 'senderAddress' : 'receiverAddress';
+                                        const ownerEmailKey = formData.senderType === 'sender' ? 'senderEmail' : 'receiverEmail';
+                                        const ownerRefKey = formData.senderType === 'sender' ? 'senderRef' : 'receiverRef';
+                                        const ownerRemarksKey = formData.senderType === 'sender' ? 'senderRemarks' : 'receiverRemarks';
+                                        const typePrefix = formData.senderType === 'sender' ? 'Sender' : 'Receiver';
+                                        const fieldPrefix = formData.senderType === 'sender' ? 'sender' : 'receiver';
 
-                        <Stack spacing={2}>
-                            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                        const handleOwnerNameChange = (event, newValue) => {
+                                            if (typeof newValue === 'string') {
+                                                // Manual entry or existing value
+                                                handleChange({ target: { name: ownerNameKey, value: newValue } });
+                                            } else if (newValue) {
+                                                // Selected option, fetch details
+                                                handleSelectOwner(event, newValue);
+                                            } else {
+                                                // Cleared
+                                                const fieldMap = {
+                                                    [ownerNameKey]: '',
+                                                    [ownerContactKey]: '',
+                                                    [ownerAddressKey]: '',
+                                                    [ownerEmailKey]: '',
+                                                    [ownerRefKey]: '',
+                                                    [ownerRemarksKey]: '',
+                                                };
+                                                Object.entries(fieldMap).forEach(([formKey, value]) => {
+                                                    handleChange({ target: { name: formKey, value } });
+                                                });
+                                                handleChange({ target: { name: 'selectedSenderOwner', value: '' } });
+                                            }
+                                        };
+
+                                        const handleSelectOwner = async (event, value) => {
+                                            if (value && typeof value !== 'string') {
+                                                try {
+                                                    const res = await api.get(`/api/customers/${value.zoho_id || value.id}`);
+
+                                                    if (res && res.data) {
+                                                        const fieldMap = {
+                                                            [ownerNameKey]: res.data.contact_name || res.data.contact_persons[0].name || '',
+                                                            [ownerContactKey]: res.data.primary_phone || res.data.contact_persons[0].phone || '',
+                                                            [ownerAddressKey]: res.data.zoho_notes || res.data.billing_address || '',
+                                                            [ownerEmailKey]: res.data.email || res.data.contact_persons[0].email || '',
+                                                            [ownerRefKey]: res.data.zoho_id || res.data.ref || '',
+                                                            [ownerRemarksKey]: res.data.zoho_notes || res.data.system_notes || '',
+                                                        };
+                                                        Object.entries(fieldMap).forEach(([formKey, dbValue]) => {
+                                                            handleChange({ target: { name: formKey, value: dbValue } });
+                                                        });
+                                                        // Set unique ID for reference
+                                                        handleChange({ target: { name: 'selectedSenderOwner', value: res.data.zoho_id || res.data.id } });
+                                                    }
+                                                } catch (error) {
+                                                    console.error('Error fetching owner details:', error);
+                                                }
+                                            }
+                                        };
+
+                                        return (
+                                            <>
+                                                <FormControl component="fieldset" error={!!errors.senderType}>
+                                                    <Typography variant="subtitle1" fontWeight="bold" color="#f58220" gutterBottom>
+                                                        Select Type
+                                                    </Typography>
+                                                    <RadioGroup
+                                                        name="senderType"
+                                                        value={formData.senderType}
+                                                        onChange={handleChange}
+                                                        sx={{ flexDirection: 'row', gap: 3, mb: 1 }}
+                                                        defaultValue="sender"
+                                                    >
+                                                        <FormControlLabel value="sender" control={<Radio />} label="Sender Details" />
+                                                        <FormControlLabel value="receiver" control={<Radio />} label="Receiver Details" />
+                                                    </RadioGroup>
+                                                    {errors.senderType && <Typography variant="caption" color="error">{errors.senderType}</Typography>}
+                                                </FormControl>
+
+                                                <Stack spacing={2}>
+                                                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
 
 
-                                
-                                <Autocomplete
-                                    options={options2}
-                                    loading={loading}
-                                    freeSolo={true}
-                                    getOptionLabel={(option) => typeof option === 'string' ? option : (option.contact_name || '')}
-                                    isOptionEqualToValue={(option, value) => {
-                                        if (typeof value === 'string') {
-                                            return typeof option === 'string' ? option === value : (option.contact_name || '') === value;
-                                        }
-                                        return typeof option !== 'string' && (option.zoho_id === value.zoho_id || option.id === value.id);
-                                    }}
-                                    value={formData[ownerNameKey] || null}
-                                    onChange={handleOwnerNameChange}
-                                    onInputChange={(_, newInputValue) => setSearchTerm(newInputValue)}
-                                    renderInput={(params) => (
-                                       <CustomTextField
-        {...params}
-        label={`Search & Select ${typePrefix}`}
-        error={!!errors[ownerNameKey] || !!errors.selectedSenderOwner} // Add name-specific error
-        helperText={errors[ownerNameKey] || errors.selectedSenderOwner || (loading ? 'Loading...' : '')}
-        // required (if needed)
 
-           disabled={isFieldDisabled('selectedSenderOwner')}
-        style={{ width: '100%' }}
-    />
-                                    )}
-                                    renderOption={(props, option) => (
-                                        <li {...props} key={typeof option === 'string' ? option : (option.zoho_id || option.id)}>
-                                            <div>
-                                                <strong>{typeof option === 'string' ? option : (option.contact_name || '')}</strong>
-                                                {typeof option !== 'string' && option.email && <div style={{ fontSize: '0.875em', color: '#666' }}>{option.email}</div>}
-                                                {typeof option !== 'string' && option.primary_phone && <div style={{ fontSize: '0.875em', color: '#666' }}>{option.primary_phone}</div>}
-                                            </div>
-                                        </li>
-                                    )}
-                                    noOptionsText={searchTerm ? `No ${typePrefix.toLowerCase()}s found for "${searchTerm}"` : `Type to search ${typePrefix.toLowerCase()}s`}
-                                    clearOnBlur={false}
-                                    selectOnFocus={true}
-                                    style={{ width: '60%' }}
-                                />
-                                <CustomTextField 
-                                    label={`${typePrefix} Contact`}
-                                    name={ownerContactKey}
-                                    value={formData[ownerContactKey] || ""}
-                                    onChange={handleChange}
-                                    error={!!errors[ownerContactKey]}
-                                    helperText={errors[ownerContactKey]}
-                                    // required
-                                />
-                            </Box>
-                            <CustomTextField
-                                label={`${typePrefix} Address`}
-                                name={ownerAddressKey}
-                                value={formData[ownerAddressKey] || ""}
-                                onChange={handleChange}
-                                error={!!errors[ownerAddressKey]}
-                                helperText={errors[ownerAddressKey]}
-                                multiline
-                                rows={2}
-                                // required
-                            />
-                            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                <CustomTextField
-                                    label={`${typePrefix} Email`}
-                                    name={ownerEmailKey}
-                                    value={formData[ownerEmailKey] || ""}
-                                    onChange={handleChange}
-                                    error={!!errors[ownerEmailKey]}
-                                    helperText={errors[ownerEmailKey]}
-                                />
-                                <CustomTextField
-                                    label={`${typePrefix} Ref`}
-                                    name={ownerRefKey}
-                                    value={formData[ownerRefKey] || ""}
-                                    onChange={handleChange}
-                                    error={!!errors[ownerRefKey]}
-                                    helperText={errors[ownerRefKey]}
-                                />
-                            </Box>
-                            <CustomTextField
-                                label={`${typePrefix} Remarks`}
-                                name={ownerRemarksKey}
-                                value={formData[ownerRemarksKey] || ""}
-                                onChange={handleChange}
-                                error={!!errors[ownerRemarksKey]}
-                                helperText={errors[ownerRemarksKey]}
-                                multiline
-                                rows={2}
-                            />
-                        </Stack>
-                    </>
-                );
-            })()}
-        </Stack>
-    </AccordionDetails>
-</Accordion>
+                                                        <Autocomplete
+                                                            options={options2}
+                                                            loading={loading}
+                                                            freeSolo={true}
+                                                            getOptionLabel={(option) => typeof option === 'string' ? option : (option.contact_name || '')}
+                                                            isOptionEqualToValue={(option, value) => {
+                                                                if (typeof value === 'string') {
+                                                                    return typeof option === 'string' ? option === value : (option.contact_name || '') === value;
+                                                                }
+                                                                return typeof option !== 'string' && (option.zoho_id === value.zoho_id || option.id === value.id);
+                                                            }}
+                                                            value={formData[ownerNameKey] || null}
+                                                            onChange={handleOwnerNameChange}
+                                                            onInputChange={(_, newInputValue) => setSearchTerm(newInputValue)}
+                                                            renderInput={(params) => (
+                                                                <CustomTextField
+                                                                    {...params}
+                                                                    label={`Search & Select ${typePrefix}`}
+                                                                    error={!!errors[ownerNameKey] || !!errors.selectedSenderOwner} // Add name-specific error
+                                                                    helperText={errors[ownerNameKey] || errors.selectedSenderOwner || (loading ? 'Loading...' : '')}
+                                                                    // required (if needed)
+
+                                                                    disabled={isFieldDisabled('selectedSenderOwner')}
+                                                                    style={{ width: '100%' }}
+                                                                />
+                                                            )}
+                                                            renderOption={(props, option) => (
+                                                                <li {...props} key={typeof option === 'string' ? option : (option.zoho_id || option.id)}>
+                                                                    <div>
+                                                                        <strong>{typeof option === 'string' ? option : (option.contact_name || '')}</strong>
+                                                                        {typeof option !== 'string' && option.email && <div style={{ fontSize: '0.875em', color: '#666' }}>{option.email}</div>}
+                                                                        {typeof option !== 'string' && option.primary_phone && <div style={{ fontSize: '0.875em', color: '#666' }}>{option.primary_phone}</div>}
+                                                                    </div>
+                                                                </li>
+                                                            )}
+                                                            noOptionsText={searchTerm ? `No ${typePrefix.toLowerCase()}s found for "${searchTerm}"` : `Type to search ${typePrefix.toLowerCase()}s`}
+                                                            clearOnBlur={false}
+                                                            selectOnFocus={true}
+                                                            style={{ width: '60%' }}
+                                                        />
+                                                        <CustomTextField
+                                                            label={`${typePrefix} Contact`}
+                                                            name={ownerContactKey}
+                                                            value={formData[ownerContactKey] || ""}
+                                                            onChange={handleChange}
+                                                            error={!!errors[ownerContactKey]}
+                                                            helperText={errors[ownerContactKey]}
+                                                        // required
+                                                        />
+                                                    </Box>
+                                                    <CustomTextField
+                                                        label={`${typePrefix} Address`}
+                                                        name={ownerAddressKey}
+                                                        value={formData[ownerAddressKey] || ""}
+                                                        onChange={handleChange}
+                                                        error={!!errors[ownerAddressKey]}
+                                                        helperText={errors[ownerAddressKey]}
+                                                        multiline
+                                                        rows={2}
+                                                    // required
+                                                    />
+                                                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                        <CustomTextField
+                                                            label={`${typePrefix} Email`}
+                                                            name={ownerEmailKey}
+                                                            value={formData[ownerEmailKey] || ""}
+                                                            onChange={handleChange}
+                                                            error={!!errors[ownerEmailKey]}
+                                                            helperText={errors[ownerEmailKey]}
+                                                        />
+                                                        <CustomTextField
+                                                            label={`${typePrefix} Ref`}
+                                                            name={ownerRefKey}
+                                                            value={formData[ownerRefKey] || ""}
+                                                            onChange={handleChange}
+                                                            error={!!errors[ownerRefKey]}
+                                                            helperText={errors[ownerRefKey]}
+                                                        />
+                                                    </Box>
+                                                    <CustomTextField
+                                                        label={`${typePrefix} Remarks`}
+                                                        name={ownerRemarksKey}
+                                                        value={formData[ownerRemarksKey] || ""}
+                                                        onChange={handleChange}
+                                                        error={!!errors[ownerRemarksKey]}
+                                                        helperText={errors[ownerRemarksKey]}
+                                                        multiline
+                                                        rows={2}
+                                                    />
+                                                </Stack>
+                                            </>
+                                        );
+                                    })()}
+                                </Stack>
+                            </AccordionDetails>
+                        </Accordion>
 <Accordion
     expanded={expanded.has("panel2")}
     onChange={handleAccordionChange("panel2")}
@@ -4979,8 +5077,12 @@ sx={{
                     </Typography>
                     <Stack direction="row" spacing={2} sx={{ overflowX: 'auto' }}>
                         {(formData.senderType === 'sender' ? formData.receivers : formData.senders).map((rec, i) => {
-                            const totalItems = (rec.shippingDetails || []).reduce((sum, sd) => sum + (parseInt(sd.totalNumber || 0) || 0), 0);
-                            const remainingItems = (rec.shippingDetails || []).reduce((sum, sd) => sum + (parseInt(sd.remainingItems || 0) || 0), 0);
+                            const totalItems = (rec.shippingDetails || []).reduce((sum, sd) => {
+                                return sum + ((sd.containerDetails || []).reduce((s, cd) => s + (parseInt(cd.assignTotalBox || 0) || 0), 0));
+                            }, 0);
+                            const remainingItems = (rec.shippingDetails || []).reduce((sum, sd) => {
+                                return sum + ((sd.containerDetails || []).reduce((s, cd) => s + (parseInt(cd.remainingItems || 0) || 0), 0));
+                            }, 0);
                             return (
                                 <Chip
                                     key={i}
@@ -4996,7 +5098,6 @@ sx={{
                 </Stack>
             )}
             {(() => {
-             
                 const currentList = formData.senderType === 'sender' ? formData.receivers : formData.senders;
                 const isSenderMode = formData.senderType === 'receiver';
                 const typePrefix = isSenderMode ? 'Sender' : 'Receiver';
@@ -5012,33 +5113,318 @@ sx={{
                 const addRecFn = isSenderMode ? addSender : addReceiver;
                 const duplicateRecFn = isSenderMode ? duplicateSender : duplicateReceiver;
                 const removeRecFn = isSenderMode ? removeSender : removeReceiver;
+                // Helper function to update nested state immutably (generic for senders/receivers)
+                const updateNestedArray = (indices, field, value, isSender = true) => {
+                    const key = isSender ? 'senders' : 'receivers';
+                    setFormData(prev => ({
+                        ...prev,
+                        [key]: prev[key].map((item, ii) => {
+                            if (ii !== indices[0]) return item;
+                            return {
+                                ...item,
+                                shippingDetails: (item.shippingDetails || []).map((sd, jj) => {
+                                    if (jj !== indices[1]) return sd;
+                                    return {
+                                        ...sd,
+                                        containerDetails: (sd.containerDetails || []).map((cd, kk) => {
+                                            if (kk !== indices[2]) return cd;
+                                            return { ...cd, [field]: value };
+                                        })
+                                    };
+                                })
+                            };
+                        })
+                    }));
+                };
+                // 1. handleSenderContainerDetailChange
+                // Parameters: index (receiver/sender index i), shippingIndex (j), containerIndex (k), field ('assignTotalBox', 'assignWeight', 'container', 'status')
+                // Returns: a function that takes event or value and updates the state
+                const handleSenderContainerDetailChange = (index, shippingIndex, containerIndex, field) => (eventOrValue) => {
+                    const value = eventOrValue.target ? eventOrValue.target.value : eventOrValue;
+                    updateNestedArray([index, shippingIndex, containerIndex], field, value, true); // true for sender
+                };
+                // 2. handleReceiverContainerDetailChange
+                // Parameters: index (receiver/sender index i), shippingIndex (j), containerIndex (k), field ('assignTotalBox', 'assignWeight', 'container', 'status')
+                // Returns: a function that takes event or value and updates the state
+                const handleReceiverContainerDetailChange = (index, shippingIndex, containerIndex, field) => (eventOrValue) => {
+                    const value = eventOrValue.target ? eventOrValue.target.value : eventOrValue;
+                    updateNestedArray([index, shippingIndex, containerIndex], field, value, false); // false for receiver
+                };
+                // 3. addSenderContainerDetail
+                // Parameters: index (i), shippingIndex (j)
+                // Adds a new empty container detail to the specified shippingDetails in senders
+                const addSenderContainerDetail = (index, shippingIndex) => {
+                    console.log('Adding sender container detail for sender index:', index, 'shipping index:', shippingIndex);
+                    setFormData(prev => ({
+                        ...prev,
+                        senders: prev.senders.map((sender, ii) => {
+                            if (ii !== index) return sender;
+                            return {
+                                ...sender,
+                                shippingDetails: sender.shippingDetails.map((sd, jj) => {
+                                    if (jj !== shippingIndex) return sd;
+                                    return {
+                                        ...sd,
+                                        containerDetails: [...(sd.containerDetails || []), { assignTotalBox: '', assignWeight: '', container: null, status: '' }]
+                                    };
+                                })
+                            };
+                        })
+                    }));
+                };
+                // 4. addReceiverContainerDetail
+                // Parameters: index (i), shippingIndex (j)
+                // Adds a new empty container detail to the specified shippingDetails in receivers
+                const addReceiverContainerDetail = (index, shippingIndex) => {
+                    console.log('Adding receiver container detail for receiver index:', index, 'shipping index:', shippingIndex);
+                    setFormData(prev => ({
+                        ...prev,
+                        receivers: prev.receivers.map((receiver, ii) => {
+                            if (ii !== index) return receiver;
+                            return {
+                                ...receiver,
+                                shippingDetails: receiver.shippingDetails.map((sd, jj) => {
+                                    if (jj !== shippingIndex) return sd;
+                                    return {
+                                        ...sd,
+                                        containerDetails: [...(sd.containerDetails || []), { assignTotalBox: '', assignWeight: '', container: null, status: '' }]
+                                    };
+                                })
+                            };
+                        })
+                    }));
+                };
+                // 5. removeSenderContainerDetail
+                // Parameters: index (i), shippingIndex (j), containerIndex (k)
+                // Removes the container detail at the specified indices from senders
+                const removeSenderContainerDetail = (index, shippingIndex, containerIndex) => {
+                    setFormData(prev => ({
+                        ...prev,
+                        senders: prev.senders.map((sender, ii) => {
+                            if (ii !== index) return sender;
+                            return {
+                                ...sender,
+                                shippingDetails: sender.shippingDetails.map((sd, jj) => {
+                                    if (jj !== shippingIndex) return sd;
+                                    return {
+                                        ...sd,
+                                        containerDetails: (sd.containerDetails || []).filter((_, kk) => kk !== containerIndex)
+                                    };
+                                })
+                            };
+                        })
+                    }));
+                };
+                // 6. removeReceiverContainerDetail
+                // Parameters: index (i), shippingIndex (j), containerIndex (k)
+                // Removes the container detail at the specified indices from receivers
+                const removeReceiverContainerDetail = (index, shippingIndex, containerIndex) => {
+                    setFormData(prev => ({
+                        ...prev,
+                        receivers: prev.receivers.map((receiver, ii) => {
+                            if (ii !== index) return receiver;
+                            return {
+                                ...receiver,
+                                shippingDetails: receiver.shippingDetails.map((sd, jj) => {
+                                    if (jj !== shippingIndex) return sd;
+                                    return {
+                                        ...sd,
+                                        containerDetails: (sd.containerDetails || []).filter((_, kk) => kk !== containerIndex)
+                                    };
+                                })
+                            };
+                        })
+                    }));
+                };
+                // 7. duplicateSenderContainerDetail (optional, for completeness)
+                // Parameters: index (i), shippingIndex (j), containerIndex (k)
+                // Duplicates the container detail at the specified indices in senders
+                const duplicateSenderContainerDetail = (index, shippingIndex, containerIndex) => {
+                    setFormData(prev => ({
+                        ...prev,
+                        senders: prev.senders.map((sender, ii) => {
+                            if (ii !== index) return sender;
+                            return {
+                                ...sender,
+                                shippingDetails: sender.shippingDetails.map((sd, jj) => {
+                                    if (jj !== shippingIndex) return sd;
+                                    const containerDetails = [...(sd.containerDetails || [])];
+                                    const toDuplicate = containerDetails[containerIndex];
+                                    if (toDuplicate) {
+                                        containerDetails.splice(containerIndex + 1, 0, { ...toDuplicate });
+                                    }
+                                    return { ...sd, containerDetails };
+                                })
+                            };
+                        })
+                    }));
+                };
+                // 8. duplicateReceiverContainerDetail (optional, for completeness)
+                // Parameters: index (i), shippingIndex (j), containerIndex (k)
+                // Duplicates the container detail at the specified indices in receivers
+                const duplicateReceiverContainerDetail = (index, shippingIndex, containerIndex) => {
+                    setFormData(prev => ({
+                        ...prev,
+                        receivers: prev.receivers.map((receiver, ii) => {
+                            if (ii !== index) return receiver;
+                            return {
+                                ...receiver,
+                                shippingDetails: receiver.shippingDetails.map((sd, jj) => {
+                                    if (jj !== shippingIndex) return sd;
+                                    const containerDetails = [...(sd.containerDetails || [])];
+                                    const toDuplicate = containerDetails[containerIndex];
+                                    if (toDuplicate) {
+                                        containerDetails.splice(containerIndex + 1, 0, { ...toDuplicate });
+                                    }
+                                    return { ...sd, containerDetails };
+                                })
+                            };
+                        })
+                    }));
+                };
+                // Valid shipment statuses (from backend validation)
+                const validShipmentStatuses = [
+                   'Order Created', 'Ready for Loading', 'Loaded Into Container', 'Shipment Processing',
+                    'Shipment In Transit', 'Under Processing', 'Arrived at Sort Facility',
+                    'Ready for Delivery', 'Shipment Delivered'
+                ];
+                // Assume containerOptions is fetched elsewhere (e.g., useEffect with api.get('/api/containers/available'))
+                // Example: const [containerOptions, setContainerOptions] = useState([]); // [{cid: 1, container_number: 'CONT001', location: 'Depot'}, ...]
                 const renderRecForm = (rec, i) => {
                     const recErrorsPrefix = isSenderMode ? `senders[${i}]` : `receivers[${i}]`;
                     const recDisabledPrefix = isSenderMode ? `senders[${i}]` : `receivers[${i}]`;
+                    const isSender = isSenderMode;
                     const emptySd = {
                         pickupLocation: '',
                         category: '',
                         subcategory: '',
                         type: '',
-                        totalNumber: '',
                         weight: '',
+                        totalNumber: '',
                         deliveryAddress: '',
+                        containerDetails: [ // NEW: Array for multiple container rows
+                            {
+                                assignTotalBox: '',
+                                assignWeight: '',
+                                container: null,
+                                status: ''
+                            }
+                        ],
                         itemRef: `ORDER-ITEM-REF-${i + 1}-1`
                     };
+                    // NEW: Unified add shipping with values for preview
+                    const addShippingWithValues = (recIndex, sdFields, containerFields = null) => {
+                        const key = listKey;
+                        setFormData(prev => ({
+                            ...prev,
+                            [key]: prev[key].map((item, ii) => {
+                                if (ii !== recIndex) return item;
+                                const newSd = { ...emptySd, ...sdFields };
+                                if (containerFields) {
+                                    newSd.containerDetails = [{
+                                        ...emptySd.containerDetails[0],
+                                        ...containerFields
+                                    }];
+                                } else {
+                                    newSd.containerDetails = [...emptySd.containerDetails];
+                                }
+                                return {
+                                    ...item,
+                                    shippingDetails: [...(item.shippingDetails || []), newSd]
+                                };
+                            })
+                        }));
+                    };
                     const handleEmptySdChange = (field, value) => {
-                        addShippingFn(i);
-                        handleShippingChangeFn(i, 0, field)({ target: { value } });
+                        const sdFields = { [field]: value };
+                        let containerFields = null;
+                        if (field === 'totalNumber') {
+                            containerFields = { assignTotalBox: value };
+                        } else if (field === 'weight') {
+                            containerFields = { assignWeight: value };
+                        }
+                        addShippingWithValues(i, sdFields, containerFields);
+                    };
+                    // NEW: Handler for shipping change with auto container fill
+                    const handleShippingChangeWithAutoFill = (recIndex, shipIndex, field) => (e) => {
+                        if (field !== 'totalNumber' && field !== 'weight') {
+                            handleShippingChangeFn(recIndex, shipIndex, field)(e);
+                            return;
+                        }
+                        const value = e.target.value;
+                        const key = listKey;
+                        const containerField = field === 'totalNumber' ? 'assignTotalBox' : 'assignWeight';
+                        setFormData(prev => ({
+                            ...prev,
+                            [key]: prev[key].map((item, ii) => {
+                                if (ii !== recIndex) return item;
+                                return {
+                                    ...item,
+                                    shippingDetails: item.shippingDetails.map((sd, jj) => {
+                                        if (jj !== shipIndex) return sd;
+                                        let newContainerDetails = [...(sd.containerDetails || [])];
+                                        const hasContainers = newContainerDetails.length > 0;
+                                        if (!hasContainers) {
+                                            newContainerDetails = [{
+                                                assignTotalBox: field === 'totalNumber' ? value : '',
+                                                assignWeight: field === 'weight' ? value : '',
+                                                container: null,
+                                                status: ''
+                                            }];
+                                        } else {
+                                            newContainerDetails[0] = {
+                                                ...newContainerDetails[0],
+                                                [containerField]: value
+                                            };
+                                        }
+                                        return {
+                                            ...sd,
+                                            [field]: value,
+                                            containerDetails: newContainerDetails
+                                        };
+                                    })
+                                };
+                            })
+                        }));
+                    };
+                    // NEW: Handlers for container details
+                    const addContainerDetail = (shippingIndex) => {
+                        const addFn = isSenderMode ? addSenderContainerDetail : addReceiverContainerDetail;
+                        addFn(i, shippingIndex);
+                    };
+                    const removeContainerDetail = (shippingIndex, containerIndex) => {
+                        const removeFn = isSenderMode ? removeSenderContainerDetail : removeReceiverContainerDetail;
+                        removeFn(i, shippingIndex, containerIndex);
+                    };
+                    const duplicateContainerDetail = (shippingIndex, containerIndex) => {
+                        const duplicateFn = isSenderMode ? duplicateSenderContainerDetail : duplicateReceiverContainerDetail;
+                        duplicateFn(i, shippingIndex, containerIndex);
+                    };
+                    const handleContainerDetailChange = (shippingIndex, containerIndex, field) => (value) => {
+                        const changeFn = isSenderMode ? handleSenderContainerDetailChange : handleReceiverContainerDetailChange;
+                        changeFn(i, shippingIndex, containerIndex, field)(value);
                     };
                     const nameField = isSenderMode ? 'senderName' : 'receiverName';
+                    // FIXED: Compute global selected container CIDs with null check
+                    const getCid = (cont) => cont ? (typeof cont === 'object' ? cont.cid : cont) : null;
+                    const globalSelectedCids = currentList.flatMap(r =>
+                        (r.shippingDetails || []).flatMap(sd =>
+                            (sd.containerDetails || []).map(cd => getCid(cd.container)).filter(Boolean)
+                        )
+                    );
+                    // FIXED: availableContainers now computed per shipping (but will be overridden per CD below for display)
+                    const availableContainersBase = containers.filter(c => !globalSelectedCids.includes(c.cid));
+                    // FIXED: Equality function for Autocomplete (handles both object and primitive value)
+                    const autocompleteEquality = (option, value) => {
+                        const valueCid = value ? (typeof value === 'object' ? value.cid : value) : null;
+                        return option.cid === valueCid;
+                    };
                     const handleNameChange = (event, newValue) => {
                         if (typeof newValue === 'string') {
-                            // Manual entry or existing value
                             handleChangeFn(i, nameField)({ target: { value: newValue } });
                         } else if (newValue) {
-                            // Selected option, fetch details
                             handleSelect(event, newValue);
                         } else {
-                            // Cleared
                             const fieldMap = isSenderMode ? {
                                 senderName: '',
                                 senderContact: '',
@@ -5060,11 +5446,10 @@ sx={{
                             handleChangeFn(i, 'selectedSenderOwner')({ target: { value: '' } });
                         }
                     };
-                    const handleSelect = async(event, value) => {
+                    const handleSelect = async (event, value) => {
                         if (value && typeof value !== 'string') {
                             try {
                                 const res = await api.get(`/api/customers/${value.zoho_id || value.id}`);
-
                                 if (res && res.data) {
                                     const fieldMap = isSenderMode ? {
                                         senderName: res.data.contact_name || res.data.contact_persons[0].name || '',
@@ -5077,7 +5462,7 @@ sx={{
                                         receiverName: res.data.contact_name || res.data.contact_persons[0].name || '',
                                         receiverContact: res.data.primary_phone || res.data.contact_persons[0].phone || '',
                                         receiverAddress: res.data.zoho_notes || res.data.contact_persons[0].name || '',
-                                        receiverEmail: res.data.email ||  res.data.contact_persons[0].email || '',
+                                        receiverEmail: res.data.email || res.data.contact_persons[0].email || '',
                                         receiverRef: res.data.zoho_id || res.data.ref || '',
                                         receiverRemarks: res.data.zoho_notes || res.data.system_notes || '',
                                     };
@@ -5085,7 +5470,6 @@ sx={{
                                         const updateFn = handleChangeFn(i, formKey);
                                         updateFn({ target: { value: dbValue } });
                                     });
-                                    // Set unique ID for reference
                                     handleChangeFn(i, 'selectedSenderOwner')({ target: { value: res.data.zoho_id || res.data.id } });
                                 }
                             } catch (error) {
@@ -5093,12 +5477,114 @@ sx={{
                             }
                         }
                     }
+                    // Helper to calculate sum of assignTotalBox for a shipping detail
+                    const calculateSumAssignTotalBox = (sd) => {
+                        return (sd.containerDetails || []).reduce((sum, cd) => sum + (parseInt(cd.assignTotalBox || 0) || 0), 0);
+                    };
+                    // Helper to calculate sum of assignWeight for a shipping detail
+                    const calculateSumAssignWeight = (sd) => {
+                        return (sd.containerDetails || []).reduce((sum, cd) => sum + (parseFloat(cd.assignWeight || 0) || 0), 0);
+                    };
+                    // Helper to render empty container detail row for a specific shipping (always show one row)
+                    const renderEmptyContainerDetail = (shippingIndex) => {
+                        const emptyCd = { assignTotalBox: '', assignWeight: '', container: null, status: '' };
+                        // FIXED: Compute displayValue for preview consistency (handles object or primitive)
+                        const currentContainerPreview = emptyCd.container;
+                        const currentCidPreview = typeof currentContainerPreview === 'object' ? currentContainerPreview?.cid : currentContainerPreview;
+                        const otherSelectedCidsPreview = globalSelectedCids.filter(cid => cid != currentCidPreview);
+                        const availableContainersForCdPreview = containers.filter(c => !otherSelectedCidsPreview.includes(c.cid));
+                        const displayValuePreview = currentContainerPreview && typeof currentContainerPreview === 'object'
+                            ? currentContainerPreview
+                            : (currentCidPreview ? availableContainersForCdPreview.find(c => c.cid === currentCidPreview) || containers.find(c => c.cid === currentCidPreview) : null);
+                        return (
+                            <Box sx={{ p: 1, border: 1, borderColor: "grey.200", borderRadius: 1 }}>
+                                <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
+                                    <Typography variant="body2" color="primary">
+                                        Container 1
+                                    </Typography>
+                                    <Stack direction="row" spacing={1}>
+                                        <IconButton
+                                            onClick={() => {
+                                                addContainerDetail(shippingIndex);
+                                                duplicateContainerDetail(shippingIndex, 0);
+                                            }}
+                                            size="small"
+                                            title="Duplicate"
+                                            color="primary"
+                                        >
+                                            <ContentCopyIcon />
+                                        </IconButton>
+                                    </Stack>
+                                </Stack>
+                                {/* NEW: Split into two rows for better layout with four fields */}
+                                <Stack spacing={1.5}>
+                                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                        <CustomTextField
+                                            label="Assign Total Box"
+                                            value={emptyCd.assignTotalBox || ""}
+                                            onChange={(e) => {
+                                                addContainerDetail(shippingIndex);
+                                                handleContainerDetailChange(shippingIndex, 0, 'assignTotalBox')(e.target.value);
+                                            }}
+                                            sx={{ width: { xs: '100%', sm: '50%' } }}
+                                            error={!!errors[`${listKey}[${i}].shippingDetails[${shippingIndex}].containerDetails[0].assignTotalBox`]}
+                                            helperText={errors[`${listKey}[${i}].shippingDetails[${shippingIndex}].containerDetails[0].assignTotalBox`]}
+                                        />
+                                        <CustomTextField
+                                            label="Assign Weight"
+                                            value={emptyCd.assignWeight || ""}
+                                            onChange={(e) => {
+                                                addContainerDetail(shippingIndex);
+                                                handleContainerDetailChange(shippingIndex, 0, 'assignWeight')(e.target.value);
+                                            }}
+                                            sx={{ width: { xs: '100%', sm: '50%' } }}
+                                            error={!!errors[`${listKey}[${i}].shippingDetails[${shippingIndex}].containerDetails[0].assignWeight`]}
+                                            helperText={errors[`${listKey}[${i}].shippingDetails[${shippingIndex}].containerDetails[0].assignWeight`]}
+                                        />
+                                    </Box>
+                                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                        <Autocomplete
+                                            options={availableContainersForCdPreview}
+                                            value={displayValuePreview}
+                                            onChange={(e, newValue) => {
+                                                addContainerDetail(shippingIndex);
+                                                handleContainerDetailChange(shippingIndex, 0, 'container')(newValue);
+                                            }}
+                                            sx={{ width: { xs: '100%', sm: '50%' } }}
+                                            getOptionLabel={(option) => option.container_number || ''}
+                                            isOptionEqualToValue={autocompleteEquality}
+                                            renderInput={(params) => <TextField {...params} label="Container" />}
+                                        />
+                                        <CustomSelect
+                                            label="Status"
+                                            value={emptyCd.status || ""}
+                                            onChange={(e) => {
+                                                addContainerDetail(shippingIndex);
+                                                handleContainerDetailChange(shippingIndex, 0, 'status')(e.target.value);
+                                            }}
+                                            sx={{ width: { xs: '100%', sm: '50%' } }}
+                                            error={!!errors[`${listKey}[${i}].shippingDetails[${shippingIndex}].containerDetails[0].status`]}
+                                            helperText={errors[`${listKey}[${i}].shippingDetails[${shippingIndex}].containerDetails[0].status`]}
+                                            renderValue={(selected) => selected || "Select Status"}
+                                        >
+                                            <MenuItem value="">Select Status</MenuItem>
+                                            {validShipmentStatuses.map((s) => (
+                                                <MenuItem key={s} value={s}>
+                                                    {s}
+                                                </MenuItem>
+                                            ))}
+                                        </CustomSelect>
+                                    </Box>
+                                </Stack>
+                            </Box>
+                        );
+                    };
                     const renderShippingSection = () => (
                         <Stack spacing={2}>
                             <Typography variant="subtitle1" color="primary" fontWeight={"bold"} mb={1}>
                                 Shipping Details
                             </Typography>
-                            {/* ETA, ETD, Shipping Line at receiver/sender level */}
+                            {/* ETA, ETD at receiver/sender level */}
                             <Box
                                 sx={{
                                     display: 'flex',
@@ -5115,8 +5601,6 @@ sx={{
                                     InputLabelProps={{ shrink: true }}
                                     error={!!errors[`${listKey}[${i}].eta`]}
                                     helperText={errors[`${listKey}[${i}].eta`]}
-                                    // required
-                                    // disabled={isFieldDisabled(`${recDisabledPrefix}.eta`)}
                                 />
                                 <CustomTextField
                                     label="ETD"
@@ -5126,20 +5610,8 @@ sx={{
                                     InputLabelProps={{ shrink: true }}
                                     error={!!errors[`${listKey}[${i}].etd`]}
                                     helperText={errors[`${listKey}[${i}].etd`]}
-                                    // required
-                                    // disabled={isFieldDisabled(`${recDisabledPrefix}.etd`)}
                                 />
                             </Box>
-                            {/* <CustomTextField
-                                label="Shipping Line"
-                                value={rec.shippingLine || ""}
-                                onChange={(e) => handleChangeFn(i, 'shippingLine')(e)}
-                                error={!!errors[`${listKey}[${i}].shippingLine`]}
-                                helperText={errors[`${listKey}[${i}].shippingLine`]}
-                                required
-                                fullWidth
-                                disabled={isFieldDisabled(`${recDisabledPrefix}.shippingLine`)}
-                            /> */}
                             {/* Shipping Details Forms */}
                             {(rec.shippingDetails || []).length === 0 ? (
                                 <Box sx={{ p: 1.5, border: 1, borderColor: "grey.200", borderRadius: 1 }}>
@@ -5174,7 +5646,6 @@ sx={{
                                                 onChange={(e) => handleEmptySdChange('pickupLocation', e.target.value)}
                                                 error={!!errors[`${listKey}[${i}].shippingDetails[0].pickupLocation`]}
                                                 helperText={errors[`${listKey}[${i}].shippingDetails[0].pickupLocation`]}
-                                                // required
                                                 disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].pickupLocation`)}
                                             />
                                             <CustomSelect
@@ -5183,7 +5654,6 @@ sx={{
                                                 onChange={(e) => handleEmptySdChange('category', e.target.value)}
                                                 error={!!errors[`${listKey}[${i}].shippingDetails[0].category`]}
                                                 helperText={errors[`${listKey}[${i}].shippingDetails[0].category`]}
-                                                // required
                                                 disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].category`)}
                                                 renderValue={(selected) => selected || "Select Category"}
                                             >
@@ -5202,7 +5672,6 @@ sx={{
                                                 onChange={(e) => handleEmptySdChange('subcategory', e.target.value)}
                                                 error={!!errors[`${listKey}[${i}].shippingDetails[0].subcategory`]}
                                                 helperText={errors[`${listKey}[${i}].shippingDetails[0].subcategory`]}
-                                                // required
                                                 disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].subcategory`)}
                                                 renderValue={(selected) => selected || "Select Subcategory"}
                                             >
@@ -5219,7 +5688,6 @@ sx={{
                                                 onChange={(e) => handleEmptySdChange('type', e.target.value)}
                                                 error={!!errors[`${listKey}[${i}].shippingDetails[0].type`]}
                                                 helperText={errors[`${listKey}[${i}].shippingDetails[0].type`]}
-                                                // required
                                                 disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].type`)}
                                                 renderValue={(selected) => selected || "Select Type"}
                                             >
@@ -5233,22 +5701,22 @@ sx={{
                                         </Box>
                                         <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
                                             <CustomTextField
-                                                label="Total Number"
-                                                value={emptySd.totalNumber}
-                                                onChange={(e) => handleEmptySdChange('totalNumber', e.target.value)}
-                                                error={!!errors[`${listKey}[${i}].shippingDetails[0].totalNumber`]}
-                                                helperText={errors[`${listKey}[${i}].shippingDetails[0].totalNumber`]}
-                                                // required
-                                                disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].totalNumber`)}
-                                            />
-                                            <CustomTextField
                                                 label="Weight"
                                                 value={emptySd.weight}
                                                 onChange={(e) => handleEmptySdChange('weight', e.target.value)}
                                                 error={!!errors[`${listKey}[${i}].shippingDetails[0].weight`]}
                                                 helperText={errors[`${listKey}[${i}].shippingDetails[0].weight`]}
-                                                // required
                                                 disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].weight`)}
+                                            />
+                                        </Box>
+                                        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                            <CustomTextField
+                                                label="Total Number"
+                                                value={emptySd.totalNumber}
+                                                onChange={(e) => handleEmptySdChange('totalNumber', e.target.value)}
+                                                error={!!errors[`${listKey}[${i}].shippingDetails[0].totalNumber`]}
+                                                helperText={errors[`${listKey}[${i}].shippingDetails[0].totalNumber`]}
+                                                disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].totalNumber`)}
                                             />
                                         </Box>
                                         <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
@@ -5258,143 +5726,395 @@ sx={{
                                                 onChange={(e) => handleEmptySdChange('deliveryAddress', e.target.value)}
                                                 error={!!errors[`${listKey}[${i}].shippingDetails[0].deliveryAddress`]}
                                                 helperText={errors[`${listKey}[${i}].shippingDetails[0].deliveryAddress`]}
-                                                // required
                                                 fullWidth
                                                 disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].deliveryAddress`)}
                                             />
                                             <CustomTextField label="Ref Number" value={emptySd.itemRef} disabled={true} />
                                         </Box>
+                                        {/* FIXED: Container Details Section in Preview */}
+                                        <Stack spacing={1}>
+                                            <Typography variant="subtitle2" color="primary" fontWeight="bold">
+                                                Container Details
+                                            </Typography>
+                                            {(emptySd.containerDetails || []).map((cd, k) => {
+                                                // FIXED: Compute displayValue for preview consistency (handles object or primitive)
+                                                const currentContainerPreview = cd.container;
+                                                const currentCidPreview = typeof currentContainerPreview === 'object' ? currentContainerPreview?.cid : currentContainerPreview;
+                                                const otherSelectedCidsPreview = globalSelectedCids.filter(cid => cid != currentCidPreview);
+                                                const availableContainersForCdPreview = containers.filter(c => !otherSelectedCidsPreview.includes(c.cid));
+                                                const displayValuePreview = currentContainerPreview && typeof currentContainerPreview === 'object'
+                                                    ? currentContainerPreview
+                                                    : (currentCidPreview ? availableContainersForCdPreview.find(c => c.cid === currentCidPreview) || containers.find(c => c.cid === currentCidPreview) : null);
+                                                return (
+                                                    <Box key={k} sx={{ p: 1, border: 1, borderColor: "grey.200", borderRadius: 1 }}>
+                                                        <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
+                                                            <Typography variant="body2" color="primary">
+                                                                Container {k + 1}
+                                                            </Typography>
+                                                            <Stack direction="row" spacing={1}>
+                                                                {(emptySd.containerDetails || []).length > 1 && (
+                                                                    <>
+                                                                        <IconButton
+                                                                            // FIXED: Wrap duplicate to add shipping first
+                                                                            onClick={() => {
+                                                                                addShippingFn(i);
+                                                                                duplicateContainerDetail(0, k);
+                                                                            }}
+                                                                            size="small"
+                                                                            title="Duplicate"
+                                                                            color="primary"
+                                                                        >
+                                                                            <ContentCopyIcon />
+                                                                        </IconButton>
+                                                                        <IconButton
+                                                                            // FIXED: Wrap remove to add shipping first
+                                                                            onClick={() => {
+                                                                                addShippingFn(i);
+                                                                                removeContainerDetail(0, k);
+                                                                            }}
+                                                                            size="small"
+                                                                            title="Delete"
+                                                                            color="error"
+                                                                        >
+                                                                            <DeleteIcon />
+                                                                        </IconButton>
+                                                                    </>
+                                                                )}
+                                                            </Stack>
+                                                        </Stack>
+                                                        {/* NEW: Split into two rows for better layout with four fields */}
+                                                        <Stack spacing={1.5}>
+                                                            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                                {/* FIXED: Wrap onChange to add shipping first; changed field to assignTotalBox */}
+                                                                <CustomTextField
+                                                                    label="Assign Total Box"
+                                                                    value={cd.assignTotalBox || ""}
+                                                                    onChange={(e) => {
+                                                                        addShippingFn(i);
+                                                                        handleContainerDetailChange(0, k, 'assignTotalBox')(e.target.value);
+                                                                    }}
+                                                                    sx={{ width: { xs: '100%', sm: '50%' } }}
+                                                                    error={!!errors[`${listKey}[${i}].shippingDetails[0].containerDetails[${k}].assignTotalBox`]}
+                                                                    helperText={errors[`${listKey}[${i}].shippingDetails[0].containerDetails[${k}].assignTotalBox`]}
+                                                                />
+                                                                {/* NEW: Assign Weight Field */}
+                                                                <CustomTextField
+                                                                    label="Assign Weight"
+                                                                    value={cd.assignWeight || ""}
+                                                                    onChange={(e) => {
+                                                                        addShippingFn(i);
+                                                                        handleContainerDetailChange(0, k, 'assignWeight')(e.target.value);
+                                                                    }}
+                                                                    sx={{ width: { xs: '100%', sm: '50%' } }}
+                                                                    error={!!errors[`${listKey}[${i}].shippingDetails[0].containerDetails[${k}].assignWeight`]}
+                                                                    helperText={errors[`${listKey}[${i}].shippingDetails[0].containerDetails[${k}].assignWeight`]}
+                                                                />
+                                                            </Box>
+                                                            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                                {/* FIXED: Added missing Autocomplete for Container; now sets full object */}
+                                                                <Autocomplete
+                                                                    options={availableContainersForCdPreview}
+                                                                    value={displayValuePreview}
+                                                                    onChange={(e, newValue) => {
+                                                                        // FIXED: Wrap to add shipping; set full object or null on clear
+                                                                        addShippingFn(i);
+                                                                        handleContainerDetailChange(0, k, 'container')(newValue);
+                                                                    }}
+                                                                    sx={{ width: { xs: '100%', sm: '50%' } }}
+                                                                    getOptionLabel={(option) => option.container_number || ''}
+                                                                    isOptionEqualToValue={autocompleteEquality}
+                                                                    // fullWidth
+                                                                    renderInput={(params) => <TextField {...params} label="Container" />}
+                                                                />
+                                                                {/* FIXED: Single Status Select */}
+                                                                <CustomSelect
+                                                                    label="Status"
+                                                                    value={cd.status || ""}
+                                                                    onChange={(e) => {
+                                                                        addShippingFn(i);
+                                                                        handleContainerDetailChange(0, k, 'status')(e.target.value);
+                                                                    }}
+                                                                    sx={{ width: { xs: '100%', sm: '50%' } }}
+                                                                    error={!!errors[`${listKey}[${i}].shippingDetails[0].containerDetails[${k}].status`]}
+                                                                    helperText={errors[`${listKey}[${i}].shippingDetails[0].containerDetails[${k}].status`]}
+                                                                    renderValue={(selected) => selected || "Select Status"}
+                                                                >
+                                                                    <MenuItem value="">Select Status</MenuItem>
+                                                                    {validShipmentStatuses.map((s) => (
+                                                                        <MenuItem key={s} value={s}>
+                                                                            {s}
+                                                                        </MenuItem>
+                                                                    ))}
+                                                                </CustomSelect>
+                                                            </Box>
+                                                        </Stack>
+                                                    </Box>
+                                                );
+                                            })}
+                                            {/* FIXED: Wrap onClick to add shipping first */}
+                                            <Button
+                                                variant="outlined"
+                                                startIcon={<AddIcon />}
+                                                onClick={() => {
+                                                    addShippingFn(i);
+                                                    addContainerDetail(0);
+                                                }}
+                                                size="small"
+                                            >
+                                                Add Container
+                                            </Button>
+                                            {/* NEW: Total Assign Summary Row (always appears) */}
+                                            <Box sx={{ p: 1, border: 1, borderColor: "grey.300", borderRadius: 1, bgcolor: "grey.50" }}>
+                                                <Typography variant="body2" color="primary" fontWeight="bold">
+                                                    Total Assign Number: {calculateSumAssignTotalBox(emptySd)} | Total Assign Weight: {calculateSumAssignWeight(emptySd)}
+                                                </Typography>
+                                            </Box>
+                                        </Stack>
                                     </Stack>
                                 </Box>
                             ) : (
-                                (rec.shippingDetails || []).map((sd, j) => (
-                                    <Box key={j} sx={{ p: 1.5, border: 1, borderColor: "grey.200", borderRadius: 1 }}>
-                                        <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
-                                            <Typography variant="body2" color="primary" fontWeight="bold">
-                                                Shipping Detail {j + 1}
-                                            </Typography>
-                                            <Stack direction="row" spacing={1}>
-                                                <IconButton
-                                                    onClick={() => duplicateShippingFn(i, j)}
-                                                    size="small"
-                                                    title="Duplicate"
-                                                    color="primary"
-                                                >
-                                                    <ContentCopyIcon />
-                                                </IconButton>
-                                                {(rec.shippingDetails || []).length > 1 && (
+                                (rec.shippingDetails || []).map((sd, j) => {
+                                    // FIXED: No per-SD available; compute per-CD below
+                                    // NEW: Always render at least one empty container row if none exist
+                                    const hasContainers = (sd.containerDetails || []).length > 0;
+                                    return (
+                                        <Box key={j} sx={{ p: 1.5, border: 1, borderColor: "grey.200", borderRadius: 1 }}>
+                                            <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
+                                                <Typography variant="body2" color="primary" fontWeight="bold">
+                                                    Shipping Detail {j + 1}
+                                                </Typography>
+                                                <Stack direction="row" spacing={1}>
                                                     <IconButton
-                                                        onClick={() => removeShippingFn(i, j)}
+                                                        onClick={() => duplicateShippingFn(i, j)}
                                                         size="small"
-                                                        title="Delete"
-                                                        color="error"
+                                                        title="Duplicate"
+                                                        color="primary"
                                                     >
-                                                        <DeleteIcon />
+                                                        <ContentCopyIcon />
                                                     </IconButton>
-                                                )}
+                                                    {(rec.shippingDetails || []).length > 1 && (
+                                                        <IconButton
+                                                            onClick={() => removeShippingFn(i, j)}
+                                                            size="small"
+                                                            title="Delete"
+                                                            color="error"
+                                                        >
+                                                            <DeleteIcon />
+                                                        </IconButton>
+                                                    )}
+                                                </Stack>
                                             </Stack>
-                                        </Stack>
-                                        <Stack spacing={1.5}>
-                                            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                                <CustomTextField
-                                                    label="Pickup Location"
-                                                    value={sd.pickupLocation || ""}
-                                                    onChange={(e) => handleShippingChangeFn(i, j, 'pickupLocation')(e)}
-                                                    error={!!errors[`${listKey}[${i}].shippingDetails[${j}].pickupLocation`]}
-                                                    helperText={errors[`${listKey}[${i}].shippingDetails[${j}].pickupLocation`]}
-                                                    // required
-                                                    // disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[${j}].pickupLocation`)}
-                                                />
-                                                <CustomSelect
-                                                    label="Category"
-                                                    value={sd.category || ""}
-                                                    onChange={(e) => handleShippingChangeFn(i, j, 'category')(e)}
-                                                    error={!!errors[`${listKey}[${i}].shippingDetails[${j}].category`]}
-                                                    helperText={errors[`${listKey}[${i}].shippingDetails[${j}].category`]}
-                                                    // required
-                                                    // disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[${j}].category`)}
-                                                    renderValue={(selected) => selected || "Select Category"}
-                                                >
-                                                    <MenuItem value="">Select Category</MenuItem>
-                                                    {categories.map((c) => (
-                                                        <MenuItem key={c} value={c}>
-                                                            {c}
-                                                        </MenuItem>
-                                                    ))}
-                                                </CustomSelect>
-                                            </Box>
-                                            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                                <CustomSelect
-                                                    label="Subcategory"
-                                                    value={sd.subcategory || ""}
-                                                    onChange={(e) => handleShippingChangeFn(i, j, 'subcategory')(e)}
-                                                    error={!!errors[`${listKey}[${i}].shippingDetails[${j}].subcategory`]}
-                                                    helperText={errors[`${listKey}[${i}].shippingDetails[${j}].subcategory`]}
-                                                    // required
-                                                    // disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[${j}].subcategory`)}
-                                                    renderValue={(selected) => selected || "Select Subcategory"}
-                                                >
-                                                    <MenuItem value="">Select Subcategory</MenuItem>
-                                                    {(categorySubMap[sd.category] || []).map((sc) => (
-                                                        <MenuItem key={sc} value={sc}>
-                                                            {sc}
-                                                        </MenuItem>
-                                                    ))}
-                                                </CustomSelect>
-                                                <CustomSelect
-                                                    label="Type"
-                                                    value={sd.type || ""}
-                                                    onChange={(e) => handleShippingChangeFn(i, j, 'type')(e)}
-                                                    error={!!errors[`${listKey}[${i}].shippingDetails[${j}].type`]}
-                                                    helperText={errors[`${listKey}[${i}].shippingDetails[${j}].type`]}
-                                                    // required
-                                                    // disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[${j}].type`)}
-                                                    renderValue={(selected) => selected || "Select Type"}
-                                                >
-                                                    <MenuItem value="">Select Unit</MenuItem>
-                                                    {types.map((t) => (
-                                                        <MenuItem key={t} value={t}>
-                                                            {t}
-                                                        </MenuItem>
-                                                    ))}
-                                                </CustomSelect>
-                                            </Box>
-                                            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                                <CustomTextField
-                                                    label="Total Number"
-                                                    value={sd.totalNumber || ""}
-                                                    onChange={(e) => handleShippingChangeFn(i, j, 'totalNumber')(e)}
-                                                    error={!!errors[`${listKey}[${i}].shippingDetails[${j}].totalNumber`]}
-                                                    helperText={errors[`${listKey}[${i}].shippingDetails[${j}].totalNumber`]}
-                                                    // required
-                                                    // disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[${j}].totalNumber`)}
-                                                />
-                                                <CustomTextField
-                                                    label="Weight"
-                                                    value={sd.weight || ""}
-                                                    onChange={(e) => handleShippingChangeFn(i, j, 'weight')(e)}
-                                                    error={!!errors[`${listKey}[${i}].shippingDetails[${j}].weight`]}
-                                                    helperText={errors[`${listKey}[${i}].shippingDetails[${j}].weight`]}
-                                                    // required
-                                                    // disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[${j}].weight`)}
-                                                />
-                                            </Box>
-                                            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                                <CustomTextField
-                                                    label="Delivery Address"
-                                                    value={sd.deliveryAddress || ""}
-                                                    onChange={(e) => handleShippingChangeFn(i, j, 'deliveryAddress')(e)}
-                                                    error={!!errors[`${listKey}[${i}].shippingDetails[${j}].deliveryAddress`]}
-                                                    helperText={errors[`${listKey}[${i}].shippingDetails[${j}].deliveryAddress`]}
-                                                    // required
-                                                    fullWidth
-                                                    // disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[${j}].deliveryAddress`)}s
-                                                />
-                                                <CustomTextField label="Ref Number" value={sd.itemRef || `ORDER-ITEM-REF-${i + 1}-${j + 1}`} disabled={true} />
-                                            </Box>
-                                        </Stack>
-                                    </Box>
-                                ))
+                                            <Stack spacing={1.5}>
+                                                <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                    <CustomTextField
+                                                        label="Pickup Location"
+                                                        value={sd.pickupLocation || ""}
+                                                        onChange={(e) => handleShippingChangeFn(i, j, 'pickupLocation')(e)}
+                                                        error={!!errors[`${listKey}[${i}].shippingDetails[${j}].pickupLocation`]}
+                                                        helperText={errors[`${listKey}[${i}].shippingDetails[${j}].pickupLocation`]}
+                                                    />
+                                                    <CustomSelect
+                                                        label="Category"
+                                                        value={sd.category || ""}
+                                                        onChange={(e) => handleShippingChangeFn(i, j, 'category')(e)}
+                                                        error={!!errors[`${listKey}[${i}].shippingDetails[${j}].category`]}
+                                                        helperText={errors[`${listKey}[${i}].shippingDetails[${j}].category`]}
+                                                        renderValue={(selected) => selected || "Select Category"}
+                                                    >
+                                                        <MenuItem value="">Select Category</MenuItem>
+                                                        {categories.map((c) => (
+                                                            <MenuItem key={c} value={c}>
+                                                                {c}
+                                                            </MenuItem>
+                                                        ))}
+                                                    </CustomSelect>
+                                                </Box>
+                                                <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                    <CustomSelect
+                                                        label="Subcategory"
+                                                        value={sd.subcategory || ""}
+                                                        onChange={(e) => handleShippingChangeFn(i, j, 'subcategory')(e)}
+                                                        error={!!errors[`${listKey}[${i}].shippingDetails[${j}].subcategory`]}
+                                                        helperText={errors[`${listKey}[${i}].shippingDetails[${j}].subcategory`]}
+                                                        renderValue={(selected) => selected || "Select Subcategory"}
+                                                    >
+                                                        <MenuItem value="">Select Subcategory</MenuItem>
+                                                        {(categorySubMap[sd.category] || []).map((sc) => (
+                                                            <MenuItem key={sc} value={sc}>
+                                                                {sc}
+                                                            </MenuItem>
+                                                        ))}
+                                                    </CustomSelect>
+                                                    <CustomSelect
+                                                        label="Type"
+                                                        value={sd.type || ""}
+                                                        onChange={(e) => handleShippingChangeFn(i, j, 'type')(e)}
+                                                        error={!!errors[`${listKey}[${i}].shippingDetails[${j}].type`]}
+                                                        helperText={errors[`${listKey}[${i}].shippingDetails[${j}].type`]}
+                                                        renderValue={(selected) => selected || "Select Type"}
+                                                    >
+                                                        <MenuItem value="">Select Unit</MenuItem>
+                                                        {types.map((t) => (
+                                                            <MenuItem key={t} value={t}>
+                                                                {t}
+                                                            </MenuItem>
+                                                        ))}
+                                                    </CustomSelect>
+                                                </Box>
+                                                <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                    <CustomTextField
+                                                        label="Weight"
+                                                        value={sd.weight || ""}
+                                                        onChange={handleShippingChangeWithAutoFill(i, j, 'weight')}
+                                                        error={!!errors[`${listKey}[${i}].shippingDetails[${j}].weight`]}
+                                                        helperText={errors[`${listKey}[${i}].shippingDetails[${j}].weight`]}
+                                                    />
+                                                </Box>
+                                                <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                    <CustomTextField
+                                                        label="Total Number"
+                                                        value={sd.totalNumber || ""}
+                                                        onChange={handleShippingChangeWithAutoFill(i, j, 'totalNumber')}
+                                                        error={!!errors[`${listKey}[${i}].shippingDetails[${j}].totalNumber`]}
+                                                        helperText={errors[`${listKey}[${i}].shippingDetails[${j}].totalNumber`]}
+                                                    />
+                                                </Box>
+                                                <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                    <CustomTextField
+                                                        label="Delivery Address"
+                                                        value={sd.deliveryAddress || ""}
+                                                        onChange={(e) => handleShippingChangeFn(i, j, 'deliveryAddress')(e)}
+                                                        error={!!errors[`${listKey}[${i}].shippingDetails[${j}].deliveryAddress`]}
+                                                        helperText={errors[`${listKey}[${i}].shippingDetails[${j}].deliveryAddress`]}
+                                                        fullWidth
+                                                    />
+                                                    <CustomTextField label="Ref Number" value={sd.itemRef || `ORDER-ITEM-REF-${i + 1}-${j + 1}`} disabled={true} />
+                                                </Box>
+                                                {/* FIXED: Container Details Section (Non-Preview) */}
+                                                <Stack spacing={1}>
+                                                    <Typography variant="subtitle2" color="primary" fontWeight="bold">
+                                                        Container Details
+                                                    </Typography>
+                                                    {hasContainers ? (
+                                                        (sd.containerDetails || []).map((cd, k) => {
+                                                            // FIXED: Per-CD availability (exclude others, include current for display); handles object or primitive
+                                                            const currentContainer = cd.container;
+                                                            const currentCid = typeof currentContainer === 'object' ? currentContainer?.cid : currentContainer;
+                                                            const otherSelectedCids = globalSelectedCids.filter(cid => cid !== currentCid);
+                                                            const availableContainersForCd = containers.filter(c => !otherSelectedCids.includes(c.cid));
+                                                            const displayValue = currentContainer && typeof currentContainer === 'object'
+                                                                ? currentContainer
+                                                                : (currentCid ? availableContainersForCd.find(c => c.cid === currentCid) || containers.find(c => c.cid === currentCid) : null);
+                                                            return (
+                                                                <Box key={k} sx={{ p: 1, border: 1, borderColor: "grey.200", borderRadius: 1 }}>
+                                                                    <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
+                                                                        <Typography variant="body2" color="primary">
+                                                                            Container {k + 1}
+                                                                        </Typography>
+                                                                        <Stack direction="row" spacing={1}>
+                                                                            <IconButton
+                                                                                onClick={() => duplicateContainerDetail(j, k)}
+                                                                                size="small"
+                                                                                title="Duplicate"
+                                                                                color="primary"
+                                                                            >
+                                                                                <ContentCopyIcon />
+                                                                            </IconButton>
+                                                                            {(sd.containerDetails || []).length > 1 && (
+                                                                                <IconButton
+                                                                                    onClick={() => removeContainerDetail(j, k)}
+                                                                                    size="small"
+                                                                                    title="Delete"
+                                                                                    color="error"
+                                                                                >
+                                                                                    <DeleteIcon />
+                                                                                </IconButton>
+                                                                            )}
+                                                                        </Stack>
+                                                                    </Stack>
+                                                                    {/* NEW: Split into two rows for better layout */}
+                                                                    <Stack spacing={1.5}>
+                                                                        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                                            {/* FIXED: Changed label and field to assignTotalBox */}
+                                                                            <CustomTextField
+                                                                                label="Assign Total Box"
+                                                                                value={cd.assignTotalBox || ""}
+                                                                                onChange={(e) => handleContainerDetailChange(j, k, 'assignTotalBox')(e.target.value)}
+                                                                                error={!!errors[`${listKey}[${i}].shippingDetails[${j}].containerDetails[${k}].assignTotalBox`]}
+                                                                                helperText={errors[`${listKey}[${i}].shippingDetails[${j}].containerDetails[${k}].assignTotalBox`]}
+                                                                                sx={{ width: { xs: '100%', sm: '50%' } }}
+                                                                            />
+                                                                            {/* NEW: Assign Weight Field */}
+                                                                            <CustomTextField
+                                                                                label="Assign Weight"
+                                                                                value={cd.assignWeight || ""}
+                                                                                onChange={(e) => handleContainerDetailChange(j, k, 'assignWeight')(e.target.value)}
+                                                                                error={!!errors[`${listKey}[${i}].shippingDetails[${j}].containerDetails[${k}].assignWeight`]}
+                                                                                helperText={errors[`${listKey}[${i}].shippingDetails[${j}].containerDetails[${k}].assignWeight`]}
+                                                                                sx={{ width: { xs: '100%', sm: '50%' } }}
+                                                                            />
+                                                                        </Box>
+                                                                        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                                            {/* FIXED: Proper Autocomplete for Container; now sets full object */}
+                                                                            <Autocomplete
+                                                                                // FIXED: Use per-CD options and displayValue; updated equality; set full object
+                                                                                options={availableContainersForCd}
+                                                                                value={displayValue}
+                                                                                onChange={(e, newValue) => {
+                                                                                    // FIXED: Set to full object or null on clear
+                                                                                    handleContainerDetailChange(j, k, 'container')(newValue);
+                                                                                }}
+                                                                                getOptionLabel={(option) => option.container_number || ''}
+                                                                                isOptionEqualToValue={autocompleteEquality}
+                                                                                renderInput={(params) => <TextField {...params} label="Container" />}
+                                                                                sx={{ width: { xs: '100%', sm: '50%' } }}
+                                                                           
+                                                                                // fullWidth
+                                                                            />
+                                                                            <CustomSelect
+                                                                                label="Status"
+                                                                                value={cd.status || ""}
+                                                                                onChange={(e) => handleContainerDetailChange(j, k, 'status')(e.target.value)}
+                                                                                error={!!errors[`${listKey}[${i}].shippingDetails[${j}].containerDetails[${k}].status`]}
+                                                                                helperText={errors[`${listKey}[${i}].shippingDetails[${j}].containerDetails[${k}].status`]}
+                                                                                sx={{ width: { xs: '100%', sm: '50%' } }}
+                                                                        
+                                                                                renderValue={(selected) => selected || "Select Status"}
+                                                                            >
+                                                                                <MenuItem value="">Select Status</MenuItem>
+                                                                                {validShipmentStatuses.map((s) => (
+                                                                                    <MenuItem key={s} value={s}>
+                                                                                        {s}
+                                                                                    </MenuItem>
+                                                                                ))}
+                                                                            </CustomSelect>
+                                                                        </Box>
+                                                                    </Stack>
+                                                                </Box>
+                                                            );
+                                                        })
+                                                    ) : (
+                                                        renderEmptyContainerDetail(j)
+                                                    )}
+                                                    <Button
+                                                        variant="outlined"
+                                                        startIcon={<AddIcon />}
+                                                        onClick={() => addContainerDetail(j)}
+                                                        size="small"
+                                                    >
+                                                        Add Container
+                                                    </Button>
+                                                    {/* NEW: Total Assign Summary Row (always appears, uses current sd for sum) */}
+                                                    <Box sx={{ p: 1, border: 1, borderColor: "grey.300", borderRadius: 1, bgcolor: "grey.50" }}>
+                                                        <Typography variant="body2" color="primary" fontWeight="bold">
+                                                            Total Assign Number: {calculateSumAssignTotalBox(sd)} | Total Assign Weight: {calculateSumAssignWeight(sd)}
+                                                        </Typography>
+                                                    </Box>
+                                                </Stack>
+                                            </Stack>
+                                        </Box>
+                                    );
+                                })
                             )}
                             <Stack direction="row" spacing={1} sx={{ justifyContent: 'space-between' }}>
                                 <Button
@@ -5404,12 +6124,6 @@ sx={{
                                 >
                                     Add Shipping Detail
                                 </Button>
-                                {/* <Button
-                                    variant="contained"
-                                    onClick={() => handleSaveShipping(i)}
-                                >
-                                    Save
-                                </Button> */}
                             </Stack>
                         </Stack>
                     );
@@ -5471,7 +6185,6 @@ sx={{
                                     value={rec[nameField] || null}
                                     onChange={handleNameChange}
                                     disabled={isFieldDisabled(`${recDisabledPrefix}.${isSenderMode ? 'senderName' : 'receiverName'}`)}
-
                                     onInputChange={(_, newInputValue) => setSearchTerm3(newInputValue)}
                                     renderInput={(params) => (
                                         <TextField
@@ -5479,9 +6192,7 @@ sx={{
                                             label={`${typePrefix} Name`}
                                             error={!!errors[`${listKey}[${i}].${nameField}`]}
                                             helperText={errors[`${listKey}[${i}].${nameField}`]}
-                                            // required
-                                    disabled={isFieldDisabled(`${recDisabledPrefix}.${isSenderMode ? 'senderName' : 'receiverName'}`)}
-
+                                            disabled={isFieldDisabled(`${recDisabledPrefix}.${isSenderMode ? 'senderName' : 'receiverName'}`)}
                                             fullWidth
                                         />
                                     )}
@@ -5497,17 +6208,14 @@ sx={{
                                     noOptionsText={searchTerm3 ? `No ${typePrefix.toLowerCase()}s found for "${searchTerm3}"` : `Type to search ${typePrefix.toLowerCase()}s`}
                                     clearOnBlur={false}
                                     selectOnFocus={true}
-                                    // fullWidth
-                                    style={{width: '50%'}}
+                                    style={{ width: '50%' }}
                                 />
                                 <CustomTextField
                                     label={`${typePrefix} Contact`}
-                                    d
                                     value={isSenderMode ? rec.senderContact : rec.receiverContact}
                                     onChange={handleChangeFn(i, isSenderMode ? 'senderContact' : 'receiverContact')}
                                     error={!!errors[`${listKey}[${i}].${isSenderMode ? 'senderContact' : 'receiverContact'}`]}
                                     helperText={errors[`${listKey}[${i}].${isSenderMode ? 'senderContact' : 'receiverContact'}`]}
-                                    // required
                                     disabled={isFieldDisabled(`${recDisabledPrefix}.${isSenderMode ? 'senderContact' : 'receiverContact'}`)}
                                 />
                             </Box>
@@ -5526,7 +6234,6 @@ sx={{
                                     onChange={handleChangeFn(i, isSenderMode ? 'senderAddress' : 'receiverAddress')}
                                     error={!!errors[`${listKey}[${i}].${isSenderMode ? 'senderAddress' : 'receiverAddress'}`]}
                                     helperText={errors[`${listKey}[${i}].${isSenderMode ? 'senderAddress' : 'receiverAddress'}`]}
-                                    // required
                                     disabled={isFieldDisabled(`${recDisabledPrefix}.${isSenderMode ? 'senderAddress' : 'receiverAddress'}`)}
                                 />
                                 <CustomTextField
@@ -5548,7 +6255,6 @@ sx={{
                                 disabled={isFieldDisabled(`${recDisabledPrefix}.remarks`)}
                             />
                             {renderShippingSection()}
-
                         </Box>
                     );
                 };
@@ -5586,6 +6292,7 @@ sx={{
         </Stack>
     </AccordionDetails>
 </Accordion>
+
                         <Accordion
                             expanded={expanded.has("panel3")}
                             onChange={handleAccordionChange("panel3")}
@@ -5614,7 +6321,7 @@ sx={{
                                         </Typography>
                                         <RadioGroup
                                             name="transportType"
-                                            value={formData.transportType}
+                                            value={formData.transportType || "Drop Off"}  // Default to "Drop Off" in render
                                             onChange={handleChange}
                                             style={{ flexDirection: "row" }}
                                         >
@@ -5622,6 +6329,7 @@ sx={{
                                             <FormControlLabel value="Collection" control={<Radio />} label="Collection" />
                                             <FormControlLabel value="Third Party" control={<Radio />} label="Third Party" />
                                         </RadioGroup>
+                                        {errors.transportType && <FormHelperText error>{errors.transportType}</FormHelperText>}
                                     </FormControl>
                                     {formData.transportType === 'Drop Off' && (
                                         <Stack spacing={2}>
@@ -5629,11 +6337,12 @@ sx={{
                                                 🧭 Drop-Off Details
                                             </Typography>
                                             <CustomSelect
-                                                label="Drop Method"
+                                                label="Drop Method *"
                                                 name="dropMethod"
                                                 value={formData.dropMethod || ""}
                                                 onChange={handleChange}
                                                 error={!!errors.dropMethod}
+                                                helperText={errors.dropMethod || "Required"}
                                                 renderValue={(selected) => selected || "Select Drop Method"}
                                             >
                                                 <MenuItem value="">Select Drop Method</MenuItem>
@@ -5699,6 +6408,7 @@ sx={{
                                                 value={formData.collectionMethod || ""}
                                                 onChange={handleChange}
                                                 error={!!errors.collectionMethod}
+                                                helperText={errors.collectionMethod}
                                                 renderValue={(selected) => selected || "Select Collection Method"}
                                             >
                                                 <MenuItem value="">Select Collection Method</MenuItem>
@@ -5923,7 +6633,7 @@ sx={{
                                             <Stack direction="row" justifyContent="space-between" alignItems="center" key={i}>
                                                 <Chip sx={{ p: 2 }} label={formData.senderType === 'sender' ? rec.receiverName : rec.senderName || `${formData.senderType === 'sender' ? 'Receiver' : 'Sender'} ${i + 1}`} size="small" color="primary" variant="outlined" />
                                                 <Typography variant="body2" color="text.secondary">
-                                                    Delivered: {rec.qtyDelivered || 0} / { (rec.shippingDetails || []).reduce((sum, sd) => sum + (parseInt(sd.totalNumber || 0) || 0), 0) } items
+                                                    Delivered: {rec.qtyDelivered || 0} / {(rec.shippingDetails || []).reduce((sum, sd) => sum + (parseInt(sd.totalNumber || 0) || 0), 0)} items
                                                 </Typography>
                                             </Stack>
                                         ))}
@@ -5985,107 +6695,107 @@ sx={{
                             >
                                 5. Attachments
                             </AccordionSummary>
-                  <AccordionDetails sx={{ p: 3, bgcolor: "#fff" }}>
-  <Stack spacing={2}>
-    <Button
-      variant="outlined"
-      component="label"
-      sx={{ borderRadius: 2, borderColor: "#f58220", color: "#f58220", px: 3 }}
-    >
-      Upload File
-      <input type="file" hidden multiple onChange={handleFileUpload} />
-    </Button>
-    {Array.isArray(formData.attachments) && formData.attachments.length > 0 && (
-      <Stack spacing={1} direction="row" flexWrap="wrap" gap={1}>
-        {formData.attachments.map((attachment, i) => {
-          const src = typeof attachment === 'string' ? attachment : URL.createObjectURL(attachment);
-          const label = typeof attachment === 'string' ? attachment.split('/').pop() : attachment.name || 'File';
-          return (
-            <Chip
-              key={i}
-              label={label}
-              color="secondary"
-              size="small"
-              variant="outlined"
-              onClick={() => {
-                setPreviewSrc(src);
-                setPreviewOpen(true);
-              }}
-              onDelete={() => {
-                // Revoke object URL if it's a File object to free memory
-                if (typeof attachment === 'object' && attachment !== null) {
-                  URL.revokeObjectURL(src);
-                }
-                // Remove the attachment from the array
-                const newAttachments = formData.attachments.filter((_, index) => index !== i);
-                setFormData(prev => ({ ...prev, attachments: newAttachments }));
-              }}
-              sx={{ cursor: 'pointer', '&:hover': { backgroundColor: '#f58220', color: 'white' } }}
-            />
-          );
-        })}
-      </Stack>
-    )}
-  </Stack>
-</AccordionDetails>
+                            <AccordionDetails sx={{ p: 3, bgcolor: "#fff" }}>
+                                <Stack spacing={2}>
+                                    <Button
+                                        variant="outlined"
+                                        component="label"
+                                        sx={{ borderRadius: 2, borderColor: "#f58220", color: "#f58220", px: 3 }}
+                                    >
+                                        Upload File
+                                        <input type="file" hidden multiple onChange={handleFileUpload} />
+                                    </Button>
+                                    {Array.isArray(formData.attachments) && formData.attachments.length > 0 && (
+                                        <Stack spacing={1} direction="row" flexWrap="wrap" gap={1}>
+                                            {formData.attachments.map((attachment, i) => {
+                                                const src = typeof attachment === 'string' ? attachment : URL.createObjectURL(attachment);
+                                                const label = typeof attachment === 'string' ? attachment.split('/').pop() : attachment.name || 'File';
+                                                return (
+                                                    <Chip
+                                                        key={i}
+                                                        label={label}
+                                                        color="secondary"
+                                                        size="small"
+                                                        variant="outlined"
+                                                        onClick={() => {
+                                                            setPreviewSrc(src);
+                                                            setPreviewOpen(true);
+                                                        }}
+                                                        onDelete={() => {
+                                                            // Revoke object URL if it's a File object to free memory
+                                                            if (typeof attachment === 'object' && attachment !== null) {
+                                                                URL.revokeObjectURL(src);
+                                                            }
+                                                            // Remove the attachment from the array
+                                                            const newAttachments = formData.attachments.filter((_, index) => index !== i);
+                                                            setFormData(prev => ({ ...prev, attachments: newAttachments }));
+                                                        }}
+                                                        sx={{ cursor: 'pointer', '&:hover': { backgroundColor: '#f58220', color: 'white' } }}
+                                                    />
+                                                );
+                                            })}
+                                        </Stack>
+                                    )}
+                                </Stack>
+                            </AccordionDetails>
                         </Accordion>
                     </Stack>
                     {/* Bottom Buttons */}
                     <Stack direction="row" justifyContent="flex-end" gap={2} mt={4} pt={3} borderTop="1px solid #e0e0e0">
-                            <Button
-                                onClick={() => generateOrderPDF(selectedOrder)}
-                                variant="outlined"
-                                size="small"
-                                startIcon={<DownloadIcon />}
-                                sx={{ borderRadius: 2, borderColor: "#f58220", color: "#f58220" }}
-                            >
-                                Print Consignment Manifest
-                            </Button>
-                        </Stack>
+                        <Button
+                            onClick={() => generateOrderPDF(selectedOrder)}
+                            variant="outlined"
+                            size="small"
+                            startIcon={<DownloadIcon />}
+                            sx={{ borderRadius: 2, borderColor: "#f58220", color: "#f58220" }}
+                        >
+                            Print Consignment Manifest
+                        </Button>
+                    </Stack>
                 </Box>
             </Paper>
-              {/* Preview Modal */}
-                <Dialog open={previewOpen} onClose={() => setPreviewOpen(false)} maxWidth="lg" fullWidth>
-                     <DialogTitle>
-                         File Preview
-                         <IconButton
-                            onClick={() => setPreviewOpen(false)}
-                            sx={{ position: 'absolute', right: 8, top: 8 }}
-                        >
-                            <CloseIcon />
-                        </IconButton>
-                    </DialogTitle>
-                    <DialogContent sx={{ p: 2 }}>
-                        {previewSrc && (
-                            <img
-                                src={previewSrc}
-                                alt="Preview"
-                                style={{
-                                    width: '100%',
-                                    height: 'auto',
-                                    maxHeight: '70vh',
-                                    objectFit: 'contain',
-                                    borderRadius: 2,
-                                    boxShadow: '0 4px 20px rgba(0,0,0,0.1)'
-                                }}
-                                onLoad={() => console.log('Preview loaded:', previewSrc)}
-                                onError={(e) => {
-                                    e.target.style.display = 'none';
-                                    setSnackbar({
-                                        open: true,
-                                        message: 'Failed to load file. Check URL or file type.',
-                                        severity: 'error'
-                                    });
-                                }}
-                            />
-                        )}
-                        {!previewSrc.startsWith('blob:') && previewSrc.endsWith('.pdf') && (
-                            <a href={previewSrc} target="_blank" rel="noopener noreferrer" style={{ display: 'block', textAlign: 'center', mt: 2 }}>
-                                <Button variant="outlined" startIcon={<DownloadIcon />}>Open PDF</Button>
-                            </a>
-                        )}
-                    </DialogContent>
-                </Dialog>
+            {/* Preview Modal */}
+            <Dialog open={previewOpen} onClose={() => setPreviewOpen(false)} maxWidth="lg" fullWidth>
+                <DialogTitle>
+                    File Preview
+                    <IconButton
+                        onClick={() => setPreviewOpen(false)}
+                        sx={{ position: 'absolute', right: 8, top: 8 }}
+                    >
+                        <CloseIcon />
+                    </IconButton>
+                </DialogTitle>
+                <DialogContent sx={{ p: 2 }}>
+                    {previewSrc && (
+                        <img
+                            src={previewSrc}
+                            alt="Preview"
+                            style={{
+                                width: '100%',
+                                height: 'auto',
+                                maxHeight: '70vh',
+                                objectFit: 'contain',
+                                borderRadius: 2,
+                                boxShadow: '0 4px 20px rgba(0,0,0,0.1)'
+                            }}
+                            onLoad={() => console.log('Preview loaded:', previewSrc)}
+                            onError={(e) => {
+                                e.target.style.display = 'none';
+                                setSnackbar({
+                                    open: true,
+                                    message: 'Failed to load file. Check URL or file type.',
+                                    severity: 'error'
+                                });
+                            }}
+                        />
+                    )}
+                    {!previewSrc.startsWith('blob:') && previewSrc.endsWith('.pdf') && (
+                        <a href={previewSrc} target="_blank" rel="noopener noreferrer" style={{ display: 'block', textAlign: 'center', mt: 2 }}>
+                            <Button variant="outlined" startIcon={<DownloadIcon />}>Open PDF</Button>
+                        </a>
+                    )}
+                </DialogContent>
+            </Dialog>
             {/* Snackbar for notifications */}
             <Snackbar
                 open={snackbar.open}

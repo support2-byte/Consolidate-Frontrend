@@ -28,18 +28,20 @@ export default function CrudPage({ title, endpoint, columns, formFields, idKey =
   };
 
   const load = async () => {
-    try {
-      setLoading(true); // start loader
-      const params = new URLSearchParams({ search: 'All', limit: 50 });
-      const response = await api.get(`/api/customers?${params}`);
-      setRows(response.data);
-    } catch (err) {
-      console.error("Failed to load data", err);
-      showToast("Failed to load data", "error");
-    } finally {
-      setLoading(false); // stop loader
-    }
-  };
+  try {
+    setLoading(true);
+    // Use endpoint prop (e.g., /api/customers/panel?search=All&limit=5000)
+    // If endpoint has no query, you can append defaults here
+    const response = await api.get(endpoint);  // Now uses prop!
+    console.log("Fetched data:", response.data);
+    setRows(response.data);
+  } catch (err) {
+    console.error("Failed to load data", err);
+    showToast("Failed to load data", "error");
+  } finally {
+    setLoading(false);
+  }
+};
 
   useEffect(() => {
     load();

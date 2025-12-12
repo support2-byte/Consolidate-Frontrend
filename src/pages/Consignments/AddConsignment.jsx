@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo,useRef,useCallback } from 'react';
 import {
   Box, Card, CardContent, Typography, Button, FormControl, Select, MenuItem, TextField, InputLabel,
-  Table, TableBody, TableCell, TableHead, TableRow, IconButton, Divider, Tooltip as TooltipMui, Slide, Fade, Accordion, AccordionSummary, AccordionDetails, Alert, Snackbar, Alert as SnackbarAlert
+  Table, TableBody, TableCell, TableHead, TableRow, IconButton, Divider, Tooltip as TooltipMui,FormHelperText, Slide, Fade, Accordion, AccordionSummary, AccordionDetails, Alert, Snackbar, Alert as SnackbarAlert
   , Dialog,
   DialogTitle,
   DialogContent,
@@ -20,6 +20,7 @@ import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import dayjs from 'dayjs';
 import * as Yup from 'yup';
 // import CircularProgress 
+
 import { styled } from '@mui/material/styles';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import ExpandMoreIconMui  from '@mui/icons-material/ExpandMore';
@@ -33,6 +34,7 @@ import DirectionsBoatIcon from '@mui/icons-material/DirectionsBoat';
 import BusinessIcon from '@mui/icons-material/Business';
 import LocalPrintshopIcon from '@mui/icons-material/LocalPrintshop';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
+import { useBlocker } from 'react-router-dom';
 import UpdateIcon from '@mui/icons-material/Update';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import EditIcon from '@mui/icons-material/Edit';
@@ -134,6 +136,7 @@ const CustomDatePicker = ({ name, value, onChange, onBlur, label, tooltip, requi
     message: "",
     severity: "info",
   });
+  const [initialValues, setInitialValues] = useState(null);
   const [values, setValues] = useState({
     id: '', // Add id for edit
     consignment_number: '',
@@ -319,8 +322,8 @@ const CustomDatePicker = ({ name, value, onChange, onBlur, label, tooltip, requi
         gross_weight: data?.gross_weight || 0,
         consignment_value: data?.consignment_value || 0,
         currency_code: data?.currency_code || '',
-        eform_date: data?.eform_date ? dayjs(data.eform_date) : null,
-        eta: data?.eta ? dayjs(data.eta) : null,
+        eform_date: data?.eform_date ? dayjs(data.eform_date): '',
+        eta: data?.eta ? dayjs(data.eta): '',
         containers: (data?.containers || []).map(c => ({
           location: c?.location || '',
           containerNo: c?.containerNo || '',
@@ -450,7 +453,138 @@ const CustomDatePicker = ({ name, value, onChange, onBlur, label, tooltip, requi
       console.log('Fallback IDs & addresses set:', updates);
     }
   };
+useEffect(() => {
+  if (!loading && initialValues === null) {
+    // Capture snapshot after options and data are loaded
+    setInitialValues({ ...values });
+  }
+}, [loading, values]);
 
+const isDirty = useMemo(() => {
+  if (!initialValues) return false;
+
+  // List of primitive fields to compare directly
+  const primitives = [
+    'id', 'consignment_number', 'status', 'remarks', 'shipper', 'shipperName', 'shipperAddress',
+    'consignee', 'consigneeName', 'consigneeAddress', 'origin', 'originName', 'destination', 'destinationName',
+    'eform', 'bank', 'bankName', 'paymentType', 'voyage', 'consignment_value', 'currency_code',
+    'delivered', 'pending', 'seal_no', 'netWeight', 'gross_weight'
+  ];
+
+  // Compare primitives
+  for (let key of primitives) {
+    if (values[key] !== initialValues[key]) {
+      return true;
+    }
+  }
+
+  // Compare dates (using dayjs format for string comparison)
+  if (values.eform_date?.format('YYYY-MM-DD') !== initialValues.eform_date?.format('YYYY-MM-DD')) {
+    return true;
+  }
+  if (values.eta?.format('YYYY-MM-DD') !== initialValues.eta?.format('YYYY-MM-DD')) {
+    return true;
+  }
+
+  // Compare arrays using JSON.stringify (simple and sufficient for containers/orders structure)
+  if (JSON.stringify(values.containers) !== JSON.stringify(initialValues.containers)) {
+    return true;
+  }
+  if (JSON.stringify(values.orders) !== JSON.stringify(initialValues.orders)) {
+    return true;
+  }
+
+  return false;
+}, [values, initialValues]);
+
+// Add the useBlocker hook after the navigate declaration
+useBlocker(
+  ({ currentLocation, nextLocation }) =>
+    isDirty && (nextLocation.pathname !== currentLocation.pathname), // Block only on route changes, not same page
+);
+
+// Add this useEffect for browser close/refresh/tab close
+useEffect(() => {
+  if (!isDirty) {
+    window.onbeforeunload = null;
+    return;
+  }
+
+  const handleBeforeUnload = (e) => {
+    e.preventDefault();
+    e.returnValue = 'Are you sure you want to leave? Changes you made may not be saved.';
+    return 'Are you sure you want to leave? Changes you made may not be saved.';
+  };
+
+  window.onbeforeunload = handleBeforeUnload;
+
+  return () => {
+    window.onbeforeunload = null;
+  };
+}, [isDirty]);
+
+
+const isDirtyRef = useRef(false);
+
+useEffect(() => {
+  isDirtyRef.current = isDirty;
+}, [isDirty]);
+
+// Replace the existing useBlocker with a memoized version using the ref
+const blocker = useCallback(
+  ({ currentLocation, nextLocation }) =>
+    isDirtyRef.current && (nextLocation.pathname !== currentLocation.pathname),
+  [] // No deps, uses ref for isDirty
+);
+
+useBlocker(blocker);
+
+// Optional: Add a manual confirmation for back button or custom nav (e.g., in resetForm or navigate calls)
+// But useBlocker handles most cases. For example, update resetForm:
+const resetForm = () => {
+  if (isDirty) {
+    const confirmed = window.confirm('Unsaved changes will be lost. Continue?');
+    if (!confirmed) return;
+  }
+  setValues({
+    id: '',
+    // consignment_number: '', // Note: If you want to reset this too, uncomment
+    status: '',
+    remarks: '',
+    shipper: '',
+    shipperName: '',
+    shipperAddress: '',
+    consignee: '',
+    consigneeName: '',
+    consigneeAddress: '',
+    origin: '',
+    originName: '',
+    destination: '',
+    destinationName: '',
+    eform: '',
+    eform_date: currentDate,
+    bank: '',
+    bankName: '',
+    paymentType: '',
+    voyage: '',
+    consignment_value: 0,
+    currency_code: '',
+    eta: currentDate,
+    vessel: '',
+    shippingLine: '',
+    delivered: 0,
+    pending: 0,
+    seal_no: '',
+    netWeight: 0,
+    gross_weight: 0,
+    containers: [{ containerNo: '', location: '', size: '', containerType: '', ownership: '', status: 'Pending', id: '' }],
+    orders: []
+  });
+  setErrors({});
+  setTouched({});
+  setSelectedOrders([]);
+  setInitialValues(null); // Reset initial snapshot to avoid false dirty state after reset
+};
   // Sync missing options for vessel, paymentType, status
   useEffect(() => {
     const syncMissingOptions = () => {
@@ -1263,12 +1397,12 @@ const addContainer = () => {
       origin: values.originName || values.origin || null,
       destination: values.destinationName || values.destination || null,
       eform: values.eform || null,
-      eform_date: values.eform_date ? dayjs(values.eform_date).format('YYYY-MM-DD') : null,
+      eform_date: values.eform_date ? dayjs(values.eform_date).format('YYYY-MM-DD'): '',
       bank_id: parseInt(values.bank, 10) || null,
       bank: values.bankName || '',
       currency_code: values.currency_code || 'GBP',
       vessel: parseInt(values.vessel, 10) || null,
-      eta: values.eta ? dayjs(values.eta).format('YYYY-MM-DD') : null,
+      eta: values.eta ? dayjs(values.eta).format('YYYY-MM-DD'): '',
       voyage: values.voyage || null,
       shipping_line: parseInt(values.shippingLine, 10) || null,
       delivered: parseInt(values.delivered, 10) || 0,
@@ -1307,8 +1441,8 @@ const addContainer = () => {
         vessel: responseData?.vessel?.toString() || '',
         shippingLine: responseData?.shipping_line?.toString() || '',
         netWeight: responseData?.net_weight,
-        eform_date: responseData?.eform_date ? dayjs(responseData.eform_date) : null,
-        eta: responseData?.eta ? dayjs(responseData.eta) : null,
+        eform_date: responseData?.eform_date ? dayjs(responseData.eform_date): '',
+        eta: responseData?.eta ? dayjs(responseData.eta): '',
         containers: responseData?.containers ? responseData.containers.map(c => ({
           containerNo: c?.containerNo,
           size: c?.size,
@@ -1328,50 +1462,50 @@ const addContainer = () => {
         data: err.response?.data,
         message: err.message
       });
-      if (err.response) {
-        const { error: apiError, details, message: backendMessage } = err.response.data || {};
-        let backendValidationErrors = {};
-        if (details && Array.isArray(details)) {
-          details.forEach(field => {
-            const camelField = field.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
-            backendValidationErrors[camelField] = `${field.charAt(0).toUpperCase() + field.slice(1).replace(/_/g, ' ')} is required or invalid`;
-          });
-        } else if (details) {
-          Object.entries(details).forEach(([field, msg]) => {
-            const camelField = field.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
-            backendValidationErrors[camelField] = msg;
-          });
-        } else {
-          if (apiError?.includes('duplicate') || apiError?.includes('unique')) {
-            backendValidationErrors.consignment_number = 'Consignment Number already exists.';
-          } else if (apiError?.includes('foreign key')) {
-            backendValidationErrors.shipper = 'Invalid Shipper, Consignee, Bank, Vessel, or Shipping Line.';
-          }
-        }
-        setErrors(prev => ({ ...prev, ...backendValidationErrors }));
-        const backendMsg = apiError || backendMessage || err.message || 'Failed to create consignment';
-        let detailsMsg = '';
-        if (details && Array.isArray(details)) {
-          const fieldNames = details.map(field => field.charAt(0).toUpperCase() + field.slice(1).replace(/_/g, ' '));
-          detailsMsg = `\nValidation Errors: ${fieldNames.join(', ')} (e.g., select valid options with names).`;
-        } else if (details) {
-          detailsMsg = `\nDetails: ${JSON.stringify(details)}`;
-        }
-        if (err.response.status === 500) {
-          detailsMsg += `\nServer Error (500): Check backend logs/DB for SQL issues (e.g., duplicate number, invalid ID). Try unique consignment_number.`;
-        }
-        setSnackbar({
-          open: true,
-          message: `Backend Error: ${backendMsg}${detailsMsg}`,
-          severity: 'error',
-        });
-      } else {
-        setSnackbar({
-          open: true,
-          message: 'An unexpected error occurred. Please try again.',
-          severity: 'error',
-        });
-      }
+      // if (err.response) {
+      //   const { error: apiError, details, message: backendMessage } = err.response.data || {};
+      //   let backendValidationErrors = {};
+      //   if (details && Array.isArray(details)) {
+      //     details.forEach(field => {
+      //       const camelField = field.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
+      //       backendValidationErrors[camelField] = `${field.charAt(0).toUpperCase() + field.slice(1).replace(/_/g, ' ')} is required or invalid`;
+      //     });
+      //   } else if (details) {
+      //     Object.entries(details).forEach(([field, msg]) => {
+      //       const camelField = field.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
+      //       backendValidationErrors[camelField] = msg;
+      //     });
+      //   } else {
+      //     if (apiError?.includes('duplicate') || apiError?.includes('unique')) {
+      //       backendValidationErrors.consignment_number = 'Consignment Number already exists.';
+      //     } else if (apiError?.includes('foreign key')) {
+      //       backendValidationErrors.shipper = 'Invalid Shipper, Consignee, Bank, Vessel, or Shipping Line.';
+      //     }
+      //   }
+      //   setErrors(prev => ({ ...prev, ...backendValidationErrors }));
+      //   const backendMsg = apiError || backendMessage || err.message || 'Failed to create consignment';
+      //   let detailsMsg = '';
+      //   if (details && Array.isArray(details)) {
+      //     const fieldNames = details.map(field => field.charAt(0).toUpperCase() + field.slice(1).replace(/_/g, ' '));
+      //     detailsMsg = `\nValidation Errors: ${fieldNames.join(', ')} (e.g., select valid options with names).`;
+      //   } else if (details) {
+      //     detailsMsg = `\nDetails: ${JSON.stringify(details)}`;
+      //   }
+      //   if (err.response.status === 500) {
+      //     detailsMsg += `\nServer Error (500): Check backend logs/DB for SQL issues (e.g., duplicate number, invalid ID). Try unique consignment_number.`;
+      //   }
+      //   setSnackbar({
+      //     open: true,
+      //     message: `Backend Error: ${backendMsg}${detailsMsg}`,
+      //     severity: 'error',
+      //   });
+      // } else {
+      //   setSnackbar({
+      //     open: true,
+      //     message: 'An unexpected error occurred. Please try again.',
+      //     severity: 'error',
+      //   });
+      // }
     } finally {
       setSaving(false);
     }
@@ -1455,45 +1589,7 @@ const addContainer = () => {
     }
   };
 
-  const resetForm = () => {
-    setValues({
-      id: '',
-      consignment_number: '',
-      status: '',
-      remarks: '',
-      shipper: '',
-      shipperName: '',
-      shipperAddress: '',
-      consignee: '',
-      consigneeName: '',
-      consigneeAddress: '',
-      origin: '',
-      originName: '',
-      destination: '',
-      destinationName: '',
-      eform: '',
-      eform_date: currentDate,
-      bank: '',
-      bankName: '',
-      paymentType: '',
-      voyage: '',
-      consignment_value: 0,
-      currency_code: '',
-      eta: currentDate,
-      vessel: '',
-      shippingLine: '',
-      delivered: 0,
-      pending: 0,
-      seal_no: '',
-      netWeight: 0,
-      gross_weight: 0,
-      containers: [{ containerNo: '', location: '', size: '', containerType: '', ownership: '', status: 'Pending', id: '' }],
-      orders: []
-    });
-    setErrors({});
-    setTouched({});
-    setSelectedOrders([]);
-  };
+  
 
   const getContainerError = () => errors.containers;
   const hasErrors = Object.values(errors).some(Boolean);
@@ -1742,7 +1838,7 @@ const addContainer = () => {
             <Typography variant="h4" gutterBottom sx={{ color: '#0d6c6a', fontWeight: 'bold', mb: 3 }}>
               {mode === 'add' ? 'Add' : 'Edit'} Consignment Details
             </Typography>
-            <form onSubmit={mode === 'edit' ? handleEditCon : handleCreate}>
+                 <form onSubmit={mode === 'edit' ? handleEditCon : handleCreate}>
               {/* Main Data Section */}
               <Accordion defaultExpanded sx={{ boxShadow: 2, borderRadius: 2, mb: 3, '&:before': { display: 'none' } }}>
                 <AccordionSummary
@@ -1766,7 +1862,11 @@ const addContainer = () => {
                           readOnly={mode === 'edit'} // Keep readOnly for consignment_number in edit mode
                           required
                           error={touched.consignment_number && Boolean(errors.consignment_number)}
-                          helperText={touched.consignment_number && errors.consignment_number}
+                          helperText={
+                            touched.consignment_number && errors.consignment_number
+                              ? errors.consignment_number
+                             : 'Enter unique consignment number'
+                          }
                         />
                       </Box>
                       <Box sx={{ flex: 1, minWidth: 250 }}>
@@ -1779,7 +1879,11 @@ const addContainer = () => {
                             options={options.statusOptions || []}
                             // disabled={mode === 'edit'} // Keep disabled for status in edit mode (use Next button)
                             error={touched.status && Boolean(errors.status)}
-                            helperText={touched.status && errors.status}
+                            helperText={
+                              touched.status && errors.status
+                                ? errors.status
+                               : ''
+                            }
                           />
                           {mode === 'edit' && (
                             <Button
@@ -1817,7 +1921,11 @@ const addContainer = () => {
                           inputProps={{ pattern: '^[A-Z]{3}-\\d{6}$', placeholder: 'ABC-123456' }}
                           required
                           error={touched.eform && Boolean(errors.eform)}
-                          helperText={touched.eform && errors.eform}
+                          helperText={
+                            touched.eform && errors.eform
+                              ? errors.eform
+                             : ''
+                          }
                           tooltip="Format: ABC-123456"
                         />
                       </Box>
@@ -1831,7 +1939,11 @@ const addContainer = () => {
                           label="Eform Date"
                           required
                           error={touched.eform_date && Boolean(errors.eform_date)}
-                          helperText={touched.eform_date && errors.eform_date}
+                          helperText={
+                            touched.eform_date && errors.eform_date
+                              ? errors.eform_date
+                             : ''
+                          }
                           slotProps={{ textField: { InputProps: { startAdornment: <DateRangeIcon sx={{ mr: 1, color: '#f58220' }} /> } } }}
                         />
                       </Box>
@@ -1848,7 +1960,11 @@ const addContainer = () => {
                           options={options.shipperOptions || []}
                           required
                           error={touched.shipper && Boolean(errors.shipper)}
-                          helperText={touched.shipper && errors.shipper}
+                          helperText={
+                            touched.shipper && errors.shipper
+                              ? errors.shipper
+                             : ''
+                          }
                           tooltip="Select shipper"
                         />
                         <CustomTextField
@@ -1870,7 +1986,11 @@ const addContainer = () => {
                           options={options.consigneeOptions || []}
                           required
                           error={touched.consignee && Boolean(errors.consignee)}
-                          helperText={touched.consignee && errors.consignee}
+                          helperText={
+                            touched.consignee && errors.consignee
+                              ? errors.consignee
+                             : ''
+                          }
                           tooltip="Select consignee"
                         />
                         <CustomTextField
@@ -1895,7 +2015,11 @@ const addContainer = () => {
                           options={options.originOptions || []}
                           required
                           error={touched.origin && Boolean(errors.origin)}
-                          helperText={touched.origin && errors.origin}
+                          helperText={
+                            touched.origin && errors.origin
+                              ? errors.origin
+                             : ''
+                          }
                           tooltip="Select origin port"
                         />
                       </Box>
@@ -1909,7 +2033,11 @@ const addContainer = () => {
                           options={options.destinationOptions || []}
                           required
                           error={touched.destination && Boolean(errors.destination)}
-                          helperText={touched.destination && errors.destination}
+                          helperText={
+                            touched.destination && errors.destination
+                              ? errors.destination
+                             : ''
+                          }
                           tooltip="Select destination port"
                         />
                       </Box>
@@ -1955,6 +2083,7 @@ const addContainer = () => {
                             )) || null}
                           </Select>
                           {errors.paymentType && <FormHelperText>{errors.paymentType}</FormHelperText>}
+                          {!errors.paymentType && <FormHelperText sx={{ color: 'text.secondary' }}>(Required)</FormHelperText>}
                         </FormControl>
                       </Box>
                       <Box sx={{ flex: 1, minWidth: 250 }}>
@@ -1981,7 +2110,11 @@ const addContainer = () => {
                             </FormControl>
                           }
                           error={touched.consignment_value && Boolean(errors.consignment_value)}
-                          helperText={touched.consignment_value && errors.consignment_value}
+                          helperText={
+                            touched.consignment_value && errors.consignment_value
+                              ? errors.consignment_value
+                             : ''
+                          }
                         />
                       </Box>
                       <Box sx={{ flex: 1, minWidth: 250 }}>
@@ -1994,7 +2127,11 @@ const addContainer = () => {
                           options={options.bankOptions || []}
                           required
                           error={touched.bank && Boolean(errors.bank)}
-                          helperText={touched.bank && errors.bank}
+                          helperText={
+                            touched.bank && errors.bank
+                              ? errors.bank
+                             : ''
+                          }
                           tooltip="Select associated bank"
                         />
                       </Box>
@@ -2011,7 +2148,11 @@ const addContainer = () => {
                           options={options.vesselOptions || []}
                           required
                           error={touched.vessel && Boolean(errors.vessel)}
-                          helperText={touched.vessel && errors.vessel}
+                          helperText={
+                            touched.vessel && errors.vessel
+                              ? errors.vessel
+                             : ''
+                          }
                           tooltip="Select vessel"
                         />
                       </Box>
@@ -2035,7 +2176,11 @@ const addContainer = () => {
                           startAdornment={<DirectionsBoatIcon sx={{ mr: 1, color: '#f58220' }} />}
                           required
                           error={touched.voyage && Boolean(errors.voyage)}
-                          helperText={touched.voyage && errors.voyage}
+                          helperText={
+                            touched.voyage && errors.voyage
+                              ? errors.voyage
+                             : ''
+                          }
                           tooltip="Enter voyage number (min 3 chars)"
                         />
                       </Box>
@@ -2063,7 +2208,11 @@ const addContainer = () => {
                           startAdornment={<LocalShippingIcon sx={{ mr: 1, color: '#f58220' }} />}
                           endAdornment={<Typography variant="body2" color="text.secondary">KGS</Typography>}
                           error={touched.netWeight && Boolean(errors.netWeight)}
-                          helperText={touched.netWeight && errors.netWeight}
+                          helperText={
+                            touched.netWeight && errors.netWeight
+                              ? errors.netWeight
+                             : ''
+                          }
                         />
                       </Box>
                       <Box sx={{ flex: 1, minWidth: 300 }}>
@@ -2078,7 +2227,11 @@ const addContainer = () => {
                           startAdornment={<LocalShippingIcon sx={{ mr: 1, color: '#f58220' }} />}
                           endAdornment={<Typography variant="body2" color="text.secondary">KGS</Typography>}
                           error={touched.gross_weight && Boolean(errors.gross_weight)}
-                          helperText={touched.gross_weight && errors.gross_weight}
+                          helperText={
+                            touched.gross_weight && errors.gross_weight
+                              ? errors.gross_weight
+                             : ''
+                          }
                         />
                       </Box>
                     </Box>
@@ -2144,125 +2297,164 @@ const addContainer = () => {
             </form>
             {/* Containers Section */}
             <Accordion sx={{ boxShadow: 2, borderRadius: 2, mt: 3, '&:before': { display: 'none' } }}>
-              <AccordionSummary
-                expandIcon={<ExpandMoreIconMui sx={{ color: '#fff', backgroundColor: '#0d6c6a', borderRadius: '50%', p: 0.5 }} />}
-                sx={{ backgroundColor: '#0d6c6a', color: 'white', borderRadius: 2 }}
-              >
-                <Typography variant="h6" sx={{ fontWeight: 'bold' }}>🚚 Containers</Typography>
-              </AccordionSummary>
-              <AccordionDetails sx={{ p: 3 }}>
-                <Table sx={{ minWidth: '100%', boxShadow: 1, borderRadius: 1, mb: 2, overflow: 'hidden' }} aria-label="Containers table">
-                  <TableHead>
-                    <TableRow sx={{ backgroundColor: '#e3f2fd' }}>
-                      <TableCell sx={{ fontWeight: 'bold' }}>Container No.</TableCell>
-                      <TableCell sx={{ fontWeight: 'bold' }}>Location</TableCell>
-                      <TableCell sx={{ fontWeight: 'bold' }}>Size</TableCell>
-                      <TableCell sx={{ fontWeight: 'bold' }}>Type</TableCell>
-                      <TableCell sx={{ fontWeight: 'bold' }}>Ownership</TableCell>
-                      <TableCell sx={{ fontWeight: 'bold' }}>Status</TableCell>
-                      <TableCell sx={{ fontWeight: 'bold' }}>Actions</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {(values.containers || []).length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
-                          <Typography variant="body2" color="text.secondary">
-                            No containers added. Click "Add New" or "Select from List" to get started.
-                          </Typography>
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      (values.containers || []).map((container, index) => (
-                        <Fade in key={index} timeout={300 * index}>
-                          <TableRow hover sx={{ transition: 'all 0.2s ease' }}>
-                            <TableCell>
-                              <TextField
-                                size="small"
-                                fullWidth
-                                value={container.containerNo || ''}
-                                onChange={(e) => updateArrayField('containers', index, 'containerNo', e.target.value)}
-                                onBlur={() => markArrayTouched('containers')}
-                                error={Boolean(getContainerError())}
-                                helperText={getContainerError()}
-                              />
-                            </TableCell>
-                            <TableCell>
-                              <TextField
-                                size="small"
-                                fullWidth
-                                value={container.location || ''}
-                                onChange={(e) => updateArrayField('containers', index, 'location', e.target.value)}
-                              />
-                            </TableCell>
-                            <TableCell>
-                              <TextField
-                                size="small"
-                                fullWidth
-                                value={container.size || ''}
-                                onChange={(e) => updateArrayField('containers', index, 'size', e.target.value)}
-                                onBlur={() => markArrayTouched('containers')}
-                                error={Boolean(getContainerError())}
-                                helperText={getContainerError()}
-                              />
-                            </TableCell>
-                            <TableCell>
-                              <TextField
-                                size="small"
-                                fullWidth
-                                value={container.containerType || ''}
-                                onChange={(e) => updateArrayField('containers', index, 'containerType', e.target.value)}
-                              />
-                            </TableCell>
-                            <TableCell>
-                              <TextField
-                                size="small"
-                                fullWidth
-                                value={container.ownership || ''}
-                                onChange={(e) => updateArrayField('containers', index, 'ownership', e.target.value)}
-                              />
-                            </TableCell>
-                            <TableCell>
-                              <TextField
-                                size="small"
-                                fullWidth
-                                value={container.status || ''}
-                                onChange={(e) => updateArrayField('containers', index, 'status', e.target.value)}
-                              />
-                            </TableCell>
-                            <TableCell>
-                              <IconButton onClick={() => removeContainer(index)} color="error" size="small">
-                                <DeleteIconMui  fontSize="small" />
-                              </IconButton>
-                            </TableCell>
-                          </TableRow>
-                        </Fade>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-                <div style={{ display: 'flex', gap: 8, mt: 2 }}>
-                  <Button
-                    startIcon={<AddIcon />}
-                    onClick={addContainer}
-                    variant="outlined"
-                    sx={{ flex: 1, color: '#0d6c6a', }}
-                  >
-                    Add New
-                  </Button>
-                  <Button
-                    startIcon={<AddIcon />}
-                    onClick={() => setContainerModalOpen(true)}
-                    variant="contained"
-                    disabled={containersLoading}
-                    sx={{ flex: 1, backgroundColor: '#0d6c6a', color: 'white', '&:hover': { backgroundColor: '#0a5553' } }}
-                  >
-                    {containersLoading ? 'Loading...' : 'Select from List'}
-                  </Button>
-                </div>
-                {touched.containers && errors.containers && <Alert severity="error" sx={{ mt: 1 }}>{errors.containers}</Alert>}
-              </AccordionDetails>
-            </Accordion>
+  <AccordionSummary
+    expandIcon={<ExpandMoreIconMui sx={{ color: '#fff', backgroundColor: '#0d6c6a', borderRadius: '50%', p: 0.5 }} />}
+    sx={{ backgroundColor: '#0d6c6a', color: 'white', borderRadius: 2 }}
+  >
+    <Typography variant="h6" sx={{ fontWeight: 'bold' }}>🚚 Containers</Typography>
+  </AccordionSummary>
+  <AccordionDetails sx={{ p: 3 }}>
+    <Table sx={{ minWidth: '100%', boxShadow: 1, borderRadius: 1, mb: 2, overflow: 'hidden' }} aria-label="Containers table">
+      <TableHead>
+        <TableRow sx={{ backgroundColor: '#e3f2fd' }}>
+          <TableCell sx={{ fontWeight: 'bold' }}>Container No.</TableCell>
+          <TableCell sx={{ fontWeight: 'bold' }}>Location</TableCell>
+          <TableCell sx={{ fontWeight: 'bold' }}>Size</TableCell>
+          <TableCell sx={{ fontWeight: 'bold' }}>Type</TableCell>
+          <TableCell sx={{ fontWeight: 'bold' }}>Ownership</TableCell>
+          <TableCell sx={{ fontWeight: 'bold' }}>Status</TableCell>
+          <TableCell sx={{ fontWeight: 'bold' }}>Actions</TableCell>
+        </TableRow>
+      </TableHead>
+      <TableBody>
+        {(values.containers || []).length === 0 ? (
+          <TableRow>
+            <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
+              <Typography variant="body2" color="text.secondary">
+                No containers added. Click "Add New" or "Select from List" to get started.
+              </Typography>
+            </TableCell>
+          </TableRow>
+        ) : (
+          (values.containers || []).map((container, index) => {
+            // Helper: Check for duplicates (ignore current index)
+            const isDuplicate = (containerNo) => {
+              return (values.containers || []).some((c, i) => i !== index && c.containerNo?.trim().toUpperCase() === containerNo?.trim().toUpperCase());
+            };
+
+            // Get error for this specific row (expand getContainerError if needed, or define inline)
+            const rowErrors = getContainerError?.(index) || {}; // Assuming getContainerError returns { containerNo: 'error msg' } per index
+            const containerNoError = rowErrors.containerNo || (container.containerNo && isDuplicate(container.containerNo) ? 'Container already exists in list' : '');
+
+            return (
+              <Fade in key={`${container.containerNo || 'new'}-${index}`} timeout={300 * index}>
+                <TableRow hover sx={{ transition: 'all 0.2s ease' }}>
+                  <TableCell>
+                    <TextField
+                      size="small"
+                      fullWidth
+                      value={container.containerNo || ''}
+                      onChange={(e) => {
+                        const newValue = e.target.value;
+                        updateArrayField('containers', index, 'containerNo', newValue);
+                        // Validate duplicate on change
+                        if (newValue && isDuplicate(newValue)) {
+                          // Set per-row error (integrate with Formik if possible, or use local state)
+                          setFieldError(`containers[${index}].containerNo`, 'Container already exists in list');
+                        } else {
+                          setFieldError(`containers[${index}].containerNo`, '');
+                        }
+                      }}
+                      onBlur={() => {
+                        markArrayTouched('containers');
+                        // Re-validate on blur
+                        if (container.containerNo && isDuplicate(container.containerNo)) {
+                          setFieldError(`containers[${index}].containerNo`, 'Container already exists in list');
+                        }
+                      }}
+                      error={Boolean(containerNoError)}
+                      helperText={containerNoError }
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <TextField
+                      size="small"
+                      fullWidth
+                      value={container.location || ''}
+                      onChange={(e) => updateArrayField('containers', index, 'location', e.target.value)}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <TextField
+                      size="small"
+                      fullWidth
+                      value={container.size || ''}
+                      onChange={(e) => updateArrayField('containers', index, 'size', e.target.value)}
+                      onBlur={() => markArrayTouched('containers')}
+                      error={Boolean(rowErrors.size)}
+                      helperText={rowErrors.size}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <TextField
+                      size="small"
+                      fullWidth
+                      value={container.containerType || ''}
+                      onChange={(e) => updateArrayField('containers', index, 'containerType', e.target.value)}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <TextField
+                      size="small"
+                      fullWidth
+                      value={container.ownership || ''}
+                      onChange={(e) => updateArrayField('containers', index, 'ownership', e.target.value)}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <TextField
+                      size="small"
+                      fullWidth
+                      value={container.status || ''}
+                      onChange={(e) => updateArrayField('containers', index, 'status', e.target.value)}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <IconButton onClick={() => removeContainer(index)} color="error" size="small">
+                      <DeleteIconMui fontSize="small" />
+                    </IconButton>
+                  </TableCell>
+                </TableRow>
+              </Fade>
+            );
+          })
+        )}
+      </TableBody>
+    </Table>
+    <div style={{ display: 'flex', gap: 8, mt: 2 }}>
+      <Button
+        startIcon={<AddIcon />}
+        onClick={() => {
+          // Pre-validate before adding empty row (optional: prompt for containerNo first)
+          const newContainer = { containerNo: '', location: '', size: '', containerType: '', ownership: '', status: '' };
+          if ((values.containers || []).some(c => c.containerNo?.trim() === '')) {
+            // Prevent adding if empty row exists
+            alert('Complete or remove the empty container row first.');
+            return;
+          }
+          addContainer(newContainer); // Assuming addContainer pushes the new object
+        }}
+        variant="outlined"
+        sx={{ flex: 1, color: '#0d6c6a' }}
+      >
+        Add New
+      </Button>
+      <Button
+        startIcon={<AddIcon />}
+        onClick={() => {
+          // For modal: Ensure no duplicates when selecting
+          setContainerModalOpen(true);
+        }}
+        variant="contained"
+        disabled={containersLoading}
+        sx={{ flex: 1, backgroundColor: '#0d6c6a', color: 'white', '&:hover': { backgroundColor: '#0a5553' } }}
+      >
+        {containersLoading ? 'Loading...' : 'Select from List'}
+      </Button>
+    </div>
+    {touched.containers && errors.containers && <Alert severity="error" sx={{ mt: 1 }}>{errors.containers}</Alert>}
+  </AccordionDetails>
+</Accordion>
             {/* Container Selection Modal */}
             <Dialog open={containerModalOpen} onClose={() => setContainerModalOpen(false)} maxWidth="xl" fullWidth>
               {/* <DialogTitle>Select Containers</DialogTitle> */}
