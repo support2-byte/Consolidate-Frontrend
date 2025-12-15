@@ -202,7 +202,6 @@ const loadImageAsBase64 = (url) =>
     };
     img.onerror = () => resolve(null);
   });
-
 const generateOrderPDF = async (order) => {
   if (!order) return;
 
@@ -319,7 +318,7 @@ const generateOrderPDF = async (order) => {
     ["Email", order.sender_email],
     ["Address", order.sender_address],
     ["Sender Ref", order.sender_ref],
-    ["Sender Remarks", order.sender_remarks],
+    ["Sender Remarks", order.order_remarks], // Note: Fixed to use order.order_remarks if sender_remarks not present
     ["Selected Sender Owner", order.selected_sender_owner],
   ];
   y = drawKeyValueSection(y, "SENDER INFORMATION", senderDetails);
@@ -333,7 +332,7 @@ const generateOrderPDF = async (order) => {
 
     autoTable(doc, {
       startY: y,
-      head: [["Receiver", "Status", "Consignment #", "Qty", "Weight", "Contact", "Address", "Containers"]],
+      head: [["Receiver", "Status", "Consignment", "Qty", "Weight", "Contact", "Address",]],
       body: order.receivers.map((r) => [
         r.receiver_name,
         r.status,
@@ -342,28 +341,29 @@ const generateOrderPDF = async (order) => {
         r.total_weight,
         r.receiver_contact,
         r.receiver_address,
-        r.containers?.map(c => c.join(", ")).join("; ") || "N/A",
+        // r.containers ? r.containers.join(", ") : "N/A",
       ]),
       headStyles: { fillColor: brandPrimary, textColor: 255 },
-      bodyStyles: { fontSize: 9, cellPadding: 3 },
+      bodyStyles: { fontSize: 9, cellPadding: 2 },
       margin: { left: margin, right: margin },
     });
 
     y = doc.lastAutoTable.finalY + 6;
 
-    // -------- RECEIVER SHIPPING DETAILS TABLE --------
+    // -------- RECEIVER SHIPPING DETAILS WITH CONTAINER DETAILS --------
     for (const receiver of order.receivers) {
-      if (!receiver.shippingDetails?.length) continue;
+      if (!receiver.shippingdetails?.length) continue; // Note: Fixed property name to 'shippingdetails' as per JSON
 
-      doc.setFont("helvetica", "bold").setFontSize(12);
+      doc.setFont("helvetica", "normal").setFontSize(9);
       doc.setTextColor(...brandPrimary);
       doc.text(`Products Details for: ${receiver.receiver_name}`, margin, y);
       y += 6;
 
+      // Shipping Details Table
       autoTable(doc, {
         startY: y,
-        head: [["Category", "Subcategory", "Type", "Total #", "Weight", "Pickup", "Delivery", "Item Ref", "Assigned Qty"]],
-        body: receiver.shippingDetails.map((s) => [
+        head: [["Category", "Subcategory", "Type", "Total", "Weight", "Pickup", "Delivery", "Item Ref", "Status"]],
+        body: receiver.shippingdetails.map((s) => [
           s.category,
           s.subcategory,
           s.type,
@@ -372,14 +372,47 @@ const generateOrderPDF = async (order) => {
           s.pickupLocation,
           s.deliveryAddress,
           s.itemRef,
-          s.assignedQty
+          s.consignmentStatus,
         ]),
         headStyles: { fillColor: brandPrimary, textColor: 255 },
-        bodyStyles: { fontSize: 9, cellPadding: 3 },
+        bodyStyles: { fontSize: 8, cellPadding: 2 },
         margin: { left: margin, right: margin },
       });
 
       y = doc.lastAutoTable.finalY + 6;
+
+      // Container Details Sub-Table for each Shipping Detail
+      receiver.shippingdetails.forEach((shippingDetail, detailIndex) => {
+        if (!shippingDetail.containerDetails?.length) return;
+
+        doc.setFont("helvetica", "normal").setFontSize(9);
+        doc.setTextColor(...brandPrimary);
+        doc.text(`Container Assignments for Item ${detailIndex + 1}: ${shippingDetail.itemRef}`, margin, y);
+        y += 4;
+
+        autoTable(doc, {
+          startY: y,
+          head: [["Status", "Container #", "Size", "Type", "Assigned Weight", "Assigned Boxes", "Remaining Items"]],
+          body: shippingDetail.containerDetails.map((contDetail) => {
+            const container = contDetail.container || {};
+            return [
+              contDetail.status || "N/A",
+              container.container_number || contDetail.container_number || "N/A",
+              container.container_size || "N/A",
+              container.container_type || "N/A",
+              contDetail.assign_weight || "N/A",
+              contDetail.assign_total_box || "N/A",
+              contDetail.remaining_items || "N/A",
+            ];
+          }),
+          headStyles: { fillColor: brandPrimary, textColor: 255 }, // Teal header for sub-table
+          bodyStyles: { fontSize: 8, cellPadding: 2 },
+          margin: { left: margin, right: margin },
+          theme: 'grid',
+        });
+
+        y = doc.lastAutoTable.finalY + 6;
+      });
     }
   }
 
@@ -427,6 +460,22 @@ const generateOrderPDF = async (order) => {
 const generatePDFWithCanvas = async () => {
     if (!selectedOrder) return;
     
+    // Helper function to normalize/format dates
+    const formatDate = (dateStr) => {
+        if (!dateStr) return 'N/A';
+        return new Date(dateStr).toLocaleDateString('en-US', { 
+            year: 'numeric', 
+            month: 'short', 
+            day: 'numeric' 
+        });
+    };
+
+    // Helper function to get files text
+    const getFilesText = (files) => files?.length ? files.join(', ') : 'None';
+
+    // Helper function to normalize containers (simple array join)
+    const normalizeContainers = (containers) => Array.isArray(containers) ? containers : [];
+
     // Create a temporary div element to render content
     const tempElement = document.createElement('div');
     tempElement.style.width = '210mm'; // A4 width
@@ -449,7 +498,7 @@ const generatePDFWithCanvas = async () => {
                 background: white;
             }
             .header {
-                background: linear-gradient(135deg, #f58220 0%, #e65100 100%);
+                background: linear-gradient(135deg, #0a5250 0%, #0d6c6a 100%);
                 color: white;
                 padding: 15px 0;
                 text-align: center;
@@ -522,7 +571,33 @@ const generatePDFWithCanvas = async () => {
                 border-radius: 4px;
                 margin: 10px 0;
                 font-weight: bold;
-                color: #f58220;
+                color: #0a5250;
+            }
+            .container-subheader {
+                background: #e3f2fd;
+                padding: 6px;
+                border-radius: 4px;
+                margin: 8px 0 4px 0;
+                font-weight: bold;
+                color: #1976d2;
+                font-size: 14px;
+            }
+            .container-table {
+                width: 100%;
+                border-collapse: collapse;
+                margin: 5px 0;
+                font-size: 11px;
+            }
+            .container-table th {
+                background: #bbdefb;
+                text-align: left;
+                padding: 6px;
+                font-weight: bold;
+                border-bottom: 1px solid #2196f3;
+            }
+            .container-table td {
+                padding: 6px;
+                border-bottom: 1px solid #e0e0e0;
             }
             table {
                 width: 100%;
@@ -654,7 +729,7 @@ const generatePDFWithCanvas = async () => {
                     </tr>
                     <tr>
                         <th>Sender Remarks</th>
-                        <td>${selectedOrder.sender_remarks || 'N/A'}</td>
+                        <td>${selectedOrder.order_remarks || 'N/A'}</td> <!-- Note: Using order_remarks if sender_remarks not present -->
                     </tr>
                 </table>
             </div>
@@ -698,16 +773,16 @@ const generatePDFWithCanvas = async () => {
                             <td>${rec.total_weight ? `${rec.total_weight} kg` : 'N/A'}</td>
                         </tr>
                         <tr>
-                            <th>Containers</th>
+                            <th>Containers (Summary)</th>
                             <td>${normContainers.join(', ') || 'N/A'}</td>
                         </tr>
                         <tr>
                             <th>Assignment</th>
-                            <td>${rec.assignment || 'N/A'}</td>
+                            <td>${rec.receiver_assignment || 'N/A'}</td> <!-- Note: Fixed to receiver_assignment as per JSON -->
                         </tr>
                         <tr>
                             <th>Item Ref</th>
-                            <td>${rec.item_ref || 'N/A'}</td>
+                            <td>${rec.receiver_item_ref || 'N/A'}</td> <!-- Note: Fixed to receiver_item_ref as per JSON -->
                         </tr>
                         <tr>
                             <th>Receiver Ref</th>
@@ -715,44 +790,84 @@ const generatePDFWithCanvas = async () => {
                         </tr>
                     </table>
                     
-                    ${rec.shippingDetails && rec.shippingDetails.length > 0 ? `
+                    ${rec.shippingdetails && rec.shippingdetails.length > 0 ? ` <!-- Note: Fixed property name to 'shippingdetails' as per JSON -->
                     <div class="item-header">Shipping Details</div>
-                    <table>
-                        ${rec.shippingDetails.map((item, itemIndex) => `
-                        <tr>
-                            <th>Item ${itemIndex + 1} Category</th>
-                            <td>${item.category || 'N/A'}</td>
-                        </tr>
-                        <tr>
-                            <th>Item ${itemIndex + 1} Subcategory</th>
-                            <td>${item.subcategory || 'N/A'}</td>
-                        </tr>
-                        <tr>
-                            <th>Item ${itemIndex + 1} Type</th>
-                            <td>${item.type || 'N/A'}</td>
-                        </tr>
-                        <tr>
-                            <th>Item ${itemIndex + 1} Pickup Location</th>
-                            <td>${item.pickupLocation || 'N/A'}</td>
-                        </tr>
-                        <tr>
-                            <th>Item ${itemIndex + 1} Delivery Address</th>
-                            <td>${item.deliveryAddress || 'N/A'}</td>
-                        </tr>
-                        <tr>
-                            <th>Item ${itemIndex + 1} Total Number</th>
-                            <td>${item.totalNumber || 'N/A'}</td>
-                        </tr>
-                        <tr>
-                            <th>Item ${itemIndex + 1} Weight</th>
-                            <td>${item.weight ? `${item.weight} kg` : 'N/A'}</td>
-                        </tr>
-                        <tr>
-                            <th>Item ${itemIndex + 1} Item Ref</th>
-                            <td>${item.itemRef || 'N/A'}</td>
-                        </tr>
-                        `).join('')}
-                    </table>
+                    ${rec.shippingdetails.map((item, itemIndex) => `
+                        <div style="margin-bottom: 15px; padding: 10px; background: #fafafa; border-radius: 4px;">
+                            <h4 style="margin: 0 0 8px 0; color: #0a5250;">Item ${itemIndex + 1}: ${item.itemRef || 'N/A'}</h4>
+                            <table>
+                                <tr>
+                                    <th>Category</th>
+                                    <td>${item.category || 'N/A'}</td>
+                                </tr>
+                                <tr>
+                                    <th>Subcategory</th>
+                                    <td>${item.subcategory || 'N/A'}</td>
+                                </tr>
+                                <tr>
+                                    <th>Type</th>
+                                    <td>${item.type || 'N/A'}</td>
+                                </tr>
+                                <tr>
+                                    <th>Pickup Location</th>
+                                    <td>${item.pickupLocation || 'N/A'}</td>
+                                </tr>
+                                <tr>
+                                    <th>Delivery Address</th>
+                                    <td>${item.deliveryAddress || 'N/A'}</td>
+                                </tr>
+                                <tr>
+                                    <th>Total Number</th>
+                                    <td>${item.totalNumber || 'N/A'}</td>
+                                </tr>
+                                <tr>
+                                    <th>Weight</th>
+                                    <td>${item.weight ? `${item.weight} kg` : 'N/A'}</td>
+                                </tr>
+                                <tr>
+                                    <th>Consignment Status</th>
+                                    <td>${item.consignmentStatus || 'N/A'}</td>
+                                </tr>
+                                <tr>
+                                    <th>Remaining Items</th>
+                                    <td>${item.remainingItems || 'N/A'}</td>
+                                </tr>
+                            </table>
+                            
+                            ${item.containerDetails && item.containerDetails.length > 0 ? `
+                            <div class="container-subheader">Container Assignments</div>
+                            <table class="container-table">
+                                <thead>
+                                    <tr>
+                                        <th>Status</th>
+                                        <th>Container #</th>
+                                        <th>Size</th>
+                                        <th>Type</th>
+                                        <th>Assigned Weight</th>
+                                        <th>Assigned Boxes</th>
+                                        <th>Remaining Items</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${item.containerDetails.map((contDetail, contIndex) => {
+                                        const container = contDetail.container || {};
+                                        return `
+                                        <tr>
+                                            <td>${contDetail.status || 'N/A'}</td>
+                                            <td>${container.container_number || contDetail.container_number || 'N/A'}</td>
+                                            <td>${container.container_size || 'N/A'}</td>
+                                            <td>${container.container_type || 'N/A'}</td>
+                                            <td>${contDetail.assign_weight || 'N/A'}</td>
+                                            <td>${contDetail.assign_total_box || 'N/A'}</td>
+                                            <td>${contDetail.remaining_items || 'N/A'}</td>
+                                        </tr>
+                                        `;
+                                    }).join('')}
+                                </tbody>
+                            </table>
+                            ` : '<p style="color: #666; font-style: italic;">No container assignments.</p>'}
+                        </div>
+                    `).join('')}
                     ` : ''}
                     `;
                 }).join('')}
@@ -1169,7 +1284,7 @@ const generatePDFWithCanvas = async () => {
                         <CardContent sx={{ p: 3 }}>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
                                 <LocalShippingIcon color="primary" sx={{ fontSize: '1.5rem' }} />
-                                <Typography variant="h5" fontWeight="bold" color="#f58220" sx={{ fontSize: '1.5rem' }}>
+                                <Typography variant="h5" fontWeight="bold" color="#0a5250" sx={{ fontSize: '1.5rem' }}>
                                     Assigned Containers
                                 </Typography>
                             </Box>

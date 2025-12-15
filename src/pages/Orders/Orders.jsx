@@ -34,13 +34,16 @@ import {
     AlertTitle,
     Checkbox,
     Collapse,
-    Divider
+    Divider,
+    Tab
 } from "@mui/material";
 import Avatar from '@mui/material/Avatar';
 import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import EditIcon from "@mui/icons-material/Edit";
 import Tooltip from '@mui/material/Tooltip';
 import List from '@mui/material/List';
+import AssignmentIcon from '@mui/icons-material/Assignment';
+import {Autocomplete} from "@mui/material";
 import CargoIcon from '@mui/icons-material/LocalShipping'; // Or use InventoryIcon
 import { styled } from '@mui/material/styles';
 import VisibilityIcon from "@mui/icons-material/Visibility";
@@ -88,6 +91,9 @@ const OrdersList = () => {
     const [openAssignModal, setOpenAssignModal] = useState(false);
     const [containers, setContainers] = useState([]);
     const [selectedContainer, setSelectedContainer] = useState('');
+    // New states for direct assign
+    const [openDirectAssign, setOpenDirectAssign] = useState(false);
+    const [directSelectedContainers, setDirectSelectedContainers] = useState([]);
     // States for status update
     const [openStatusDialog, setOpenStatusDialog] = useState(false);
     const [selectedOrderForUpdate, setSelectedOrderForUpdate] = useState(null);
@@ -96,7 +102,7 @@ const OrdersList = () => {
     // ... your existing component logic (useState, handlers, etc.)
     // Handlers
     const handleStatusUpdate = (orderId, order) => {
-        console.log('Updating status for order:', orderId);
+      //  console.log('Updating status for order:', orderId);
         setSelectedOrderForUpdate(orderId);
         if (orderId && orderId.length) {
             const firstRec = orderId[0];
@@ -112,7 +118,7 @@ const OrdersList = () => {
         setSelectedStatus('');
     };
     const handleStatusChange = (event) => {
-        console.log('Selected status:', event.target.value);
+      //  console.log('Selected status:', event.target.value);
         setSelectedStatus(event.target.value);
     };
     const handleReceiverChange = (event) => {
@@ -125,7 +131,7 @@ const OrdersList = () => {
         if (!selectedOrderForUpdate || !selectedReceiverForUpdate || !selectedStatus) return;
         try {
             setLoading(true);
-            console.log('Updating status to:', selectedStatus, 'for receiver:', selectedReceiverForUpdate); 
+            // console.log('Updating status to:', selectedStatus, 'for receiver:', selectedReceiverForUpdate);      
             // API call to update receiver status (triggers notifications as per mapping)
             await api.put(`/api/orders/${selectedReceiverForUpdate.order_id}/receivers/${selectedReceiverForUpdate.id}/status`, {
                 status: selectedStatus,
@@ -152,7 +158,7 @@ const OrdersList = () => {
         handleCloseStatusDialog();
     };
 const fetchOrders = async () => {
-    console.log('Fetching orders with filters:', filters, 'page:', page, 'rowsPerPage:', rowsPerPage);
+    // console.log('Fetching orders with filters:', filters, 'page:', page, 'rowsPerPage:', rowsPerPage);
     setLoading(true);
     setError(null);
     try {
@@ -166,7 +172,7 @@ const fetchOrders = async () => {
             ...nonEmptyFilters,  // Use this instead of ...filters
         };
         const response = await api.get(`/api/orders`, { params });
-        console.log('Fetched orders:', response.data);
+        // console.log('Fetched orders:', response.data);
         
         // NEW: Auto-populate owner fields for each order if selected_sender_owner exists but name is empty
         const ordersWithAutoPopulate = await Promise.all(
@@ -177,7 +183,7 @@ const fetchOrders = async () => {
                 
                 if (order[selectedOwnerKey] && !order[ownerNameKey]?.trim()) {
                     try {
-                        console.log(`Auto-populating owner for order ${order.id} from ID: ${order[selectedOwnerKey]}`); // Debug log
+                        // console.log(`Auto-populating owner for order ${order.id} from ID: ${order[selectedOwnerKey]}`); // Debug log
                         const customerRes = await api.get(`/api/customers/${order[selectedOwnerKey]}`);
                         if (customerRes?.data) {
                             const customer = customerRes.data;
@@ -189,7 +195,7 @@ const fetchOrders = async () => {
                             updatedOrder[`${ownerPrefix}_email`] = customer.email || customer.contact_persons?.[0]?.email || '';
                             updatedOrder[`${ownerPrefix}_ref`] = customer.zoho_id || customer.ref || '';
                             updatedOrder[`${ownerPrefix}_remarks`] = customer.zoho_notes || customer.system_notes || '';
-                            console.log(`Auto-populated ${ownerNameKey} for order ${order.id}:`, updatedOrder[ownerNameKey]); // Debug log
+                            // console.log(`Auto-populated ${ownerNameKey} for order ${order.id}:`, updatedOrder[ownerNameKey]); // Debug log
                             return updatedOrder;
                         }
                     } catch (autoErr) {
@@ -228,7 +234,7 @@ const fetchOptions = async () => {
             api.get('api/options/statuses'),
         ]);
         // Places: assume data.places = [{id, name, is_destination, ...}]
-        console.log('optionssss', placesRes, companiesRes, categoriesRes, subcategoriesRes, statusesRes);
+        // console.log('optionssss', placesRes, companiesRes, categoriesRes, subcategoriesRes, statusesRes);
         const allPlaces = placesRes?.data?.places || [];
         setPlaces(allPlaces.map(p => ({ value: p.id.toString(), label: p.name })));
     } catch (error) {
@@ -252,7 +258,7 @@ const getPlaceName = (placeId) => {
 
 
     const handleReceiverAction = (receiver) => {
-        console.log('Editing receiver:', receiver);
+        // console.log('Editing receiver:', receiver);
         // Example: Open an edit modal or update state
         // You can implement logic here, e.g., setEditingReceiver(receiver);
         alert(`Editing receiver: ${receiver.receiver_name}`); // Placeholder for demo
@@ -304,22 +310,26 @@ const getPlaceName = (placeId) => {
         // Optional: Show success snackbar
     };
         // Fetch open containers
-        const fetchContainers = async () => {
-            if (loadingContainers) return; // Prevent multiple calls
-            setLoadingContainers(true);
-            setAssignmentError(null);
-            try {
-                const response = await api.get('/api/containers');
-                console.log('Fetched containers:', response);
-                setContainers(response.data.data || []);
-            } catch (err) {
-                console.error("Error fetching containers:", err);
-                setAssignmentError('Failed to fetch containers. Please check the backend query for table "cm".');
-                setSnackbar({ open: true, message: 'Failed to fetch containers', severity: 'error' });
-            } finally {
-                setLoadingContainers(false);
-            }
-        };
+    const fetchContainers = async (payload) => {
+    if (loadingContainers) return; // Prevent multiple calls
+    setLoadingContainers(true);
+    setAssignmentError(null);
+    try {
+        const response = await api.get('/api/containers', { params: payload });
+        // console.log('Fetched containers:', response);
+        // Filter for only available containers based on derived_status
+        const availableContainers = (response.data.data || []).filter(container => 
+            container.derived_status === 'Available' || container.status === 1 // Adjust based on your API response structure
+        );
+        setContainers(availableContainers);
+    } catch (err) {
+        console.error("Error fetching containers:", err);
+        setAssignmentError('Failed to fetch containers. Please check the backend query for table "cm".');
+        setSnackbar({ open: true, message: 'Failed to fetch containers', severity: 'error' });
+    } finally {
+        setLoadingContainers(false);
+    }
+};
     const fetchOrderDetails = async (orderId) => {
         setModalLoading(true);
         setModalError(null);
@@ -359,7 +369,7 @@ const getPlaceName = (placeId) => {
         setSelectedOrders([]);
     };
     const isSelected = (id) => selectedOrders.indexOf(id) !== -1;
-    const handleAssign = async (assignments) => {
+ const handleAssign = async (assignments) => {
     console.log('handleAssign called with assignments:', assignments);
     if (!assignments || Object.keys(assignments).length === 0) {
         setSnackbar({
@@ -432,6 +442,130 @@ const getPlaceName = (placeId) => {
         });
     }
 };
+// Updated handleDirectAssign to build batch assignments and use the main endpoint for multiple orders/receivers
+const handleDirectAssign = async () => {
+    if (!directSelectedContainers.length || !selectedOrders.length) {
+        setSnackbar({
+            open: true,
+            message: 'Please select at least one container and one order.',
+            severity: 'warning',
+        });
+        return;
+    }
+
+    try {
+        // Log selected containers for debugging
+        // console.log('Selected containers before filtering:', directSelectedContainers.map(c => ({ cid: c.cid, container_number: c.container_number, derived_status: c.derived_status })));
+
+        // Filter to only available containers based on derived_status
+        const availableContainers = directSelectedContainers.filter(c => c.derived_status === 'Available');
+        // console.log('Available containers after filtering:', availableContainers.map(c => ({ cid: c.cid, container_number: c.container_number })));
+
+        if (!availableContainers.length) {
+            // Provide more details on why filtered
+            const unavailable = directSelectedContainers.filter(c => c.derived_status !== 'Available');
+            const reasons = [...new Set(unavailable.map(c => c.derived_status))].join(', ');
+            throw new Error(`No available containers selected. Skipped due to statuses: ${reasons}. Please select containers with status "Available".`);
+        }
+
+        // Collect all eligible targets (receivers with positive remaining items in first detail)
+        const allTargets = [];
+        for (const orderId of selectedOrders) {
+            const order = orders.find(o => o.id === orderId);
+            if (!order || !order.receivers?.length) continue;
+
+            for (const receiver of order.receivers) {
+                const receiverId = receiver.id;
+                if (!receiverId) continue;
+
+                // Handle possible casing issues in property name
+                const orderItems = receiver.shippingdetails || receiver.shippingDetails || [];
+                if (orderItems.length === 0) continue;
+
+                const firstDetail = orderItems[0];
+                const remaining = parseInt(firstDetail.remainingItems) || 0;
+                if (remaining <= 0) continue;
+
+                allTargets.push({
+                    orderId: orderId.toString(),
+                    receiverId: receiverId.toString(),
+                    detailIndex: '0',
+                    remaining
+                });
+            }
+        }
+
+        if (allTargets.length === 0) {
+            throw new Error('No valid receivers with remaining items found');
+        }
+
+        // Build assignments by distributing containers round-robin to targets
+        const assignments = {};
+        const assignedReceivers = new Set();
+
+        for (let i = 0; i < availableContainers.length; i++) {
+            const cont = availableContainers[i];
+            const contId = cont.cid || cont.container_number;
+            if (!contId) continue;
+
+            const target = allTargets[i % allTargets.length];
+            assignedReceivers.add(target.receiverId);
+
+            if (!assignments[target.orderId]) {
+                assignments[target.orderId] = {};
+            }
+            if (!assignments[target.orderId][target.receiverId]) {
+                assignments[target.orderId][target.receiverId] = {};
+            }
+            const detailKey = target.detailIndex;
+            if (!assignments[target.orderId][target.receiverId][detailKey]) {
+                assignments[target.orderId][target.receiverId][detailKey] = {
+                    qty: target.remaining,
+                    containers: []
+                };
+            }
+            assignments[target.orderId][target.receiverId][detailKey].containers.push(contId);
+        }
+
+        if (Object.keys(assignments).length === 0) {
+            throw new Error('No valid assignments could be built');
+        }
+
+        console.log('Built assignments for direct batch:', assignments);
+
+        // Call the batch endpoint with assignments - adjusted route to avoid :id conflict
+        const response = await api.post('/api/orders/assign-containers-to-orders', {
+            assignments,
+            order_ids: selectedOrders // Optional, for fallback
+        });
+
+        if (response.data.success) {
+            setSnackbar({
+                open: true,
+                message: `Successfully assigned ${availableContainers.length} containers to ${assignedReceivers.size} receivers across ${selectedOrders.length} orders.`,
+                severity: 'success',
+            });
+            fetchContainers(); // Refresh available containers
+            fetchOrders(); // Refresh orders list
+        } else {
+            // Handle backend-specific errors like skipped containers
+            if (response.data.error && response.data.skipped) {
+                throw new Error(`${response.data.error}. Skipped containers: ${response.data.skipped}`);
+            }
+            throw new Error(response.data.message || 'Assignment failed');
+        }
+    } catch (err) {
+        console.error('Error in direct assign:', err);
+        setSnackbar({
+            open: true,
+            message: err.message || 'Failed to assign containers',
+            severity: 'error',
+        });
+    } finally {
+        setOpenDirectAssign(false);
+        setDirectSelectedContainers([]);
+    }
+};      
     const onUpdateAssignedQty = (receiverId, newQty) => {
         setOrders(prevOrders => prevOrders.map(order => ({
             ...order,
@@ -535,6 +669,36 @@ const getPlaceName = (placeId) => {
         } finally {
             setExporting(false);
         }
+    };
+    
+
+    const handleOpenDirectAssign =async  (tempData) => {
+
+    try {
+        const response = await api.get('/api/containers?container_number=&container_size=&container_type=&owner_type=&status=Available&location=&page=1&limit=50');
+        console.log('Fetched containers:', response);
+        // Filter for only available containers based on derived_status
+        // const availableContainers = (response.data.data || []).filter(container => 
+        //     container.derived_status === 'Available' || container.status === 1 // Adjust based on your API response structure
+        // );
+        setContainers(response.data.data || [] );
+    } catch (err) {
+        console.error("Error fetching containers:", err);
+        setAssignmentError('Failed to fetch containers. Please check the backend query for table "cm".');
+        setSnackbar({ open: true, message: 'Failed to fetch containers', severity: 'error' });
+    } finally {
+        setLoadingContainers(false);
+    }
+
+        // if (!containers.length) {
+            // fetchContainers(payload);
+        // }
+        setOpenDirectAssign(true);
+    };
+
+    const handleCloseDirectAssign = () => {
+        setOpenDirectAssign(false);
+        setDirectSelectedContainers([]);
     };
     useEffect(() => {
         fetchOptions();
@@ -722,7 +886,7 @@ const getStatusColors = (status) => {
                     />
                 </Box>
                 {/* Items List - Vertical stack with improved spacing */}
-                <Stack spacing={1} sx={{ maxHeight: 200, overflow: 'auto' }}>
+                <Stack spacing={1} sx={{ maxHeight: 'auto', overflow: 'auto' }}>
                     
                      {/* Add scrollable height for better UX in dense lists */}
                     {items.length > 0 ? (
@@ -852,14 +1016,41 @@ const getStatusColors = (status) => {
             </Box>
         </Card>
     );
-    // Enhanced parse for containers: Simple string split
-    const parseContainersToList = (containersStr) => {
-        if (!containersStr) return [];
-        return containersStr.split(', ').map(cont => ({ primary: cont.trim() }));
-    };
-    // Enhanced PrettyContainersList: Horizontal chips for compact, modern feel
-    const PrettyContainersList = ({ items, title }) => (
-        console.log('Containers items:', items),
+// Updated parse function to extract unique container numbers from the full order structure
+// Assumes 'order' is the full JSON object provided (e.g., { id: 77, receivers: [...] })
+const parseContainersToList = (order) => {
+    if (!order || !order.receivers || order.receivers.length === 0) {
+        return [];
+    }
+
+    const containerSet = new Set(); // Use Set for uniqueness
+console.log('Parsing containers from order:', order);   
+    order.receivers.forEach((receiver) => {
+        console.log('Processing receiver:', receiver);
+        if (receiver.shippingdetails && Array.isArray(receiver.shippingdetails)) {
+            receiver.shippingdetails.forEach((shippingDetail) => {
+                if (shippingDetail.containerDetails && Array.isArray(shippingDetail.containerDetails)) {
+                    shippingDetail.containerDetails.forEach((containerDetail) => {
+                        if (containerDetail.container && containerDetail.container.container_number) {
+                            containerSet.add(containerDetail.container.container_number.trim());
+                        } else if (containerDetail.container_number) {
+                            // Handle cases where container_number is directly on containerDetail.container
+                            containerSet.add(containerDetail.container_number.trim());
+                        }
+                    });
+                }
+            });
+        }
+    });
+
+    // Convert to array of { primary: containerNumber } objects
+    return Array.from(containerSet).map((num) => ({ primary: num }));
+};
+
+// Enhanced PrettyContainersList remains the same, but now feed it the parsed list
+const PrettyContainersList = ({ items, title }) => {
+    console.log('Containers items:', items);
+    return (
         <Box sx={{ p: 1, maxWidth: 280 }}>
             <Typography variant="caption" sx={{ fontWeight: 'medium', color: 'text.secondary', mb: 1, display: 'block' }}>
                 {title} ({items.length})
@@ -876,11 +1067,11 @@ const getStatusColors = (status) => {
                             sx={{
                                 borderRadius: 1.5,
                                 borderColor: 'divider',
-                                backgroundColor: '#f8f9fa', // Changed to light grey background
+                                backgroundColor: '#f8f9fa',
                                 '& .MuiChip-icon': { color: 'secondary.main' },
                                 fontSize: '0.75rem',
                                 height: 24,
-                                '&:hover': { backgroundColor: '#e9ecef' } // Darker grey on hover
+                                '&:hover': { backgroundColor: '#e9ecef' }
                             }}
                         />
                     ))
@@ -892,7 +1083,7 @@ const getStatusColors = (status) => {
                         sx={{
                             borderRadius: 1.5,
                             borderColor: 'divider',
-                            backgroundColor: '#f8f9fa', // Changed to light grey background
+                            backgroundColor: '#f8f9fa',
                             color: 'text.secondary',
                             fontSize: '0.75rem',
                             height: 24,
@@ -902,6 +1093,11 @@ const getStatusColors = (status) => {
             </Stack>
         </Box>
     );
+};
+
+// Example usage in your component (assuming 'order' is the JSON data):
+// const containerList = parseContainersToList(order);
+// <PrettyContainersList items={containerList} title="Containers" />
     const StyledTableRow = styled(TableRow)(({ theme }) => ({
         '&:nth-of-type(odd)': {
             backgroundColor: theme.palette.action.hover,
@@ -970,6 +1166,21 @@ const getStatusColors = (status) => {
                             }}
                         >
                             Add Selected to Container ({numSelected})
+                        </Button>
+                        {/* New Direct Assign Button */}
+                        <Button
+                            variant="contained"
+                            disabled={numSelected === 0 || loadingContainers}
+                            onClick={() => handleOpenDirectAssign(selectedOrders)}
+                            startIcon={<AssignmentIcon />}
+                            sx={{
+                                borderRadius: 2,
+                                backgroundColor: "#f58220",
+                                color: "#fff",
+                                "&:hover": { backgroundColor: "#f58220" },
+                            }}
+                        >
+                            Direct Assign Containers ({numSelected})
                         </Button>
                         <Button
                             variant="outlined"
@@ -1053,7 +1264,7 @@ const getStatusColors = (status) => {
                     <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="created">Total Weight</StyledTableHeadCell>,
                     <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="actions">Total Items</StyledTableHeadCell>,
                 
-                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="status">Status</StyledTableHeadCell>,
+                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="updated_at">Updated At</StyledTableHeadCell>,
                     // <TableCell key="assoc">Associated Container</TableCell>,
                     <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="created">Created At</StyledTableHeadCell>,
                     <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="actions">Actions</StyledTableHeadCell>
@@ -1065,19 +1276,35 @@ const getStatusColors = (status) => {
                 console.log('Rendering order: conatiners', order.receivers);
                 const isItemSelected = isSelected(order.id);
                 // renderReceivers( order.receivers);
-                const containersList = order.receiver_containers_json ? order.receiver_containers_json.split(', ').map(cont => ({ primary: cont })) : []; // Simple for containers
+                const containersList = order.receivers.forEach((receiver) => {
+        console.log('Processing receiver: connnnnnnntainerssss', receiver);
+        if (receiver.shippingdetails && Array.isArray(receiver.shippingdetails)) {
+            receiver.shippingdetails.forEach((shippingDetail) => {
+                if (shippingDetail.containerDetails && Array.isArray(shippingDetail.containerDetails)) {
+                    shippingDetail.containerDetails.forEach((containerDetail) => {
+                        if (containerDetail && containerDetail) {
+                            // console.log('Found container detail:', containerDetail.container);
+                            // return containersList.push({primary: containerDetail.container.container_number.trim() } );
+                        }
+                    });
+                }
+            });
+        }
+    });
                 const status = order.overall_status || order.status || 'Created';
                 const colors = getStatusColors(status);
-
+console.log('Ren container list:', containersList);
                 // Updated: Compute products summary from receivers[].shippingDetails (corrected field names to snake_case)
                 const productsSummary = order.receivers.flatMap(receiver => 
-                    (receiver.shippingDetails || []).map(detail => ({
+                    (receiver.shippingdetails || []).map(detail => ({
                         category: detail.category || 'Unknown',
                         subcategory: detail.subcategory || '',
                         type: detail.type || 'Package', // Item type (e.g., "Package")
                         weight: parseFloat(detail.weight || 0),
-                        total_number: parseInt(detail.total_number || 0),
-                        item_ref: detail.item_ref || ''
+                        total_number: parseInt(detail.totalNumber || 0),
+                        itemRef: detail.itemRef || '',
+                        shippingDetailStatus: detail.status || '',
+                        // containerName: detail.containerDetails || []
                     }))
                 );
                 const totalItems = productsSummary.reduce((sum, p) => sum + p.total_number, 0);
@@ -1127,22 +1354,24 @@ const getStatusColors = (status) => {
                                 </Typography>
                             </StyledTooltip>
                         </StyledTableCell>
-                        <TableCell>
-                            <Tooltip
-                                // title={<PrettyContainersList items={parseContainersToList(order.receiver_containers_json)} title="Containers" />}
-                                title={<PrettyList items={parseContainersToList(order.receiver_containers_json || '')} title="Containers" />}
-                                arrow
-                                placement="top"
+                       <TableCell>
+                           <StyledTooltip
+                               title={<PrettyList items={parseContainersToList(order)} title="Containers" />}
+                               arrow
+                               placement="top"
+                               PopperProps={{
+                                    sx: { '& .MuiTooltip-tooltip': { border: '1px solid #e0e0e0' } }
+                                }}
                             >
                                 <Typography variant="body2" noWrap sx={{ maxWidth: 120, cursor: 'help', fontWeight: 'medium' }}>
-                                    {order.receiver_containers_json
-                                        ? <>{containersList.length > 1 && <sup style={{ padding: 4, borderRadius: 50, float: 'left', background: '#00695c', color: '#fff' }}>({containersList.length})</sup>}
-                                            <span style={{ padding: 0 }}>{containersList.map(c => c.primary || '').join(', ').substring(0, 25)}...</span></>
-                                        : '-'
+                                    {parseContainersToList(order)?.length > 0
+                                        ? <>{parseContainersToList(order)?.length > 1 && <sup style={{ padding: 4, borderRadius: 50, float: 'left', background: '#00695c', color: '#fff' }}>({parseContainersToList(order).length})</sup>}
+                                            <span style={{ padding: 0 }}>{parseContainersToList(order).map(c => c.primary || '').join(', ').substring(0, 25)}...</span></>
+                                        : '-'   
                                     }
                                 </Typography>
-                            </Tooltip>
-                        </TableCell>
+                            </StyledTooltip>
+                        </TableCell>    
                         {/* Updated Products column using actual shippingDetails data (corrected field names) */}
                         <StyledTableCell>
                             <Tooltip
@@ -1157,7 +1386,8 @@ const getStatusColors = (status) => {
                                                     <Typography variant="body2"><strong>Item Type:</strong> {product.type}</Typography>
                                                     <Typography variant="body2"><strong>Weight:</strong> {product.weight} kg</Typography>
                                                     <Typography variant="body2"><strong>Total Number:</strong> {product.total_number}</Typography>
-                                                    {product.item_ref && <Typography variant="body2"><strong>Item Ref:</strong> {product.item_ref}</Typography>}
+                                                    {/* <Typography variant="body2"><strong>Status:</strong> {product.status || '-'}</Typography> */}
+                                                    {product.itemRef && <Typography variant="body2"><strong>Item Ref:</strong> {product.itemRef}</Typography>}
                                                 </Box>
                                             ))
                                         ) : (
@@ -1191,15 +1421,7 @@ const getStatusColors = (status) => {
 
 
                         <TableCell>
-                            <Chip
-                                label={`${status.substring(0, 15)}...`} // Internal status for admin
-                                // size="small"
-                                sx={{
-                                    flexShrink: 0,
-                                    backgroundColor: colors.bg,
-                                    color: colors.text
-                                }}
-                            />
+                        {new Date(order.updated_at).toLocaleDateString()}
                         </TableCell>
                         <StyledTableCell>{new Date(order.created_at).toLocaleDateString()}</StyledTableCell>
                         <StyledTableCell>
@@ -1275,6 +1497,54 @@ const getStatusColors = (status) => {
                     onUpdateReceiver={handleUpdateReceiver}
    
                 />
+                {/* New Direct Assign Dialog */}
+                <Dialog
+                    open={openDirectAssign}
+                    onClose={handleCloseDirectAssign}
+                    maxWidth="sm"
+                    fullWidth
+                >
+                    <DialogTitle>Select Containers for All Selected Orders ({numSelected})</DialogTitle>
+                    <DialogContent>
+                        <Typography variant="body2" color="text.secondary" mb={2}>
+                            Choose one or more containers to assign to all shipping details of the selected orders (full quantity).
+                        </Typography>
+                        {loadingContainers ? (
+                            <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+                                <CircularProgress size={24} />
+                            </Box>
+                        ) : (
+                            <Autocomplete
+                                multiple
+                                value={directSelectedContainers}
+                                onChange={(event, newValue) => setDirectSelectedContainers(newValue)}
+                                options={containers}
+                                getOptionLabel={(option) => option.container_number || 'Unknown'}
+                                isOptionEqualToValue={(option, value) => option.cid === value.cid}
+                                renderInput={(params) => (
+                                    <TextField
+                                        {...params}
+                                        label="Select Containers"
+                                        placeholder="Search and select containers..."
+                                        fullWidth
+                                    />
+                                )}
+                                sx={{ mt: 1 }}
+                            />
+                        )}
+                    </DialogContent>
+                    <DialogActions>
+                        <Button onClick={handleCloseDirectAssign}>Cancel</Button>
+                        <Button
+                            onClick={handleDirectAssign}
+                            variant="contained"
+                            disabled={!directSelectedContainers.length || loadingContainers}
+                            startIcon={<AssignmentIcon />}
+                        >
+                            Assign to All ({directSelectedContainers.length})
+                        </Button>
+                    </DialogActions>
+                </Dialog>
                 {/* Status Update Dialog - Updated for per-receiver status */}
                 <Dialog
                     open={openStatusDialog}

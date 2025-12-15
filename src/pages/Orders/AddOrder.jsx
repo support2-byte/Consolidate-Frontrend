@@ -6639,9 +6639,10 @@ const handleSave = async () => {
                                         ))}
                                     </Stack>
                                     {formData.receivers.some(rec => rec.containers && rec.containers.length > 0) && (
+                                        console.log('Rendering Assigned Containers section', formData.receivers),
                                         <Stack spacing={1}>
                                             <Typography variant="body1" fontWeight="medium">Assigned Containers:</Typography>
-                                            {formData.receivers.flatMap(rec => rec.containers || []).map((cont, i) => (
+                                            {formData.receivers?.flatMap(rec => rec.containers || []).map((cont, i) => (
                                                 <Stack direction="row" justifyContent="space-between" alignItems="center" key={i}>
                                                     <Chip sx={{ p: 2 }} label={cont} color="info" size="small" variant="outlined" />
                                                 </Stack>
