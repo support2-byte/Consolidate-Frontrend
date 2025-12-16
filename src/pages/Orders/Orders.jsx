@@ -419,7 +419,7 @@ const getPlaceName = (placeId) => {
 
             // Refresh data
             fetchContainers(); // Refresh available containers
-            setOpenAssignModal(false);
+            // setOpenAssignModal(false);
             setSelectedOrders([]); // Clear order selection
             setSelectedContainer(''); // Clear if single-container mode, but deprecated
 

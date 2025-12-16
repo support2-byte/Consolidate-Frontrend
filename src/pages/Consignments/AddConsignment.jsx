@@ -1543,35 +1543,35 @@ const addContainer = () => {
       if (err.response) {
         const { error: apiError, details, message: backendMessage } = err.response.data || {};
         let backendValidationErrors = {};
-        if (details && Array.isArray(details)) {
-          details.forEach(field => {
-            const camelField = field.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
-            backendValidationErrors[camelField] = `${field.charAt(0).toUpperCase() + field.slice(1).replace(/_/g, ' ')} is required or invalid`;
-          });
-        } else if (details) {
-          Object.entries(details).forEach(([field, msg]) => {
-            const camelField = field.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
-            backendValidationErrors[camelField] = msg;
-          });
-        } else {
-          if (apiError?.includes('duplicate') || apiError?.includes('unique')) {
-            backendValidationErrors.consignment_number = 'Consignment Number already exists.';
-          } else if (apiError?.includes('foreign key')) {
-            backendValidationErrors.shipper = 'Invalid Shipper, Consignee, Bank, Vessel, or Shipping Line.';
-          }
-        }
+          // if (details && Array.isArray(details)) {
+          //   details.forEach(field => {
+          //     const camelField = field.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
+          //     backendValidationErrors[camelField] = `${field.charAt(0).toUpperCase() + field.slice(1).replace(/_/g, ' ')} is required or invalid`;
+          //   });
+          // } else if (details) {
+          //   Object.entries(details).forEach(([field, msg]) => {
+          //     const camelField = field.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
+          //     backendValidationErrors[camelField] = msg;
+          //   });
+          // } else {
+          //   if (apiError?.includes('duplicate') || apiError?.includes('unique')) {
+          //     backendValidationErrors.consignment_number = 'Consignment Number already exists.';
+          //   } else if (apiError?.includes('foreign key')) {
+          //     backendValidationErrors.shipper = 'Invalid Shipper, Consignee, Bank, Vessel, or Shipping Line.';
+          //   }
+          // }
         setErrors(prev => ({ ...prev, ...backendValidationErrors }));
         const backendMsg = apiError || backendMessage || err.message || 'Failed to update consignment';
         let detailsMsg = '';
-        if (details && Array.isArray(details)) {
-          const fieldNames = details.map(field => field.charAt(0).toUpperCase() + field.slice(1).replace(/_/g, ' '));
-          detailsMsg = `\nValidation Errors: ${fieldNames.join(', ')} (e.g., select valid options with names).`;
-        } else if (details) {
-          detailsMsg = `\nDetails: ${JSON.stringify(details)}`;
-        }
-        if (err.response.status === 500) {
-          detailsMsg += `\nServer Error (500): Check backend logs/DB for SQL issues (e.g., duplicate number, invalid ID). Try unique consignment_number.`;
-        }
+        // if (details && Array.isArray(details)) {
+        //   const fieldNames = details.map(field => field.charAt(0).toUpperCase() + field.slice(1).replace(/_/g, ' '));
+        //   detailsMsg = `\nValidation Errors: ${fieldNames.join(', ')} (e.g., select valid options with names).`;
+        // } else if (details) {
+        //   detailsMsg = `\nDetails: ${JSON.stringify(details)}`;
+        // }
+        // if (err.response.status === 500) {
+        //   detailsMsg += `\nServer Error (500): Check backend logs/DB for SQL issues (e.g., duplicate number, invalid ID). Try unique consignment_number.`;
+        // }
         setSnackbar({
           open: true,
           message: `Backend Error: ${backendMsg}${detailsMsg}`,
