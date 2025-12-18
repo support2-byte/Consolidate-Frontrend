@@ -137,7 +137,7 @@ const getStatusColors = (status) => {
     message: "",
     severity: "success",
   });
-  const availableContainers = useMemo(() => containers.filter(c => c.derived_status === 'Available'), [containers]);
+  const availableContainers = useMemo(() => containers.filter(c => c.derived_status === 'Available' || 'Assigned to job'), [containers]);
 
   // Column configuration
   const headerCols = [
@@ -530,255 +530,298 @@ const getStatusColors = (status) => {
     return ass;
   }, [selectedOrders, detailedOrders, orders, assignmentQuantities, selectedContainersPerDetail, availableContainers, getDetailKey]);
 
-  // Enhanced ReceiverRow with Accordion for Hierarchy
-  const ReceiverRow = ({ rec, globalIndex }) => {
-    const fullOrder = detailedOrders[rec.orderId] || orders.find(o => o.id === rec.orderId);
-    const fullRec = fullOrder?.receivers?.find(r => r.id === rec.id) || rec;
-    const shippingDetails = fullRec.shippingDetails || [];
-    const totalPC = shippingDetails.reduce((sum, sd) => sum + (parseInt(sd.remainingItems || sd.totalNumber || 0) || 0), 0); // Sum of remaining
-    const totalWeight = shippingDetails.reduce((sum, sd) => sum + parseFloat(sd.weight || 0), 0);
-    let delivered = parseInt(fullRec.qtyDelivered || rec.qty_delivered || 0) || 0;
-    delivered = Math.min(delivered, totalPC + totalPC); // Cap reasonably, but since remaining is post-delivered
-    const totalNewAssignedQty = shippingDetails.reduce((sum, _, idx) => sum + (assignmentQuantities[getDetailKey(rec.orderId, rec.id, idx)] || 0), 0);
-    const localRemaining = Math.max(0, totalPC - totalNewAssignedQty);
-    const isEditingAssign = editingAssignReceiverId === rec.id;
-    const address = shippingDetails.map(d => d.deliveryAddress).filter(Boolean).join(', ') || fullRec.receiverAddress || 'N/A';
-    const contact = fullRec.receiverContact || 'N/A';
-    const email = fullRec.receiverEmail || 'N/A';
+ // Enhanced ReceiverRow with Accordion for Hierarchy
+// Enhanced ReceiverRow with Accordion for Hierarchy
+const ReceiverRow = ({ rec, globalIndex }) => {
+  const fullOrder = detailedOrders[rec.orderId] || orders.find(o => o.id === rec.orderId);
+  const fullRec = fullOrder?.receivers?.find(r => r.id === rec.id) || rec;
+  const shippingDetails = fullRec.shippingDetails || [];
+  const [localShippingDetails, setLocalShippingDetails] = useState(() =>
+    shippingDetails.map(sd => ({
+      ...sd,
+      containerDetails: sd.containerDetails ? [...sd.containerDetails] : []
+    }))
+  );
 
-    const existingContainers = shippingDetails.flatMap(sd =>
-      (sd.containerDetails || sd.container_details || []).map(cd => cd.container?.cid).filter(Boolean)
+  // Update localShippingDetails when shippingDetails change (e.g., on re-render)
+  useEffect(() => {
+    setLocalShippingDetails(shippingDetails.map(sd => ({
+      ...sd,
+      containerDetails: sd.containerDetails ? [...sd.containerDetails] : []
+    })));
+  }, [shippingDetails]);
+
+  const totalPC = localShippingDetails.reduce((sum, sd) => sum + (parseInt(sd.remainingItems || sd.totalNumber || 0) || 0), 0); // Sum of remaining
+  const totalWeight = localShippingDetails.reduce((sum, sd) => sum + parseFloat(sd.weight || 0), 0);
+  let delivered = parseInt(fullRec.qtyDelivered || rec.qty_delivered || 0) || 0;
+  delivered = Math.min(delivered, totalPC + totalPC); // Cap reasonably, but since remaining is post-delivered
+  const totalNewAssignedQty = localShippingDetails.reduce((sum, _, idx) => sum + (assignmentQuantities[getDetailKey(rec.orderId, rec.id, idx)] || 0), 0);
+  const localRemaining = Math.max(0, totalPC - totalNewAssignedQty);
+  const isEditingAssign = editingAssignReceiverId === rec.id;
+  const address = localShippingDetails.map(d => d.deliveryAddress).filter(Boolean).join(', ') || fullRec.receiverAddress || 'N/A';
+  const contact = fullRec.receiverContact || 'N/A';
+  const email = fullRec.receiverEmail || 'N/A';
+
+  const existingContainers = localShippingDetails.flatMap(sd =>
+    (sd.containerDetails || []).map(cd => cd.container?.cid).filter(Boolean)
+  );
+  const totalExistingCont = existingContainers.length;
+  const existingContainersPreview = existingContainers.map(cid =>
+    availableContainers.find(c => String(c.cid) === String(cid))?.container_number || String(cid)
+  ).filter(Boolean);
+  const totalSelectedCont = localShippingDetails.reduce((sum, _, idx) => sum + ((selectedContainersPerDetail[getDetailKey(rec.orderId, rec.id, idx)] || []).length), 0);
+  const totalContForRec = totalExistingCont + totalSelectedCont;
+  const assignedContainersPreview = localShippingDetails.reduce((acc, _, idx) => [...acc, ...((selectedContainersPerDetail[getDetailKey(rec.orderId, rec.id, idx)] || []).map(cid => availableContainers.find(c => String(c.cid) === String(cid))?.container_number || String(cid)))], []).filter(Boolean);
+  const allContainersPreview = [...new Set([...existingContainersPreview, ...assignedContainersPreview])];
+  const hasShippingDetails = localShippingDetails.length > 0;
+  const key = `${rec.orderId}-${rec.id}`;
+  const isExpanded = expandedReceivers.has(key);
+
+  // Auto-expand if no assignments yet and has shipping details
+  useEffect(() => {
+    if (hasShippingDetails && totalNewAssignedQty === 0 && totalContForRec === 0 && !isExpanded) {
+      toggleExpanded(rec.orderId, rec.id);
+    }
+  }, [hasShippingDetails, totalNewAssignedQty, totalContForRec, isExpanded, rec.orderId, rec.id, toggleExpanded]);
+
+  const handleRemoveExisting = useCallback((detailIdx, contIdx) => {
+    setLocalShippingDetails(prev => {
+      const newDetails = [...prev];
+      const detail = { ...newDetails[detailIdx] };
+      const contDetail = detail.containerDetails[contIdx];
+      const removedQty = parseInt(contDetail.assign_total_box || 0) || 0;
+      // Update remaining items by adding back the removed qty
+      detail.remainingItems = (parseInt(detail.remainingItems || 0) || 0) + removedQty;
+      // Remove the container entry
+      detail.containerDetails = detail.containerDetails.filter((_, i) => i !== contIdx);
+      newDetails[detailIdx] = detail;
+      return newDetails;
+    });
+  }, []);
+
+  const handleAssignBlur = useCallback(() => {
+    if (totalPC > 0) {
+      localShippingDetails.forEach((sd, idx) => {
+        const detailRemaining = parseInt(sd.remainingItems || sd.totalNumber || 0);
+        const proportion = detailRemaining / totalPC;
+        const newQty = Math.min(detailRemaining, Math.round(proportion * tempAssignQty));
+        setAssignmentQuantities(prev => ({ ...prev, [getDetailKey(rec.orderId, rec.id, idx)]: newQty }));
+      });
+    } else if (localShippingDetails.length > 0) {
+      const equalQty = Math.floor(tempAssignQty / localShippingDetails.length);
+      localShippingDetails.forEach((sd, idx) => {
+        const detailRemaining = parseInt(sd.remainingItems || sd.totalNumber || 0);
+        const qty = Math.min(detailRemaining, idx === 0 ? tempAssignQty - (equalQty * (localShippingDetails.length - 1)) : equalQty);
+        setAssignmentQuantities(prev => ({ ...prev, [getDetailKey(rec.orderId, rec.id, idx)]: qty }));
+      });
+    }
+    setEditingAssignReceiverId(null);
+  }, [totalPC, localShippingDetails, tempAssignQty, getDetailKey, rec.orderId, rec.id]);
+
+  const handleAssignKeyDown = useCallback((e) => {
+    if (e.key === 'Enter') handleAssignBlur();
+    else if (e.key === 'Escape') setEditingAssignReceiverId(null);
+  }, [handleAssignBlur]);
+
+  // Generate subrows array
+  const subRows = isExpanded && hasShippingDetails ? localShippingDetails.map((detail, idx) => {
+    const keyDetail = getDetailKey(rec.orderId, rec.id, idx);
+    console.log('remaining ',detail)
+    const detailRemaining = parseInt(detail.remainingItems || detail.totalNumber || 0);
+    const originalTotal = parseInt(detail.totalNumber || 0);
+    const progressValue = originalTotal > 0 ? ((originalTotal - detailRemaining) / originalTotal * 100) : 0;
+    // Filter out invalid/empty container details (e.g., all empty strings/null)
+    const validContainerDetails = (detail.containerDetails || []).filter(cd =>
+      (parseInt(cd.assign_total_box || 0) > 0 || parseFloat(cd.assign_weight || 0) > 0) && cd.container
     );
-    const totalExistingCont = existingContainers.length;
-    const existingContainersPreview = existingContainers.map(cid =>
-      availableContainers.find(c => String(c.cid) === String(cid))?.container_number || String(cid)
-    ).filter(Boolean);
-    const totalSelectedCont = shippingDetails.reduce((sum, _, idx) => sum + ((selectedContainersPerDetail[getDetailKey(rec.orderId, rec.id, idx)] || []).length), 0);
-    const totalContForRec = totalExistingCont + totalSelectedCont;
-    const assignedContainersPreview = shippingDetails.reduce((acc, _, idx) => [...acc, ...((selectedContainersPerDetail[getDetailKey(rec.orderId, rec.id, idx)] || []).map(cid => availableContainers.find(c => String(c.cid) === String(cid))?.container_number || String(cid)))], []).filter(Boolean);
-    const allContainersPreview = [...new Set([...existingContainersPreview, ...assignedContainersPreview])];
-    const hasShippingDetails = shippingDetails.length > 0;
-    const isExpanded = expandedReceivers.has(`${rec.orderId}-${rec.id}`);
-
-    const handleAssignBlur = useCallback(() => {
-      if (totalPC > 0) {
-        shippingDetails.forEach((sd, idx) => {
-          const detailRemaining = parseInt(sd.remainingItems || sd.totalNumber || 0);
-          const proportion = detailRemaining / totalPC;
-          const newQty = Math.min(detailRemaining, Math.round(proportion * tempAssignQty));
-          setAssignmentQuantities(prev => ({ ...prev, [getDetailKey(rec.orderId, rec.id, idx)]: newQty }));
-        });
-      } else if (shippingDetails.length > 0) {
-        const equalQty = Math.floor(tempAssignQty / shippingDetails.length);
-        shippingDetails.forEach((sd, idx) => {
-          const detailRemaining = parseInt(sd.remainingItems || sd.totalNumber || 0);
-          const qty = Math.min(detailRemaining, idx === 0 ? tempAssignQty - (equalQty * (shippingDetails.length - 1)) : equalQty);
-          setAssignmentQuantities(prev => ({ ...prev, [getDetailKey(rec.orderId, rec.id, idx)]: qty }));
-        });
-      }
-      setEditingAssignReceiverId(null);
-    }, [totalPC, shippingDetails, tempAssignQty, getDetailKey, rec.orderId, rec.id]);
-
-    const handleAssignKeyDown = useCallback((e) => {
-      if (e.key === 'Enter') handleAssignBlur();
-      else if (e.key === 'Escape') setEditingAssignReceiverId(null);
-    }, [handleAssignBlur]);
-
-    // Generate subrows array
-    const subRows = isExpanded && hasShippingDetails ? shippingDetails.map((detail, idx) => {
-      const key = getDetailKey(rec.orderId, rec.id, idx);
-      const detailRemaining = parseInt(detail.remainingItems || detail.totalNumber || 0);
-      const originalTotal = parseInt(detail.totalNumber || 0);
-      const progressValue = originalTotal > 0 ? ((originalTotal - detailRemaining) / originalTotal * 100) : 0;
-      return (
-        <TableRow key={`detail-${key}`} sx={{ bgcolor: theme.background }}>
-          <TableCell colSpan={visibleColumnCount}>
-            <Accordion defaultExpanded sx={{ boxShadow: 'none', '&:before': { display: 'none' } }}>
-              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                <Typography variant="subtitle1" fontWeight="bold">
-                  Shipping Detail {idx + 1}: {detail.deliveryAddress || 'N/A'} ({detail.category} - {detailRemaining} pcs remaining, {detail.weight} kg)
-                </Typography>
-              </AccordionSummary>
-              <AccordionDetails sx={{ p: 2 }}>
-                <Grid container p={3} sx={{ bgcolor: theme.background, width: '100%',justifyContent:"space-evenly" }} spacing={3}>
-                  <Grid item>
-                    <Typography variant="body2" color={theme.primary} mb={1}>Existing Assignments:</Typography>
-                    <Stack sx={{ bgcolor: theme.background, width:900 }} spacing={1}>
-                      {(detail.containerDetails || []).map((contDetail, contIdx) => (
+    return (
+      <TableRow key={`detail-${keyDetail}`} sx={{ bgcolor: theme.background }}>
+        <TableCell colSpan={visibleColumnCount}>
+          <Accordion defaultExpanded sx={{ boxShadow: 'none', '&:before': { display: 'none' } }}>
+            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+              <Typography variant="subtitle1" fontWeight="bold">
+                Shipping Detail {idx + 1}: {detail.deliveryAddress || 'N/A'} ({detail.category} - {detailRemaining} pcs remaining, {detail.weight} kg)
+              </Typography>
+            </AccordionSummary>
+            <AccordionDetails sx={{ p: 2 }}>
+              <Grid container p={3} sx={{ bgcolor: theme.background, width: '100%', justifyContent: "space-between" }} spacing={3}>
+                <Grid item xs={12} md={6}>
+                  <Typography variant="body2" color={theme.primary} mb={1}>Existing Assignments:</Typography>
+                  <Stack sx={{ bgcolor: theme.background }} spacing={1}>
+                    {(() => {
+                      // Debug log moved outside JSX
+                      console.log('Container Detail:', detail.containerDetails);
+                      return validContainerDetails.map((contDetail, contIdx) => (
                         <Card key={contIdx} variant="outlined" sx={{ p: 1, bgcolor: theme.surface }}>
                           <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2}>
-                            <Stack>
+                  
                               <Typography variant="body2" fontWeight="bold">{contDetail.container?.container_number || 'N/A'}</Typography>
-                              <Typography variant="caption" color={theme.textSecondary}>Track No: {detail?.itemRef}</Typography>
-                              <Typography variant="caption" color={theme.textSecondary}>Location: {contDetail.container?.location}</Typography>
-                          <StatusChip
-                                            status={contDetail.status}
-                                            size="small"
-                                            sx={{
-                                                fontSize: 10,
-                                                height: 35,
-                                                minWidth: 40,
-                                                flexShrink: 0,
-                                                '& .MuiChip-label': { p: 3 }
-                                            }}
-                                        />
-
-                           </Stack>
+                              {/* <Typography variant="caption" color={theme.textSecondary}>Location: {contDetail.container?.location}</Typography> */}
+                              <StatusChip
+                                status={contDetail.status}
+                                size="small"
+                                
+                                sx={{
+                                  
+                                  fontSize: 10,
+                                  height: 35,
+                                  minWidth: 40,
+                                  flexShrink: 0,
+                                  
+                                  '& .MuiChip-label': { p: 3, }
+                                }}
+                              />
+                
                             <Stack direction="column" alignSelf="center" alignItems="center" gap={1}>
-                             
-                           
                             </Stack>
                             <Stack direction="row" gap={1} alignItems="center" justifyContent="center">
-                             <Stack
-                              direction="row"
-                              spacing={1}
-                              alignItems="center"
-                              justifyContent="center"
-                             >
-                              <Chip label={`${contDetail.assign_total_box || 0} Units`} style={{ width: 100 }} size="large" color="success" />
-                              <Chip label={`${contDetail.assign_weight || 0} kg`} style={{ width: 100 }} size="large" color="primary" variant="outlined" />
-                             </Stack>
-                              <IconButton size="small" color="error" onClick={() => {/* Remove existing */ }}><DeleteIcon fontSize="small" /></IconButton>
+                              <Stack
+                                direction="row"
+                                spacing={1}
+                                alignItems="center"
+                                justifyContent="center"
+                              >
+                                <Chip label={`${parseInt(contDetail.assign_total_box || 0)} Units`} style={{ width: 100 }} size="large" color="success" />
+                                <Chip label={`${parseFloat(contDetail.assign_weight || 0)} kg`} style={{ width: 100 }} size="large" color="primary" variant="outlined" />
+                              </Stack>
+                              <IconButton size="small" color="error" onClick={() => handleRemoveExisting(idx, contIdx)} title="Remove Assignment">
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
                             </Stack>
                           </Stack>
                         </Card>
-                      )) || <Typography variant="body2" color={theme.textSecondary}>No existing assignments</Typography>}
-                    </Stack>
-                  </Grid>
-                  <Grid item xs={12 }sx={{ bgcolor: theme.background, width:300}} spacing={1} md={6}>
-                    <Typography variant="body2" color={theme.textSecondary} mb={1}>New Assignment:</Typography>
-                    <Stack spacing={2}>
-                      <TextField
-                        size="small"
-                        label="New Boxes to Assign"
-                        type="number"
-                        value={assignmentQuantities[key] || ''}
-                        onChange={(e) => handleQuantityChange(key, e.target.value, detailRemaining)}
-                        inputProps={{ min: 0, max: detailRemaining }}
-                        sx={{ minWidth: 150 }}
-                      />
-                      <FormControl size="small" sx={{ minWidth: 200 }}>
-                        <InputLabel>Select Container</InputLabel>
-                        <Select
-                          multiple
-                          value={selectedContainersPerDetail[key] || []}
-                          onChange={(e) => handleContainerChange(key, e.target.value)}
-                          label="Select Container"
-                          renderValue={(selected) => selected.length ? `${selected.length} containers` : 'Choose...'}
-                        >
-                          {getAvailableContainersForKey(key).map(c => (
-                            <MenuItem key={c.cid} value={c.cid}>
-                              {c.container_number} ({c.location})
-                            </MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
-                      {(selectedContainersPerDetail[key] || []).length > 0 && (
-                        <Chip
-                          label={`${(selectedContainersPerDetail[key] || []).length} new containers`}
-                          color="warning"
-                          variant="outlined"
-                          onDelete={() => handleContainerChange(key, [])}
-                        />
-                      )}
-                      <Button
-                        variant="contained"
-                        startIcon={<AddIcon />}
-                        onClick={() => {/* Preview in Summary */ }}
-                        disabled={!(assignmentQuantities[key] || 0) > 0 || (selectedContainersPerDetail[key] || []).length === 0}
-                        size="small"
-                      >
-                        Preview Assignment
-                      </Button>
-                    </Stack>
-                  </Grid>
+                      ));
+                    })()}
+                    {validContainerDetails.length === 0 && <Typography variant="body2" color={theme.textSecondary}>No existing assignments</Typography>}
+                  </Stack>
                 </Grid>
-                <Divider sx={{ my: 2 }} />
-                <LinearProgress variant="determinate" value={progressValue} sx={{ height: 8 }} color="primary" />
-                <Typography variant="caption" sx={{ display: 'block', textAlign: 'center', mt: 1, color: theme.textSecondary }}>
-                  Progress: {originalTotal - detailRemaining} / {originalTotal}
-                </Typography>
-              </AccordionDetails>
-            </Accordion>
-          </TableCell>
-        </TableRow>
-      );
-    }) : [];
-
-    return (
-      <>
-        <TableRow key={`${rec.orderId}-${rec.id || globalIndex}`} hover sx={{ '&:hover': { bgcolor: `rgba(${theme.primary}, 0.04)` } }}>
-          <TableCell key="id" sx={{ display: columnVisibility.id ? 'table-cell' : 'none' }}>{rec.id || 'N/A'}</TableCell>
-          <TableCell key="name" sx={{ display: columnVisibility.name ? 'table-cell' : 'none' }}>{fullRec.receiverName || rec.receiverName}</TableCell>
-          <TableCell key="booking_ref" sx={{ display: columnVisibility.booking_ref ? 'table-cell' : 'none' }}>{rec.booking_ref}</TableCell>
-          <TableCell key="address" sx={{ display: columnVisibility.address ? 'table-cell' : 'none', maxWidth: 150 }}>
-            <Tooltip title={address}>
-              <Typography variant="body2" noWrap>{address.length > 20 ? `${address.substring(0, 20)}...` : address}</Typography>
-            </Tooltip>
-          </TableCell>
-          <TableCell key="contact" sx={{ display: columnVisibility.contact ? 'table-cell' : 'none' }}>{contact}</TableCell>
-          <TableCell key="email" sx={{ display: columnVisibility.email ? 'table-cell' : 'none' }}>{email}</TableCell>
-          <TableCell key="wt" sx={{ display: columnVisibility.wt ? 'table-cell' : 'none' }}>{totalWeight || 0} kg</TableCell>
-          <TableCell key="totalPC" sx={{ display: columnVisibility.totalPC ? 'table-cell' : 'none', color: theme.success }}>{totalPC}</TableCell>
-          <TableCell key="deliveredQty" sx={{ display: columnVisibility.deliveredQty ? 'table-cell' : 'none' }}>
-            <Chip label={delivered} size="small" color="success" />
-          </TableCell>
-          <TableCell key="remainingQty" sx={{ display: columnVisibility.remainingQty ? 'table-cell' : 'none' }}>
-            <Chip label={localRemaining} size="small" color={localRemaining > 0 ? "warning" : "success"} variant="outlined" />
-          </TableCell>
-          <TableCell key="assignQty">
-            {/* <Stack direction="row" gap={1} alignItems="center">
-              {isEditingAssign ? (
-                <TextField
-                  size="small"
-                  type="number"
-                  value={tempAssignQty}
-                  onChange={(e) => setTempAssignQty(Math.min(totalPC, Math.max(0, parseInt(e.target.value) || 0)))}
-                  onBlur={handleAssignBlur}
-                  onKeyDown={handleAssignKeyDown}
-                  inputProps={{ min: 0, max: totalPC }}
-                  sx={{ width: 80 }}
-                />
-              ) : ( */}
-                <Typography variant="body2" fontWeight="bold">{totalNewAssignedQty}</Typography>
-              {/* )} */}
-              {/* <IconButton size="small" onClick={() => { setEditingAssignReceiverId(rec.id); setTempAssignQty(totalNewAssignedQty); }}>
-                <EditIcon fontSize="small" />
-              </IconButton> */}
-            {/* </Stack> */}
-          </TableCell>
-          <TableCell key="containers">
-            <Stack direction="row" gap={1} alignItems="center">
-              {totalContForRec > 0 ? (
-                <Chip label={allContainersPreview.length > 1 ? `${allContainersPreview[0]}... (${allContainersPreview.length})` : allContainersPreview.join(', ')} size="small" color="success" variant="outlined" />
-              ) : (
-                <Chip label="None" size="small" color="default" variant="outlined" />
-              )}
-              
-            </Stack>
-          </TableCell>
-          <TableCell key="action">
-            <Stack direction="row" gap={0.5}>
-            {hasShippingDetails && (
-                <IconButton size="small" onClick={() => toggleExpanded(rec.orderId, rec.id)}>
-                  {isExpanded ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
-                </IconButton>
-              )}
-              {/* <IconButton size="small" onClick={() => handleEditReceiver(rec)} title="Edit">
-                <EditIcon fontSize="small" />
-              </IconButton> */}
-              {totalContForRec > 0 && (
-                <IconButton size="small" onClick={() => handleRemoveContainersForReceiver(rec.id, rec.orderId)} color="error" title="Remove">
-                  <DeleteIcon fontSize="small" />
-                </IconButton>
-              )}
-            </Stack>
-          </TableCell>
-        </TableRow>
-        {subRows}
-      </>
+                <Grid item xs={12} md={6}>
+                  <Typography variant="body2" color={theme.textSecondary} mb={1}>New Assignment:</Typography>
+                  <Stack spacing={2}>
+                    <TextField
+                      size="small"
+                      label="New Boxes to Assign"
+                      type="number"
+                      value={assignmentQuantities[keyDetail] || ''}
+                      onChange={(e) => handleQuantityChange(keyDetail, e.target.value, detailRemaining)}
+                      inputProps={{ min: 0, max: detailRemaining }}
+                      sx={{ minWidth: 150 }}
+                    />
+                    <FormControl size="small" sx={{ minWidth: 200 }}>
+                      <InputLabel>Select Container</InputLabel>
+                      <Select
+                        multiple
+                        value={selectedContainersPerDetail[keyDetail] || []}
+                        onChange={(e) => handleContainerChange(keyDetail, e.target.value)}
+                        label="Select Container"
+                        renderValue={(selected) => selected.length ? `${selected.length} containers` : 'Choose...'}
+                      >
+                        {getAvailableContainersForKey(keyDetail).map(c => (
+                          <MenuItem key={c.cid} value={c.cid}>
+                            {c.container_number} ({c.location})
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    {(selectedContainersPerDetail[keyDetail] || []).length > 0 && (
+                      <Chip
+                        label={`${(selectedContainersPerDetail[keyDetail] || []).length} new containers`}
+                        color="warning"
+                        variant="outlined"
+                        onDelete={() => handleContainerChange(keyDetail, [])}
+                      />
+                    )}
+                    <Button
+                      variant="contained"
+                      startIcon={<AddIcon />}
+                      onClick={() => {/* Preview in Summary */ }}
+                      disabled={!(assignmentQuantities[keyDetail] || 0) > 0 || (selectedContainersPerDetail[keyDetail] || []).length === 0}
+                      size="small"
+                    >
+                      Preview Assignment
+                    </Button>
+                  </Stack>
+                </Grid>
+              </Grid>
+              <Divider sx={{ my: 2 }} />
+              <LinearProgress variant="determinate" value={progressValue} sx={{ height: 8 }} color="primary" />
+              <Typography variant="caption" sx={{ display: 'block', textAlign: 'center', mt: 1, color: theme.textSecondary }}>
+                Progress: {originalTotal - detailRemaining} / {originalTotal}
+              </Typography>
+            </AccordionDetails>
+          </Accordion>
+        </TableCell>
+      </TableRow>
     );
-  };
+  }) : [];
+
+  return (
+    <>
+      <TableRow key={`${rec.orderId}-${rec.id || globalIndex}`} hover sx={{ '&:hover': { bgcolor: `rgba(${theme.primary}, 0.04)` } }}>
+        <TableCell key="id" sx={{ display: columnVisibility.id ? 'table-cell' : 'none' }}>{rec.id || 'N/A'}</TableCell>
+        <TableCell key="name" sx={{ display: columnVisibility.name ? 'table-cell' : 'none' }}>{fullRec.receiverName || rec.receiverName}</TableCell>
+        <TableCell key="booking_ref" sx={{ display: columnVisibility.booking_ref ? 'table-cell' : 'none' }}>
+          {fullRec.booking_ref || rec.booking_ref || 'N/A'}
+        </TableCell>
+        <TableCell key="address" sx={{ display: columnVisibility.address ? 'table-cell' : 'none', maxWidth: 150 }}>
+          <Tooltip title={address}>
+            <Typography variant="body2" noWrap>{address.length > 20 ? `${address.substring(0, 20)}...` : address}</Typography>
+          </Tooltip>
+        </TableCell>
+        <TableCell key="contact" sx={{ display: columnVisibility.contact ? 'table-cell' : 'none' }}>{contact}</TableCell>
+        <TableCell key="email" sx={{ display: columnVisibility.email ? 'table-cell' : 'none' }}>{email}</TableCell>
+        <TableCell key="wt" sx={{ display: columnVisibility.wt ? 'table-cell' : 'none' }}>{totalWeight || 0} kg</TableCell>
+        <TableCell key="totalPC" sx={{ display: columnVisibility.totalPC ? 'table-cell' : 'none', color: theme.success }}>{totalPC}</TableCell>
+        <TableCell key="deliveredQty" sx={{ display: columnVisibility.deliveredQty ? 'table-cell' : 'none' }}>
+          <Chip label={delivered} size="small" color="success" />
+        </TableCell>
+        <TableCell key="remainingQty" sx={{ display: columnVisibility.remainingQty ? 'table-cell' : 'none' }}>
+          <Chip label={localRemaining} size="small" color={localRemaining > 0 ? "warning" : "success"} variant="outlined" />
+        </TableCell>
+        <TableCell key="assignQty">
+          <Typography variant="body2" fontWeight="bold">{totalNewAssignedQty}</Typography>
+        </TableCell>
+        <TableCell key="containers">
+          <Stack direction="row" gap={1} alignItems="center">
+            {totalContForRec > 0 ? (
+              <Chip 
+                label={allContainersPreview.length > 1 ? `${allContainersPreview[0]}... (${allContainersPreview.length})` : allContainersPreview.join(', ')} 
+                size="small" 
+                color="success" 
+                variant="outlined" 
+                title={allContainersPreview.join(', ')}
+              />
+            ) : (
+              <Chip label="None" size="small" color="default" variant="outlined" />
+            )}
+          </Stack>
+        </TableCell>
+        <TableCell key="action">
+          <Stack direction="row" gap={0.5}>
+            {hasShippingDetails && (
+              <IconButton size="small" onClick={() => toggleExpanded(rec.orderId, rec.id)}>
+                {isExpanded ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+              </IconButton>
+            )}
+            {totalContForRec > 0 && (
+              <IconButton size="small" onClick={() => handleRemoveContainersForReceiver(rec.id, rec.orderId)} color="error" title="Remove">
+                <DeleteIcon fontSize="small" />
+              </IconButton>
+            )}
+          </Stack>
+        </TableCell>
+      </TableRow>
+      {subRows}
+      {!hasShippingDetails && isExpanded && (
+        <TableRow sx={{ bgcolor: theme.background }}>
+          <TableCell colSpan={visibleColumnCount}>
+            <Typography variant="body2" color="text.secondary">No shipping details available for assignment</Typography>
+          </TableCell>
+        </TableRow>
+      )}
+    </>
+  );
+};  
 
   // If no assignments, show preview table
   const PreviewTable = ({ assignments }) => (

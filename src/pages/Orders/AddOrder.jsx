@@ -3759,7 +3759,7 @@ const fetchOrder = async (id) => {
             const isPartialInvalid = rec.fullPartial === 'Partial' && delivered > recTotal;
             if (isInvalidTotal || isPartialInvalid) {
                 warnings = {};
-                if (isInvalidTotal) warnings.total_number = 'Must be positive';
+                // if (isInvalidTotal) warnings.total_number = 'Must be positive';
                 if (isPartialInvalid) warnings.qty_delivered = 'Cannot exceed total_number';
             }
             rec.validationWarnings = warnings;
@@ -3808,13 +3808,13 @@ const fetchOrder = async (id) => {
         });
         setErrors(initialErrors);
         const hasWarnings = mappedPanel2.some(r => r && r.validationWarnings);
-        if (hasWarnings) {
-            setSnackbar({
-                open: true,
-                message: 'Some receiver data needs attention (check totals/deliveries)',
-                severity: 'warning',
-            });
-        }
+        // if (hasWarnings) {
+        //     setSnackbar({
+        //         open: true,
+        //         message: 'Some receiver data needs attention (check totals/deliveries)',
+        //         severity: 'warning',
+        //     });
+        // }
     } catch (err) {
         console.error("Error fetching order:", err);
         setSnackbar({
@@ -4359,11 +4359,11 @@ const fetchOrder = async (id) => {
                 newErrors[`${listKey}[${index}].shippingDetails[${j}].deliveryAddress`] = 'Delivery address required';
                 isValid = false;
             }
-            const totalNum = parseInt(sd.totalNumber || 0);
-            if (!sd.totalNumber || totalNum <= 0) {
-                newErrors[`${listKey}[${index}].shippingDetails[${j}].totalNumber`] = 'Total number must be positive';
-                isValid = false;
-            }
+            // const totalNum = parseInt(sd.totalNumber || 0);
+            // if (!sd.totalNumber || totalNum <= 0) {
+            //     newErrors[`${listKey}[${index}].shippingDetails[${j}].totalNumber`] = 'Total number must be positive';
+            //     isValid = false;
+            // }
             const weight = parseFloat(sd.weight || 0);
             if (!sd.weight || weight <= 0) {
                 newErrors[`${listKey}[${index}].shippingDetails[${j}].weight`] = 'Weight must be positive';
@@ -5064,11 +5064,11 @@ const handleSave = async () => {
     </AccordionSummary>
     <AccordionDetails sx={{ p: 3, bgcolor: "#fff" }}>
         <Stack spacing={2}>
-            {formData.senderType === 'sender' ? (
+            {/* {formData.senderType === 'sender' ? (
                 errors.receivers && <Alert severity="error">{errors.receivers}</Alert>
             ) : (
                 errors.senders && <Alert severity="error">{errors.senders}</Alert>
-            )}
+            )} */}
             {/* Dynamic: Summary Table for multiples */}
             {(formData.senderType === 'sender' ? formData.receivers : formData.senders).length > 1 && (
                 <Stack spacing={1}>
@@ -5302,14 +5302,8 @@ const handleSave = async () => {
                         weight: '',
                         totalNumber: '',
                         deliveryAddress: '',
-                        containerDetails: [ // NEW: Array for multiple container rows
-                            {
-                                assignTotalBox: '',
-                                assignWeight: '',
-                                container: null,
-                                status: ''
-                            }
-                        ],
+                        status: '', // NEW: Add status to emptySd
+                        containerDetails: [], // FIXED: Empty array, no initial blank
                         itemRef: `ORDER-ITEM-REF-${i + 1}-1`
                     };
                     // NEW: Unified add shipping with values for preview
@@ -5719,6 +5713,25 @@ const handleSave = async () => {
                                                 disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].totalNumber`)}
                                             />
                                         </Box>
+                                        {/* NEW: Status field for shipping detail under Total Number */}
+                                        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                            <CustomSelect
+                                                label="Consignment Status"
+                                                value={emptySd.status || ""}
+                                                onChange={(e) => handleEmptySdChange('status', e.target.value)}
+                                                error={!!errors[`${listKey}[${i}].shippingDetails[0].status`]}
+                                                helperText={errors[`${listKey}[${i}].shippingDetails[0].status`]}
+                                                disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].status`)}
+                                                renderValue={(selected) => selected || "Select Status"}
+                                            >
+                                                <MenuItem value="">Select Status</MenuItem>
+                                                {validShipmentStatuses.map((s) => (
+                                                    <MenuItem key={s} value={s}>
+                                                        {s}
+                                                    </MenuItem>
+                                                ))}
+                                            </CustomSelect>
+                                        </Box>
                                         <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
                                             <CustomTextField
                                                 label="Delivery Address"
@@ -5731,145 +5744,18 @@ const handleSave = async () => {
                                             />
                                             <CustomTextField label="Ref Number" value={emptySd.itemRef} disabled={true} />
                                         </Box>
-                                        {/* FIXED: Container Details Section in Preview */}
-                                        <Stack spacing={1}>
-                                            <Typography variant="subtitle2" color="primary" fontWeight="bold">
-                                                Container Details
-                                            </Typography>
-                                            {(emptySd.containerDetails || []).map((cd, k) => {
-                                                // FIXED: Compute displayValue for preview consistency (handles object or primitive)
-                                                const currentContainerPreview = cd.container;
-                                                const currentCidPreview = typeof currentContainerPreview === 'object' ? currentContainerPreview?.cid : currentContainerPreview;
-                                                const otherSelectedCidsPreview = globalSelectedCids.filter(cid => cid != currentCidPreview);
-                                                const availableContainersForCdPreview = containers.filter(c => !otherSelectedCidsPreview.includes(c.cid));
-                                                const displayValuePreview = currentContainerPreview && typeof currentContainerPreview === 'object'
-                                                    ? currentContainerPreview
-                                                    : (currentCidPreview ? availableContainersForCdPreview.find(c => c.cid === currentCidPreview) || containers.find(c => c.cid === currentCidPreview) : null);
-                                                return (
-                                                    <Box key={k} sx={{ p: 1, border: 1, borderColor: "grey.200", borderRadius: 1 }}>
-                                                        <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
-                                                            <Typography variant="body2" color="primary">
-                                                                Container {k + 1}
-                                                            </Typography>
-                                                            <Stack direction="row" spacing={1}>
-                                                                {(emptySd.containerDetails || []).length > 1 && (
-                                                                    <>
-                                                                        <IconButton
-                                                                            // FIXED: Wrap duplicate to add shipping first
-                                                                            onClick={() => {
-                                                                                addShippingFn(i);
-                                                                                duplicateContainerDetail(0, k);
-                                                                            }}
-                                                                            size="small"
-                                                                            title="Duplicate"
-                                                                            color="primary"
-                                                                        >
-                                                                            <ContentCopyIcon />
-                                                                        </IconButton>
-                                                                        <IconButton
-                                                                            // FIXED: Wrap remove to add shipping first
-                                                                            onClick={() => {
-                                                                                addShippingFn(i);
-                                                                                removeContainerDetail(0, k);
-                                                                            }}
-                                                                            size="small"
-                                                                            title="Delete"
-                                                                            color="error"
-                                                                        >
-                                                                            <DeleteIcon />
-                                                                        </IconButton>
-                                                                    </>
-                                                                )}
-                                                            </Stack>
-                                                        </Stack>
-                                                        {/* NEW: Split into two rows for better layout with four fields */}
-                                                        <Stack spacing={1.5}>
-                                                            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                                                {/* FIXED: Wrap onChange to add shipping first; changed field to assignTotalBox */}
-                                                                <CustomTextField
-                                                                    label="Assign Total Box"
-                                                                    value={cd.assignTotalBox || ""}
-                                                                    onChange={(e) => {
-                                                                        addShippingFn(i);
-                                                                        handleContainerDetailChange(0, k, 'assignTotalBox')(e.target.value);
-                                                                    }}
-                                                                    sx={{ width: { xs: '100%', sm: '50%' } }}
-                                                                    error={!!errors[`${listKey}[${i}].shippingDetails[0].containerDetails[${k}].assignTotalBox`]}
-                                                                    helperText={errors[`${listKey}[${i}].shippingDetails[0].containerDetails[${k}].assignTotalBox`]}
-                                                                />
-                                                                {/* NEW: Assign Weight Field */}
-                                                                <CustomTextField
-                                                                    label="Assign Weight"
-                                                                    value={cd.assignWeight || ""}
-                                                                    onChange={(e) => {
-                                                                        addShippingFn(i);
-                                                                        handleContainerDetailChange(0, k, 'assignWeight')(e.target.value);
-                                                                    }}
-                                                                    sx={{ width: { xs: '100%', sm: '50%' } }}
-                                                                    error={!!errors[`${listKey}[${i}].shippingDetails[0].containerDetails[${k}].assignWeight`]}
-                                                                    helperText={errors[`${listKey}[${i}].shippingDetails[0].containerDetails[${k}].assignWeight`]}
-                                                                />
-                                                            </Box>
-                                                            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                                                {/* FIXED: Added missing Autocomplete for Container; now sets full object */}
-                                                                <Autocomplete
-                                                                    options={availableContainersForCdPreview}
-                                                                    value={displayValuePreview}
-                                                                    onChange={(e, newValue) => {
-                                                                        // FIXED: Wrap to add shipping; set full object or null on clear
-                                                                        addShippingFn(i);
-                                                                        handleContainerDetailChange(0, k, 'container')(newValue);
-                                                                    }}
-                                                                    sx={{ width: { xs: '100%', sm: '50%' } }}
-                                                                    getOptionLabel={(option) => option.container_number || ''}
-                                                                    isOptionEqualToValue={autocompleteEquality}
-                                                                    // fullWidth
-                                                                    renderInput={(params) => <TextField {...params} label="Container" />}
-                                                                />
-                                                                {/* FIXED: Single Status Select */}
-                                                                <CustomSelect
-                                                                    label="Status"
-                                                                    value={cd.status || ""}
-                                                                    onChange={(e) => {
-                                                                        addShippingFn(i);
-                                                                        handleContainerDetailChange(0, k, 'status')(e.target.value);
-                                                                    }}
-                                                                    sx={{ width: { xs: '100%', sm: '50%' } }}
-                                                                    error={!!errors[`${listKey}[${i}].shippingDetails[0].containerDetails[${k}].status`]}
-                                                                    helperText={errors[`${listKey}[${i}].shippingDetails[0].containerDetails[${k}].status`]}
-                                                                    renderValue={(selected) => selected || "Select Status"}
-                                                                >
-                                                                    <MenuItem value="">Select Status</MenuItem>
-                                                                    {validShipmentStatuses.map((s) => (
-                                                                        <MenuItem key={s} value={s}>
-                                                                            {s}
-                                                                        </MenuItem>
-                                                                    ))}
-                                                                </CustomSelect>
-                                                            </Box>
-                                                        </Stack>
-                                                    </Box>
-                                                );
-                                            })}
-                                            {/* FIXED: Wrap onClick to add shipping first */}
-                                            <Button
-                                                variant="outlined"
-                                                startIcon={<AddIcon />}
-                                                onClick={() => {
-                                                    addShippingFn(i);
-                                                    addContainerDetail(0);
-                                                }}
-                                                size="small"
-                                            >
-                                                Add Container
-                                            </Button>
-                                            {/* NEW: Total Assign Summary Row (always appears) */}
-                                            <Box sx={{ p: 1, border: 1, borderColor: "grey.300", borderRadius: 1, bgcolor: "grey.50" }}>
-                                                <Typography variant="body2" color="primary" fontWeight="bold">
-                                                    Total Assign Number: {calculateSumAssignTotalBox(emptySd)} | Total Assign Weight: {calculateSumAssignWeight(emptySd)}
-                                                </Typography>
-                                            </Box>
-                                        </Stack>
+                                        {/* FIXED: Add button for container instead of section */}
+                                        <Button
+                                            variant="outlined"
+                                            startIcon={<AddIcon />}
+                                            onClick={() => {
+                                                addShippingFn(i);
+                                                addContainerDetail(0);
+                                            }}
+                                            size="small"
+                                        >
+                                            Add Container Assignment
+                                        </Button>
                                     </Stack>
                                 </Box>
                             ) : (
@@ -5979,6 +5865,24 @@ const handleSave = async () => {
                                                         helperText={errors[`${listKey}[${i}].shippingDetails[${j}].totalNumber`]}
                                                     />
                                                 </Box>
+                                                {/* NEW: Status field for shipping detail under Total Number */}
+                                                <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                    <CustomSelect
+                                                        label="Shippment Status"
+                                                        value={sd.consignmentStatus || ""}
+                                                        onChange={(e) => handleShippingChangeFn(i, j, 'status')(e)}
+                                                        error={!!errors[`${listKey}[${i}].shippingDetails[${j}].consignmentStatus`]}
+                                                        helperText={errors[`${listKey}[${i}].shippingDetails[${j}].consignmentStatus`]}
+                                                        renderValue={(selected) => selected || "Select Status"}
+                                                    >
+                                                        <MenuItem value="">Select Status</MenuItem>
+                                                        {validShipmentStatuses.map((s) => (
+                                                            <MenuItem key={s} value={s}>
+                                                                {s}
+                                                            </MenuItem>
+                                                        ))}
+                                                    </CustomSelect>
+                                                </Box>
                                                 <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
                                                     <CustomTextField
                                                         label="Delivery Address"
@@ -5990,37 +5894,46 @@ const handleSave = async () => {
                                                     />
                                                     <CustomTextField label="Ref Number" value={sd.itemRef || `ORDER-ITEM-REF-${i + 1}-${j + 1}`} disabled={true} />
                                                 </Box>
-                                                {/* FIXED: Container Details Section (Non-Preview) */}
-                                                <Stack spacing={1}>
-                                                    <Typography variant="subtitle2" color="primary" fontWeight="bold">
-                                                        Container Details
-                                                    </Typography>
-                                                    {hasContainers ? (
-                                                        (sd.containerDetails || []).map((cd, k) => {
-                                                            // FIXED: Per-CD availability (exclude others, include current for display); handles object or primitive
-                                                            const currentContainer = cd.container;
-                                                            const currentCid = typeof currentContainer === 'object' ? currentContainer?.cid : currentContainer;
-                                                            const otherSelectedCids = globalSelectedCids.filter(cid => cid !== currentCid);
-                                                            const availableContainersForCd = containers.filter(c => !otherSelectedCids.includes(c.cid));
-                                                            const displayValue = currentContainer && typeof currentContainer === 'object'
-                                                                ? currentContainer
-                                                                : (currentCid ? availableContainersForCd.find(c => c.cid === currentCid) || containers.find(c => c.cid === currentCid) : null);
-                                                            return (
-                                                                <Box key={k} sx={{ p: 1, border: 1, borderColor: "grey.200", borderRadius: 1 }}>
-                                                                    <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
-                                                                        <Typography variant="body2" color="primary">
-                                                                            Container {k + 1}
-                                                                        </Typography>
-                                                                        <Stack direction="row" spacing={1}>
-                                                                            <IconButton
-                                                                                onClick={() => duplicateContainerDetail(j, k)}
-                                                                                size="small"
-                                                                                title="Duplicate"
-                                                                                color="primary"
-                                                                            >
-                                                                                <ContentCopyIcon />
-                                                                            </IconButton>
-                                                                            {(sd.containerDetails || []).length > 1 && (
+                                                {/* FIXED: Container Details Section - only if hasContainers, else button */}
+                                                {!hasContainers ? (
+                                                    <Button
+                                                        variant="outlined"
+                                                        startIcon={<AddIcon />}
+                                                        onClick={() => addContainerDetail(j)}
+                                                        size="small"
+                                                    >
+                                                        Add Container Assignment
+                                                    </Button>
+                                                ) : (
+                                                    <>
+                                                        <Stack spacing={1}>
+                                                            <Typography variant="subtitle2" color="primary" fontWeight="bold">
+                                                                Container Details
+                                                            </Typography>
+                                                            {(sd.containerDetails || []).map((cd, k) => {
+                                                                // FIXED: Per-CD availability (exclude others, include current for display); handles object or primitive
+                                                                const currentContainer = cd.container;
+                                                                const currentCid = typeof currentContainer === 'object' ? currentContainer?.cid : currentContainer;
+                                                                const otherSelectedCids = globalSelectedCids.filter(cid => cid !== currentCid);
+                                                                const availableContainersForCd = containers.filter(c => !otherSelectedCids.includes(c.cid));
+                                                                const displayValue = currentContainer && typeof currentContainer === 'object'
+                                                                    ? currentContainer
+                                                                    : (currentCid ? availableContainersForCd.find(c => c.cid === currentCid) || containers.find(c => c.cid === currentCid) : null);
+                                                                return (
+                                                                    <Box key={k} sx={{ p: 1, border: 1, borderColor: "grey.200", borderRadius: 1 }}>
+                                                                        <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
+                                                                            <Typography variant="body2" color="primary">
+                                                                                Container {k + 1}
+                                                                            </Typography>
+                                                                            <Stack direction="row" spacing={1}>
+                                                                                <IconButton
+                                                                                    onClick={() => duplicateContainerDetail(j, k)}
+                                                                                    size="small"
+                                                                                    title="Duplicate"
+                                                                                    color="primary"
+                                                                                >
+                                                                                    <ContentCopyIcon />
+                                                                                </IconButton>
                                                                                 <IconButton
                                                                                     onClick={() => removeContainerDetail(j, k)}
                                                                                     size="small"
@@ -6029,88 +5942,87 @@ const handleSave = async () => {
                                                                                 >
                                                                                     <DeleteIcon />
                                                                                 </IconButton>
-                                                                            )}
+                                                                            </Stack>
                                                                         </Stack>
-                                                                    </Stack>
-                                                                    {/* NEW: Split into two rows for better layout */}
-                                                                    <Stack spacing={1.5}>
-                                                                        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                                                            {/* FIXED: Changed label and field to assignTotalBox */}
-                                                                            <CustomTextField
-                                                                                label="Assign Total Box"
-                                                                                value={cd.assignTotalBox || ""}
-                                                                                onChange={(e) => handleContainerDetailChange(j, k, 'assignTotalBox')(e.target.value)}
-                                                                                error={!!errors[`${listKey}[${i}].shippingDetails[${j}].containerDetails[${k}].assignTotalBox`]}
-                                                                                helperText={errors[`${listKey}[${i}].shippingDetails[${j}].containerDetails[${k}].assignTotalBox`]}
-                                                                                sx={{ width: { xs: '100%', sm: '50%' } }}
-                                                                            />
-                                                                            {/* NEW: Assign Weight Field */}
-                                                                            <CustomTextField
-                                                                                label="Assign Weight"
-                                                                                value={cd.assignWeight || ""}
-                                                                                onChange={(e) => handleContainerDetailChange(j, k, 'assignWeight')(e.target.value)}
-                                                                                error={!!errors[`${listKey}[${i}].shippingDetails[${j}].containerDetails[${k}].assignWeight`]}
-                                                                                helperText={errors[`${listKey}[${i}].shippingDetails[${j}].containerDetails[${k}].assignWeight`]}
-                                                                                sx={{ width: { xs: '100%', sm: '50%' } }}
-                                                                            />
-                                                                        </Box>
-                                                                        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                                                            {/* FIXED: Proper Autocomplete for Container; now sets full object */}
-                                                                            <Autocomplete
-                                                                                // FIXED: Use per-CD options and displayValue; updated equality; set full object
-                                                                                options={availableContainersForCd}
-                                                                                value={displayValue}
-                                                                                onChange={(e, newValue) => {
-                                                                                    // FIXED: Set to full object or null on clear
-                                                                                    handleContainerDetailChange(j, k, 'container')(newValue);
-                                                                                }}
-                                                                                getOptionLabel={(option) => option.container_number || ''}
-                                                                                isOptionEqualToValue={autocompleteEquality}
-                                                                                renderInput={(params) => <TextField {...params} label="Container" />}
-                                                                                sx={{ width: { xs: '100%', sm: '50%' } }}
-                                                                           
-                                                                                // fullWidth
-                                                                            />
-                                                                            <CustomSelect
-                                                                                label="Status"
-                                                                                value={cd.status || ""}
-                                                                                onChange={(e) => handleContainerDetailChange(j, k, 'status')(e.target.value)}
-                                                                                error={!!errors[`${listKey}[${i}].shippingDetails[${j}].containerDetails[${k}].status`]}
-                                                                                helperText={errors[`${listKey}[${i}].shippingDetails[${j}].containerDetails[${k}].status`]}
-                                                                                sx={{ width: { xs: '100%', sm: '50%' } }}
-                                                                        
-                                                                                renderValue={(selected) => selected || "Select Status"}
-                                                                            >
-                                                                                <MenuItem value="">Select Status</MenuItem>
-                                                                                {validShipmentStatuses.map((s) => (
-                                                                                    <MenuItem key={s} value={s}>
-                                                                                        {s}
-                                                                                    </MenuItem>
-                                                                                ))}
-                                                                            </CustomSelect>
-                                                                        </Box>
-                                                                    </Stack>
-                                                                </Box>
-                                                            );
-                                                        })
-                                                    ) : (
-                                                        renderEmptyContainerDetail(j)
-                                                    )}
-                                                    <Button
-                                                        variant="outlined"
-                                                        startIcon={<AddIcon />}
-                                                        onClick={() => addContainerDetail(j)}
-                                                        size="small"
-                                                    >
-                                                        Add Container
-                                                    </Button>
-                                                    {/* NEW: Total Assign Summary Row (always appears, uses current sd for sum) */}
-                                                    <Box sx={{ p: 1, border: 1, borderColor: "grey.300", borderRadius: 1, bgcolor: "grey.50" }}>
-                                                        <Typography variant="body2" color="primary" fontWeight="bold">
-                                                            Total Assign Number: {calculateSumAssignTotalBox(sd)} | Total Assign Weight: {calculateSumAssignWeight(sd)}
-                                                        </Typography>
-                                                    </Box>
-                                                </Stack>
+                                                                        {/* NEW: Split into two rows for better layout */}
+                                                                        <Stack spacing={1.5}>
+                                                                            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                                                {/* FIXED: Changed label and field to assignTotalBox */}
+                                                                                <CustomTextField
+                                                                                    label="Assign Total Box"
+                                                                                    value={cd.assignTotalBox || ""}
+                                                                                    onChange={(e) => handleContainerDetailChange(j, k, 'assignTotalBox')(e.target.value)}
+                                                                                    error={!!errors[`${listKey}[${i}].shippingDetails[${j}].containerDetails[${k}].assignTotalBox`]}
+                                                                                    helperText={errors[`${listKey}[${i}].shippingDetails[${j}].containerDetails[${k}].assignTotalBox`]}
+                                                                                    sx={{ width: { xs: '100%', sm: '50%' } }}
+                                                                                />
+                                                                                {/* NEW: Assign Weight Field */}
+                                                                                <CustomTextField
+                                                                                    label="Assign Weight"
+                                                                                    value={cd.assignWeight || ""}
+                                                                                    onChange={(e) => handleContainerDetailChange(j, k, 'assignWeight')(e.target.value)}
+                                                                                    error={!!errors[`${listKey}[${i}].shippingDetails[${j}].containerDetails[${k}].assignWeight`]}
+                                                                                    helperText={errors[`${listKey}[${i}].shippingDetails[${j}].containerDetails[${k}].assignWeight`]}
+                                                                                    sx={{ width: { xs: '100%', sm: '50%' } }}
+                                                                                />
+                                                                            </Box>
+                                                                            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
+                                                                                {/* FIXED: Proper Autocomplete for Container; now sets full object */}
+                                                                                <Autocomplete
+                                                                                    // FIXED: Use per-CD options and displayValue; updated equality; set full object
+                                                                                    options={availableContainersForCd}
+                                                                                    value={displayValue}
+                                                                                    onChange={(e, newValue) => {
+                                                                                        // FIXED: Set to full object or null on clear
+                                                                                        handleContainerDetailChange(j, k, 'container')(newValue);
+                                                                                    }}
+                                                                                    getOptionLabel={(option) => option.container_number || ''}
+                                                                                    isOptionEqualToValue={autocompleteEquality}
+                                                                                    renderInput={(params) => <TextField {...params} label="Container" />}
+                                                                                    sx={{ width: { xs: '100%', sm: '50%' } }}
+                                                                             
+                                                                                    // fullWidth
+                                                                                />
+                                                                                <CustomSelect
+                                                                                    label="Status"
+                                                                                    value={cd.status || ""}
+                                                                                    onChange={(e) => handleContainerDetailChange(j, k, 'status')(e.target.value)}
+                                                                                    error={!!errors[`${listKey}[${i}].shippingDetails[${j}].containerDetails[${k}].status`]}
+                                                                                    helperText={errors[`${listKey}[${i}].shippingDetails[${j}].containerDetails[${k}].status`]}
+                                                                                    sx={{ width: { xs: '100%', sm: '50%' } }}
+                                                                          
+                                                                                    renderValue={(selected) => selected || "Select Status"}
+                                                                                >
+                                                                                    <MenuItem value="">Select Status</MenuItem>
+                                                                                    {validShipmentStatuses.map((s) => (
+                                                                                        <MenuItem key={s} value={s}>
+                                                                                            {s}
+                                                                                        </MenuItem>
+                                                                                    ))}
+                                                                                </CustomSelect>
+                                                                            </Box>
+                                                                        </Stack>
+                                                                    </Box>
+                                                                );
+                                                            })
+                                                        }
+                                                        <Button
+                                                            variant="outlined"
+                                                            startIcon={<AddIcon />}
+                                                            onClick={() => addContainerDetail(j)}
+                                                            size="small"
+                                                        >
+                                                            Add Container
+                                                        </Button>
+                                                        {/* NEW: Total Assign Summary Row (always appears, uses current sd for sum) */}
+                                                        <Box sx={{ p: 1, border: 1, borderColor: "grey.300", borderRadius: 1, bgcolor: "grey.50" }}>
+                                                            <Typography variant="body2" color="primary" fontWeight="bold">
+                                                                Total Assign Number: {calculateSumAssignTotalBox(sd)} | Total Assign Weight: {calculateSumAssignWeight(sd)}
+                                                            </Typography>
+                                                        </Box>
+                                                    </Stack>
+                                                    </>
+                                                )}
                                             </Stack>
                                         </Box>
                                     );
@@ -6292,7 +6204,6 @@ const handleSave = async () => {
         </Stack>
     </AccordionDetails>
 </Accordion>
-
                         <Accordion
                             expanded={expanded.has("panel3")}
                             onChange={handleAccordionChange("panel3")}
