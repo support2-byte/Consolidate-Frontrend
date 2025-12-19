@@ -61,6 +61,8 @@ export default function DashboardLayout() {
     { text: "Vessels", icon: <DirectionsBoatIcon />, path: "/admin/vessels" },
     { text: "Places", icon: <LocationOnIcon />, path: "/admin/places" },
     { text: "Banks", icon: <AccountBalanceIcon />, path: "/admin/banks" },
+    { text: "Eta Setup", icon: <AccountBalanceIcon />, path: "/admin/EtaSetupPage" },
+
     { text: "3rd Parties", icon: <PeopleIcon />, path: "/admin/third-parties" },
   ];
 
@@ -232,7 +234,7 @@ export default function DashboardLayout() {
           </ListItemIcon>
           {!collapsed && (
             <ListItemText
-              primary="Admin Panel"
+              primary="Settings"
               primaryTypographyProps={{
                 sx: { fontWeight: "bold", color: mode === "dark" ? "#fff" : "#000", opacity: 0, animation: "fadeIn 0.3s ease forwards" },
               }}

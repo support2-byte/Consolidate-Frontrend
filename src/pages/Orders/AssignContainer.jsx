@@ -42,10 +42,17 @@ import ViewColumnIcon from '@mui/icons-material/ViewColumn';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
+import debounce from 'lodash.debounce';
 import SaveIcon from '@mui/icons-material/Save';
 // Assume api is imported from your API config
 // import api from '../api'; // Adjust path as needed
-
+// const debounce = (func, delay) => {
+//   let timeoutId;
+//   return (...args) => {
+//     clearTimeout(timeoutId);
+//     timeoutId = setTimeout(() => func.apply(null, args), delay);
+//   };
+// };
 const AssignModal = ({
   onUpdateAssignedQty,
   onRemoveContainers,
@@ -87,6 +94,8 @@ const getStatusColors = (status) => {
         'Arrived at Sort Facility': { bg: '#f1f8e9', text: '#689f38' },
         'Ready for Delivery': { bg: '#fce4ec', text: '#c2185b' },
         'Shipment Delivered': { bg: '#e8f5e8', text: '#2e7d32' },
+        'Assigned to Job': { bg: '#fff3e0', text: '#ef6c00' },
+        'In Transit': { bg: '#e1f5fe', text: '#0277bd' },
         // Fallback for unknown
         default: { bg: '#f5f5f5', text: '#666' }
     };
@@ -126,6 +135,7 @@ const getStatusColors = (status) => {
   });
   const [editErrors, setEditErrors] = useState({});
   const [assignmentQuantities, setAssignmentQuantities] = useState({});
+  const [assignmentWeights, setAssignmentWeights] = useState({});
   const [selectedContainersPerDetail, setSelectedContainersPerDetail] = useState({});
   const [expandedReceivers, setExpandedReceivers] = useState(new Set());
   const [detailedOrders, setDetailedOrders] = useState({});
@@ -207,10 +217,30 @@ const getStatusColors = (status) => {
     setSelectedContainersPerDetail(prev => ({ ...prev, [key]: newValue }));
   }, []);
 
-  const handleQuantityChange = useCallback((key, value, max = Infinity) => {
-    const qty = Math.max(0, Math.min(max, parseInt(value) || 0));
-    setAssignmentQuantities(prev => ({ ...prev, [key]: qty }));
-  }, []);
+  // Debounced handlers to prevent jerking
+  const debouncedAssignQtyChange = useCallback(
+    debounce((key, value, max) => {
+      const qty = Math.max(0, Math.min(max, parseInt(value) || 0));
+      setAssignmentQuantities(prev => ({ ...prev, [key]: qty }));
+    }, 300),
+    []
+  );
+
+  const debouncedAssignWeightChange = useCallback(
+    debounce((key, value, max) => {
+      const wt = Math.max(0, Math.min(max, parseFloat(value) || 0));
+      setAssignmentWeights(prev => ({ ...prev, [key]: wt }));
+    }, 300),
+    []
+  );
+
+  const handleAssignQtyChange = useCallback((key, value, max = Infinity) => {
+    debouncedAssignQtyChange(key, value, max);
+  }, [debouncedAssignQtyChange]);
+
+  const handleAssignWeightChange = useCallback((key, value, max = Infinity) => {
+    debouncedAssignWeightChange(key, value, max);
+  }, [debouncedAssignWeightChange]);
 
   const toggleExpanded = useCallback((orderId, recId) => {
     const key = `${orderId}-${recId}`;
@@ -232,6 +262,11 @@ const getStatusColors = (status) => {
       Object.keys(newState).forEach(k => { if (k.startsWith(`${orderId}-${recId}-`)) delete newState[k]; });
       return newState;
     });
+    setAssignmentWeights(prev => {
+      const newState = { ...prev };
+      Object.keys(newState).forEach(k => { if (k.startsWith(`${orderId}-${recId}-`)) delete newState[k]; });
+      return newState;
+    });
     toggleExpanded(orderId, recId);
   }, [toggleExpanded]);
 
@@ -239,9 +274,10 @@ const getStatusColors = (status) => {
     const key = getDetailKey(orderId, recId, detailIdx);
     setSelectedContainersPerDetail(prev => { const newState = { ...prev }; delete newState[key]; return newState; });
     setAssignmentQuantities(prev => { const newState = { ...prev }; delete newState[key]; return newState; });
+    setAssignmentWeights(prev => { const newState = { ...prev }; delete newState[key]; return newState; });
   }, [getDetailKey]);
 
-  // Fetch order
+  // Fetch order - Updated to properly map containerDetails
   const fetchOrder = useCallback(async (id) => {
     try {
       const response = await api.get(`/api/orders/${id}`, { params: { includeContainer: true } });
@@ -289,17 +325,34 @@ const getStatusColors = (status) => {
               camelRec[camelKey] = val;
             }
           });
-          // Fixed: Map shippingDetails array properly
+          // Fixed: Map shippingDetails array properly, including containerDetails
           if (rec.shippingdetails && Array.isArray(rec.shippingdetails)) {
             camelRec.shippingDetails = rec.shippingdetails.map(sd => {
               const camelSd = { ...initialShippingDetail };
               Object.keys(sd).forEach(k => {
                 camelSd[snakeToCamel(k)] = sd[k];
               });
+              // Map containerDetails
+              if (sd.containerdetails && Array.isArray(sd.containerdetails)) {
+                camelSd.containerDetails = sd.containerdetails.map(cd => {
+                  const camelCd = {
+                    status: cd.status || '',
+                    container: cd.container || null,
+                    totalNumber: cd.total_number || 0,
+                    assignWeight: cd.assign_weight || 0,
+                    remainingItems: cd.remaining_items || 0,
+                    assignTotalBox: cd.assign_total_box || 0,
+                  };
+                  return camelCd;
+                });
+              }
+              // Calculate remainingItems based on totalNumber and sum of assignTotalBox in containerDetails
+              const assignedBoxes = (camelSd.containerDetails || []).reduce((sum, cd) => sum + parseInt(cd.assignTotalBox || 0), 0);
+              camelSd.remainingItems = Math.max(0, parseInt(camelSd.totalNumber || 0) - assignedBoxes);
               return camelSd;
             });
           } else if (!camelRec.shippingDetails?.length) {
-            camelRec.shippingDetails = [{ ...initialShippingDetail, totalNumber: rec.total_number || '', weight: rec.total_weight || '' }];
+            camelRec.shippingDetails = [{ ...initialShippingDetail, totalNumber: rec.total_number || '', weight: rec.total_weight || '', remainingItems: rec.total_number || '' }];
           }
           camelRec.status = rec.status || 'Created';
           camelRec.fullPartial = camelRec.fullPartial || '';
@@ -449,9 +502,10 @@ const getStatusColors = (status) => {
     setSnackbar({ open: true, message, severity });
   }, []);
 
-  // Enhanced assign handler
+  // Enhanced assign handler - Ensure weight is included in payload
   const enhancedHandleAssign = useCallback(() => {
     console.log('Assignment Quantities:', assignmentQuantities);
+    console.log('Assignment Weights:', assignmentWeights);
     if (selectedOrders.length === 0) return;
 
     const assignments = selectedOrders.reduce((acc, orderId) => {
@@ -463,9 +517,10 @@ const getStatusColors = (status) => {
           acc[orderId][rec.id] = details.reduce((recAcc, _, idx) => {
             const key = getDetailKey(orderId, rec.id, idx);
             const qty = assignmentQuantities[key] || 0;
+            const weight = assignmentWeights[key] || 0;
             const conts = selectedContainersPerDetail[key] || [];
-            if (qty > 0 && conts.length > 0) {
-              recAcc[idx] = { qty, containers: conts };
+            if (qty > 0 && weight > 0 && conts.length > 0) {
+              recAcc[idx] = { qty, weight, containers: conts };
             }
             return recAcc;
           }, {});
@@ -477,14 +532,14 @@ const getStatusColors = (status) => {
     }, {});
 
     if (Object.keys(assignments).length === 0) {
-      showToast('Please assign at least one detail.', 'warning');
+      showToast('Please assign at least one detail with qty, weight, and containers.', 'warning');
       return;
     }
 
     console.log('Built assignments payload:', assignments);
     handleAssign(assignments);
     setOpenAssignModal(false);
-  }, [selectedOrders, detailedOrders, orders, assignmentQuantities, selectedContainersPerDetail, getDetailKey, handleAssign, setOpenAssignModal, showToast]);
+  }, [selectedOrders, detailedOrders, orders, assignmentQuantities, assignmentWeights, selectedContainersPerDetail, getDetailKey, handleAssign, setOpenAssignModal, showToast]);
 
   // Computed values
   const totalReceivers = useMemo(() => selectedOrders.reduce((total, id) => total + (orders.find(o => o.id === id)?.receivers?.length || 0), 0), [selectedOrders, orders]);
@@ -495,12 +550,15 @@ const getStatusColors = (status) => {
       fullOrder?.receivers?.forEach(rec => {
         rec.shippingDetails?.forEach((_, idx) => {
           const key = getDetailKey(orderId, rec.id, idx);
-          if ((assignmentQuantities[key] || 0) > 0 && (selectedContainersPerDetail[key] || []).length > 0) count++;
+          const qty = assignmentQuantities[key] || 0;
+          const weight = assignmentWeights[key] || 0;
+          const conts = selectedContainersPerDetail[key] || [];
+          if (qty > 0 && weight > 0 && conts.length > 0) count++;
         });
       });
     });
     return count;
-  }, [selectedOrders, detailedOrders, orders, assignmentQuantities, selectedContainersPerDetail, getDetailKey]);
+  }, [selectedOrders, detailedOrders, orders, assignmentQuantities, assignmentWeights, selectedContainersPerDetail, getDetailKey]);
   const totalContainersUsed = useMemo(() => new Set(getGloballySelectedCids()).size, [getGloballySelectedCids]);
   const totalDelivered = useMemo(() => {
     let sum = 0;
@@ -519,16 +577,17 @@ const getStatusColors = (status) => {
         rec.shippingDetails?.forEach((detail, idx) => {
           const key = getDetailKey(orderId, rec.id, idx);
           const qty = assignmentQuantities[key] || 0;
+          const weight = assignmentWeights[key] || 0;
           const conts = selectedContainersPerDetail[key] || [];
-          if (qty > 0 && conts.length > 0) {
+          if (qty > 0 && weight > 0 && conts.length > 0) {
             const containerNumbers = conts.map(cid => availableContainers.find(c => c.cid === cid)?.container_number || String(cid)).join(', ');
-            ass.push({ orderRef: fullOrder.bookingRef || 'N/A', receiverName: rec.receiverName || 'N/A', detailAddress: detail.deliveryAddress || `Detail ${idx + 1}`, qty, containers: containerNumbers, detailIdx: idx, recId: rec.id, orderId });
+            ass.push({ orderRef: fullOrder.bookingRef || 'N/A', receiverName: rec.receiverName || 'N/A', detailAddress: detail.deliveryAddress || `Detail ${idx + 1}`, qty, weight, containers: containerNumbers, detailIdx: idx, recId: rec.id, orderId });
           }
         });
       });
     });
     return ass;
-  }, [selectedOrders, detailedOrders, orders, assignmentQuantities, selectedContainersPerDetail, availableContainers, getDetailKey]);
+  }, [selectedOrders, detailedOrders, orders, assignmentQuantities, assignmentWeights, selectedContainersPerDetail, availableContainers, getDetailKey]);
 
  // Enhanced ReceiverRow with Accordion for Hierarchy
 // Enhanced ReceiverRow with Accordion for Hierarchy
@@ -551,11 +610,17 @@ const ReceiverRow = ({ rec, globalIndex }) => {
     })));
   }, [shippingDetails]);
 
+  const getRemainingWeight = useCallback((sd) => {
+    const assignedWeight = (sd.containerDetails || []).reduce((sum, cd) => sum + parseFloat(cd.assignWeight || 0), 0);
+    return Math.max(0, parseFloat(sd.weight || 0) - assignedWeight);
+  }, []);
+
   const totalPC = localShippingDetails.reduce((sum, sd) => sum + (parseInt(sd.remainingItems || sd.totalNumber || 0) || 0), 0); // Sum of remaining
-  const totalWeight = localShippingDetails.reduce((sum, sd) => sum + parseFloat(sd.weight || 0), 0);
+  const totalWeight = localShippingDetails.reduce((sum, sd) => sum + getRemainingWeight(sd), 0);
   let delivered = parseInt(fullRec.qtyDelivered || rec.qty_delivered || 0) || 0;
   delivered = Math.min(delivered, totalPC + totalPC); // Cap reasonably, but since remaining is post-delivered
   const totalNewAssignedQty = localShippingDetails.reduce((sum, _, idx) => sum + (assignmentQuantities[getDetailKey(rec.orderId, rec.id, idx)] || 0), 0);
+  const totalNewAssignedWeight = localShippingDetails.reduce((sum, _, idx) => sum + (assignmentWeights[getDetailKey(rec.orderId, rec.id, idx)] || 0), 0);
   const localRemaining = Math.max(0, totalPC - totalNewAssignedQty);
   const isEditingAssign = editingAssignReceiverId === rec.id;
   const address = localShippingDetails.map(d => d.deliveryAddress).filter(Boolean).join(', ') || fullRec.receiverAddress || 'N/A';
@@ -589,7 +654,7 @@ const ReceiverRow = ({ rec, globalIndex }) => {
       const newDetails = [...prev];
       const detail = { ...newDetails[detailIdx] };
       const contDetail = detail.containerDetails[contIdx];
-      const removedQty = parseInt(contDetail.assign_total_box || 0) || 0;
+      const removedQty = parseInt(contDetail.assignTotalBox || 0) || 0;
       // Update remaining items by adding back the removed qty
       detail.remainingItems = (parseInt(detail.remainingItems || 0) || 0) + removedQty;
       // Remove the container entry
@@ -629,18 +694,24 @@ const ReceiverRow = ({ rec, globalIndex }) => {
     console.log('remaining ',detail)
     const detailRemaining = parseInt(detail.remainingItems || detail.totalNumber || 0);
     const originalTotal = parseInt(detail.totalNumber || 0);
-    const progressValue = originalTotal > 0 ? ((originalTotal - detailRemaining) / originalTotal * 100) : 0;
+    // Updated progress calculation: assigned = original - remaining
+    const assignedQty = originalTotal - detailRemaining;
+    const progressValue = originalTotal > 0 ? (assignedQty / originalTotal * 100) : 0;
+    const detailRemainingWeight = getRemainingWeight(detail);
     // Filter out invalid/empty container details (e.g., all empty strings/null)
     const validContainerDetails = (detail.containerDetails || []).filter(cd =>
       (parseInt(cd.assign_total_box || 0) > 0 || parseFloat(cd.assign_weight || 0) > 0) && cd.container
+      
     );
+
+    console.log("assign_total_box",validContainerDetails)
     return (
       <TableRow key={`detail-${keyDetail}`} sx={{ bgcolor: theme.background }}>
         <TableCell colSpan={visibleColumnCount}>
           <Accordion defaultExpanded sx={{ boxShadow: 'none', '&:before': { display: 'none' } }}>
             <AccordionSummary expandIcon={<ExpandMoreIcon />}>
               <Typography variant="subtitle1" fontWeight="bold">
-                Shipping Detail {idx + 1}: {detail.deliveryAddress || 'N/A'} ({detail.category} - {detailRemaining} pcs remaining, {detail.weight} kg)
+                Shipping Detail {idx + 1}: {detail.deliveryAddress || 'N/A'} ({detail.category} - {validContainerDetails[0].total_number || 0} pcs  {validContainerDetails[0].assign_weight} kg)
               </Typography>
             </AccordionSummary>
             <AccordionDetails sx={{ p: 2 }}>
@@ -682,7 +753,7 @@ const ReceiverRow = ({ rec, globalIndex }) => {
                                 justifyContent="center"
                               >
                                 <Chip label={`${parseInt(contDetail.assign_total_box || 0)} Units`} style={{ width: 100 }} size="large" color="success" />
-                                <Chip label={`${parseFloat(contDetail.assign_weight || 0)} kg`} style={{ width: 100 }} size="large" color="primary" variant="outlined" />
+                                <Chip label={`${parseFloat(contDetail.assign_weight || 0).toFixed(2)} kg`} style={{ width: 100 }} size="large" color="primary" variant="outlined" />
                               </Stack>
                               <IconButton size="small" color="error" onClick={() => handleRemoveExisting(idx, contIdx)} title="Remove Assignment">
                                 <DeleteIcon fontSize="small" />
@@ -703,8 +774,18 @@ const ReceiverRow = ({ rec, globalIndex }) => {
                       label="New Boxes to Assign"
                       type="number"
                       value={assignmentQuantities[keyDetail] || ''}
-                      onChange={(e) => handleQuantityChange(keyDetail, e.target.value, detailRemaining)}
+                      onChange={(e) => handleAssignQtyChange(keyDetail, e.target.value, detailRemaining)}
                       inputProps={{ min: 0, max: detailRemaining }}
+                      sx={{ minWidth: 150 }}
+                    />
+                    <TextField
+                      size="small"
+                      label="New Weight to Assign (kg)"
+                      type="number"
+                      step="0.01"
+                      value={assignmentWeights[keyDetail] || ''}
+                      onChange={(e) => handleAssignWeightChange(keyDetail, e.target.value, detailRemainingWeight)}
+                      inputProps={{ min: 0, max: detailRemainingWeight, step: 0.01 }}
                       sx={{ minWidth: 150 }}
                     />
                     <FormControl size="small" sx={{ minWidth: 200 }}>
@@ -735,7 +816,7 @@ const ReceiverRow = ({ rec, globalIndex }) => {
                       variant="contained"
                       startIcon={<AddIcon />}
                       onClick={() => {/* Preview in Summary */ }}
-                      disabled={!(assignmentQuantities[keyDetail] || 0) > 0 || (selectedContainersPerDetail[keyDetail] || []).length === 0}
+                      disabled={!(assignmentQuantities[keyDetail] || 0) > 0 || !(assignmentWeights[keyDetail] || 0) > 0 || (selectedContainersPerDetail[keyDetail] || []).length === 0}
                       size="small"
                     >
                       Preview Assignment
@@ -746,7 +827,7 @@ const ReceiverRow = ({ rec, globalIndex }) => {
               <Divider sx={{ my: 2 }} />
               <LinearProgress variant="determinate" value={progressValue} sx={{ height: 8 }} color="primary" />
               <Typography variant="caption" sx={{ display: 'block', textAlign: 'center', mt: 1, color: theme.textSecondary }}>
-                Progress: {originalTotal - detailRemaining} / {originalTotal}
+                Progress: {detailRemaining} / {originalTotal}
               </Typography>
             </AccordionDetails>
           </Accordion>
@@ -770,7 +851,7 @@ const ReceiverRow = ({ rec, globalIndex }) => {
         </TableCell>
         <TableCell key="contact" sx={{ display: columnVisibility.contact ? 'table-cell' : 'none' }}>{contact}</TableCell>
         <TableCell key="email" sx={{ display: columnVisibility.email ? 'table-cell' : 'none' }}>{email}</TableCell>
-        <TableCell key="wt" sx={{ display: columnVisibility.wt ? 'table-cell' : 'none' }}>{totalWeight || 0} kg</TableCell>
+        <TableCell key="wt" sx={{ display: columnVisibility.wt ? 'table-cell' : 'none' }}>{totalWeight.toFixed(2)} kg</TableCell>
         <TableCell key="totalPC" sx={{ display: columnVisibility.totalPC ? 'table-cell' : 'none', color: theme.success }}>{totalPC}</TableCell>
         <TableCell key="deliveredQty" sx={{ display: columnVisibility.deliveredQty ? 'table-cell' : 'none' }}>
           <Chip label={delivered} size="small" color="success" />
@@ -779,7 +860,7 @@ const ReceiverRow = ({ rec, globalIndex }) => {
           <Chip label={localRemaining} size="small" color={localRemaining > 0 ? "warning" : "success"} variant="outlined" />
         </TableCell>
         <TableCell key="assignQty">
-          <Typography variant="body2" fontWeight="bold">{totalNewAssignedQty}</Typography>
+          <Typography variant="body2" fontWeight="bold">{totalNewAssignedQty} units / {totalNewAssignedWeight.toFixed(2)} kg</Typography>
         </TableCell>
         <TableCell key="containers">
           <Stack direction="row" gap={1} alignItems="center">
@@ -836,6 +917,7 @@ const ReceiverRow = ({ rec, globalIndex }) => {
                 <TableCell>Receiver</TableCell>
                 <TableCell>Detail</TableCell>
                 <TableCell>Qty</TableCell>
+                <TableCell>Weight (kg)</TableCell>
                 <TableCell>Containers</TableCell>
                 <TableCell>Action</TableCell>
               </TableRow>
@@ -847,6 +929,7 @@ const ReceiverRow = ({ rec, globalIndex }) => {
                   <TableCell>{a.receiverName}</TableCell>
                   <TableCell>{a.detailAddress}</TableCell>
                   <TableCell><Chip label={a.qty} color="success" size="small" /></TableCell>
+                  <TableCell>{a.weight ? `${a.weight.toFixed(2)}` : 'N/A'}</TableCell>
                   <TableCell>{a.containers}</TableCell>
                   <TableCell>
                     <IconButton size="small" onClick={() => handleRemoveDetailAssignment(a.orderId, a.recId, a.detailIdx)} color="error">

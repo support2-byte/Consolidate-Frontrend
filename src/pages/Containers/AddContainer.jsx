@@ -164,7 +164,7 @@ const ContainerModule = ({ propContainers = [] }) => {
         api.get('/api/containers/types'),
         api.get('/api/containers/ownership-types')
       ]);
-      console.log('Fetched options:', locationRes);
+      console.log('Fetched options:', sizeRes );
       // setStatuses(statusRes.data || []);
       setLocations(locationRes.data || []);
       setSizes(sizeRes.data || []);
@@ -742,9 +742,9 @@ const fetchContainerById = async (cid) => {
               <InputLabel>Type</InputLabel>
               <Select name="container_type" label="Type" value={filters.container_type || ''} onChange={handleFilterChange}>
                 <MenuItem value="">All Types</MenuItem>
-                {types.map((type) => (
+                {/* {types.map((type) => (
                   <MenuItem key={type.value} value={type.value}>{type.label}</MenuItem>
-                ))}
+                ))} */}
               </Select>
             </FormControl>
           </Box>

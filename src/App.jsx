@@ -24,6 +24,7 @@ import Banks from "./pages/SystemData/Banks";
 import ThirdParties from "./pages/SystemData/ThirdParties";
 import BarcodePrintTest from "./pages/SystemData/BarcodePrintTest";
 import Slide from "@mui/material/Slide"; // Add this import for MUI Slide
+import EtaSetupPage from "./pages/SystemData/EtaSetup";
 
 function ProtectedRoute() {
   const { user, loading } = useAuth();
@@ -72,6 +73,8 @@ export default function App() {
               <Route path="/admin/banks" element={<AnimatedSlideWrapper><Banks /></AnimatedSlideWrapper>} />
               <Route path="/admin/third-parties" element={<AnimatedSlideWrapper><ThirdParties /></AnimatedSlideWrapper>} />
               <Route path="/admin/barcode-print" element={<AnimatedSlideWrapper><BarcodePrintTest /></AnimatedSlideWrapper>} />
+              <Route path="/admin/EtaSetupPage" element={<AnimatedSlideWrapper><EtaSetupPage /></AnimatedSlideWrapper>} />
+             
               {/* <Route path="/containers/add" element={<AddContainers />} /> */}
             </Route>
           </Route>

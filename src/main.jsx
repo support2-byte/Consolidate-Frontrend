@@ -27,6 +27,7 @@ import Places from "./pages/SystemData/Places";
 import Banks from "./pages/SystemData/Banks";
 import ThirdParties from "./pages/SystemData/ThirdParties";
 import BarcodePrintTest from "./pages/SystemData/BarcodePrintTest";
+import EtaSetupPage from "./pages/SystemData/EtaSetup";
 
 function ThemedApp({ children }) {
   const { mode } = useThemeContext();
@@ -84,6 +85,8 @@ const router = createBrowserRouter([
       { path: "/admin/banks", element: <Banks /> },
       { path: "/admin/third-parties", element: <ThirdParties /> },
       { path: "/admin/barcode-print", element: <BarcodePrintTest /> },
+      { path: "/admin/EtaSetupPage", element: <EtaSetupPage /> },
+
     ],
   },
 ]);

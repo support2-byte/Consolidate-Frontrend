@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import jsPDF from 'jspdf';
+// import jspdf from 'jspdf';
+
 import html2canvas from 'html2canvas';
 import {
     Box,
@@ -50,10 +51,9 @@ import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import { getOrderStatusColor } from "./Utlis";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../api";
-// import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
-
-// TabPanel Component
+import jsPDF from 'jspdf';
+import { applyPlugin } from 'jspdf-autotable';
+applyPlugin(jsPDF);  // Explicitly apply the plugin to jsPDF prototype
 function TabPanel(props) {
     const { children, value, index, ...other } = props;
    
@@ -82,9 +82,10 @@ function a11yProps(index) {
         'aria-controls': `simple-tabpanel-${index}`,
     };
 }
+// Helper function to get place name by ID
 
 // Enhanced View Order Modal Component
-const OrderModalView = ({ openModal, handleCloseModal, selectedOrder, modalLoading, modalError }) => {
+const OrderModalView = ({ openModal, handleCloseModal, selectedOrder, modalLoading, modalError,places }) => {
     const [tabValue, setTabValue] = useState(0);
     const navigate = useNavigate();
     const [containers, setContainers] = useState([]);
@@ -112,7 +113,11 @@ const OrderModalView = ({ openModal, handleCloseModal, selectedOrder, modalLoadi
             setLoadingContainers(false);
         }
     };
-
+const getPlaceName = (placeId) => {
+    if (!placeId) return '-';
+    const place = places.find(p => p.value === placeId.toString());
+    return place ? place.label : placeId;
+};
     // Effect: Initialize assignments when modal opens with order
     useEffect(() => {
         if (openModal && selectedOrder) {
@@ -179,13 +184,6 @@ const normalizeContainers = (containers) => {
     return containers.flat().filter(c => c && typeof c === 'string').map(c => c.trim());
 };
 
-// Make sure to import jsPDF and autoTable
-// import jsPDF from "jspdf";
-// import autoTable from "jspdf-autotable";
-
-// Ensure you import jsPDF and autoTable
-// import jsPDF from "jspdf";
-// import autoTable from "jspdf-autotable";
 
 const loadImageAsBase64 = (url) =>
   new Promise((resolve) => {
@@ -454,6 +452,7 @@ const generateOrderPDF = async (order) => {
   // -------- SAVE PDF --------
   doc.save(`Order_${order.booking_ref || "Unknown"}.pdf`);
 };
+
 
 
 // Enhanced HTML to Canvas method with better styling and layout
@@ -1700,13 +1699,13 @@ const generatePDFWithCanvas = async () => {
                                                         data={{
                                                             'Status': selectedOrder?.overall_status || selectedOrder?.status || 'Created',
                                                             'RGL Booking Number': selectedOrder?.rgl_booking_number,
-                                                            'Place of Loading': selectedOrder?.place_of_loading,
-                                                            'Final Destination': selectedOrder?.final_destination,
-                                                            'Place of Delivery': selectedOrder?.place_of_delivery,
+                                                            'Place of Loading': getPlaceName(selectedOrder?.place_of_loading),
+                                                            'Final Destination': getPlaceName(selectedOrder?.final_destination),
+                                                            'Place of Delivery': getPlaceName(selectedOrder?.place_of_delivery),
                                                             'ETA': formatDate(selectedOrder?.eta),
                                                             'ETD': formatDate(selectedOrder?.etd),
                                                             'Consignment Marks': selectedOrder?.consignment_marks,
-                                                            'Point of Origin': selectedOrder?.point_of_origin,
+                                                            'Point of Origin': getPlaceName(selectedOrder?.point_of_origin),
                                                             'Shipping Line': selectedOrder?.shipping_line,
                                                             'Order Remarks': selectedOrder?.order_remarks,
                                                             'Consignment Remarks': selectedOrder?.consignment_remarks,

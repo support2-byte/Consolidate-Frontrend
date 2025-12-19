@@ -1511,6 +1511,7 @@ console.log('Ren container list:', containersList);
                     selectedOrder={selectedOrder}
                     modalLoading={modalLoading}
                     modalError={modalError}
+                    places={places}
                 />
                 {/* Snackbar for notifications */}
                 <Snackbar

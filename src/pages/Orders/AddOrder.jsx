@@ -3272,13 +3272,13 @@ const OrderForm = () => {
 
             const bookingRef = `RGSL-${timestampWithRandom}-${randomLast3}`;
             // const rgslBookingRef = `RGSL-ORD-${today}-${randomLast3}`;
-            const rglBookingNumber = `RGSL-ORD-${randomSuffix}${today}`;
+            // const rglBookingNumber = `RGSL-ORD-${randomSuffix}${today}`;
 
             setFormData(prev => ({
                 ...prev,
                 bookingRef,
                 // rgslBookingRef,
-                rglBookingNumber
+                // rglBookingNumber
             }));
         }
     }, [isEditMode]);
@@ -3557,7 +3557,6 @@ const OrderForm = () => {
             const params = {
                 page: 1,
                 limit: 50,
-                status: 'Available'
             };
             const response = await api.get('/api/containers', { params });
             setContainers(response.data.data || []);
@@ -4747,7 +4746,7 @@ const handleSave = async () => {
                                 disabled={isFieldDisabled('bookingRef')}
                             />
                             <CustomTextField
-                                label="RGL Booking Number"
+                                label="RGSL Booking Number"
                                 name="rglBookingNumber"
                                 value={formData.rglBookingNumber}
                                 onChange={handleChange}
@@ -5088,7 +5087,7 @@ const handleSave = async () => {
                                     key={i}
                                     label={`${(formData.senderType === 'sender' ? rec.receiverName : rec.senderName) ||
                                         (formData.senderType === 'sender' ? `Receiver ${i + 1}` : `Sender ${i + 1}`)
-                                        } (Items: ${totalItems} / Remaining: ${remainingItems})`}
+                                        } (Items: ${totalItems.toLocaleString()} / Remaining: ${remainingItems.toLocaleString()})`}
                                     variant={rec.fullPartial === 'Partial' ? "filled" : "outlined"}
                                     color={rec.fullPartial === 'Partial' ? "warning" : "primary"}
                                 />
@@ -5332,11 +5331,7 @@ const handleSave = async () => {
                     const handleEmptySdChange = (field, value) => {
                         const sdFields = { [field]: value };
                         let containerFields = null;
-                        if (field === 'totalNumber') {
-                            containerFields = { assignTotalBox: value };
-                        } else if (field === 'weight') {
-                            containerFields = { assignWeight: value };
-                        }
+                        // FIXED: Removed auto-fill for totalNumber and weight
                         addShippingWithValues(i, sdFields, containerFields);
                     };
                     // NEW: Handler for shipping change with auto container fill
@@ -5347,7 +5342,7 @@ const handleSave = async () => {
                         }
                         const value = e.target.value;
                         const key = listKey;
-                        const containerField = field === 'totalNumber' ? 'assignTotalBox' : 'assignWeight';
+                        // FIXED: Removed auto-fill for containerField
                         setFormData(prev => ({
                             ...prev,
                             [key]: prev[key].map((item, ii) => {
@@ -5356,25 +5351,9 @@ const handleSave = async () => {
                                     ...item,
                                     shippingDetails: item.shippingDetails.map((sd, jj) => {
                                         if (jj !== shipIndex) return sd;
-                                        let newContainerDetails = [...(sd.containerDetails || [])];
-                                        const hasContainers = newContainerDetails.length > 0;
-                                        if (!hasContainers) {
-                                            newContainerDetails = [{
-                                                assignTotalBox: field === 'totalNumber' ? value : '',
-                                                assignWeight: field === 'weight' ? value : '',
-                                                container: null,
-                                                status: ''
-                                            }];
-                                        } else {
-                                            newContainerDetails[0] = {
-                                                ...newContainerDetails[0],
-                                                [containerField]: value
-                                            };
-                                        }
                                         return {
                                             ...sd,
-                                            [field]: value,
-                                            containerDetails: newContainerDetails
+                                            [field]: value
                                         };
                                     })
                                 };
@@ -5426,6 +5405,7 @@ const handleSave = async () => {
                                 senderEmail: '',
                                 senderRef: '',
                                 senderRemarks: '',
+                                senderMarksNumber: '',
                             } : {
                                 receiverName: '',
                                 receiverContact: '',
@@ -5433,6 +5413,7 @@ const handleSave = async () => {
                                 receiverEmail: '',
                                 receiverRef: '',
                                 receiverRemarks: '',
+                                receiverMarksNumber: '',
                             };
                             Object.entries(fieldMap).forEach(([formKey, value]) => {
                                 handleChangeFn(i, formKey)({ target: { value } });
@@ -5865,14 +5846,14 @@ const handleSave = async () => {
                                                         helperText={errors[`${listKey}[${i}].shippingDetails[${j}].totalNumber`]}
                                                     />
                                                 </Box>
-                                                {/* NEW: Status field for shipping detail under Total Number */}
+                                                {/* NEW: Status field for shipping detail under Total Number - FIXED: Use 'status' consistently */}
                                                 <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
                                                     <CustomSelect
                                                         label="Shippment Status"
-                                                        value={sd.consignmentStatus || ""}
+                                                        value={sd.status || ""}
                                                         onChange={(e) => handleShippingChangeFn(i, j, 'status')(e)}
-                                                        error={!!errors[`${listKey}[${i}].shippingDetails[${j}].consignmentStatus`]}
-                                                        helperText={errors[`${listKey}[${i}].shippingDetails[${j}].consignmentStatus`]}
+                                                        error={!!errors[`${listKey}[${i}].shippingDetails[${j}].status`]}
+                                                        helperText={errors[`${listKey}[${i}].shippingDetails[${j}].status`]}
                                                         renderValue={(selected) => selected || "Select Status"}
                                                     >
                                                         <MenuItem value="">Select Status</MenuItem>
@@ -5980,7 +5961,7 @@ const handleSave = async () => {
                                                                                     isOptionEqualToValue={autocompleteEquality}
                                                                                     renderInput={(params) => <TextField {...params} label="Container" />}
                                                                                     sx={{ width: { xs: '100%', sm: '50%' } }}
-                                                                             
+                                                                           
                                                                                     // fullWidth
                                                                                 />
                                                                                 <CustomSelect
@@ -5990,7 +5971,7 @@ const handleSave = async () => {
                                                                                     error={!!errors[`${listKey}[${i}].shippingDetails[${j}].containerDetails[${k}].status`]}
                                                                                     helperText={errors[`${listKey}[${i}].shippingDetails[${j}].containerDetails[${k}].status`]}
                                                                                     sx={{ width: { xs: '100%', sm: '50%' } }}
-                                                                          
+                                                                        
                                                                                     renderValue={(selected) => selected || "Select Status"}
                                                                                 >
                                                                                     <MenuItem value="">Select Status</MenuItem>
@@ -6017,7 +5998,7 @@ const handleSave = async () => {
                                                         {/* NEW: Total Assign Summary Row (always appears, uses current sd for sum) */}
                                                         <Box sx={{ p: 1, border: 1, borderColor: "grey.300", borderRadius: 1, bgcolor: "grey.50" }}>
                                                             <Typography variant="body2" color="primary" fontWeight="bold">
-                                                                Total Assign Number: {calculateSumAssignTotalBox(sd)} | Total Assign Weight: {calculateSumAssignWeight(sd)}
+                                                                Total Assign Number: {calculateSumAssignTotalBox(sd).toLocaleString()} | Total Assign Weight: {calculateSumAssignWeight(sd).toFixed(2)}
                                                             </Typography>
                                                         </Box>
                                                     </Stack>
@@ -6158,6 +6139,15 @@ const handleSave = async () => {
                                 />
                             </Box>
                             <CustomTextField
+                                label={`${typePrefix} Marks & Number`}
+                                value={isSenderMode ? rec.senderMarksNumber : rec.receiverMarksNumber}
+                                onChange={handleChangeFn(i, isSenderMode ? 'senderMarksNumber' : 'receiverMarksNumber')}
+                                error={!!errors[`${listKey}[${i}].${isSenderMode ? 'senderMarksNumber' : 'receiverMarksNumber'}`]}
+                                helperText={errors[`${listKey}[${i}].${isSenderMode ? 'senderMarksNumber' : 'receiverMarksNumber'}`]}
+                                disabled={isFieldDisabled(`${recDisabledPrefix}.${isSenderMode ? 'senderMarksNumber' : 'receiverMarksNumber'}`)}
+                                fullWidth
+                            />
+                            <CustomTextField
                                 label="Remarks"
                                 value={rec.remarks || ""}
                                 onChange={handleChangeFn(i, 'remarks')}
@@ -6180,6 +6170,7 @@ const handleSave = async () => {
                     [isSenderMode ? 'senderContact' : 'receiverContact']: '',
                     [isSenderMode ? 'senderAddress' : 'receiverAddress']: '',
                     [isSenderMode ? 'senderEmail' : 'receiverEmail']: '',
+                    [isSenderMode ? 'senderMarksNumber' : 'receiverMarksNumber']: '',
                     eta: '',
                     etd: '',
                     shippingLine: '',
