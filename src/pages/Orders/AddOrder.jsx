@@ -4585,7 +4585,7 @@ const handleSave = async () => {
                 });
                 return snakeCd;
             });
-            snakeItem.item_ref = `ORDER-ITEM-REF-${i + 1}-${j + 1}-DUMMY`;
+            snakeItem.item_ref = `ORDER-ITEM-REF-${i + 1}-${j + 1}-${Date.now()}`;
             orderItemsToSend.push(snakeItem);
         });
     });
@@ -5303,7 +5303,7 @@ const handleSave = async () => {
                         deliveryAddress: '',
                         status: '', // NEW: Add status to emptySd
                         containerDetails: [], // FIXED: Empty array, no initial blank
-                        itemRef: `ORDER-ITEM-REF-${i + 1}-1`
+                        itemRef: `ORDER-ITEM-REF-${i + 1}-${Date.now()}`
                     };
                     // NEW: Unified add shipping with values for preview
                     const addShippingWithValues = (recIndex, sdFields, containerFields = null) => {
@@ -5873,7 +5873,7 @@ const handleSave = async () => {
                                                         helperText={errors[`${listKey}[${i}].shippingDetails[${j}].deliveryAddress`]}
                                                         fullWidth
                                                     />
-                                                    <CustomTextField label="Ref Number" value={sd.itemRef || `ORDER-ITEM-REF-${i + 1}-${j + 1}`} disabled={true} />
+                                                    <CustomTextField label="Ref Number" value={sd.itemRef || `ORDER-ITEM-REF-${i + 1}-${j + 1}-${Date.now()}`} disabled={true} />
                                                 </Box>
                                                 {/* FIXED: Container Details Section - only if hasContainers, else button */}
                                                 {!hasContainers ? (

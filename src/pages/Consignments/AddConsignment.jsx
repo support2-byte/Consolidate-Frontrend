@@ -13,14 +13,14 @@ import {
   Checkbox,
   TableContainer, Paper, TablePagination, Tooltip,
   Chip, Stack, Grid, Avatar,
-  CircularProgress
+  CircularProgress,
+  Card as MuiCard,
 } from '@mui/material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import dayjs from 'dayjs';
 import * as Yup from 'yup';
 // import CircularProgress 
-
 import { styled } from '@mui/material/styles';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import ExpandMoreIconMui  from '@mui/icons-material/ExpandMore';
@@ -121,9 +121,7 @@ const CustomDatePicker = ({ name, value, onChange, onBlur, label, tooltip, requi
   </TooltipMui>
 );
 
-
-// Optional prop for edit mode
-  const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
+const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
   const currentDate = dayjs('2025-11-20');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -203,10 +201,14 @@ const CustomDatePicker = ({ name, value, onChange, onBlur, label, tooltip, requi
     status: "",
     booking_ref: "",
   });
+  // Fixed: setFieldError -> setContainerError (local state for container errors)
+  const [containerErrors, setContainerErrors] = useState({});
+  const setContainerError = (path, message) => {
+    setContainerErrors(prev => ({ ...prev, [path]: message }));
+  };
 
   // Consolidated initData
   useEffect(() => {
-    // setSaving(false)
     const initData = async () => {
       try {
         setLoading(true);
@@ -292,7 +294,6 @@ const CustomDatePicker = ({ name, value, onChange, onBlur, label, tooltip, requi
     };
     initData();
   }, [mode, effectiveConsignmentId]);
-
   const loadConsignment = async (id) => {
     console.log('Loading consignment', id);
     try {
@@ -347,7 +348,6 @@ const CustomDatePicker = ({ name, value, onChange, onBlur, label, tooltip, requi
       console.error('Error loading consignment:', err);
     }
   };
-
   // Lookup after values and options are set
   useEffect(() => {
     if (mode === 'edit' && effectiveConsignmentId && options.third_parties?.length > 0 && options.banks?.length > 0 &&
@@ -357,13 +357,11 @@ const CustomDatePicker = ({ name, value, onChange, onBlur, label, tooltip, requi
     }
   }, [mode, effectiveConsignmentId, options.third_parties, options.banks, options.originOptions, options.destinationOptions,
       values.shipperName, values.consigneeName, values.bankName, values.originName, values.destinationName]);
-
   const lookupMissingIds = () => {
     const updates = {};
     let hasUpdate = false;
     const fuzzyMatch = (str1, str2) =>
       (str1 || '').trim().toLowerCase() === (str2 || '').trim().toLowerCase();
-
     if (values.shipperName && !values.shipper && options.third_parties.length > 0) {
       const selected = options.third_parties.find(tp =>
         tp.type === 'shipper' &&
@@ -380,7 +378,6 @@ const CustomDatePicker = ({ name, value, onChange, onBlur, label, tooltip, requi
         console.warn('No shipper match found for:', values.shipperName);
       }
     }
-
     if (values.consigneeName && !values.consignee && options.third_parties.length > 0) {
       const selected = options.third_parties.find(tp =>
         tp.type === 'consignee' &&
@@ -397,7 +394,6 @@ const CustomDatePicker = ({ name, value, onChange, onBlur, label, tooltip, requi
         console.warn('No consignee match found for:', values.consigneeName);
       }
     }
-
     if (values.bankName && !values.bank && options.banks.length > 0) {
       const selected = options.banks.find(b =>
         fuzzyMatch(b.name, values.bankName) || fuzzyMatch(b.bank_name, values.bankName)
@@ -410,7 +406,6 @@ const CustomDatePicker = ({ name, value, onChange, onBlur, label, tooltip, requi
         console.warn('No bank match found for:', values.bankName);
       }
     }
-
     if (values.originName && !values.origin && options.originOptions.length > 0) {
       const selected = options.originOptions.find(opt => fuzzyMatch(opt.label, values.originName));
       if (selected) {
@@ -421,7 +416,6 @@ const CustomDatePicker = ({ name, value, onChange, onBlur, label, tooltip, requi
         console.warn('No origin match found for:', values.originName);
       }
     }
-
     if (values.destinationName && !values.destination && options.destinationOptions.length > 0) {
       const selected = options.destinationOptions.find(opt => fuzzyMatch(opt.label, values.destinationName));
       if (selected) {
@@ -432,7 +426,6 @@ const CustomDatePicker = ({ name, value, onChange, onBlur, label, tooltip, requi
         console.warn('No destination match found for:', values.destinationName);
       }
     }
-
     if (hasUpdate) {
       setValues(prev => {
         const newValues = { ...prev, ...updates };
@@ -453,138 +446,116 @@ const CustomDatePicker = ({ name, value, onChange, onBlur, label, tooltip, requi
       console.log('Fallback IDs & addresses set:', updates);
     }
   };
-useEffect(() => {
-  if (!loading && initialValues === null) {
-    // Capture snapshot after options and data are loaded
-    setInitialValues({ ...values });
-  }
-}, [loading, values]);
-
-const isDirty = useMemo(() => {
-  if (!initialValues) return false;
-
-  // List of primitive fields to compare directly
-  const primitives = [
-    'id', 'consignment_number', 'status', 'remarks', 'shipper', 'shipperName', 'shipperAddress',
-    'consignee', 'consigneeName', 'consigneeAddress', 'origin', 'originName', 'destination', 'destinationName',
-    'eform', 'bank', 'bankName', 'paymentType', 'voyage', 'consignment_value', 'currency_code',
-    'delivered', 'pending', 'seal_no', 'netWeight', 'gross_weight'
-  ];
-
-  // Compare primitives
-  for (let key of primitives) {
-    if (values[key] !== initialValues[key]) {
+  useEffect(() => {
+    if (!loading && initialValues === null) {
+      // Capture snapshot after options and data are loaded
+      setInitialValues({ ...values });
+    }
+  }, [loading, values]);
+  const isDirty = useMemo(() => {
+    if (!initialValues) return false;
+    // List of primitive fields to compare directly
+    const primitives = [
+      'id', 'consignment_number', 'status', 'remarks', 'shipper', 'shipperName', 'shipperAddress',
+      'consignee', 'consigneeName', 'consigneeAddress', 'origin', 'originName', 'destination', 'destinationName',
+      'eform', 'bank', 'bankName', 'paymentType', 'voyage', 'consignment_value', 'currency_code',
+      'delivered', 'pending', 'seal_no', 'netWeight', 'gross_weight'
+    ];
+    // Compare primitives
+    for (let key of primitives) {
+      if (values[key] !== initialValues[key]) {
+        return true;
+      }
+    }
+    // Compare dates (using dayjs format for string comparison)
+    if (values.eform_date?.format('YYYY-MM-DD') !== initialValues.eform_date?.format('YYYY-MM-DD')) {
       return true;
     }
-  }
-
-  // Compare dates (using dayjs format for string comparison)
-  if (values.eform_date?.format('YYYY-MM-DD') !== initialValues.eform_date?.format('YYYY-MM-DD')) {
-    return true;
-  }
-  if (values.eta?.format('YYYY-MM-DD') !== initialValues.eta?.format('YYYY-MM-DD')) {
-    return true;
-  }
-
-  // Compare arrays using JSON.stringify (simple and sufficient for containers/orders structure)
-  if (JSON.stringify(values.containers) !== JSON.stringify(initialValues.containers)) {
-    return true;
-  }
-  if (JSON.stringify(values.orders) !== JSON.stringify(initialValues.orders)) {
-    return true;
-  }
-
-  return false;
-}, [values, initialValues]);
-
-// Add the useBlocker hook after the navigate declaration
-useBlocker(
-  ({ currentLocation, nextLocation }) =>
-    isDirty && (nextLocation.pathname !== currentLocation.pathname), // Block only on route changes, not same page
-);
-
-// Add this useEffect for browser close/refresh/tab close
-useEffect(() => {
-  if (!isDirty) {
-    window.onbeforeunload = null;
-    return;
-  }
-
-  const handleBeforeUnload = (e) => {
-    e.preventDefault();
-    e.returnValue = 'Are you sure you want to leave? Changes you made may not be saved.';
-    return 'Are you sure you want to leave? Changes you made may not be saved.';
+    if (values.eta?.format('YYYY-MM-DD') !== initialValues.eta?.format('YYYY-MM-DD')) {
+      return true;
+    }
+    // Compare arrays using JSON.stringify (simple and sufficient for containers/orders structure)
+    if (JSON.stringify(values.containers) !== JSON.stringify(initialValues.containers)) {
+      return true;
+    }
+    if (JSON.stringify(values.orders) !== JSON.stringify(initialValues.orders)) {
+      return true;
+    }
+    return false;
+  }, [values, initialValues]);
+  const isDirtyRef = useRef(false);
+  // useEffect(() => {
+  //   isDirtyRef.current = isDirty;
+  // }, [isDirty]);
+  // // Fixed: Single useBlocker call with memoized blocker to avoid hook count issues
+  // const blocker = useCallback(
+  //   ({ currentLocation, nextLocation }) =>
+  //     isDirtyRef.current && (nextLocation.pathname !== currentLocation.pathname),
+  //   []
+  // );
+  // useBlocker(blocker);
+  // // Add this useEffect for browser close/refresh/tab close
+  // useEffect(() => {
+  //   if (!isDirty) {
+  //     window.onbeforeunload = null;
+  //     return;
+  //   }
+  //   const handleBeforeUnload = (e) => {
+  //     e.preventDefault();
+  //     e.returnValue = 'Are you sure you want to leave? Changes you made may not be saved.';
+  //     return 'Are you sure you want to leave? Changes you made may not be saved.';
+  //   };
+  //   window.onbeforeunload = handleBeforeUnload;
+  //   return () => {
+  //     window.onbeforeunload = null;
+  //   };
+  // }, [isDirty]);
+  // Optional: Add a manual confirmation for back button or custom nav (e.g., in resetForm or navigate calls)
+  // But useBlocker handles most cases. For example, update resetForm:
+  const resetForm = () => {
+    if (isDirty) {
+      const confirmed = window.confirm('Unsaved changes will be lost. Continue?');
+      if (!confirmed) return;
+    }
+    setValues({
+      id: '',
+      // consignment_number: '', // Note: If you want to reset this too, uncomment
+      status: '',
+      remarks: '',
+      shipper: '',
+      shipperName: '',
+      shipperAddress: '',
+      consignee: '',
+      consigneeName: '',
+      consigneeAddress: '',
+      origin: '',
+      originName: '',
+      destination: '',
+      destinationName: '',
+      eform: '',
+      eform_date: currentDate,
+      bank: '',
+      bankName: '',
+      paymentType: '',
+      voyage: '',
+      consignment_value: 0,
+      currency_code: '',
+      eta: currentDate,
+      vessel: '',
+      shippingLine: '',
+      delivered: 0,
+      pending: 0,
+      seal_no: '',
+      netWeight: 0,
+      gross_weight: 0,
+      containers: [{ containerNo: '', location: '', size: '', containerType: '', ownership: '', status: 'Pending', id: '' }],
+      orders: []
+    });
+    setErrors({});
+    setTouched({});
+    setSelectedOrders([]);
+    setInitialValues(null); // Reset initial snapshot to avoid false dirty state after reset
   };
-
-  window.onbeforeunload = handleBeforeUnload;
-
-  return () => {
-    window.onbeforeunload = null;
-  };
-}, [isDirty]);
-
-
-const isDirtyRef = useRef(false);
-
-useEffect(() => {
-  isDirtyRef.current = isDirty;
-}, [isDirty]);
-
-// Replace the existing useBlocker with a memoized version using the ref
-const blocker = useCallback(
-  ({ currentLocation, nextLocation }) =>
-    isDirtyRef.current && (nextLocation.pathname !== currentLocation.pathname),
-  [] // No deps, uses ref for isDirty
-);
-
-useBlocker(blocker);
-
-// Optional: Add a manual confirmation for back button or custom nav (e.g., in resetForm or navigate calls)
-// But useBlocker handles most cases. For example, update resetForm:
-const resetForm = () => {
-  if (isDirty) {
-    const confirmed = window.confirm('Unsaved changes will be lost. Continue?');
-    if (!confirmed) return;
-  }
-  setValues({
-    id: '',
-    // consignment_number: '', // Note: If you want to reset this too, uncomment
-    status: '',
-    remarks: '',
-    shipper: '',
-    shipperName: '',
-    shipperAddress: '',
-    consignee: '',
-    consigneeName: '',
-    consigneeAddress: '',
-    origin: '',
-    originName: '',
-    destination: '',
-    destinationName: '',
-    eform: '',
-    eform_date: currentDate,
-    bank: '',
-    bankName: '',
-    paymentType: '',
-    voyage: '',
-    consignment_value: 0,
-    currency_code: '',
-    eta: currentDate,
-    vessel: '',
-    shippingLine: '',
-    delivered: 0,
-    pending: 0,
-    seal_no: '',
-    netWeight: 0,
-    gross_weight: 0,
-    containers: [{ containerNo: '', location: '', size: '', containerType: '', ownership: '', status: 'Pending', id: '' }],
-    orders: []
-  });
-  setErrors({});
-  setTouched({});
-  setSelectedOrders([]);
-  setInitialValues(null); // Reset initial snapshot to avoid false dirty state after reset
-};
   // Sync missing options for vessel, paymentType, status
   useEffect(() => {
     const syncMissingOptions = () => {
@@ -612,7 +583,6 @@ const resetForm = () => {
       syncMissingOptions();
     }
   }, [mode, effectiveConsignmentId, values.vessel, values.paymentType, values.status, options.vesselOptions?.length]);
-
   // Debug render log
   useEffect(() => {
     console.log('Render - Current values for dropdowns:', {
@@ -623,313 +593,251 @@ const resetForm = () => {
       destination: values.destination,
     });
   }, [values.shipper, values.consignee, values.bank, values.origin, values.destination]);
-
-// Helper to load images as Base64
-const loadImageAsBase64 = (url) => {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.crossOrigin = 'Anonymous';
-    img.src = url;
-
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0);
-      resolve(canvas.toDataURL('image/png'));
-    };
-
-    img.onerror = () => resolve(null);
-  });
-};
-
-const generateManifestPDF = async (data, selectedOrders = orders) => {
-  if (!data.consignment_number) {
-    setSnackbar({
-      open: true,
-      severity: 'warning',
-      message: 'Please enter a consignment number to generate the manifest.',
+  // Helper to load images as Base64
+  const loadImageAsBase64 = (url) => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = 'Anonymous';
+      img.src = url;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL('image/png'));
+      };
+      img.onerror = () => resolve(null);
     });
-    return;
-  }
-
-  //---------------------------------------------------
-  // SETUP
-  //---------------------------------------------------
-  const doc = new jsPDF('p', 'mm', 'a4');
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const margin = 14;
-  const padding = 10;
-  const brandPrimary = [13, 108, 106];  // #0d6c6a
-  const brandAccent = [245, 130, 32];   // #f58220
-
-  //---------------------------------------------------
-  // LOAD LOGO AS BASE64
-  //---------------------------------------------------
-  const logoBase64 = await loadImageAsBase64("https://royalgulfshipping.com/wp-content/uploads/2023/08/RGSL-LOGO-white.png");
-
-  //---------------------------------------------------
-  // HEADER
-  //---------------------------------------------------
-  const drawHeader = () => {
-    const headerHeight = 22;
-
-    // Main brand color bar
-    doc.setFillColor(...brandPrimary);
-    doc.rect(0, 0, pageWidth, headerHeight, 'F');
-
-    // Logo Left
-    if (logoBase64) {
-
-      doc.addImage(logoBase64, 'PNG', margin, 4, 60, 12);  // smaller, sharper
-
+  };
+  const generateManifestPDF = async (data, selectedOrderObjects = includedOrders) => { // Fixed: Use includedOrders for objects
+    if (!data.consignment_number) {
+      setSnackbar({
+        open: true,
+        severity: 'warning',
+        message: 'Please enter a consignment number to generate the manifest.',
+      });
+      return;
     }
-
-    // Title Right
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(18);
-    doc.setTextColor(255, 255, 255);
-    doc.text('Manifest Report', pageWidth - margin, 10, { align: 'right' });
-
-    doc.setFontSize(9).setFont('helvetica', 'normal');
-    doc.text(
-      new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
-      pageWidth - margin,
-      17,
-      { align: 'right' }
-    );
-  };
-
-  //---------------------------------------------------
-  // SUMMARY CARDS (Modern UI)
-  //---------------------------------------------------
-  const drawSummary = (y) => {
-    const cards = [
-      ["Containers", data.containers?.length || 0],
-      ["Orders", selectedOrders?.length || 0],
-      ["Net Weight", `${data.net_weight || 0} KGS`],
-      ["Gross Weight", `${data.gross_weight || 0} KGS`],
-      ["Value", `${data.consignment_value || 0} ${data.currency_code || 'USD'}`],
-      ["Status", data.status || "Draft"],
-    ];
-
-    const cardWidth = (pageWidth - margin * 2 - 6) / 2;
-    const cardHeight = 16;
-
-    doc.setFontSize(10);
-
-    cards.forEach((item, i) => {
-      const col = i % 2;
-      const row = Math.floor(i / 2);
-
-      const x = margin + (col * (cardWidth + 6));
-      const cardY = y + row * (cardHeight + 6);
-
-      // Card box
-      doc.setDrawColor(230, 230, 230);
-      doc.setFillColor(248, 249, 250);
-      doc.roundedRect(x, cardY, cardWidth, cardHeight, 2, 2, 'FD');
-
-      // Title (accent)
+    //---------------------------------------------------
+    // SETUP
+    //---------------------------------------------------
+    const doc = new jsPDF('p', 'mm', 'a4');
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 14;
+    const padding = 10;
+    const brandPrimary = [13, 108, 106]; // #0d6c6a
+    const brandAccent = [245, 130, 32]; // #f58220
+    //---------------------------------------------------
+    // LOAD LOGO AS BASE64
+    //---------------------------------------------------
+    const logoBase64 = await loadImageAsBase64("https://royalgulfshipping.com/wp-content/uploads/2023/08/RGSL-LOGO-white.png");
+    //---------------------------------------------------
+    // HEADER
+    //---------------------------------------------------
+    const drawHeader = () => {
+      const headerHeight = 22;
+      // Main brand color bar
       doc.setFillColor(...brandPrimary);
-      doc.rect(x, cardY, cardWidth, 5, 'F');
-      doc.setTextColor(255, 255, 255);
+      doc.rect(0, 0, pageWidth, headerHeight, 'F');
+      // Logo Left
+      if (logoBase64) {
+        doc.addImage(logoBase64, 'PNG', margin, 4, 60, 12); // smaller, sharper
+      }
+      // Title Right
       doc.setFont('helvetica', 'bold');
-      doc.text(item[0], x + 2, cardY + 4);
-
-      // Value
-      doc.setTextColor(60, 60, 60);
-      doc.setFont('helvetica', 'normal');
-      doc.text(String(item[1]), x + 3, cardY + 11);
-    });
-
-    return y + Math.ceil(cards.length / 2) * (cardHeight + 6) + 5;
+      doc.setFontSize(18);
+      doc.setTextColor(255, 255, 255);
+      doc.text('Manifest Report', pageWidth - margin, 10, { align: 'right' });
+      doc.setFontSize(9).setFont('helvetica', 'normal');
+      doc.text(
+        new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+        pageWidth - margin,
+        17,
+        { align: 'right' }
+      );
+    };
+    //---------------------------------------------------
+    // SUMMARY CARDS (Modern UI)
+    //---------------------------------------------------
+    const drawSummary = (y) => {
+      const cards = [
+        ["Containers", data.containers?.length || 0],
+        ["Orders", selectedOrderObjects?.length || 0],
+        ["Net Weight", `${data.net_weight || 0} KGS`],
+        ["Gross Weight", `${data.gross_weight || 0} KGS`],
+        ["Value", `${data.consignment_value || 0} ${data.currency_code || 'USD'}`],
+        ["Status", data.status || "Draft"],
+      ];
+      const cardWidth = (pageWidth - margin * 2 - 6) / 2;
+      const cardHeight = 16;
+      doc.setFontSize(10);
+      cards.forEach((item, i) => {
+        const col = i % 2;
+        const row = Math.floor(i / 2);
+        const x = margin + (col * (cardWidth + 6));
+        const cardY = y + row * (cardHeight + 6);
+        // Card box
+        doc.setDrawColor(230, 230, 230);
+        doc.setFillColor(248, 249, 250);
+        doc.roundedRect(x, cardY, cardWidth, cardHeight, 2, 2, 'FD');
+        // Title (accent)
+        doc.setFillColor(...brandPrimary);
+        doc.rect(x, cardY, cardWidth, 5, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'bold');
+        doc.text(item[0], x + 2, cardY + 4);
+        // Value
+        doc.setTextColor(60, 60, 60);
+        doc.setFont('helvetica', 'normal');
+        doc.text(String(item[1]), x + 3, cardY + 11);
+      });
+      return y + Math.ceil(cards.length / 2) * (cardHeight + 6) + 5;
+    };
+    //---------------------------------------------------
+    // CONSIGNMENT DETAILS
+    //---------------------------------------------------
+    const drawDetails = (y) => {
+      doc.setFont('helvetica', 'bold').setFontSize(14).setTextColor(...brandPrimary);
+      doc.text("Consignment Details", margin, y);
+      y += 4;
+      // Section underline
+      doc.setDrawColor(...brandPrimary);
+      doc.setLineWidth(0.6);
+      doc.line(margin, y, pageWidth - margin, y);
+      y += 6;
+      const details = [
+        ["Consignment #", data.consignment_number],
+        ["Shipper", data.shipperName],
+        ["Consignee", data.consigneeName],
+        ["Origin", data.originName],
+        ["Destination", data.destinationName],
+        ["Vessel / Voyage", `${data.vessel || 'N/A'} / ${data.voyage || 'N/A'}`],
+        ["ETA", data.eta ? new Date(data.eta).toLocaleDateString() : 'N/A'],
+        ["Shipping Line", data.shipping_line],
+        ["Payment Type", data.payment_type],
+        ["Bank", data.bankName],
+        ["Seal No", data.seal_no],
+      ];
+      const colWidth = (pageWidth - margin * 2 - 10) / 2;
+      doc.setFontSize(9).setTextColor(50, 50, 50);
+      const rowHeight = 9; // reduced from 10
+      details.forEach((pair, index) => {
+        const col = index % 2;
+        const row = Math.floor(index / 2);
+        const x = margin + col * (colWidth + 10);
+        const dy = y + row * rowHeight;
+        doc.setFont('helvetica', 'bold');
+        doc.text(pair[0], x, dy);
+        doc.setFont('helvetica', 'normal');
+        doc.text(String(pair[1] || "N/A"), x, dy + 4); // reduced label offset
+      });
+      return y + Math.ceil(details.length / 2) * rowHeight + 6; // tighter bottom spacing
+    };
+    //---------------------------------------------------
+    // REMARKS BOX
+    //---------------------------------------------------
+    const drawRemarks = (y) => {
+      if (!data.remarks) return y;
+      doc.setFillColor(248, 249, 250);
+      doc.roundedRect(margin, y, pageWidth - margin * 2, 20, 2, 2, 'F');
+      doc.setFontSize(9).setFont('helvetica', 'italic').setTextColor(90, 90, 90);
+      const wrapped = doc.splitTextToSize(data.remarks, pageWidth - margin * 2 - 10);
+      doc.text("Remarks:", margin + 3, y + 6);
+      doc.text(wrapped, margin + 3, y + 11);
+      return y + 28;
+    };
+    //---------------------------------------------------
+    // TABLE: Containers
+    //---------------------------------------------------
+    const drawContainers = (y) => {
+      if (!data.containers?.length) return y;
+      doc.setFont('helvetica', 'bold').setFontSize(14).setTextColor(...brandPrimary);
+      doc.text("Containers", margin, y);
+      y += 5;
+      autoTable(doc, {
+        startY: y,
+        head: [['Container No', 'Location', 'Size', 'Type', 'Owner', 'Status']],
+        body: data.containers.map(c => [
+          c.containerNo,
+          c.location,
+          c.size,
+          c.containerType,
+          c.ownership,
+          c.status,
+        ]),
+        headStyles: { fillColor: brandPrimary, textColor: 255 },
+        bodyStyles: { fontSize: 9, cellPadding: 3 },
+        margin: { left: margin, right: margin }
+      });
+      return doc.lastAutoTable.finalY + 10;
+    };
+    //---------------------------------------------------
+    // TABLE: Orders
+    //---------------------------------------------------
+    const drawOrders = (y) => {
+      if (!selectedOrderObjects.length) return y;
+      doc.setFont('helvetica', 'bold').setFontSize(14).setTextColor(...brandAccent);
+      doc.text(`Selected Orders (${selectedOrderObjects.length})`, margin, y);
+      y += 5;
+      autoTable(doc, {
+        startY: y,
+        head: [['Booking Ref', 'POL', 'POD', 'Sender', '#Recv', '#Cont', 'Status']],
+        headStyles: { fillColor: brandAccent, textColor: 255 },
+        bodyStyles: { fontSize: 9, cellPadding: 3 },
+        body: selectedOrderObjects.map(o => [
+          o.booking_ref,
+          getPlaceName(o.place_of_loading),
+          getPlaceName(o.final_destination || o.place_of_delivery),
+          o.sender_name,
+          o.receiver_name || 0,
+          o.receiver_containers_json|| 0,
+          o.status?.substring(0, 12),
+        ]),
+        margin: { left: margin, right: margin }
+      });
+      return doc.lastAutoTable.finalY + 10;
+    };
+    //---------------------------------------------------
+    // FOOTER
+    //---------------------------------------------------
+    const drawFooter = () => {
+      const y = 275;
+      doc.setDrawColor(...brandPrimary);
+      doc.line(margin, y, pageWidth - margin, y);
+      doc.setFontSize(9).setTextColor(80, 80, 80);
+      doc.text(
+        `Generated: ${new Date().toLocaleString()}`,
+        margin,
+        y + 6
+      );
+      doc.text(
+        `Page ${doc.getCurrentPageInfo().pageNumber}`,
+        pageWidth - margin,
+        y + 6,
+        { align: 'right' }
+      );
+    };
+    //---------------------------------------------------
+    // BUILD DOCUMENT
+    //---------------------------------------------------
+    drawHeader();
+    let y = 30;
+    y = drawSummary(y);
+    y = drawDetails(y);
+    y = drawRemarks(y);
+    y = drawContainers(y);
+    y = drawOrders(y);
+    drawFooter();
+    //---------------------------------------------------
+    // SAVE FILE
+    //---------------------------------------------------
+    doc.save(`Manifest_${data.consignment_number}.pdf`);
   };
-
-  //---------------------------------------------------
-  // CONSIGNMENT DETAILS
-  //---------------------------------------------------
-  const drawDetails = (y) => {
-    doc.setFont('helvetica', 'bold').setFontSize(14).setTextColor(...brandPrimary);
-    doc.text("Consignment Details", margin, y);
-
-    y += 4;
-
-    // Section underline
-    doc.setDrawColor(...brandPrimary);
-    doc.setLineWidth(0.6);
-    doc.line(margin, y, pageWidth - margin, y);
-
-    y += 6;
-
-    const details = [
-      ["Consignment #", data.consignment_number],
-      ["Shipper", data.shipperName],
-      ["Consignee", data.consigneeName],
-      ["Origin", data.originName],
-      ["Destination", data.destinationName],
-      ["Vessel / Voyage", `${data.vessel || 'N/A'} / ${data.voyage || 'N/A'}`],
-      ["ETA", data.eta ? new Date(data.eta).toLocaleDateString() : 'N/A'],
-      ["Shipping Line", data.shipping_line],
-      ["Payment Type", data.payment_type],
-      ["Bank", data.bankName],
-      ["Seal No", data.seal_no],
-    ];
-
-    const colWidth = (pageWidth - margin * 2 - 10) / 2;
-
-    doc.setFontSize(9).setTextColor(50, 50, 50);
-
-    const rowHeight = 9; // reduced from 10
-
-details.forEach((pair, index) => {
-  const col = index % 2;
-  const row = Math.floor(index / 2);
-  const x = margin + col * (colWidth + 10);
-  const dy = y + row * rowHeight;
-
-  doc.setFont('helvetica', 'bold');
-  doc.text(pair[0], x, dy);
-
-  doc.setFont('helvetica', 'normal');
-  doc.text(String(pair[1] || "N/A"), x, dy + 4); // reduced label offset
-});
-
-return y + Math.ceil(details.length / 2) * rowHeight + 6; // tighter bottom spacing
- };
-
-  //---------------------------------------------------
-  // REMARKS BOX
-  //---------------------------------------------------
-  const drawRemarks = (y) => {
-    if (!data.remarks) return y;
-
-    doc.setFillColor(248, 249, 250);
-    doc.roundedRect(margin, y, pageWidth - margin * 2, 20, 2, 2, 'F');
-
-    doc.setFontSize(9).setFont('helvetica', 'italic').setTextColor(90, 90, 90);
-
-    const wrapped = doc.splitTextToSize(data.remarks, pageWidth - margin * 2 - 10);
-    doc.text("Remarks:", margin + 3, y + 6);
-    doc.text(wrapped, margin + 3, y + 11);
-
-    return y + 28;
+  const generateDocx = () => {
+    // Placeholder for Docx (requires 'docx' and 'file-saver')
+    setSnackbar({ open: true, severity: 'info', message: 'Docx generation: Install docx and file-saver for full support.' });
   };
-
-  //---------------------------------------------------
-  // TABLE: Containers
-  //---------------------------------------------------
-  const drawContainers = (y) => {
-    if (!data.containers?.length) return y;
-
-    doc.setFont('helvetica', 'bold').setFontSize(14).setTextColor(...brandPrimary);
-    doc.text("Containers", margin, y);
-
-    y += 5;
-
-    autoTable(doc, {
-      startY: y,
-      head: [['Container No', 'Location', 'Size', 'Type', 'Owner', 'Status']],
-      body: data.containers.map(c => [
-        c.containerNo,
-        c.location,
-        c.size,
-        c.containerType,
-        c.ownership,
-        c.status,
-      ]),
-      headStyles: { fillColor: brandPrimary, textColor: 255 },
-      bodyStyles: { fontSize: 9, cellPadding: 3 },
-      margin: { left: margin, right: margin }
-    });
-
-    return doc.lastAutoTable.finalY + 10;
-  };
-
-  //---------------------------------------------------
-  // TABLE: Orders
-  //---------------------------------------------------
-  const drawOrders = (y) => {
-    if (!selectedOrders.length) return y;
-
-    doc.setFont('helvetica', 'bold').setFontSize(14).setTextColor(...brandAccent);
-    doc.text(`Selected Orders (${selectedOrders.length})`, margin, y);
-
-    y += 5;
-
-    autoTable(doc, {
-      startY: y,
-      head: [['Booking Ref', 'POL', 'POD', 'Sender', '#Recv', '#Cont', 'Status']],
-      headStyles: { fillColor: brandAccent, textColor: 255 },
-      bodyStyles: { fontSize: 9, cellPadding: 3 },
-      body: selectedOrders.map(o => [
-        o.booking_ref,
-        o.place_of_loading,
-        o.final_destination || o.place_of_delivery,
-        o.sender_name,
-        o.receivers?.length || 0,
-        o.receiver_containers_json?.split(",").length || 0,
-        o.status?.substring(0, 12),
-      ]),
-      margin: { left: margin, right: margin }
-    });
-
-    return doc.lastAutoTable.finalY + 10;
-  };
-
-  //---------------------------------------------------
-  // FOOTER
-  //---------------------------------------------------
-  const drawFooter = () => {
-    const y = 275;
-
-    doc.setDrawColor(...brandPrimary);
-    doc.line(margin, y, pageWidth - margin, y);
-
-    doc.setFontSize(9).setTextColor(80, 80, 80);
-
-    doc.text(
-      `Generated: ${new Date().toLocaleString()}`,
-      margin,
-      y + 6
-    );
-
-    doc.text(
-      `Page ${doc.getCurrentPageInfo().pageNumber}`,
-      pageWidth - margin,
-      y + 6,
-      { align: 'right' }
-    );
-  };
-
-  //---------------------------------------------------
-  // BUILD DOCUMENT
-  //---------------------------------------------------
-  drawHeader();
-  let y = 30;
-  y = drawSummary(y);
-  y = drawDetails(y);
-  y = drawRemarks(y);
-  y = drawContainers(y);
-  y = drawOrders(y);
-  drawFooter();
-
-  //---------------------------------------------------
-  // SAVE FILE
-  //---------------------------------------------------
-  doc.save(`Manifest_${data.consignment_number}.pdf`);
-};
-
-
-
-const generateDocx = () => {
-  // Placeholder for Docx (requires 'docx' and 'file-saver')
-  setSnackbar({ open: true, severity: 'info', message: 'Docx generation: Install docx and file-saver for full support.' });
-};
-
-
-
   const validateField = async (name, value) => {
     try {
       await validationSchema.fields[name]?.validate(value);
@@ -938,7 +846,6 @@ const generateDocx = () => {
       setErrors(prev => ({ ...prev, [name]: error.message }));
     }
   };
-
   // Fetch containers
   useEffect(() => {
     const fetchContainers = async () => {
@@ -954,14 +861,71 @@ const generateDocx = () => {
     };
     fetchContainers();
   }, []);
-
   useEffect(() => {
     const ids = (values.containers || []).map(c => c.id || c.cid).filter(id => id);
     setAddedContainerIds(ids);
   }, [values.containers]);
-
   // Fetch orders
 useEffect(() => {
+  const filterOrdersByContainers = (orders, selectedContainerIds) => {
+    if (!Array.isArray(orders)) {
+      console.warn('filterOrdersByContainers: Input "orders" is not an array:', orders);
+      return [];
+    }
+    if (!selectedContainerIds || selectedContainerIds.length === 0) {
+      // If no container IDs, still attach order to each receiver
+      return orders.map(order => ({
+        ...order,
+        receivers: (order.receivers || []).map(receiver => ({
+          ...receiver,
+          order: order // Attach full order to each receiver
+        }))
+      }));
+    }
+    // FIXED: Parse to numbers for CID matching (assuming addedContainerIds are CIDs)
+    const selectedCids = selectedContainerIds.map(id => parseInt(id)).filter(id => !isNaN(id));
+    if (selectedCids.length === 0) {
+      console.warn('No valid CIDs for filtering');
+      return [];
+    }
+    console.log('Filtering with CIDs:', selectedCids);
+    return orders
+      .map((order) => {
+        console.log('Processing order:', order);
+        const filteredReceivers = (order.receivers || [])
+          .filter(receiver => receiver !== null)
+          .map((receiver) => {
+            console.log('Receiver:', receiver.id, 'containers:', receiver.containers);
+            const filteredShippingDetails = (receiver.shippingdetails || []).filter((shippingDetail) => {
+              const hasMatch = (shippingDetail.containerDetails || []).some((containerDetail) => {
+                const cid = containerDetail.container?.cid;
+                const matches = selectedCids.includes(cid);
+                console.log(`Check: CID ${cid} in [${selectedCids.join(', ')}]? ${matches}`);
+                return matches;
+              });
+              return hasMatch;
+            });
+            console.log(`Filtered shipping for receiver ${receiver.id}: ${filteredShippingDetails.length} items`);
+            if (filteredShippingDetails.length === 0) return null;
+            return {
+              ...receiver,
+              order: order, // Attach full order to each receiver
+              shippingdetails: filteredShippingDetails,
+            };
+          })
+          .filter(Boolean);
+        console.log('Final filtered receivers:', filteredReceivers.length);
+        if (filteredReceivers.length === 0) return null;
+        const totalQty = filteredReceivers.reduce((sum, r) => sum + (r.total_number || 0), 0);
+        return {
+          ...order,
+          receivers: filteredReceivers,
+          total_assigned_qty: totalQty,
+        };
+      })
+      .filter(Boolean);
+  };
+  // FIXED: Define fetchOrders outside the filter logic
   const fetchOrders = async () => {
     if ((addedContainerIds || []).length === 0) {
       setOrders([]);
@@ -975,31 +939,44 @@ useEffect(() => {
         page: orderPage + 1,
         limit: orderRowsPerPage,
         includeContainer: true,
-        container_id: addedContainerIds.join(','),  // Removed includeContainer (unused)
+        includeReceivers: true, // New: Explicitly include receivers
+        includeShippingDetails: true, // New: Include shippingdetails within receivers
+        container_id: addedContainerIds.join(','),
         ...(filters.booking_ref && { booking_ref: filters.booking_ref }),
         ...(filters.status && { status: filters.status }),
       };
-      console.log('Fetching orders with params:', params);  // Debug: Log sent params
-      const response = await api.get(`/api/orders`, { params });
-      console.log('Fetched orders response:', response.data);  // Debug: Full response
+      console.log('Fetching orders with params:', params); // Debug: Log sent params
+      const response = await api.get(`/api/orders/consignmentsOrders`, { params });
+      console.log('Fetched orders response:', response.data); // Debug: Full response
       const fetchedOrders = response.data?.data || [];
       const fetchedTotal = response.data?.total || 0;
-      setOrders(fetchedOrders);
+      // FIXED: Apply client-side filtering for shipping details *after* fetching data
+      const filteredOrders = filterOrdersByContainers(fetchedOrders, addedContainerIds);
+      setOrders(filteredOrders);
       setOrderTotal(fetchedTotal);
-      if (fetchedOrders.length > 0) {
-        handleSelectAllClick({ target: { checked: true } });  // Guard: Only if data exists
+      handleSelectAllClick({target: {checked:true}})
+      if (filteredOrders.length >= 0) {
+        handleSelectAllClick({ target: { checked: true } }); // Guard: Only if data exists
       }
+      console.log('filteration last', filteredOrders);
     } catch (err) {
       console.error("Error fetching orders:", err);
-      showToast('Failed to fetch orders. Please try again.', 'error');  // User feedback
-      setOrders([]);  // Reset on error
+      setSnackbar({ open: true, message: 'Failed to fetch orders. Please try again.', severity: 'error' }); // Fixed: Use setSnackbar
+      setOrders([]); // Reset on error
       setOrderTotal(0);
     } finally {
       setOrdersLoading(false);
     }
   };
+  // FIXED: Actually call the fetch function
   fetchOrders();
-}, [addedContainerIds, filters, orderPage, orderRowsPerPage]);  // Added deps if needed
+}, [addedContainerIds, filters, orderPage, orderRowsPerPage]);
+  const getPlaceName = (placeId) => {
+    if (!placeId) return '-';
+    const place = options.destinationOptions.find(p => p.value === placeId.toString());
+    return place ? place.label : placeId;
+  };
+  // Added deps if needed
   const isSelected = (id) => (selectedOrders || []).indexOf(id) !== -1;
   const handleOrderToggle = (orderId) => () => {
     console.log('toggle order', orderId);
@@ -1021,16 +998,15 @@ useEffect(() => {
     }
     setSelectedOrders([]);
   };
-
   const includedOrders = useMemo(() =>
     (selectedOrders || []).map(id => (orders || []).find(o => o.id === id)).filter(Boolean),
     [selectedOrders, orders]
   );
-
+  // Fixed: allReceivers definition
+  const allReceivers = useMemo(() => orders.flatMap(order => order.receivers || []), [orders]);
   useEffect(() => {
     setValues(prev => ({ ...prev, orders: (selectedOrders || []).map(id => ({ id })) }));
   }, [selectedOrders]);
-
   const themeColors = {
     primary: '#f58220',
     secondary: '#1a9c8f',
@@ -1043,7 +1019,6 @@ useEffect(() => {
     warning: '#ff9800',
     error: '#f44336'
   };
-
   const handleChangeOrderPage = (event, newPage) => {
     setOrderPage(newPage);
   };
@@ -1053,7 +1028,6 @@ useEffect(() => {
   };
   const numSelected = (orders || []).filter((o) => isSelected(o.id)).length;
   const rowCount = (orders || []).length;
-
   const getStatusColors = (status) => {
     const colorMap = {
       'Created': { bg: '#00695c', text: '#f1f8e9' },
@@ -1077,7 +1051,6 @@ useEffect(() => {
     };
     return colorMap[status] || colorMap.default;
   };
-
   const handleStatusUpdate = (id, order) => {
     console.log('Update status for order:', id, order);
   };
@@ -1087,7 +1060,6 @@ useEffect(() => {
   const handleEdit = (id) => {
     console.log('Edit order:', id);
   };
-
   const handleContainerToggle = (containerId) => () => {
     const currentIndex = (selectedContainers || []).indexOf(containerId);
     const newSelected = [...(selectedContainers || [])];
@@ -1098,7 +1070,6 @@ useEffect(() => {
     }
     setSelectedContainers(newSelected);
   };
-
   const addSelectedContainers = () => {
     const selectedData = (selectedContainers || [])
       .map(id => (containers || []).find(c => c.cid === id))
@@ -1133,7 +1104,6 @@ useEffect(() => {
       severity: 'success',
     });
   };
-
   const validationSchema = Yup.object({
     consignment_number: Yup.string().required('Consignment # is required'),
     shipper: Yup.string().required('Shipper is required'),
@@ -1150,10 +1120,10 @@ useEffect(() => {
     netWeight: Yup.number().min(0).required('Net Weight is required'),
     gross_weight: Yup.number().min(0).required('Gross Weight is required'),
     // containers: Yup.array().of(
-    //   Yup.object({
-    //     containerNo: Yup.string().required('Container No. is required'),
-    //     size: Yup.string().oneOf(['20ft', '40ft']).required('Size is required'),
-    //   })
+    // Yup.object({
+    // containerNo: Yup.string().required('Container No. is required'),
+    // size: Yup.string().oneOf(['20ft', '40ft']).required('Size is required'),
+    // })
     // ).min(1, 'At least one container required'),
     orders: Yup.array()
       .of(
@@ -1163,42 +1133,35 @@ useEffect(() => {
       )
       .min(1, 'At least one order is required'),
   });
-
   const handleChange = (e) => {
     console.log('handleee', e);
     const { name, value } = e.target;
     setValues(prev => ({ ...prev, [name]: value }));
     if (touched[name]) validateField(name, value);
   };
-
   const handleNumberChange = (e) => {
     const { name, value } = e.target;
     setValues(prev => ({ ...prev, [name]: parseFloat(value) || 0 }));
     if (touched[name]) validateField(name, parseFloat(value) || 0);
   };
-
   const handleDateChange = (e) => {
     const { name, value: newValue } = e.target;
     setValues(prev => ({ ...prev, [name]: newValue }));
     if (touched[name]) validateField(name, newValue);
   };
-
   const handleBlur = (e) => {
     const { name, value } = e.target;
     setTouched(prev => ({ ...prev, [name]: true }));
     validateField(name, value);
   };
-
   const handleDateBlur = (name) => {
     setTouched(prev => ({ ...prev, [name]: true }));
     validateField(name, values[name]);
   };
-
   const handleSelectBlur = (name) => {
     setTouched(prev => ({ ...prev, [name]: true }));
     validateField(name, values[name]);
   };
-
   const handlePartyChange = (e) => {
     const { name, value } = e.target;
     handleChange(e);
@@ -1231,7 +1194,6 @@ useEffect(() => {
       }));
     }
   };
-
   const handleBankChange = (e) => {
     const { name, value } = e.target;
     if (name !== 'bank') return;
@@ -1250,7 +1212,6 @@ useEffect(() => {
       setValues(prev => ({ ...prev, bankName: '' }));
     }
   };
-
   const handleLocationChange = (e) => {
     const { name, value } = e.target;
     handleChange(e);
@@ -1270,14 +1231,12 @@ useEffect(() => {
       setValues(prev => ({ ...prev, [nameField]: '' }));
     }
   };
-
   const updateArrayField = (arrayName, index, fieldName, value) => {
     const newArray = [...(values[arrayName] || [])];
     newArray[index][fieldName] = value;
     setValues(prev => ({ ...prev, [arrayName]: newArray }));
     if (touched[arrayName]) validateArray(arrayName);
   };
-
   const validateArray = async (arrayName) => {
     try {
       await validationSchema.fields[arrayName]?.validate(values[arrayName] || []);
@@ -1286,28 +1245,25 @@ useEffect(() => {
       setErrors(prev => ({ ...prev, [arrayName]: error.message }));
     }
   };
-
   const markArrayTouched = (arrayName) => {
     if (!touched[arrayName]) {
       setTouched(prev => ({ ...prev, [arrayName]: true }));
       validateArray(arrayName);
     }
   };
-
- // Update addContainer function
-const addContainer = () => {
-  setValues(prev => ({
-    ...prev,
-    containers: [...(prev.containers || []), { containerNo: '', location: '', size: '', containerType: '', ownership: '', status: 'Pending', id: '' }]
-  }));
-  markArrayTouched('containers');
-};
+  // Update addContainer function
+  const addContainer = () => {
+    setValues(prev => ({
+      ...prev,
+      containers: [...(prev.containers || []), { containerNo: '', location: '', size: '', containerType: '', ownership: '', status: 'Pending', id: '' }]
+    }));
+    markArrayTouched('containers');
+  };
   const removeContainer = (index) => {
     const newContainers = (values.containers || []).filter((_, i) => i !== index);
     setValues(prev => ({ ...prev, containers: newContainers }));
     markArrayTouched('containers');
   };
-
   const advanceStatus = async () => {
     try {
       const res = await api.put(`/api/consignments/${effectiveConsignmentId}/next`);
@@ -1328,7 +1284,6 @@ const addContainer = () => {
       });
     }
   };
-
   const validateForm = async () => {
     try {
       await validationSchema.validate(values, { abortEarly: false });
@@ -1347,7 +1302,6 @@ const addContainer = () => {
       return false;
     }
   };
-
   const validateAndPrepare = async () => {
     const isValid = await validateForm();
     if (!isValid) return null;
@@ -1414,14 +1368,12 @@ const addContainer = () => {
     console.log('Full submitData before API:', JSON.stringify(submitData, null, 3));
     return submitData;
   };
-
   const handleCreate = async (e) => {
     console.log('Creating consignment', e);
     if (e) e.preventDefault();
     const submitData = await validateAndPrepare();
     if (!submitData) return;
     setSaving(true);
-
     try {
       const res = await api.post('/api/consignments', submitData);
       console.log('[handleCreate] Success response:', res.data);
@@ -1462,55 +1414,28 @@ const addContainer = () => {
         data: err.response?.data,
         message: err.message
       });
-      // if (err.response) {
-      //   const { error: apiError, details, message: backendMessage } = err.response.data || {};
-      //   let backendValidationErrors = {};
-      //   if (details && Array.isArray(details)) {
-      //     details.forEach(field => {
-      //       const camelField = field.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
-      //       backendValidationErrors[camelField] = `${field.charAt(0).toUpperCase() + field.slice(1).replace(/_/g, ' ')} is required or invalid`;
-      //     });
-      //   } else if (details) {
-      //     Object.entries(details).forEach(([field, msg]) => {
-      //       const camelField = field.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
-      //       backendValidationErrors[camelField] = msg;
-      //     });
-      //   } else {
-      //     if (apiError?.includes('duplicate') || apiError?.includes('unique')) {
-      //       backendValidationErrors.consignment_number = 'Consignment Number already exists.';
-      //     } else if (apiError?.includes('foreign key')) {
-      //       backendValidationErrors.shipper = 'Invalid Shipper, Consignee, Bank, Vessel, or Shipping Line.';
-      //     }
-      //   }
-      //   setErrors(prev => ({ ...prev, ...backendValidationErrors }));
-      //   const backendMsg = apiError || backendMessage || err.message || 'Failed to create consignment';
-      //   let detailsMsg = '';
-      //   if (details && Array.isArray(details)) {
-      //     const fieldNames = details.map(field => field.charAt(0).toUpperCase() + field.slice(1).replace(/_/g, ' '));
-      //     detailsMsg = `\nValidation Errors: ${fieldNames.join(', ')} (e.g., select valid options with names).`;
-      //   } else if (details) {
-      //     detailsMsg = `\nDetails: ${JSON.stringify(details)}`;
-      //   }
-      //   if (err.response.status === 500) {
-      //     detailsMsg += `\nServer Error (500): Check backend logs/DB for SQL issues (e.g., duplicate number, invalid ID). Try unique consignment_number.`;
-      //   }
-      //   setSnackbar({
-      //     open: true,
-      //     message: `Backend Error: ${backendMsg}${detailsMsg}`,
-      //     severity: 'error',
-      //   });
-      // } else {
-      //   setSnackbar({
-      //     open: true,
-      //     message: 'An unexpected error occurred. Please try again.',
-      //     severity: 'error',
-      //   });
-      // }
+      if (err.response) {
+        const { error: apiError, details, message: backendMessage } = err.response.data || {};
+        let backendValidationErrors = {};
+        // Simplified error handling - expand as needed
+        setErrors(prev => ({ ...prev, ...backendValidationErrors }));
+        const backendMsg = apiError || backendMessage || err.message || 'Failed to create consignment';
+        setSnackbar({
+          open: true,
+          message: backendMsg,
+          severity: 'error',
+        });
+      } else {
+        setSnackbar({
+          open: true,
+          message: 'An unexpected error occurred. Please try again.',
+          severity: 'error',
+        });
+      }
     } finally {
       setSaving(false);
     }
   };
-
   const handleEditCon = async (e) => {
     console.log('Editing consignment', e);
     if (e) e.preventDefault();
@@ -1543,38 +1468,11 @@ const addContainer = () => {
       if (err.response) {
         const { error: apiError, details, message: backendMessage } = err.response.data || {};
         let backendValidationErrors = {};
-          // if (details && Array.isArray(details)) {
-          //   details.forEach(field => {
-          //     const camelField = field.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
-          //     backendValidationErrors[camelField] = `${field.charAt(0).toUpperCase() + field.slice(1).replace(/_/g, ' ')} is required or invalid`;
-          //   });
-          // } else if (details) {
-          //   Object.entries(details).forEach(([field, msg]) => {
-          //     const camelField = field.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
-          //     backendValidationErrors[camelField] = msg;
-          //   });
-          // } else {
-          //   if (apiError?.includes('duplicate') || apiError?.includes('unique')) {
-          //     backendValidationErrors.consignment_number = 'Consignment Number already exists.';
-          //   } else if (apiError?.includes('foreign key')) {
-          //     backendValidationErrors.shipper = 'Invalid Shipper, Consignee, Bank, Vessel, or Shipping Line.';
-          //   }
-          // }
         setErrors(prev => ({ ...prev, ...backendValidationErrors }));
         const backendMsg = apiError || backendMessage || err.message || 'Failed to update consignment';
-        let detailsMsg = '';
-        // if (details && Array.isArray(details)) {
-        //   const fieldNames = details.map(field => field.charAt(0).toUpperCase() + field.slice(1).replace(/_/g, ' '));
-        //   detailsMsg = `\nValidation Errors: ${fieldNames.join(', ')} (e.g., select valid options with names).`;
-        // } else if (details) {
-        //   detailsMsg = `\nDetails: ${JSON.stringify(details)}`;
-        // }
-        // if (err.response.status === 500) {
-        //   detailsMsg += `\nServer Error (500): Check backend logs/DB for SQL issues (e.g., duplicate number, invalid ID). Try unique consignment_number.`;
-        // }
         setSnackbar({
           open: true,
-          message: `Backend Error: ${backendMsg}${detailsMsg}`,
+          message: backendMsg,
           severity: 'error',
         });
       } else {
@@ -1589,13 +1487,27 @@ const addContainer = () => {
     }
   };
 
-  
-
-  const getContainerError = () => errors.containers;
+  const getContainerError = (index) => { // Fixed: Function to get per-row errors
+    // Simple implementation: Check for duplicates and required fields
+    const container = values.containers?.[index] || {};
+    const errors = {};
+    if (!container.containerNo?.trim()) {
+      errors.containerNo = 'Container No. is required';
+    }
+    if (!container.size?.trim()) {
+      errors.size = 'Size is required';
+    }
+    // Check duplicate
+    const isDuplicate = (containerNo) => {
+      return (values.containers || []).some((c, i) => i !== index && c.containerNo?.trim().toUpperCase() === containerNo?.trim().toUpperCase());
+    };
+    if (container.containerNo && isDuplicate(container.containerNo)) {
+      errors.containerNo = 'Container already exists in list';
+    }
+    return errors;
+  };
   const hasErrors = Object.values(errors).some(Boolean);
-
   if (loading) return <div>Loading...</div>;
-
   const statuses = [
     'Created',
     'Received for Shipment',
@@ -1615,7 +1527,6 @@ const addContainer = () => {
     'Cancelled',
     'Delivered'
   ];
-
   const StyledTooltip = styled(Tooltip)(({ theme }) => ({
     [`& .MuiTooltip-tooltip`]: {
       backgroundColor: theme.palette.common.white,
@@ -1630,7 +1541,6 @@ const addContainer = () => {
       color: theme.palette.common.white,
     },
   }));
-
   const StatusChip = ({ status }) => {
     const colors = getStatusColors(status);
     return (
@@ -1647,7 +1557,6 @@ const addContainer = () => {
       />
     );
   };
-
   const parseSummaryToList = (receivers) => {
     if (!receivers || !Array.isArray(receivers)) return [];
     return receivers.map(rec => ({
@@ -1655,9 +1564,8 @@ const addContainer = () => {
       status: rec.status
     }));
   };
-
   const PrettyList = ({ items, title }) => (
-    <Card
+    <MuiCard
       variant="outlined"
       sx={{
         p: 2,
@@ -1698,7 +1606,7 @@ const addContainer = () => {
         <Stack spacing={1} sx={{ maxHeight: 200, overflow: 'auto' }}>
           {(items || []).length > 0 ? (
             (items || []).map((item, index) => (
-              <Card
+              <MuiCard
                 key={index}
                 variant="outlined"
                 sx={{
@@ -1771,7 +1679,7 @@ const addContainer = () => {
                     />
                   )}
                 </Stack>
-              </Card>
+              </MuiCard>
             ))
           ) : (
             <Box sx={{
@@ -1790,14 +1698,12 @@ const addContainer = () => {
           )}
         </Stack>
       </Box>
-    </Card>
+    </MuiCard>
   );
-
   const parseContainersToList = (containersStr) => {
     if (!containersStr) return [];
     return containersStr.split(', ').map(cont => ({ primary: cont.trim() }));
   };
-
   const StyledTableRow = styled(TableRow)(({ theme }) => ({
     '&:nth-of-type(odd)': {
       backgroundColor: theme.palette.action.hover,
@@ -1815,7 +1721,6 @@ const addContainer = () => {
     fontSize: '0.875rem',
     padding: theme.spacing(1.5, 2),
   }));
-
   const StyledTableHeadCell = styled(TableCell)(({ theme }) => ({
     backgroundColor: theme.palette.primary.main,
     color: theme.palette.primary.contrastText,
@@ -1824,666 +1729,657 @@ const addContainer = () => {
     padding: theme.spacing(1.5, 2),
     borderBottom: `2px solid ${theme.palette.primary.dark}`,
   }));
- return (
-  <LocalizationProvider dateAdapter={AdapterDayjs}>
-    <Snackbar open={snackbar.open} autoHideDuration={6000} onClose={() => setSnackbar({ ...snackbar, open: false })}>
-      <Alert onClose={() => setSnackbar({ ...snackbar, open: false })} severity={snackbar.severity} sx={{ width: '100%' }}>
-        {snackbar.message}
-      </Alert>
-    </Snackbar>
-    <Box sx={{ p: 3, backgroundColor: '#f5f7fa', minHeight: '100vh' }}>
-      <Slide in timeout={1000}>
-        <Card sx={{ boxShadow: 4, borderRadius: 3, overflow: 'hidden' }}>
-          <CardContent sx={{ p: 4 }}>
-            <Typography variant="h4" gutterBottom sx={{ color: '#0d6c6a', fontWeight: 'bold', mb: 3 }}>
-              {mode === 'add' ? 'Add' : 'Edit'} Consignment Details
-            </Typography>
-                 <form onSubmit={mode === 'edit' ? handleEditCon : handleCreate}>
-              {/* Main Data Section */}
-              <Accordion defaultExpanded sx={{ boxShadow: 2, borderRadius: 2, mb: 3, '&:before': { display: 'none' } }}>
-                <AccordionSummary
-                  expandIcon={<ExpandMoreIconMui  sx={{ color: '#fff', backgroundColor: '#0d6c6a', borderRadius: '50%', p: 0.5 }} />}
-                  sx={{ backgroundColor: '#0d6c6a', color: 'white', borderRadius: 2 }}
-                >
-                  <Typography variant="h6" sx={{ fontWeight: 'bold' }}>📦 Consignment Details</Typography>
-                </AccordionSummary>
-                <AccordionDetails sx={{ p: 3 }}>
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                    {/* Basic Info Row */}
-                    <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
-                      <Box sx={{ flex: 1, minWidth: 250 }}>
-                        <CustomTextField
-                          name="consignment_number"
-                          value={values.consignment_number}
-                          onChange={handleChange}
-                          onBlur={handleBlur}
-                          label="Consignment #"
-                          startAdornment={<DescriptionIcon sx={{ mr: 1, color: '#f58220' }} />}
-                          readOnly={mode === 'edit'} // Keep readOnly for consignment_number in edit mode
-                          required
-                          error={touched.consignment_number && Boolean(errors.consignment_number)}
-                          helperText={
-                            touched.consignment_number && errors.consignment_number
-                              ? errors.consignment_number
-                             : 'Enter unique consignment number'
-                          }
-                        />
-                      </Box>
-                      <Box sx={{ flex: 1, minWidth: 250 }}>
-                        <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 1 }}>
-                          <CustomSelect
-                            name="status"
-                            value={values.status}
+
+  return (
+    <LocalizationProvider dateAdapter={AdapterDayjs}>
+      <Snackbar open={snackbar.open} autoHideDuration={6000} onClose={() => setSnackbar({ ...snackbar, open: false })}>
+        <Alert onClose={() => setSnackbar({ ...snackbar, open: false })} severity={snackbar.severity} sx={{ width: '100%' }}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
+      <Box sx={{ p: 3, backgroundColor: '#f5f7fa', minHeight: '100vh' }}>
+        <Slide in timeout={1000}>
+          <Card sx={{ boxShadow: 4, borderRadius: 3, overflow: 'hidden' }}>
+            <CardContent sx={{ p: 4 }}>
+              <Typography variant="h4" gutterBottom sx={{ color: '#0d6c6a', fontWeight: 'bold', mb: 3 }}>
+                {mode === 'add' ? 'Add' : 'Edit'} Consignment Details
+              </Typography>
+              <form onSubmit={mode === 'edit' ? handleEditCon : handleCreate}>
+                {/* Main Data Section */}
+                <Accordion defaultExpanded sx={{ boxShadow: 2, borderRadius: 2, mb: 3, '&:before': { display: 'none' } }}>
+                  <AccordionSummary
+                    expandIcon={<ExpandMoreIconMui sx={{ color: '#fff', backgroundColor: '#0d6c6a', borderRadius: '50%', p: 0.5 }} />}
+                    sx={{ backgroundColor: '#0d6c6a', color: 'white', borderRadius: 2 }}
+                  >
+                    <Typography variant="h6" sx={{ fontWeight: 'bold' }}>📦 Consignment Details</Typography>
+                  </AccordionSummary>
+                  <AccordionDetails sx={{ p: 3 }}>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                      {/* Basic Info Row */}
+                      <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                        <Box sx={{ flex: 1, minWidth: 250 }}>
+                          <CustomTextField
+                            name="consignment_number"
+                            value={values.consignment_number}
                             onChange={handleChange}
-                            label="Status"
-                            options={options.statusOptions || []}
-                            // disabled={mode === 'edit'} // Keep disabled for status in edit mode (use Next button)
-                            error={touched.status && Boolean(errors.status)}
+                            onBlur={handleBlur}
+                            label="Consignment #"
+                            startAdornment={<DescriptionIcon sx={{ mr: 1, color: '#f58220' }} />}
+                            readOnly={mode === 'edit'} // Keep readOnly for consignment_number in edit mode
+                            required
+                            error={touched.consignment_number && Boolean(errors.consignment_number)}
                             helperText={
-                              touched.status && errors.status
-                                ? errors.status
+                              touched.consignment_number && errors.consignment_number
+                                ? errors.consignment_number
+                               : 'Enter unique consignment number'
+                            }
+                          />
+                        </Box>
+                        <Box sx={{ flex: 1, minWidth: 250 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 1 }}>
+                            <CustomSelect
+                              name="status"
+                              value={values.status}
+                              onChange={handleChange}
+                              label="Status"
+                              options={options.statusOptions || []}
+                              // disabled={mode === 'edit'} // Keep disabled for status in edit mode (use Next button)
+                              error={touched.status && Boolean(errors.status)}
+                              helperText={
+                                touched.status && errors.status
+                                  ? errors.status
+                                 : ''
+                              }
+                            />
+                            {mode === 'edit' && (
+                              <Button
+                                variant="outlined"
+                                size="small"
+                                onClick={advanceStatus}
+                                sx={{ borderColor: '#f58220', color: '#f58220', minHeight: '56px' }}
+                              >
+                                Next
+                              </Button>
+                            )}
+                          </Box>
+                        </Box>
+                        <Box sx={{ flex: 1, minWidth: 250 }}>
+                          <CustomTextField
+                            name="remarks"
+                            value={values.remarks}
+                            onChange={handleChange}
+                            label="Remarks"
+                            multiline
+                            rows={2}
+                            startAdornment={<AttachFileIcon sx={{ mr: 1, color: '#f58220' }} />}
+                          />
+                        </Box>
+                      </Box>
+                      {/* Eform Row */}
+                      <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                        <Box sx={{ flex: 1, minWidth: 250 }}>
+                          <CustomTextField
+                            name="eform"
+                            value={values.eform}
+                            onChange={handleChange}
+                            onBlur={handleBlur}
+                            label="Eform #"
+                            inputProps={{ pattern: '^[A-Z]{3}-\\d{6}$', placeholder: 'ABC-123456' }}
+                            required
+                            error={touched.eform && Boolean(errors.eform)}
+                            helperText={
+                              touched.eform && errors.eform
+                                ? errors.eform
+                               : ''
+                            }
+                            tooltip="Format: ABC-123456"
+                          />
+                        </Box>
+                        <Box sx={{ flex: 1, minWidth: 250 }}>
+                          <CustomDatePicker
+                            name="eform_date"
+                            tooltip='Select Date'
+                            value={values.eform_date}
+                            onChange={handleDateChange}
+                            onBlur={() => handleDateBlur('eform_date')}
+                            label="Eform Date"
+                            required
+                            error={touched.eform_date && Boolean(errors.eform_date)}
+                            helperText={
+                              touched.eform_date && errors.eform_date
+                                ? errors.eform_date
+                               : ''
+                            }
+                            slotProps={{ textField: { InputProps: { startAdornment: <DateRangeIcon sx={{ mr: 1, color: '#f58220' }} /> } } }}
+                          />
+                        </Box>
+                      </Box>
+                      {/* Parties Row */}
+                      <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                        <Box sx={{ flex: 1, minWidth: 250 }}>
+                          <CustomSelect
+                            name="shipper"
+                            value={values.shipper}
+                            onChange={handlePartyChange}
+                            onBlur={() => handleSelectBlur('shipper')}
+                            label="Shipper"
+                            options={options.shipperOptions || []}
+                            required
+                            error={touched.shipper && Boolean(errors.shipper)}
+                            helperText={
+                              touched.shipper && errors.shipper
+                                ? errors.shipper
+                               : ''
+                            }
+                            tooltip="Select shipper"
+                          />
+                          <CustomTextField
+                            name="shipperAddress"
+                            value={values.shipperAddress}
+                            label="Shipper Address"
+                            multiline
+                            rows={4}
+                            sx={{ mt: 2 }}
+                          />
+                        </Box>
+                        <Box sx={{ flex: 1, minWidth: 250 }}>
+                          <CustomSelect
+                            name="consignee"
+                            value={values.consignee}
+                            onChange={handlePartyChange}
+                            onBlur={() => handleSelectBlur('consignee')}
+                            label="Consignee"
+                            options={options.consigneeOptions || []}
+                            required
+                            error={touched.consignee && Boolean(errors.consignee)}
+                            helperText={
+                              touched.consignee && errors.consignee
+                                ? errors.consignee
+                               : ''
+                            }
+                            tooltip="Select consignee"
+                          />
+                          <CustomTextField
+                            name="consigneeAddress"
+                            value={values.consigneeAddress}
+                            label="Consignee Address"
+                            multiline
+                            rows={4}
+                            sx={{ mt: 2 }}
+                          />
+                        </Box>
+                      </Box>
+                      {/* Locations Row */}
+                      <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                        <Box sx={{ flex: 1, minWidth: 250 }}>
+                          <CustomSelect
+                            name="origin"
+                            value={values.origin}
+                            onChange={handleLocationChange} // FIXED: Use custom handler for name population
+                            onBlur={() => handleSelectBlur('origin')}
+                            label="Origin"
+                            options={options.originOptions || []}
+                            required
+                            error={touched.origin && Boolean(errors.origin)}
+                            helperText={
+                              touched.origin && errors.origin
+                                ? errors.origin
+                               : ''
+                            }
+                            tooltip="Select origin port"
+                          />
+                        </Box>
+                        <Box sx={{ flex: 1, minWidth: 250 }}>
+                          <CustomSelect
+                            name="destination"
+                            value={values.destination}
+                            onChange={handleLocationChange} // FIXED: Use custom handler
+                            onBlur={() => handleSelectBlur('destination')}
+                            label="Destination"
+                            options={options.destinationOptions || []}
+                            required
+                            error={touched.destination && Boolean(errors.destination)}
+                            helperText={
+                              touched.destination && errors.destination
+                                ? errors.destination
+                               : ''
+                            }
+                            tooltip="Select destination port"
+                          />
+                        </Box>
+                        <Box sx={{ flex: 1, minWidth: 250 }}>
+                          <CustomSelect
+                            name="shippingLine"
+                            value={values.shippingLine}
+                            onChange={handleChange}
+                            label="Shipping Line"
+                            options={options.shippingLineOptions || []}
+                          />
+                        </Box>
+                      </Box>
+                      {/* Payment & Value Row */}
+                      <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                        <Box sx={{ flex: 1, minWidth: 250 }}>
+                          <FormControl fullWidth error={!!errors.paymentType}>
+                            <Select
+                              // labelId="payment-type-label"
+                              name="paymentType"
+                              value={values.paymentType || ''} // Fix: Use '' instead of null/undefined
+                              // Updated onChange for MUI Select using your custom state (setValues, touched, validateField)
+                              onChange={(e) => {
+                                const newValue = e.target.value || '';
+                                console.log('Selected paymentType (enum):', newValue); // e.g., 'Collect'
+                                setValues(prev => ({ ...prev, paymentType: newValue }));
+                                // setValues(prev => ({ ...prev, paymentType: newValue })); // Use setValues instead of setFieldValue
+                                if (touched.paymentType) {
+                                  validateField('paymentType', newValue);
+                                }
+                                setTouched(prev => ({ ...prev, paymentType: true })); // Mark as touched
+                              }}
+                              displayEmpty // Shows placeholder when empty
+                              // Optional: For searchable, wrap in Autocomplete if needed (see below)
+                            >
+                              <MenuItem value="" disabled>
+                                <em>Select Payment Type</em>
+                              </MenuItem>
+                              {options.paymentTypeOptions?.map((option) => (
+                                <MenuItem key={option.value} value={option.value}>
+                                  {option.label}
+                                </MenuItem>
+                              )) || null}
+                            </Select>
+                            {errors.paymentType && <FormHelperText>{errors.paymentType}</FormHelperText>}
+                            {!errors.paymentType && <FormHelperText sx={{ color: 'text.secondary' }}>(Required)</FormHelperText>}
+                          </FormControl>
+                        </Box>
+                        <Box sx={{ flex: 1, minWidth: 250 }}>
+                          <CustomTextField
+                            name="consignment_value"
+                            value={values.consignment_value}
+                            onChange={handleNumberChange}
+                            onBlur={handleBlur}
+                            label="Consignment Value"
+                            type="number"
+                            required
+                            startAdornment={<AttachFileIcon sx={{ mr: 1, color: '#f58220' }} />}
+                            endAdornment={
+                              <FormControl size="small" sx={{ minWidth: 60 }}>
+                                <Select
+                                  name="currency_code"
+                                  value={(options.currencyOptions || []).length > 0 && (options.currencyOptions || []).some(opt => opt.value === values.currency_code) ? values.currency_code : ''}
+                                  onChange={handleChange}
+                                >
+                                  {(options.currencyOptions || [])?.length > 0 ? (options.currencyOptions || []).map(opt => (
+                                    <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+                                  )) : <MenuItem value="">Select Currency</MenuItem>}
+                                </Select>
+                              </FormControl>
+                            }
+                            error={touched.consignment_value && Boolean(errors.consignment_value)}
+                            helperText={
+                              touched.consignment_value && errors.consignment_value
+                                ? errors.consignment_value
                                : ''
                             }
                           />
-                          {mode === 'edit' && (
-                            <Button
-                              variant="outlined"
-                              size="small"
-                              onClick={advanceStatus}
-                              sx={{ borderColor: '#f58220', color: '#f58220', minHeight: '56px' }}
-                            >
-                              Next
-                            </Button>
-                          )}
+                        </Box>
+                        <Box sx={{ flex: 1, minWidth: 250 }}>
+                          <CustomSelect
+                            name="bank"
+                            value={values.bank}
+                            onChange={handleBankChange} // FIXED: Use custom handler
+                            onBlur={() => handleSelectBlur('bank')}
+                            label="Bank"
+                            options={options.bankOptions || []}
+                            required
+                            error={touched.bank && Boolean(errors.bank)}
+                            helperText={
+                              touched.bank && errors.bank
+                                ? errors.bank
+                               : ''
+                            }
+                            tooltip="Select associated bank"
+                          />
                         </Box>
                       </Box>
-                      <Box sx={{ flex: 1, minWidth: 250 }}>
-                        <CustomTextField
-                          name="remarks"
-                          value={values.remarks}
-                          onChange={handleChange}
-                          label="Remarks"
-                          multiline
-                          rows={2}
-                          startAdornment={<AttachFileIcon sx={{ mr: 1, color: '#f58220' }} />}
-                        />
+                      {/* Shipping Row */}
+                      <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                        <Box sx={{ flex: 1, minWidth: 250 }}>
+                          <CustomSelect
+                            name="vessel"
+                            value={values.vessel ?? ''} // Use ?? to handle null as empty string for display
+                            onChange={handleChange}
+                            onBlur={() => handleSelectBlur('vessel')}
+                            label="Vessel"
+                            options={options.vesselOptions || []}
+                            required
+                            error={touched.vessel && Boolean(errors.vessel)}
+                            helperText={
+                              touched.vessel && errors.vessel
+                                ? errors.vessel
+                               : ''
+                            }
+                            tooltip="Select vessel"
+                          />
+                        </Box>
+                        <Box sx={{ flex: 1, minWidth: 250 }}>
+                          <CustomDatePicker
+                            name="eta"
+                            tooltip='Select Date'
+                            value={values.eta}
+                            onChange={handleDateChange}
+                            label="ETA"
+                            slotProps={{ textField: { InputProps: { startAdornment: <DateRangeIcon sx={{ mr: 1, color: '#f58220' }} /> } } }}
+                          />
+                        </Box>
+                        <Box sx={{ flex: 1, minWidth: 250 }}>
+                          <CustomTextField
+                            name="voyage"
+                            value={values.voyage}
+                            onChange={handleChange}
+                            onBlur={handleBlur}
+                            label="Voyage"
+                            startAdornment={<DirectionsBoatIcon sx={{ mr: 1, color: '#f58220' }} />}
+                            required
+                            error={touched.voyage && Boolean(errors.voyage)}
+                            helperText={
+                              touched.voyage && errors.voyage
+                                ? errors.voyage
+                               : ''
+                            }
+                            tooltip="Enter voyage number (min 3 chars)"
+                          />
+                        </Box>
+                      </Box>
+                      {/* Counts & Seal Row */}
+                      <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+
+                        <Box sx={{ flex: 1, minWidth: 250 }}>
+                          <CustomTextField
+                            name="seal_no"
+                            value={values.seal_no}
+                            onChange={handleChange}
+                            label="Seal No"
+                            startAdornment={<LocalPrintshopIcon sx={{ mr: 1, color: '#f58220' }} />}
+                          />
+                        </Box>
+                        <Box sx={{ flex: 1, minWidth: 300 }}>
+                          <CustomTextField
+                            name="netWeight"
+                            value={values.netWeight}
+                            onChange={handleNumberChange}
+                            label="Net Weight"
+                            type="number"
+                            required
+                            startAdornment={<LocalShippingIcon sx={{ mr: 1, color: '#f58220' }} />}
+                            endAdornment={<Typography variant="body2" color="text.secondary">KGS</Typography>}
+                            error={touched.netWeight && Boolean(errors.netWeight)}
+                            helperText={
+                              touched.netWeight && errors.netWeight
+                                ? errors.netWeight
+                               : ''
+                            }
+                          />
+                        </Box>
+                        <Box sx={{ flex: 1, minWidth: 300 }}>
+                          <CustomTextField
+                            name="gross_weight"
+                            value={values.gross_weight}
+                            onChange={handleNumberChange}
+                            onBlur={handleBlur}
+                            label="Gross Weight"
+                            type="number"
+                            required
+                            startAdornment={<LocalShippingIcon sx={{ mr: 1, color: '#f58220' }} />}
+                            endAdornment={<Typography variant="body2" color="text.secondary">KGS</Typography>}
+                            error={touched.gross_weight && Boolean(errors.gross_weight)}
+                            helperText={
+                              touched.gross_weight && errors.gross_weight
+                                ? errors.gross_weight
+                               : ''
+                            }
+                          />
+                        </Box>
                       </Box>
                     </Box>
-                    {/* Eform Row */}
-                    <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
-                      <Box sx={{ flex: 1, minWidth: 250 }}>
-                        <CustomTextField
-                          name="eform"
-                          value={values.eform}
-                          onChange={handleChange}
-                          onBlur={handleBlur}
-                          label="Eform #"
-                          inputProps={{ pattern: '^[A-Z]{3}-\\d{6}$', placeholder: 'ABC-123456' }}
-                          required
-                          error={touched.eform && Boolean(errors.eform)}
-                          helperText={
-                            touched.eform && errors.eform
-                              ? errors.eform
-                             : ''
-                          }
-                          tooltip="Format: ABC-123456"
-                        />
-                      </Box>
-                      <Box sx={{ flex: 1, minWidth: 250 }}>
-                        <CustomDatePicker
-                          name="eform_date"
-                          tooltip='Select Date'
-                          value={values.eform_date}
-                          onChange={handleDateChange}
-                          onBlur={() => handleDateBlur('eform_date')}
-                          label="Eform Date"
-                          required
-                          error={touched.eform_date && Boolean(errors.eform_date)}
-                          helperText={
-                            touched.eform_date && errors.eform_date
-                              ? errors.eform_date
-                             : ''
-                          }
-                          slotProps={{ textField: { InputProps: { startAdornment: <DateRangeIcon sx={{ mr: 1, color: '#f58220' }} /> } } }}
-                        />
-                      </Box>
-                    </Box>
-                    {/* Parties Row */}
-                    <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
-                      <Box sx={{ flex: 1, minWidth: 250 }}>
-                        <CustomSelect
-                          name="shipper"
-                          value={values.shipper}
-                          onChange={handlePartyChange}
-                          onBlur={() => handleSelectBlur('shipper')}
-                          label="Shipper"
-                          options={options.shipperOptions || []}
-                          required
-                          error={touched.shipper && Boolean(errors.shipper)}
-                          helperText={
-                            touched.shipper && errors.shipper
-                              ? errors.shipper
-                             : ''
-                          }
-                          tooltip="Select shipper"
-                        />
-                        <CustomTextField
-                          name="shipperAddress"
-                          value={values.shipperAddress}
-                          label="Shipper Address"
-                          multiline
-                          rows={4}
-                          sx={{ mt: 2 }}
-                        />
-                      </Box>
-                      <Box sx={{ flex: 1, minWidth: 250 }}>
-                        <CustomSelect
-                          name="consignee"
-                          value={values.consignee}
-                          onChange={handlePartyChange}
-                          onBlur={() => handleSelectBlur('consignee')}
-                          label="Consignee"
-                          options={options.consigneeOptions || []}
-                          required
-                          error={touched.consignee && Boolean(errors.consignee)}
-                          helperText={
-                            touched.consignee && errors.consignee
-                              ? errors.consignee
-                             : ''
-                          }
-                          tooltip="Select consignee"
-                        />
-                        <CustomTextField
-                          name="consigneeAddress"
-                          value={values.consigneeAddress}
-                          label="Consignee Address"
-                          multiline
-                          rows={4}
-                          sx={{ mt: 2 }}
-                        />
-                      </Box>
-                    </Box>
-                    {/* Locations Row */}
-                    <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
-                      <Box sx={{ flex: 1, minWidth: 250 }}>
-                        <CustomSelect
-                          name="origin"
-                          value={values.origin}
-                          onChange={handleLocationChange} // FIXED: Use custom handler for name population
-                          onBlur={() => handleSelectBlur('origin')}
-                          label="Origin"
-                          options={options.originOptions || []}
-                          required
-                          error={touched.origin && Boolean(errors.origin)}
-                          helperText={
-                            touched.origin && errors.origin
-                              ? errors.origin
-                             : ''
-                          }
-                          tooltip="Select origin port"
-                        />
-                      </Box>
-                      <Box sx={{ flex: 1, minWidth: 250 }}>
-                        <CustomSelect
-                          name="destination"
-                          value={values.destination}
-                          onChange={handleLocationChange} // FIXED: Use custom handler
-                          onBlur={() => handleSelectBlur('destination')}
-                          label="Destination"
-                          options={options.destinationOptions || []}
-                          required
-                          error={touched.destination && Boolean(errors.destination)}
-                          helperText={
-                            touched.destination && errors.destination
-                              ? errors.destination
-                             : ''
-                          }
-                          tooltip="Select destination port"
-                        />
-                      </Box>
-                      <Box sx={{ flex: 1, minWidth: 250 }}>
-                        <CustomSelect
-                          name="shippingLine"
-                          value={values.shippingLine}
-                          onChange={handleChange}
-                          label="Shipping Line"
-                          options={options.shippingLineOptions || []}
-                        />
-                      </Box>
-                    </Box>
-                    {/* Payment & Value Row */}
-                    <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
-                      <Box sx={{ flex: 1, minWidth: 250 }}>
-                        <FormControl fullWidth error={!!errors.paymentType}>
-                          <Select
-                            // labelId="payment-type-label"
-                            name="paymentType"
-                            value={values.paymentType || ''} // Fix: Use '' instead of null/undefined
-                            // Updated onChange for MUI Select using your custom state (setValues, touched, validateField)
-                            onChange={(e) => {
-                              const newValue = e.target.value || '';
-                              console.log('Selected paymentType (enum):', newValue);  // e.g., 'Collect'
-                              setValues(prev => ({ ...prev, paymentType: newValue }));
-                              // setValues(prev => ({ ...prev, paymentType: newValue })); // Use setValues instead of setFieldValue
-                              if (touched.paymentType) {
-                                validateField('paymentType', newValue);
-                              }
-                              setTouched(prev => ({ ...prev, paymentType: true })); // Mark as touched
-                            }}
-                            displayEmpty // Shows placeholder when empty
-                            // Optional: For searchable, wrap in Autocomplete if needed (see below)
+                    {/* Print Buttons */}
+                    <Fade in={true} timeout={800}>
+                      <Box sx={{ mt: 3, display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap' }}>
+                        <Tooltip title="Download PDF manifest with details, containers, and orders">
+                          <Button
+                            variant="outlined"
+                            startIcon={<LocalPrintshopIcon />}
+                            onClick={() => generateManifestPDF(values, includedOrders)} // Fixed: Pass includedOrders
+                            disabled={saving || !values.consignment_number}
+                            sx={{ borderColor: '#f58220', color: '#f58220', '&:hover': { borderColor: '#e65100', backgroundColor: '#fff3e0' } }}
                           >
-                            <MenuItem value="" disabled>
-                              <em>Select Payment Type</em>
-                            </MenuItem>
-                            {options.paymentTypeOptions?.map((option) => (
-                              <MenuItem key={option.value} value={option.value}>
-                                {option.label}
-                              </MenuItem>
-                            )) || null}
-                          </Select>
-                          {errors.paymentType && <FormHelperText>{errors.paymentType}</FormHelperText>}
-                          {!errors.paymentType && <FormHelperText sx={{ color: 'text.secondary' }}>(Required)</FormHelperText>}
-                        </FormControl>
+                            {saving ? <CircularProgress size={20} /> : 'Print Manifest'}
+                          </Button>
+                        </Tooltip>
+                        <Tooltip title="Download simple consignment note as PDF">
+                          <Button
+                            variant="outlined"
+                            startIcon={<DescriptionIcon />}
+                            onClick={() => generateManifestPDF(values, includedOrders)} // Fixed: Pass includedOrders
+                            disabled={saving || !values.consignment_number}
+                            sx={{ borderColor: '#f58220', color: '#f58220', '&:hover': { borderColor: '#e65100', backgroundColor: '#fff3e0' } }}
+                          >
+                            Print Note (PDF)
+                          </Button>
+                        </Tooltip>
+                        {/* <Tooltip title="Download as Word document (requires additional setup)">
+                          <Button
+                            variant="outlined"
+                            startIcon={<DescriptionIcon />}
+                            onClick={generateDocx}
+                            disabled={saving || !values.consignment_number}
+                            sx={{ borderColor: '#f58220', color: '#f58220', '&:hover': { borderColor: '#e65100', backgroundColor: '#fff3e0' } }}
+                          >
+                            Print Docx
+                          </Button>
+                        </Tooltip> */}
                       </Box>
-                      <Box sx={{ flex: 1, minWidth: 250 }}>
-                        <CustomTextField
-                          name="consignment_value"
-                          value={values.consignment_value}
-                          onChange={handleNumberChange}
-                          onBlur={handleBlur}
-                          label="Consignment Value"
-                          type="number"
-                          required
-                          startAdornment={<AttachFileIcon sx={{ mr: 1, color: '#f58220' }} />}
-                          endAdornment={
-                            <FormControl size="small" sx={{ minWidth: 60 }}>
-                              <Select
-                                name="currency_code"
-                                value={(options.currencyOptions || []).length > 0 && (options.currencyOptions || []).some(opt => opt.value === values.currency_code) ? values.currency_code : ''}
-                                onChange={handleChange}
-                              >
-                                {(options.currencyOptions || [])?.length > 0 ? (options.currencyOptions || []).map(opt => (
-                                  <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
-                                )) : <MenuItem value="">Select Currency</MenuItem>}
-                              </Select>
-                            </FormControl>
-                          }
-                          error={touched.consignment_value && Boolean(errors.consignment_value)}
-                          helperText={
-                            touched.consignment_value && errors.consignment_value
-                              ? errors.consignment_value
-                             : ''
-                          }
-                        />
-                      </Box>
-                      <Box sx={{ flex: 1, minWidth: 250 }}>
-                        <CustomSelect
-                          name="bank"
-                          value={values.bank}
-                          onChange={handleBankChange} // FIXED: Use custom handler
-                          onBlur={() => handleSelectBlur('bank')}
-                          label="Bank"
-                          options={options.bankOptions || []}
-                          required
-                          error={touched.bank && Boolean(errors.bank)}
-                          helperText={
-                            touched.bank && errors.bank
-                              ? errors.bank
-                             : ''
-                          }
-                          tooltip="Select associated bank"
-                        />
-                      </Box>
-                    </Box>
-                    {/* Shipping Row */}
-                    <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
-                      <Box sx={{ flex: 1, minWidth: 250 }}>
-                        <CustomSelect
-                          name="vessel"
-                          value={values.vessel ?? ''} // Use ?? to handle null as empty string for display
-                          onChange={handleChange}
-                          onBlur={() => handleSelectBlur('vessel')}
-                          label="Vessel"
-                          options={options.vesselOptions || []}
-                          required
-                          error={touched.vessel && Boolean(errors.vessel)}
-                          helperText={
-                            touched.vessel && errors.vessel
-                              ? errors.vessel
-                             : ''
-                          }
-                          tooltip="Select vessel"
-                        />
-                      </Box>
-                      <Box sx={{ flex: 1, minWidth: 250 }}>
-                        <CustomDatePicker
-                          name="eta"
-                          tooltip='Select Date'
-                          value={values.eta}
-                          onChange={handleDateChange}
-                          label="ETA"
-                          slotProps={{ textField: { InputProps: { startAdornment: <DateRangeIcon sx={{ mr: 1, color: '#f58220' }} /> } } }}
-                        />
-                      </Box>
-                      <Box sx={{ flex: 1, minWidth: 250 }}>
-                        <CustomTextField
-                          name="voyage"
-                          value={values.voyage}
-                          onChange={handleChange}
-                          onBlur={handleBlur}
-                          label="Voyage"
-                          startAdornment={<DirectionsBoatIcon sx={{ mr: 1, color: '#f58220' }} />}
-                          required
-                          error={touched.voyage && Boolean(errors.voyage)}
-                          helperText={
-                            touched.voyage && errors.voyage
-                              ? errors.voyage
-                             : ''
-                          }
-                          tooltip="Enter voyage number (min 3 chars)"
-                        />
-                      </Box>
-                    </Box>
-                    {/* Counts & Seal Row */}
-                    <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
-                   
-                      <Box sx={{ flex: 1, minWidth: 250 }}>
-                        <CustomTextField
-                          name="seal_no"
-                          value={values.seal_no}
-                          onChange={handleChange}
-                          label="Seal No"
-                          startAdornment={<LocalPrintshopIcon sx={{ mr: 1, color: '#f58220' }} />}
-                        />
-                      </Box>
-                      <Box sx={{ flex: 1, minWidth: 300 }}>
-                        <CustomTextField
-                          name="netWeight"
-                          value={values.netWeight}
-                          onChange={handleNumberChange}
-                          label="Net Weight"
-                          type="number"
-                          required
-                          startAdornment={<LocalShippingIcon sx={{ mr: 1, color: '#f58220' }} />}
-                          endAdornment={<Typography variant="body2" color="text.secondary">KGS</Typography>}
-                          error={touched.netWeight && Boolean(errors.netWeight)}
-                          helperText={
-                            touched.netWeight && errors.netWeight
-                              ? errors.netWeight
-                             : ''
-                          }
-                        />
-                      </Box>
-                      <Box sx={{ flex: 1, minWidth: 300 }}>
-                        <CustomTextField
-                          name="gross_weight"
-                          value={values.gross_weight}
-                          onChange={handleNumberChange}
-                          onBlur={handleBlur}
-                          label="Gross Weight"
-                          type="number"
-                          required
-                          startAdornment={<LocalShippingIcon sx={{ mr: 1, color: '#f58220' }} />}
-                          endAdornment={<Typography variant="body2" color="text.secondary">KGS</Typography>}
-                          error={touched.gross_weight && Boolean(errors.gross_weight)}
-                          helperText={
-                            touched.gross_weight && errors.gross_weight
-                              ? errors.gross_weight
-                             : ''
-                          }
-                        />
-                      </Box>
-                    </Box>
-                  </Box>
-                  {/* Print Buttons */}
-                  <Fade in={true} timeout={800}>
-                    <Box sx={{ mt: 3, display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap' }}>
-                      <Tooltip title="Download PDF manifest with details, containers, and orders">
-                        <Button
-                          variant="outlined"
-                          startIcon={<LocalPrintshopIcon />}
-                          onClick={() => generateManifestPDF(values)}
-                          disabled={saving || !values.consignment_number}
-                          sx={{ borderColor: '#f58220', color: '#f58220', '&:hover': { borderColor: '#e65100', backgroundColor: '#fff3e0' } }}
-                        >
-                          {saving ? <CircularProgress size={20} /> : 'Print Manifest'}
-                        </Button>
-                      </Tooltip>
-                      <Tooltip title="Download simple consignment note as PDF">
-                        <Button
-                          variant="outlined"
-                          startIcon={<DescriptionIcon />}
-                                   onClick={() => generateManifestPDF(values)}
-                          disabled={saving || !values.consignment_number}
-                          sx={{ borderColor: '#f58220', color: '#f58220', '&:hover': { borderColor: '#e65100', backgroundColor: '#fff3e0' } }}
-                        >
-                          Print Note (PDF)
-                        </Button>
-                      </Tooltip>
-                      {/* <Tooltip title="Download as Word document (requires additional setup)">
-                        <Button
-                          variant="outlined"
-                          startIcon={<DescriptionIcon />}
-                          onClick={generateDocx}
-                          disabled={saving || !values.consignment_number}
-                          sx={{ borderColor: '#f58220', color: '#f58220', '&:hover': { borderColor: '#e65100', backgroundColor: '#fff3e0' } }}
-                        >
-                          Print Docx
-                        </Button>
-                      </Tooltip> */}
-                    </Box>
-                  </Fade>
+                    </Fade>
+                  </AccordionDetails>
+                </Accordion>
+                <Divider sx={{ my: 3 }} />
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, mb: 2, }}>
+                  <Button
+                    variant="outlined"
+                    onClick={resetForm}
+                    sx={{ borderColor: '#9e9e9e', color: '#9e9e9e', '&:hover': { borderColor: '#757575' } }}
+                  >
+                    Reset
+                  </Button>
+                  <Button
+                    type="submit"
+                    variant="contained"
+                    disabled={saving}
+                    sx={{ backgroundColor: '#f58220', color: 'white', px: 4, '&:hover': { backgroundColor: '#e65100' } }}
+                  >
+                    {saving ? 'Saving...' : (mode === 'edit' ? 'Update Consignment' : 'Add Consignment')}
+                  </Button>
+                </Box>
+              </form>
+              {/* Containers Section */}
+              <Accordion sx={{ boxShadow: 2, borderRadius: 2, mt: 3, '&:before': { display: 'none' } }}>
+                <AccordionSummary
+                  expandIcon={<ExpandMoreIconMui sx={{ color: '#fff', backgroundColor: '#0d6c6a', borderRadius: '50%', p: 0.5 }} />}
+                  sx={{ backgroundColor: '#0d6c6a', color: 'white', borderRadius: 2 }}
+                >
+                  <Typography variant="h6" sx={{ fontWeight: 'bold' }}>🚚 Containers</Typography>
+                </AccordionSummary>
+                <AccordionDetails sx={{ p: 3 }}>
+                  <Table sx={{ minWidth: '100%', boxShadow: 1, borderRadius: 1, mb: 2, overflow: 'hidden' }} aria-label="Containers table">
+                    <TableHead>
+                      <TableRow sx={{ backgroundColor: '#e3f2fd' }}>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Container No.</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Location</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Size</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Type</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Ownership</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Status</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Actions</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {(values.containers || []).length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
+                            <Typography variant="body2" color="text.secondary">
+                              No containers added. Click "Add New" or "Select from List" to get started.
+                            </Typography>
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        (values.containers || []).map((container, index) => {
+                          // Get error for this specific row
+                          const rowErrors = getContainerError(index);
+                          return (
+                            <Fade in key={`${container.containerNo || 'new'}-${index}`} timeout={300 * index}>
+                              <TableRow hover sx={{ transition: 'all 0.2s ease' }}>
+                                <TableCell>
+                                  <TextField
+                                    size="small"
+                                    fullWidth
+                                    value={container.containerNo || ''}
+                                    onChange={(e) => {
+                                      const newValue = e.target.value;
+                                      updateArrayField('containers', index, 'containerNo', newValue);
+                                      // Validate duplicate on change
+                                      if (newValue && rowErrors.containerNo?.includes('already exists')) {
+                                        setContainerError(`containers[${index}].containerNo`, rowErrors.containerNo);
+                                      } else {
+                                        setContainerError(`containers[${index}].containerNo`, '');
+                                      }
+                                    }}
+                                    onBlur={() => {
+                                      markArrayTouched('containers');
+                                      // Re-validate on blur
+                                      const updatedErrors = getContainerError(index);
+                                      setContainerError(`containers[${index}].containerNo`, updatedErrors.containerNo || '');
+                                    }}
+                                    error={Boolean(rowErrors.containerNo)}
+                                    helperText={rowErrors.containerNo }
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  <TextField
+                                    size="small"
+                                    fullWidth
+                                    value={container.location || ''}
+                                    onChange={(e) => updateArrayField('containers', index, 'location', e.target.value)}
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  <TextField
+                                    size="small"
+                                    fullWidth
+                                    value={container.size || ''}
+                                    onChange={(e) => updateArrayField('containers', index, 'size', e.target.value)}
+                                    onBlur={() => markArrayTouched('containers')}
+                                    error={Boolean(rowErrors.size)}
+                                    helperText={rowErrors.size}
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  <TextField
+                                    size="small"
+                                    fullWidth
+                                    value={container.containerType || ''}
+                                    onChange={(e) => updateArrayField('containers', index, 'containerType', e.target.value)}
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  <TextField
+                                    size="small"
+                                    fullWidth
+                                    value={container.ownership || ''}
+                                    onChange={(e) => updateArrayField('containers', index, 'ownership', e.target.value)}
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  <TextField
+                                    size="small"
+                                    fullWidth
+                                    value={container.status || ''}
+                                    onChange={(e) => updateArrayField('containers', index, 'status', e.target.value)}
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  <IconButton onClick={() => removeContainer(index)} color="error" size="small">
+                                    <DeleteIconMui fontSize="small" />
+                                  </IconButton>
+                                </TableCell>
+                              </TableRow>
+                            </Fade>
+                          );
+                        })
+                      )}
+                    </TableBody>
+                  </Table>
+                  <div style={{ display: 'flex', gap: 8, mt: 2 }}>
+                    <Button
+                      startIcon={<AddIcon />}
+                      onClick={() => {
+                        // Pre-validate before adding empty row (optional: prompt for containerNo first)
+                        const newContainer = { containerNo: '', location: '', size: '', containerType: '', ownership: '', status: '' };
+                        if ((values.containers || []).some(c => c.containerNo?.trim() === '')) {
+                          // Prevent adding if empty row exists
+                          alert('Complete or remove the empty container row first.');
+                          return;
+                        }
+                        addContainer(newContainer); // Assuming addContainer pushes the new object
+                      }}
+                      variant="outlined"
+                      sx={{ flex: 1, color: '#0d6c6a' }}
+                    >
+                      Add New
+                    </Button>
+                    <Button
+                      startIcon={<AddIcon />}
+                      onClick={() => {
+                        // For modal: Ensure no duplicates when selecting
+                        setContainerModalOpen(true);
+                      }}
+                      variant="contained"
+                      disabled={containersLoading}
+                      sx={{ flex: 1, backgroundColor: '#0d6c6a', color: 'white', '&:hover': { backgroundColor: '#0a5553' } }}
+                    >
+                      {containersLoading ? 'Loading...' : 'Select from List'}
+                    </Button>
+                  </div>
+                  {touched.containers && errors.containers && <Alert severity="error" sx={{ mt: 1 }}>{errors.containers}</Alert>}
                 </AccordionDetails>
               </Accordion>
-              <Divider sx={{ my: 3 }} />
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, mb: 2, }}>
-                <Button
-                  variant="outlined"
-                  onClick={resetForm}
-                  sx={{ borderColor: '#9e9e9e', color: '#9e9e9e', '&:hover': { borderColor: '#757575' } }}
+              {/* Container Selection Modal */}
+              <Dialog open={containerModalOpen} onClose={() => setContainerModalOpen(false)} maxWidth="xl" fullWidth>
+                {/* <DialogTitle>Select Containers</DialogTitle> */}
+                <DialogContent>
+                  {containersLoading ? (
+                    <Typography>Loading containers...</Typography>
+                  ) : (
+                    <ContainerModule containers={containers || []}
+                      selectedContainers={selectedContainers || []}
+                      onToggle={handleContainerToggle} />
+                  )}
+                </DialogContent>
+                <DialogActions>
+                  <Button onClick={() => setContainerModalOpen(false)}>Cancel</Button>
+                  <Button onClick={addSelectedContainers} disabled={(selectedContainers || []).length === 0} variant="contained">
+                    Add Selected ({(selectedContainers || []).length})
+                  </Button>
+                </DialogActions>
+              </Dialog>
+              <Accordion sx={{ mt: 2, boxShadow: 2, borderRadius: 2, '&:before': { display: 'none' } }}>
+                <AccordionSummary
+                  expandIcon={<ExpandMoreIconMui sx={{ color: '#fff', backgroundColor: '#f58220', borderRadius: '50%', p: 0.5 }} />}
+                  sx={{ backgroundColor: '#f58220', color: 'white', borderRadius: 2 }}
                 >
-                  Reset
-                </Button>
-                <Button
-                  type="submit"
-                  variant="contained"
-                  disabled={saving}
-                  sx={{ backgroundColor: '#f58220', color: 'white', px: 4, '&:hover': { backgroundColor: '#e65100' } }}
-                >
-                  {saving ? 'Saving...' : (mode === 'edit' ? 'Update Consignment' : 'Add Consignment')}
-                </Button>
-              </Box>
-            </form>
-            {/* Containers Section */}
-            <Accordion sx={{ boxShadow: 2, borderRadius: 2, mt: 3, '&:before': { display: 'none' } }}>
-  <AccordionSummary
-    expandIcon={<ExpandMoreIconMui sx={{ color: '#fff', backgroundColor: '#0d6c6a', borderRadius: '50%', p: 0.5 }} />}
-    sx={{ backgroundColor: '#0d6c6a', color: 'white', borderRadius: 2 }}
-  >
-    <Typography variant="h6" sx={{ fontWeight: 'bold' }}>🚚 Containers</Typography>
-  </AccordionSummary>
-  <AccordionDetails sx={{ p: 3 }}>
-    <Table sx={{ minWidth: '100%', boxShadow: 1, borderRadius: 1, mb: 2, overflow: 'hidden' }} aria-label="Containers table">
-      <TableHead>
-        <TableRow sx={{ backgroundColor: '#e3f2fd' }}>
-          <TableCell sx={{ fontWeight: 'bold' }}>Container No.</TableCell>
-          <TableCell sx={{ fontWeight: 'bold' }}>Location</TableCell>
-          <TableCell sx={{ fontWeight: 'bold' }}>Size</TableCell>
-          <TableCell sx={{ fontWeight: 'bold' }}>Type</TableCell>
-          <TableCell sx={{ fontWeight: 'bold' }}>Ownership</TableCell>
-          <TableCell sx={{ fontWeight: 'bold' }}>Status</TableCell>
-          <TableCell sx={{ fontWeight: 'bold' }}>Actions</TableCell>
-        </TableRow>
-      </TableHead>
-      <TableBody>
-        {(values.containers || []).length === 0 ? (
-          <TableRow>
-            <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
-              <Typography variant="body2" color="text.secondary">
-                No containers added. Click "Add New" or "Select from List" to get started.
-              </Typography>
-            </TableCell>
-          </TableRow>
-        ) : (
-          (values.containers || []).map((container, index) => {
-            // Helper: Check for duplicates (ignore current index)
-            const isDuplicate = (containerNo) => {
-              return (values.containers || []).some((c, i) => i !== index && c.containerNo?.trim().toUpperCase() === containerNo?.trim().toUpperCase());
-            };
+                  <Typography variant="h6" sx={{ fontWeight: 'bold' }}>🛒 Orders ({numSelected} selected)</Typography>
+                </AccordionSummary>
+                <AccordionDetails sx={{ p: 3 }}>
 
-            // Get error for this specific row (expand getContainerError if needed, or define inline)
-            const rowErrors = getContainerError?.(index) || {}; // Assuming getContainerError returns { containerNo: 'error msg' } per index
-            const containerNoError = rowErrors.containerNo || (container.containerNo && isDuplicate(container.containerNo) ? 'Container already exists in list' : '');
-
-            return (
-              <Fade in key={`${container.containerNo || 'new'}-${index}`} timeout={300 * index}>
-                <TableRow hover sx={{ transition: 'all 0.2s ease' }}>
-                  <TableCell>
-                    <TextField
-                      size="small"
-                      fullWidth
-                      value={container.containerNo || ''}
-                      onChange={(e) => {
-                        const newValue = e.target.value;
-                        updateArrayField('containers', index, 'containerNo', newValue);
-                        // Validate duplicate on change
-                        if (newValue && isDuplicate(newValue)) {
-                          // Set per-row error (integrate with Formik if possible, or use local state)
-                          setFieldError(`containers[${index}].containerNo`, 'Container already exists in list');
-                        } else {
-                          setFieldError(`containers[${index}].containerNo`, '');
-                        }
-                      }}
-                      onBlur={() => {
-                        markArrayTouched('containers');
-                        // Re-validate on blur
-                        if (container.containerNo && isDuplicate(container.containerNo)) {
-                          setFieldError(`containers[${index}].containerNo`, 'Container already exists in list');
-                        }
-                      }}
-                      error={Boolean(containerNoError)}
-                      helperText={containerNoError }
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <TextField
-                      size="small"
-                      fullWidth
-                      value={container.location || ''}
-                      onChange={(e) => updateArrayField('containers', index, 'location', e.target.value)}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <TextField
-                      size="small"
-                      fullWidth
-                      value={container.size || ''}
-                      onChange={(e) => updateArrayField('containers', index, 'size', e.target.value)}
-                      onBlur={() => markArrayTouched('containers')}
-                      error={Boolean(rowErrors.size)}
-                      helperText={rowErrors.size}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <TextField
-                      size="small"
-                      fullWidth
-                      value={container.containerType || ''}
-                      onChange={(e) => updateArrayField('containers', index, 'containerType', e.target.value)}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <TextField
-                      size="small"
-                      fullWidth
-                      value={container.ownership || ''}
-                      onChange={(e) => updateArrayField('containers', index, 'ownership', e.target.value)}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <TextField
-                      size="small"
-                      fullWidth
-                      value={container.status || ''}
-                      onChange={(e) => updateArrayField('containers', index, 'status', e.target.value)}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <IconButton onClick={() => removeContainer(index)} color="error" size="small">
-                      <DeleteIconMui fontSize="small" />
-                    </IconButton>
-                  </TableCell>
-                </TableRow>
-              </Fade>
-            );
-          })
-        )}
-      </TableBody>
-    </Table>
-    <div style={{ display: 'flex', gap: 8, mt: 2 }}>
-      <Button
-        startIcon={<AddIcon />}
-        onClick={() => {
-          // Pre-validate before adding empty row (optional: prompt for containerNo first)
-          const newContainer = { containerNo: '', location: '', size: '', containerType: '', ownership: '', status: '' };
-          if ((values.containers || []).some(c => c.containerNo?.trim() === '')) {
-            // Prevent adding if empty row exists
-            alert('Complete or remove the empty container row first.');
-            return;
-          }
-          addContainer(newContainer); // Assuming addContainer pushes the new object
-        }}
-        variant="outlined"
-        sx={{ flex: 1, color: '#0d6c6a' }}
-      >
-        Add New
-      </Button>
-      <Button
-        startIcon={<AddIcon />}
-        onClick={() => {
-          // For modal: Ensure no duplicates when selecting
-          setContainerModalOpen(true);
-        }}
-        variant="contained"
-        disabled={containersLoading}
-        sx={{ flex: 1, backgroundColor: '#0d6c6a', color: 'white', '&:hover': { backgroundColor: '#0a5553' } }}
-      >
-        {containersLoading ? 'Loading...' : 'Select from List'}
-      </Button>
-    </div>
-    {touched.containers && errors.containers && <Alert severity="error" sx={{ mt: 1 }}>{errors.containers}</Alert>}
-  </AccordionDetails>
-</Accordion>
-            {/* Container Selection Modal */}
-            <Dialog open={containerModalOpen} onClose={() => setContainerModalOpen(false)} maxWidth="xl" fullWidth>
-              {/* <DialogTitle>Select Containers</DialogTitle> */}
-              <DialogContent>
-                {containersLoading ? (
-                  <Typography>Loading containers...</Typography>
-                ) : (
-                  <ContainerModule containers={containers || []}
-                    selectedContainers={selectedContainers || []}
-                    onToggle={handleContainerToggle} />
-                )}
-              </DialogContent>
-              <DialogActions>
-                <Button onClick={() => setContainerModalOpen(false)}>Cancel</Button>
-                <Button onClick={addSelectedContainers} disabled={(selectedContainers || []).length === 0} variant="contained">
-                  Add Selected ({(selectedContainers || []).length})
-                </Button>
-              </DialogActions>
-            </Dialog>
-            {/* Orders Section */}
-            <Accordion sx={{ mt: 2, boxShadow: 2, borderRadius: 2, '&:before': { display: 'none' } }}>
-              <AccordionSummary
-                expandIcon={<ExpandMoreIconMui sx={{ color: '#fff', backgroundColor: '#f58220', borderRadius: '50%', p: 0.5 }} />}
-                sx={{ backgroundColor: '#f58220', color: 'white', borderRadius: 2 }}
-              >
-                <Typography variant="h6" sx={{ fontWeight: 'bold' }}>🛒 Orders ({numSelected} selected)</Typography>
-              </AccordionSummary>
-              <AccordionDetails sx={{ p: 3 }}>
-                <>
                   <Box sx={{ display: 'flex', gap: 2, mb: 2, alignItems: 'center' }}>
                     <TextField
                       label="Booking Ref"
@@ -2512,14 +2408,15 @@ const addContainer = () => {
                       </Select>
                     </FormControl>
                   </Box>
+
                   <TableContainer sx={{ borderRadius: 2, overflow: 'hidden', boxShadow: 2 }}>
                     <Table stickyHeader aria-label="Orders table">
                       <TableHead>
                         <TableRow sx={{ bgcolor: '#0d6c6a' }}>
                           <TableCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} padding="checkbox">
                             <Checkbox
-                              indeterminate={numSelected > 0 && numSelected < rowCount}
-                              checked={rowCount > 0 && numSelected === rowCount}
+                              indeterminate={numSelected > 0 && numSelected < (orders || []).length}
+                              checked={(orders || []).length > 0 && numSelected === (orders || []).length}
                               onChange={handleSelectAllClick}
                             />
                           </TableCell>
@@ -2527,32 +2424,49 @@ const addContainer = () => {
                           <TableCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="loading">POL</TableCell>
                           <TableCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="dest">POD</TableCell>
                           <TableCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="sender">Sender</TableCell>
-                          <TableCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="receivers">Receivers</TableCell>
+                          <TableCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="receivers">Receiver</TableCell>
                           <TableCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="containers">Containers</TableCell>
-                          <TableCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="status">Status</TableCell>
+                          <TableCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="productsdetail">Items Details</TableCell>
                           <TableCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="created">Created At</TableCell>
-                          {/* <TableCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="actions">Actions</TableCell> */}
+                          <TableCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="status">Status</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
-                        {(orders || []).length === 0 ? (
+                        {allReceivers.length === 0 ? (
                           <TableRow>
                             <TableCell colSpan={10} align="center" sx={{ py: 4 }}>
-                              <Typography variant="body2" color="text.secondary">No orders found.</Typography>
+                              <Typography variant="body2" color="text.secondary">No receivers found.</Typography>
                             </TableCell>
                           </TableRow>
-                        ) : (
-                          (orders || []).map((order) => {
+                        ) :
+                          allReceivers.map((receiver) => {
+                            const order = receiver.order || {}; // Fixed: Ensure order exists
                             const isItemSelected = isSelected(order.id);
-                            // renderReceivers( order.receivers);
-                            const containersList = order.receiver_containers_json ? order.receiver_containers_json.split(', ').map(cont => ({ primary: cont })) : []; // Simple for containers
-                            const status = order.overall_status || order.status || 'Created';
-                            const colors = getStatusColors(status);
+                            console.log('receiver', allReceivers);
+                            // Products summary from this receiver's shippingdetails
+                            const productsSummary = (receiver.shippingdetails || []).map(detail => ({
+                              category: detail.category || 'Unknown',
+                              subcategory: detail.subcategory || '',
+                              type: detail.type || 'Package',
+                              weight: parseFloat(detail.weight || 0),
+                              total_number: parseInt(detail.totalNumber || 0),
+                              itemRef: detail.itemRef || '',
+                              shippingDetailStatus: detail.consignmentStatus || '',
+                            }));
+                            console.log('productsSummary', productsSummary);
+                            const totalItems = productsSummary.reduce((sum, p) => sum + p.total_number, 0);
+                            const totalWeight = productsSummary.reduce((sum, p) => sum + p.weight, 0);
+                            const categoryList = [...new Set(productsSummary.map(p => p.category))].join(', ');
+                            // Status from receiver
+                            const status = receiver.status || order.status || 'Created';
+                            // Containers from this receiver
+                            const filteredContainers = (receiver.containers || []).filter(Boolean);
+                            const containersList = filteredContainers.length > 0
+                              ? filteredContainers.map(cont => ({ primary: cont.container_number || cont })) // Fixed: Access correct prop
+                              : [];
+                            const filteredReceivers = [receiver];
                             return (
-                              <TableRow
-                                key={order.id}
-                                selected={isItemSelected}
-                              >
+                              <StyledTableRow key={receiver.id} selected={isItemSelected}>
                                 <TableCell padding="checkbox">
                                   <Checkbox
                                     checked={isItemSelected}
@@ -2560,12 +2474,12 @@ const addContainer = () => {
                                   />
                                 </TableCell>
                                 <TableCell>{order.booking_ref || ''}</TableCell>
-                                <TableCell>{order?.place_of_loading || ''}</TableCell>
-                                <TableCell>{order.place_of_discharge || order.place_of_loading || ''}</TableCell>
+                                <TableCell>{getPlaceName(order?.place_of_loading || '')}</TableCell>
+                                <TableCell>{getPlaceName(order.final_destination || order.place_of_delivery || order.place_of_loading || '')}</TableCell>
                                 <TableCell>{order.sender_name || ''}</TableCell>
                                 <TableCell>
                                   <Tooltip
-                                    title={<PrettyList items={parseSummaryToList(order.receivers || [])} title="Receivers" />}
+                                    title={<PrettyList items={parseSummaryToList(filteredReceivers)} title="Receiver Details" />}
                                     arrow
                                     placement="top"
                                     PopperProps={{
@@ -2573,23 +2487,18 @@ const addContainer = () => {
                                     }}
                                   >
                                     <Typography variant="body2" noWrap sx={{ maxWidth: 120, cursor: 'help', fontWeight: 'medium' }}>
-                                      {(order.receivers || []).length > 0
-                                        ? <>{(order.receivers || []).length > 1 && <sup style={{ padding: 4, borderRadius: 50, float: 'left', background: '#00695c', color: '#fff' }}>({order.receivers.length})</sup>}
-                                          <span style={{ padding: 0 }}>{(order.receivers || []).map(r => r.receiver_name || '').join(', ').substring(0, 50)}...</span></>
-                                        : '-'
-                                      }
+                                      {receiver.receiver_name || '-'}
                                     </Typography>
                                   </Tooltip>
                                 </TableCell>
                                 <TableCell>
                                   <Tooltip
-                                    // title={<PrettyContainersList items={parseContainersToList(order.receiver_containers_json)} title="Containers" />}
-                                    title={<PrettyList items={parseContainersToList(order.receiver_containers_json || '')} title="Containers" />}
+                                    title={<PrettyList items={parseContainersToList(filteredContainers.map(c => c.container_number || c).join(', ') || '')} title="Containers" />}
                                     arrow
                                     placement="top"
                                   >
                                     <Typography variant="body2" noWrap sx={{ maxWidth: 120, cursor: 'help', fontWeight: 'medium' }}>
-                                      {order.receiver_containers_json
+                                      {containersList.length > 0
                                         ? <>{containersList.length > 1 && <sup style={{ padding: 4, borderRadius: 50, float: 'left', background: '#00695c', color: '#fff' }}>({containersList.length})</sup>}
                                           <span style={{ padding: 0 }}>{containersList.map(c => c.primary || '').join(', ').substring(0, 25)}...</span></>
                                         : '-'
@@ -2597,33 +2506,55 @@ const addContainer = () => {
                                     </Typography>
                                   </Tooltip>
                                 </TableCell>
+                                <StyledTableCell>
+                                  <Tooltip
+                                    title={
+                                      <Box sx={{ minWidth: 250 }}>
+                                        <Typography variant="subtitle2" gutterBottom>Product Details</Typography>
+                                        {productsSummary.length > 0 ? (
+                                          productsSummary.map((product, idx) => (
+                                            <Box key={idx} sx={{ mb: 1, p: 1, border: '1px solid #e0e0e0', borderRadius: 1 }}>
+                                              <Typography variant="body2"><strong>Category:</strong> {product.category}</Typography>
+                                              <Typography variant="body2"><strong>Subcategory:</strong> {product.subcategory || '-'}</Typography>
+                                              <Typography variant="body2"><strong>Item Type:</strong> {product.type}</Typography>
+                                              <Typography variant="body2"><strong>Weight:</strong> {product.weight} kg</Typography>
+                                              <Typography variant="body2"><strong>Total Number:</strong> {product.total_number}</Typography>
+                                              {product.itemRef && <Typography variant="body2"><strong>Item Ref:</strong> {product.itemRef}</Typography>}
+                                            </Box>
+                                          ))
+                                        ) : (
+                                          <Typography variant="body2">-</Typography>
+                                        )}
+                                        {productsSummary.length > 0 && (
+                                          <Box sx={{ mt: 1, pt: 1, borderTop: '1px solid #e0e0e0' }}>
+                                            <Typography variant="body2"><strong>Total Weight:</strong> {totalWeight.toFixed(1)} kg</Typography>
+                                            <Typography variant="body2"><strong>Total Items:</strong> {totalItems}</Typography>
+                                          </Box>
+                                        )}
+                                      </Box>
+                                    }
+                                    arrow
+                                    placement="top"
+                                  >
+                                    <Typography variant="body2" noWrap sx={{ maxWidth: 120, cursor: 'help', fontWeight: 'medium' }}>
+                                      {productsSummary.length > 0 ? (
+                                        <>
+                                          {productsSummary.length > 1 && <sup style={{ padding: 2, borderRadius: 50, float: 'left', background: '#00695c', color: '#fff', fontSize: '0.75rem' }}>({productsSummary.length})</sup>}
+                                          <span style={{ paddingLeft: productsSummary.length > 1 ? 20 : 0 }}>
+                                            Cat: {categoryList.substring(0, 10)}... | Wt: {totalWeight.toFixed(0)}kg | Items: {totalItems}
+                                          </span>
+                                        </>
+                                      ) : '-'}
+                                    </Typography>
+                                  </Tooltip>
+                                </StyledTableCell>
+                                <TableCell>{new Date(order.created_at || Date.now()).toLocaleDateString()}</TableCell>
                                 <TableCell>
-                                  <Chip
-                                    label={`${status.substring(0, 15)}...`} // Internal status for admin
-                                    // size="small"
-                                    sx={{
-                                      flexShrink: 0,
-                                      backgroundColor: colors.bg,
-                                      color: colors.text
-                                    }}
-                                  />
+                                  <StatusChip status={status} />
                                 </TableCell>
-                               <TableCell>{new Date(order.created_at || Date.now()).toLocaleDateString()}</TableCell>
-                               {/*   <TableCell>
-                                  <IconButton size="small" onClick={() => handleView(order.id)}>
-                                    <VisibilityIcon fontSize="small" />
-                                  </IconButton>
-                                  <IconButton size="small" onClick={() => handleEdit(order.id)}>
-                                    <EditIcon fontSize="small" />
-                                  </IconButton>
-                                  <IconButton size="small" onClick={() => handleStatusUpdate(order.id, order)}>
-                                    <UpdateIcon fontSize="small" />
-                                  </IconButton>
-                                </TableCell> */}
-                              </TableRow>
+                              </StyledTableRow>
                             );
-                          })
-                        )}
+                          })}
                       </TableBody>
                     </Table>
                   </TableContainer>
@@ -2646,7 +2577,7 @@ const addContainer = () => {
                       }
                     }}
                   />
-                </>
+                
               </AccordionDetails>
             </Accordion>
           </CardContent>
@@ -2657,3 +2588,6 @@ const addContainer = () => {
 );
 };
 export default ConsignmentPage
+
+
+                  

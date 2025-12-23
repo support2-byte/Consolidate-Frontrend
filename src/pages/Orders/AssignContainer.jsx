@@ -338,8 +338,8 @@ const getStatusColors = (status) => {
                   const camelCd = {
                     status: cd.status || '',
                     container: cd.container || null,
-                    totalNumber: cd.total_number || 0,
-                    assignWeight: cd.assign_weight || 0,
+                    totalNumber: cd?.total_number || 0,
+                    assignWeight: cd?.assign_weight || 0,
                     remainingItems: cd.remaining_items || 0,
                     assignTotalBox: cd.assign_total_box || 0,
                   };
@@ -352,7 +352,7 @@ const getStatusColors = (status) => {
               return camelSd;
             });
           } else if (!camelRec.shippingDetails?.length) {
-            camelRec.shippingDetails = [{ ...initialShippingDetail, totalNumber: rec.total_number || '', weight: rec.total_weight || '', remainingItems: rec.total_number || '' }];
+            camelRec.shippingDetails = [{ ...initialShippingDetail, totalNumber: rec?.total_number || '', weight: rec.total_weight || '', remainingItems: rec?.total_number || '' }];
           }
           camelRec.status = rec.status || 'Created';
           camelRec.fullPartial = camelRec.fullPartial || '';
@@ -696,11 +696,12 @@ const ReceiverRow = ({ rec, globalIndex }) => {
     const originalTotal = parseInt(detail.totalNumber || 0);
     // Updated progress calculation: assigned = original - remaining
     const assignedQty = originalTotal - detailRemaining;
-    const progressValue = originalTotal > 0 ? (assignedQty / originalTotal * 100) : 0;
+    const progressValue = originalTotal > 0 ? (detail?.totalNumber / detail?.remainingItems * 100) : 0;
+    console.log('progress',progressValue)
     const detailRemainingWeight = getRemainingWeight(detail);
     // Filter out invalid/empty container details (e.g., all empty strings/null)
     const validContainerDetails = (detail.containerDetails || []).filter(cd =>
-      (parseInt(cd.assign_total_box || 0) > 0 || parseFloat(cd.assign_weight || 0) > 0) && cd.container
+      (parseInt(cd?.assign_total_box || 0) > 0 || parseFloat(cd?.assign_weight || 0) > 0) && cd.container
       
     );
 
@@ -711,7 +712,7 @@ const ReceiverRow = ({ rec, globalIndex }) => {
           <Accordion defaultExpanded sx={{ boxShadow: 'none', '&:before': { display: 'none' } }}>
             <AccordionSummary expandIcon={<ExpandMoreIcon />}>
               <Typography variant="subtitle1" fontWeight="bold">
-                Shipping Detail {idx + 1}: {detail.deliveryAddress || 'N/A'} ({detail.category} - {validContainerDetails[0].total_number || 0} pcs  {validContainerDetails[0].assign_weight} kg)
+                Shipping Detail {idx + 1}: {detail.deliveryAddress || 'N/A'} ({detail.category} - {detail.totalNumber || 0} pcs  {detail.weight} kg)
               </Typography>
             </AccordionSummary>
             <AccordionDetails sx={{ p: 2 }}>
@@ -753,7 +754,7 @@ const ReceiverRow = ({ rec, globalIndex }) => {
                                 justifyContent="center"
                               >
                                 <Chip label={`${parseInt(contDetail.assign_total_box || 0)} Units`} style={{ width: 100 }} size="large" color="success" />
-                                <Chip label={`${parseFloat(contDetail.assign_weight || 0).toFixed(2)} kg`} style={{ width: 100 }} size="large" color="primary" variant="outlined" />
+                                <Chip label={`${parseFloat(contDetail?.assign_weight || 0).toFixed(2)} kg`} style={{ width: 100 }} size="large" color="primary" variant="outlined" />
                               </Stack>
                               <IconButton size="small" color="error" onClick={() => handleRemoveExisting(idx, contIdx)} title="Remove Assignment">
                                 <DeleteIcon fontSize="small" />
