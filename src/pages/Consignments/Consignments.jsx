@@ -9,6 +9,8 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Avatar,
+  ListItemIcon,
   TablePagination,
   Paper,
   TableSortLabel,
@@ -45,6 +47,8 @@ import {
 import { useNavigate } from "react-router-dom"; // Assuming React Router is used
   import { styled } from '@mui/material/styles';
 import {api} from "../../api"; // Assuming api
+import EditNoteIcon from '@mui/icons-material/EditNote';
+
 // Assuming other imports are present: api, styled, MUI components (Paper, Table, etc.), icons, etc.
 export default function Consignments() {
   const navigate = useNavigate();
@@ -63,6 +67,7 @@ export default function Consignments() {
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
   const [exporting, setExporting] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [statusList, setStatusList] = useState([]);
 
   const statuses = ["Draft", "In Transit", "Under Processing", "Delivered"];
   const [error, setError] = useState(null); 
@@ -76,9 +81,7 @@ export default function Consignments() {
     consignment_id: filters.consignment_id,
     status: filters.status,
   }), [page, rowsPerPage, orderBy, order, filters]);
-
-  useEffect(() => {
-    const getConsignments = async () => {
+const getConsignments = async () => {
       setLoading(true);
       setError(null);
       try {
@@ -98,6 +101,8 @@ export default function Consignments() {
         setLoading(false);
       }
     };
+  useEffect(() => {
+    
     getConsignments();
   }, []); // Depend on params for re-fetch on changes
 
@@ -111,61 +116,83 @@ export default function Consignments() {
     <Chip 
       label={status} 
       color={status === "Delivered" ? "success" : status === "In Transit" ? "warning" : status === "Draft" ? "default" : "info"} 
-      size="small" 
+      size="large"
       sx={{ fontSize: '0.875rem' }}
     />
   );
 
-  // useEffect(() => {
-  //   if (consignments.some(c => c && (!c.shipperName || !c.consigneeName))) {
-  //     console.log('Fetching shippers and consignees for consignments');
-  //     const fetchAndUpdate = async () => {
-  //       try {
-  //         const [shippersRes, consigneesRes] = await Promise.all([
-  //           api.get(`api/options/shippers`),
-  //           api.get(`api/options/consignees`), // Assuming a similar endpoint for consignees
-  //         ]);
+  useEffect(() => {
+    
+    if (consignments.some(c => c && (!c.shipperName || !c.consigneeName))) {
+      console.log('Fetching shippers and consignees for consignments');
+      const fetchAndUpdate = async () => {
+        try {
+          const [shippersRes, consigneesRes,statusRes] = await Promise.all([
+            api.get(`api/options/shippers`),
+              //  api.get('api/consignments/statuses'),
+            api.get(`api/options/consignees`), // Assuming a similar endpoint for consignees
+          ]);
+// setStatusList(statusRes.data)
+          const shippers = shippersRes.data; // Assume { shipperOptions: array of {value, label} objects }
+          const consignees = consigneesRes.data; // Assume { consigneeOptions: array of {value, label} objects }
+          console.log('Fetched shippers:', shippers.shipperOptions);
+          console.log('Fetched consignees:', consignees.consigneeOptions);
+  // const status = statusRes.data;
+          setConsignments(prev => prev.map(consignment => {
+            if (!consignment) return consignment;
+            console.log('Updating consignment:', consignment);
+ // Filter shipper by ID (convert to number for strict equality)
+          
+            // Filter shipper by ID (convert to number for strict equality)
+            const shipperName = shippers.shipperOptions.find(s => {
+              const shipperId = Number(consignment.shipper);
+              console.log('Comparing shipper IDs:', s.value, shipperId);
+              return s.value === shipperId;
+            })?.label;
 
-  //         const shippers = shippersRes.data; // Assume { shipperOptions: array of {value, label} objects }
-  //         const consignees = consigneesRes.data; // Assume { consigneeOptions: array of {value, label} objects }
-  //         console.log('Fetched shippers:', shippers.shipperOptions);
-  //         console.log('Fetched consignees:', consignees.consigneeOptions);
+            // Filter consignee by ID (convert to number for strict equality)
+            const consigneeName = consignees.consigneeOptions.find(c => {
+              const consigneeId = Number(consignment.consignee);
+              console.log('Comparing consignee IDs:', c.value, consigneeId);
+              return c.value === consigneeId;
+            })?.label;
 
-  //         setConsignments(prev => prev.map(consignment => {
-  //           if (!consignment) return consignment;
-  //           console.log('Updating consignment:', consignment);
+            console.log('Updated shipper name:', shipperName);
+            console.log('Updated consignee name:', consigneeName);
 
-  //           // Filter shipper by ID (convert to number for strict equality)
-  //           const shipperName = shippers.shipperOptions.find(s => {
-  //             const shipperId = Number(consignment.shipper);
-  //             console.log('Comparing shipper IDs:', s.value, shipperId);
-  //             return s.value === shipperId;
-  //           })?.label;
+            return {
+              ...consignment,
+              shipperName,
+              consigneeName,
+              // statusOptions
+            };
+          }));
+        } catch (error) {
+          console.error('Error fetching shippers/consignees:', error);
+        }
+      };
 
-  //           // Filter consignee by ID (convert to number for strict equality)
-  //           const consigneeName = consignees.consigneeOptions.find(c => {
-  //             const consigneeId = Number(consignment.consignee);
-  //             console.log('Comparing consignee IDs:', c.value, consigneeId);
-  //             return c.value === consigneeId;
-  //           })?.label;
+      fetchAndUpdate();
+    }
 
-  //           console.log('Updated shipper name:', shipperName);
-  //           console.log('Updated consignee name:', consigneeName);
+    const fetchStatus = async () => {
+    try {
+        const response = await api.get('api/consignments/statuses')           
+           const data = response.data 
+      console.log('Fetched container:', data.statusOptions);
+setStatusList(data.statusOptions)
+          // const shippers = shippersRes.data; // Assume { shipperOptions: array of {value, label} objects }
+          // const consignees = consigneesRes.data; // Assume { consigneeOptions: array of {value, label} objects }
+          // console.log('Fetched shippers:', shippers.shipperOptions);
+          // console.log('Fetched consignees:', consignees.consigneeOptions);
+          
+        } catch (error) {
+          console.error('Error fetching shippers/consignees:', error);
+        }
+      };
+    fetchStatus()
+  }, []);
 
-  //           return {
-  //             ...consignment,
-  //             shipperName,
-  //             consigneeName,
-  //           };
-  //         }));
-  //       } catch (error) {
-  //         console.error('Error fetching shippers/consignees:', error);
-  //       }
-  //     };
-
-  //     fetchAndUpdate();
-  //   }
-  // }, []);
 
   // Columns (removed duplicate "Orders")
   const columns = [
@@ -349,7 +376,7 @@ function getSortableValue(item, key) {
     }, 2000);
   };
 
-  const handleStatusUpdate = (id, consignment) => {
+  const handleStatusUpdate = ( consignment) => {
     setSelectedConsignmentForUpdate(consignment);
     setSelectedStatus(consignment.status);
     setOpenStatusDialog(true);
@@ -361,6 +388,7 @@ function getSortableValue(item, key) {
   };
 
   const handleEdit = (id) => {
+    
     navigate(`/consignments/${id}/edit`, { state: { mode: 'edit', consignmentId: id } });
   };
 
@@ -375,10 +403,31 @@ function getSortableValue(item, key) {
     setSelectedStatus(e.target.value);
   };
 
-  const handleConfirmStatusUpdate = () => {
+  const handleConfirmStatusUpdate = async(row) => {
+    console.log('consignments',row)
+        try {
+          const res = await api.put(`/api/consignments/${row.id}/next`);
+          const { message } = res.data || {};
+          getConsignments()
+          console.log('Status advanced:', res)
+          setSnackbar({
+            open: true,
+            message: message || 'Status advanced successfully!',
+            severity: 'success',
+          });
+        } catch (err) {
+          console.error('Error advancing status:', err);
+          setSnackbar({
+            open: true,
+            message: 'Failed to advance status.',
+            severity: 'error',
+          });
+        
+      };
     setOpenStatusDialog(false);
-    setSnackbar({ open: true, message: 'Status updated successfully!', severity: 'success' });
-  };
+    // setSnackbar({ open: true, message: 'Status updated successfully!', severity: 'success' });
+      
+}
 
   const handleCloseStatusDialog = () => {
     setOpenStatusDialog(false);
@@ -563,27 +612,34 @@ const totalOrders = useMemo(() =>
         />
         <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 150 } }}>
           <InputLabel>Status</InputLabel>
-          <Select
-            name="status"
-            value={filters.status}
-            label="Status"
-            onChange={handleFilterChange}
-            sx={{
-              borderRadius: 2,
-              backgroundColor: 'background.paper',
-              '& .MuiOutlinedInput-notchedOutline': {
-                borderColor: '#0d6c6a',
-                '&:focus': { borderColor: '#0d6c6a' }
-              }
-            }}
-          >
-            <MenuItem value="">All</MenuItem>
-            {statuses.map((status) => (
-              <MenuItem key={status} value={status}>
-                {status}
-              </MenuItem>
-            ))}
-          </Select>
+       <Select
+  name="status"
+  value={filters.status}
+  label="Status"
+  onChange={handleFilterChange}
+  labelId="status-select-label"
+  aria-label="Select status"
+  sx={{
+    borderRadius: 2,
+    backgroundColor: 'background.paper',
+    '& .MuiOutlinedInput-notchedOutline': {
+      borderColor: '#0d6c6a',
+      '&:focus': { borderColor: '#0d6c6a' }
+    }
+  }}
+>
+  <MenuItem value="">All</MenuItem>
+  {statusList?.map((status) => (
+    <MenuItem key={status.value} value={status.value}>
+      <ListItemIcon>
+        <Avatar sx={{ width: 16, height: 16, bgcolor: status.color, fontSize: '0.75rem' }}>
+          {status.usage_count > 0 ? status.usage_count : ''}
+        </Avatar>
+      </ListItemIcon>
+      {status.label}
+    </MenuItem>
+  ))}
+</Select>
         </FormControl>
       </Stack>
 
@@ -716,7 +772,7 @@ const totalOrders = useMemo(() =>
   const cellContent = column.render(row);
   const isChip = column.key === 'status'; // Or check if React.isValidElement(cellContent) && cellContent.type === Chip
   return (
-    <StyledTableCell key={column.key} sx={{ width: `${100 / (columns.length + 2)}%`, maxWidth: 150 }}>
+    <StyledTableCell key={column.key} sx={{ width: `${100 / (columns.length + 2)}%`, maxWidth: 250 }}>
       <Tooltip 
         sx={{ width: '100%' }} 
         title={typeof cellContent === 'string' ? cellContent : ''} 
@@ -737,10 +793,10 @@ const totalOrders = useMemo(() =>
 })}
                     <StyledTableCell sx={{ width: 80, padding: '12px 8px' }}>
                       <Stack direction="row" spacing={0.5} justifyContent="center">
-                        <Tooltip title="View Details">
-                          <IconButton 
+                        <Tooltip title="Update Status">
+                          <EditNoteIcon
                             size="small" 
-                            onClick={(e) => { e.stopPropagation(); handleView(row.id); }}
+                            onClick={(e) => { e.stopPropagation(); handleStatusUpdate(row); }}
                             aria-label={`View details for consignment ${row.consignment_number}`}
                             sx={{ 
                               color: '#f58220',
@@ -750,7 +806,7 @@ const totalOrders = useMemo(() =>
                             }}
                           >
                             <VisibilityIcon fontSize="small" />
-                          </IconButton>
+                          </EditNoteIcon>
                         </Tooltip>
                         <Tooltip title="Edit">
                           <IconButton 
@@ -842,28 +898,34 @@ const totalOrders = useMemo(() =>
           </Typography>
           <FormControl fullWidth margin="dense" size="small">
             <InputLabel id="status-select-label">Status</InputLabel>
-            <Select
-              labelId="status-select-label"
-              value={selectedStatus}
-              label="Status"
-              onChange={handleStatusChange}
-              aria-label="Select status"
-              sx={{
-                borderRadius: 2,
-                '& .MuiOutlinedInput-notchedOutline': { borderColor: '#0d6c6a' }
-              }}
-            >
-              {statuses.map((status) => (
-                <MenuItem key={status} value={status}>
-                  {status}
-                </MenuItem>
-              ))}
-            </Select>
+<Select
+  labelId="status-select-label"
+  value={selectedStatus}
+  label="Status"
+  onChange={handleStatusChange}
+  aria-label="Select status"
+  sx={{
+    borderRadius: 2,
+    '& .MuiOutlinedInput-notchedOutline': { borderColor: '#0d6c6a' }
+  }}
+>
+  <MenuItem value="">All</MenuItem>
+  {statusList?.map((status) => (
+    <MenuItem key={status.value} value={status.value}>
+      <ListItemIcon>
+        <Avatar sx={{ width: 16, height: 16, bgcolor: status.color, fontSize: '0.75rem' }}>
+          {status.usage_count > 0 ? status.usage_count : ''}
+        </Avatar>
+      </ListItemIcon>
+      {status.label}
+    </MenuItem>
+  ))}
+</Select>
           </FormControl>
         </DialogContent>
         <DialogActions sx={{ p: 2, pt: 0, bgcolor: '#f8f9fa', borderTop: 1, borderColor: 'divider' }}>
           <Button onClick={handleCloseStatusDialog} size="small" variant="outlined">Cancel</Button>
-          <Button onClick={handleConfirmStatusUpdate} variant="contained" size="small" sx={{ backgroundColor: '#0d6c6a', '&:hover': { backgroundColor: '#0a5a59' } }}>
+          <Button onClick={() => handleConfirmStatusUpdate(selectedConsignmentForUpdate)} variant="contained" size="small" sx={{ backgroundColor: '#0d6c6a', '&:hover': { backgroundColor: '#0a5a59' } }}>
             Update
           </Button>
         </DialogActions>

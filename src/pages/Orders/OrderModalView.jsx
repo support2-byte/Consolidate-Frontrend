@@ -52,6 +52,7 @@ import { getOrderStatusColor } from "./Utlis";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../api";
 import jsPDF from 'jspdf';
+import autoTable from "jspdf-autotable";
 import { applyPlugin } from 'jspdf-autotable';
 applyPlugin(jsPDF);  // Explicitly apply the plugin to jsPDF prototype
 function TabPanel(props) {

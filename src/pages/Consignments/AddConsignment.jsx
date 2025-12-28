@@ -44,8 +44,12 @@ import { useNavigate } from 'react-router-dom';
 import ContainersTabs from '../Containers/Containers';
 import ContainerModule from '../Containers/Containers';
 import { Navigate, useLocation } from 'react-router-dom';
-import { jsPDF } from 'jspdf';
-import { autoTable } from 'jspdf-autotable';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { applyPlugin } from 'jspdf-autotable';
+import logoPic from "../../../public/logo.png"
+applyPlugin(jsPDF); 
 const CustomTextField = ({ name, value, onChange, onBlur, label, type = 'text', startAdornment, endAdornment, multiline, rows, readOnly, tooltip, required = false, error, helperText, ...props }) => (
   <TooltipMui title={tooltip || ''}>
     <TextField
@@ -122,11 +126,12 @@ const CustomDatePicker = ({ name, value, onChange, onBlur, label, tooltip, requi
 );
 
 const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
-  const currentDate = dayjs('2025-11-20');
+  const currentDate = dayjs();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const { consignmentId: urlConsignmentId } = useParams();
   const location = useLocation();
+  
   const effectiveConsignmentId = urlConsignmentId || location.state?.consignmentId || propConsignmentId;
   const [mode, setMode] = useState(effectiveConsignmentId ? 'edit' : 'add');
   const [snackbar, setSnackbar] = useState({
@@ -158,7 +163,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     voyage: '',
     consignment_value: 0,
     currency_code: '',
-    eta: currentDate,
+    // eta: currentDate,
     vessel: '',
     shippingLine: '',
     delivered: 0,
@@ -206,148 +211,200 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
   const setContainerError = (path, message) => {
     setContainerErrors(prev => ({ ...prev, [path]: message }));
   };
+// State (add if missing)
+const [eta, setEta] = useState(currentDate || null);
+const [etaSuggestion, setEtaSuggestion] = useState(null);
+const [etaLoading, setEtaLoading] = useState(false);
 
+// Local offsets (from your status_config table; map aliases as needed)
+const statusOffsets = {
+  'Drafts Cleared': 30,
+  'Submitted On Vessel': 14,
+  'Customs Cleared': 10,
+  'Submitted': 10,
+  'Under Shipment Processing': 7,
+  'In Transit On Vessel': 4,
+  'In Transit': 5,
+  'Arrived at Facility': 1,
+  'Ready for Delivery': 0,
+  'Arrived at Destination': 0,
+  'Delivered': 0,
+  'HOLD for Delivery': 2,  // Fallback
+  'HOLD': 0,
+  'Cancelled': 0
+  // Add legacy if needed: 'Draft': 30, 'Submitted': 10
+};
+
+// Updated handler (client-side calc; no API)
+const handleStatusChange = (newStatusOrEvent) => {
+  const newStatus = newStatusOrEvent.target ? newStatusOrEvent.target.value : newStatusOrEvent;  // Destructure if event
+  setValues(prev => ({ ...prev, status: newStatus }));
+  setEtaLoading(true);
+  try {
+    // Client-side ETA calc
+    const today = dayjs();  // Fixed for testing; use dayjs() in prod
+    const offsetDays = statusOffsets[newStatus] || 0;
+    const suggestedEta = today.add(offsetDays, 'day').format('YYYY-MM-DD');
+    setEtaSuggestion(suggestedEta);
+    if (!eta) {
+      setEta(suggestedEta);
+      // setValues(prev => ({ ...prev, eta: suggestedEta }));  // Sync to form
+      // setValues({eta:suggestedEta})
+    }
+    console.log(`Client-side ETA for '${newStatus}': ${suggestedEta} (+${offsetDays} days)`);  // Debug
+  } catch (err) {
+    console.warn('ETA suggestion failed:', err);
+    setEtaSuggestion(null);
+  } finally {
+    setEtaLoading(false);
+  }
+};
+
+// Sync eta state with form values
+
+// console.log('selected roe',effectiveConsignmentId)
   // Consolidated initData
-  useEffect(() => {
-    const initData = async () => {
-      try {
-        setLoading(true);
-        const [thirdPartiesRes, originsRes, destinationsRes, banksRes, paymentTypesRes,
-          vesselsRes, shippingLinesRes, currenciesRes, statusesRes, containerStatusesRes] =
-          await Promise.all([
-            api.get('api/options/thirdParty/crud'),
-            api.get('api/options/origins'),
-            api.get('api/options/places/crud'),
-            api.get('api/options/banks/crud'),
-            api.get('api/options/payment-types/crud'),
-            api.get('api/options/vessels/crud'),
-            api.get('api/options/shipping-lines'),
-            api.get('api/options/currencies'),
-            api.get('api/options/statuses'),
-            api.get('api/options/container-statuses')
-          ]);
-        const third_parties = thirdPartiesRes?.data?.third_parties || [];
-        const banks = banksRes?.data?.banks || [];
-        const mapOptions = (items, valueKey = 'id', labelKey = 'name') =>
-          (items || []).map(item => ({
-            value: (item[valueKey] || item.value)?.toString() || '',
-            label: item[labelKey] || item.label || item[valueKey] || ''
-          }));
-        const filteredDestinations = (destinationsRes?.data?.places || []).filter(place => place.is_destination === true);
-        const filteredOrigins = (destinationsRes?.data?.places || []).filter(place => place.is_destination === false);
-        const paymentEnumMap = {
-          'AP (Advance Payment)': 'Prepaid',
-          'DP (Docs against Payment)': 'Collect',
-          'DA (30 Days Payment)': 'Collect',
-          'DA (60 Days Payment)': 'Collect',
-          'DA (90 Days Payment)': 'Collect',
-          'DA (120 Days Payment)': 'Collect',
-          'DA (180 Days Payment)': 'Collect',
-        };
-        setOptions({
-          third_parties,
-          banks,
-          shipperOptions: third_parties.filter(tp => tp.type === 'shipper').map(tp => ({ value: tp.id.toString(), label: tp.company_name })),
-          consigneeOptions: third_parties.filter(tp => tp.type === 'consignee').map(tp => ({ value: tp.id.toString(), label: tp.company_name })),
-          originOptions: mapOptions(originsRes?.data?.originOptions || filteredOrigins, 'id', 'name'),
-          destinationOptions: mapOptions(filteredDestinations, 'id', 'name'),
-          bankOptions: mapOptions(banks, 'id', 'name'),
-          paymentTypeOptions: (paymentTypesRes?.data?.paymentTypes || []).map(pt => ({
-            value: paymentEnumMap[pt.name] || 'Collect',
-            label: pt.name,
-            id: pt.id,
-          })),
-          vesselOptions: mapOptions(vesselsRes?.data?.vessels || [], 'id', 'name'),
-          shippingLineOptions: mapOptions(shippingLinesRes?.data?.shippingLineOptions || [], 'id', 'name'),
-          currencyOptions: mapOptions(currenciesRes?.data?.currencyOptions || [], 'code', 'name'),
-          statusOptions: statusesRes?.data?.statusOptions || mapOptions(statusesRes?.data?.statuses || [], 'value', 'label'),
-          containerStatusOptions: containerStatusesRes?.data?.containerStatusOptions || []
-        });
-        if (mode === 'add') {
-          const defaultStatus = (statusesRes?.data?.statusOptions || []).find(opt => opt.value === 'Draft')?.value || (statusesRes?.data?.statusOptions || [])[0]?.value || '';
-          const defaultPaymentType = (paymentTypesRes?.data?.paymentTypes || [])[0]?.value || '';
-          const defaultCurrency = (currenciesRes?.data?.currencyOptions || []).find(opt => opt.value === 'GBP')?.value || (currenciesRes?.data?.currencyOptions || [])[0]?.value || '';
-          const defaultBank = mapOptions(banks || [])[0]?.value || '';
-          const defaultVessel = mapOptions(vesselsRes?.data?.vessels || [])[0]?.value || '';
-          setValues(prev => ({
-            ...prev,
-            status: defaultStatus,
-            paymentType: defaultPaymentType,
-            currency_code: defaultCurrency,
-            bank: defaultBank,
-            vessel: defaultVessel,
-          }));
-        }
-        if (mode === 'edit' && effectiveConsignmentId) {
-          await loadConsignment(effectiveConsignmentId);
-        }
-      } catch (err) {
-        console.error('Error fetching options:', err);
-        setSnackbar({
-          open: true,
-          message: 'Failed to load options. Using defaults.',
-          severity: 'warning'
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
-    initData();
-  }, [mode, effectiveConsignmentId]);
-  const loadConsignment = async (id) => {
-    console.log('Loading consignment', id);
+ useEffect(() => {
+  // setLoading(false)
+  const initData = async () => {
     try {
-      setMode('edit');
-      const res = await api.get(`/api/consignments/${id}`);
-      const { data } = res.data || {};
-      console.log('Loaded consignment data:', res);
-      const mappedData = {
-        ...data,
-        shipper: data?.shipper_id?.toString() || '',
-        shipperName: data?.shipper || '',
-        shipperAddress: data?.shipper_address || '',
-        consignee: data?.consignee_id?.toString() || '',
-        consigneeName: data?.consignee || '',
-        consigneeAddress: data?.consignee_address || '',
-        origin: data?.origin_id?.toString() || '',
-        originName: data?.origin || '',
-        destination: data?.destination_id?.toString() || '',
-        destinationName: data?.destination || '',
-        bank: data?.bank_id?.toString() || '',
-        bankName: data?.bank || '',
-        paymentType: data?.payment_type?.toString() || '',
-        status: data?.status || '',
-        vessel: data?.vessel ? data.vessel.toString() : '',
-        shippingLine: data?.shipping_line ? data.shipping_line.toString() : '',
-        netWeight: data?.net_weight || 0,
-        gross_weight: data?.gross_weight || 0,
-        consignment_value: data?.consignment_value || 0,
-        currency_code: data?.currency_code || '',
-        eform_date: data?.eform_date ? dayjs(data.eform_date): '',
-        eta: data?.eta ? dayjs(data.eta): '',
-        containers: (data?.containers || []).map(c => ({
-          location: c?.location || '',
-          containerNo: c?.containerNo || '',
-          size: c?.size || '',
-          ownership: c?.ownership || '',
-          containerType: c?.containerType || '',
-          status: c?.status || 'Pending',
-          id: c?.id || c?.cid
-        })),
+      setLoading(true);
+      const [thirdPartiesRes, originsRes, destinationsRes, banksRes, paymentTypesRes,
+        vesselsRes, shippingLinesRes, currenciesRes, statusesRes, containerStatusesRes] =
+        await Promise.all([
+          api.get('api/options/thirdParty/crud'),
+          api.get('api/options/origins'),
+          api.get('api/options/places/crud'),
+          api.get('api/options/banks/crud'),
+          api.get('api/options/payment-types/crud'),
+          api.get('api/options/vessels/crud'),
+          api.get('api/options/shipping-lines'),
+          api.get('api/options/currencies'),
+          api.get('api/consignments/statuses'),
+          api.get('api/options/container-statuses')
+        ]);
+      const third_parties = thirdPartiesRes?.data?.third_parties || [];
+      const banks = banksRes?.data?.banks || [];
+      const mapOptions = (items, valueKey = 'id', labelKey = 'name') =>
+        (items || []).map(item => ({
+          value: (item[valueKey] || item.value)?.toString() || '',
+          label: item[labelKey] || item.label || item[valueKey] || ''
+        }));
+      const filteredDestinations = (destinationsRes?.data?.places || []).filter(place => place.is_destination === true);
+      const filteredOrigins = (destinationsRes?.data?.places || []).filter(place => place.is_destination === false);
+      const paymentEnumMap = {
+        'AP (Advance Payment)': 'Prepaid',
+        'DP (Docs against Payment)': 'Collect',
+        'DA (30 Days Payment)': 'Collect',
+        'DA (60 Days Payment)': 'Collect',
+        'DA (90 Days Payment)': 'Collect',
+        'DA (120 Days Payment)': 'Collect',
+        'DA (180 Days Payment)': 'Collect',
       };
-      console.log('Mapped data (focus: vessel/payment/status):', {
-        vessel: mappedData.vessel,
-        paymentType: mappedData.paymentType,
-        status: mappedData.status
+      setOptions({
+        third_parties,
+        banks,
+        shipperOptions: third_parties.filter(tp => tp.type === 'shipper').map(tp => ({ value: tp.id.toString(), label: tp.company_name })),
+        consigneeOptions: third_parties.filter(tp => tp.type === 'consignee').map(tp => ({ value: tp.id.toString(), label: tp.company_name })),
+        originOptions: mapOptions(originsRes?.data?.originOptions || filteredOrigins, 'id', 'name'),
+        destinationOptions: mapOptions(filteredDestinations, 'id', 'name'),
+        bankOptions: mapOptions(banks, 'id', 'name'),
+        paymentTypeOptions: (paymentTypesRes?.data?.paymentTypes || []).map(pt => ({
+          value: paymentEnumMap[pt.name] || 'Collect',
+          label: pt.name,
+          id: pt.id,
+        })),
+        vesselOptions: mapOptions(vesselsRes?.data?.vessels || [], 'id', 'name'),
+        shippingLineOptions: mapOptions(shippingLinesRes?.data?.shippingLineOptions || [], 'id', 'name'),
+        currencyOptions: mapOptions(currenciesRes?.data?.currencyOptions || [], 'code', 'name'),
+        statusOptions: statusesRes?.data?.statusOptions || mapOptions(statusesRes?.data?.statuses || [], 'value', 'label'),
+        containerStatusOptions: containerStatusesRes?.data?.containerStatusOptions || []
       });
-      setValues(mappedData);
-      if (data?.orders && data.orders.length > 0) {
-        setSelectedOrders(data.orders.map(o => o.id));
+      if (mode === 'add') {
+        const defaultStatus = (statusesRes?.data?.statusOptions || []).find(opt => opt.value === 'Drafts Cleared')?.value || (statusesRes?.data?.statusOptions || [])[0]?.value || '';
+        const defaultPaymentType = (paymentTypesRes?.data?.paymentTypes || [])[0]?.value || '';
+        const defaultCurrency = (currenciesRes?.data?.currencyOptions || []).find(opt => opt.value === 'GBP')?.value || (currenciesRes?.data?.currencyOptions || [])[0]?.value || '';
+        const defaultBank = mapOptions(banks || [])[0]?.value || '';
+        const defaultVessel = mapOptions(vesselsRes?.data?.vessels || [])[0]?.value || '';
+        setValues(prev => ({
+          ...prev,
+          status: defaultStatus,
+          paymentType: defaultPaymentType,
+          currency_code: defaultCurrency,
+          bank: defaultBank,
+          vessel: defaultVessel,
+        }));
+      }
+      if (mode === 'edit' && effectiveConsignmentId) {
+        await loadConsignment(effectiveConsignmentId);
       }
     } catch (err) {
-      console.error('Error loading consignment:', err);
+      console.error('Error fetching options:', err);
+      setSnackbar({
+        open: true,
+        message: 'Failed to load options. Using defaults.',
+        severity: 'warning'
+      });
+    } finally {
+      setLoading(false);
     }
   };
+  initData();
+}, [mode, effectiveConsignmentId]);
+
+const loadConsignment = async (id) => {
+  try {
+    // setMode('edit');
+   const res = await api.get(`/api/consignments/${id}?autoUpdate=false`);
+    const { data } = res.data || {};
+    console.log('Loaded consignment data:', res);
+    const mappedData = {
+      ...data,
+      shipper: data?.shipper_id?.toString() || '',
+      shipperName: data?.shipper || '',
+      shipperAddress: data?.shipper_address || '',
+      consignee: data?.consignee_id?.toString() || '',
+      consigneeName: data?.consignee || '',
+      consigneeAddress: data?.consignee_address || '',
+      origin: data?.origin_id?.toString() || '',
+      originName: data?.origin || '',
+      destination: data?.destination_id?.toString() || '',
+      destinationName: data?.destination || '',
+      bank: data?.bank_id?.toString() || '',
+      bankName: data?.bank || '',
+      paymentType: data?.payment_type?.toString() || '',
+      status: data?.status || '',
+      vessel: data?.vessel ? data.vessel.toString() : '',
+      shippingLine: data?.shipping_line ? data.shipping_line.toString() : '',
+      netWeight: data?.net_weight || 0,
+      gross_weight: data?.gross_weight || 0,
+      consignment_value: data?.consignment_value || 0,
+      currency_code: data?.currency_code || '',
+      eform_date: data?.eform_date ? dayjs(data.eform_date): '',
+      eta: data?.eta ? dayjs(data.eta): '',
+      containers: (data?.containers || []).map(c => ({
+        location: c?.location || '',
+        containerNo: c?.containerNo || '',
+        size: c?.size || '',
+        ownership: c?.ownership || '',
+        containerType: c?.containerType || '',
+        status: c?.status || 'Pending',
+        id: c?.id || c?.cid
+      })),
+    };
+    console.log('Mapped data (focus: vessel/payment/status):', {
+      vessel: mappedData.vessel,
+      paymentType: mappedData.paymentType,
+      status: mappedData.status
+    });
+    setValues(mappedData);
+    if (data?.orders && data.orders.length > 0) {
+      setSelectedOrders(data.orders.map(o => o.id));
+    }
+  } catch (err) {
+    console.error('Error loading consignment:', err);
+  }
+};
   // Lookup after values and options are set
   useEffect(() => {
     if (mode === 'edit' && effectiveConsignmentId && options.third_parties?.length > 0 && options.banks?.length > 0 &&
@@ -355,6 +412,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         (values.shipperName || values.consigneeName || values.bankName || values.originName || values.destinationName)) {
       lookupMissingIds();
     }
+    setEta(values.eta)
   }, [mode, effectiveConsignmentId, options.third_parties, options.banks, options.originOptions, options.destinationOptions,
       values.shipperName, values.consigneeName, values.bankName, values.originName, values.destinationName]);
   const lookupMissingIds = () => {
@@ -471,9 +529,9 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     if (values.eform_date?.format('YYYY-MM-DD') !== initialValues.eform_date?.format('YYYY-MM-DD')) {
       return true;
     }
-    if (values.eta?.format('YYYY-MM-DD') !== initialValues.eta?.format('YYYY-MM-DD')) {
-      return true;
-    }
+    // if (values.eta?.format('YYYY-MM-DD') !== initialValues.eta?.format('YYYY-MM-DD')) {
+    //   return true;
+    // }
     // Compare arrays using JSON.stringify (simple and sufficient for containers/orders structure)
     if (JSON.stringify(values.containers) !== JSON.stringify(initialValues.containers)) {
       return true;
@@ -556,6 +614,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     setSelectedOrders([]);
     setInitialValues(null); // Reset initial snapshot to avoid false dirty state after reset
   };
+  
   // Sync missing options for vessel, paymentType, status
   useEffect(() => {
     const syncMissingOptions = () => {
@@ -594,250 +653,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     });
   }, [values.shipper, values.consignee, values.bank, values.origin, values.destination]);
   // Helper to load images as Base64
-  const loadImageAsBase64 = (url) => {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.crossOrigin = 'Anonymous';
-      img.src = url;
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0);
-        resolve(canvas.toDataURL('image/png'));
-      };
-      img.onerror = () => resolve(null);
-    });
-  };
-  const generateManifestPDF = async (data, selectedOrderObjects = includedOrders) => { // Fixed: Use includedOrders for objects
-    if (!data.consignment_number) {
-      setSnackbar({
-        open: true,
-        severity: 'warning',
-        message: 'Please enter a consignment number to generate the manifest.',
-      });
-      return;
-    }
-    //---------------------------------------------------
-    // SETUP
-    //---------------------------------------------------
-    const doc = new jsPDF('p', 'mm', 'a4');
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const margin = 14;
-    const padding = 10;
-    const brandPrimary = [13, 108, 106]; // #0d6c6a
-    const brandAccent = [245, 130, 32]; // #f58220
-    //---------------------------------------------------
-    // LOAD LOGO AS BASE64
-    //---------------------------------------------------
-    const logoBase64 = await loadImageAsBase64("https://royalgulfshipping.com/wp-content/uploads/2023/08/RGSL-LOGO-white.png");
-    //---------------------------------------------------
-    // HEADER
-    //---------------------------------------------------
-    const drawHeader = () => {
-      const headerHeight = 22;
-      // Main brand color bar
-      doc.setFillColor(...brandPrimary);
-      doc.rect(0, 0, pageWidth, headerHeight, 'F');
-      // Logo Left
-      if (logoBase64) {
-        doc.addImage(logoBase64, 'PNG', margin, 4, 60, 12); // smaller, sharper
-      }
-      // Title Right
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(18);
-      doc.setTextColor(255, 255, 255);
-      doc.text('Manifest Report', pageWidth - margin, 10, { align: 'right' });
-      doc.setFontSize(9).setFont('helvetica', 'normal');
-      doc.text(
-        new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
-        pageWidth - margin,
-        17,
-        { align: 'right' }
-      );
-    };
-    //---------------------------------------------------
-    // SUMMARY CARDS (Modern UI)
-    //---------------------------------------------------
-    const drawSummary = (y) => {
-      const cards = [
-        ["Containers", data.containers?.length || 0],
-        ["Orders", selectedOrderObjects?.length || 0],
-        ["Net Weight", `${data.net_weight || 0} KGS`],
-        ["Gross Weight", `${data.gross_weight || 0} KGS`],
-        ["Value", `${data.consignment_value || 0} ${data.currency_code || 'USD'}`],
-        ["Status", data.status || "Draft"],
-      ];
-      const cardWidth = (pageWidth - margin * 2 - 6) / 2;
-      const cardHeight = 16;
-      doc.setFontSize(10);
-      cards.forEach((item, i) => {
-        const col = i % 2;
-        const row = Math.floor(i / 2);
-        const x = margin + (col * (cardWidth + 6));
-        const cardY = y + row * (cardHeight + 6);
-        // Card box
-        doc.setDrawColor(230, 230, 230);
-        doc.setFillColor(248, 249, 250);
-        doc.roundedRect(x, cardY, cardWidth, cardHeight, 2, 2, 'FD');
-        // Title (accent)
-        doc.setFillColor(...brandPrimary);
-        doc.rect(x, cardY, cardWidth, 5, 'F');
-        doc.setTextColor(255, 255, 255);
-        doc.setFont('helvetica', 'bold');
-        doc.text(item[0], x + 2, cardY + 4);
-        // Value
-        doc.setTextColor(60, 60, 60);
-        doc.setFont('helvetica', 'normal');
-        doc.text(String(item[1]), x + 3, cardY + 11);
-      });
-      return y + Math.ceil(cards.length / 2) * (cardHeight + 6) + 5;
-    };
-    //---------------------------------------------------
-    // CONSIGNMENT DETAILS
-    //---------------------------------------------------
-    const drawDetails = (y) => {
-      doc.setFont('helvetica', 'bold').setFontSize(14).setTextColor(...brandPrimary);
-      doc.text("Consignment Details", margin, y);
-      y += 4;
-      // Section underline
-      doc.setDrawColor(...brandPrimary);
-      doc.setLineWidth(0.6);
-      doc.line(margin, y, pageWidth - margin, y);
-      y += 6;
-      const details = [
-        ["Consignment #", data.consignment_number],
-        ["Shipper", data.shipperName],
-        ["Consignee", data.consigneeName],
-        ["Origin", data.originName],
-        ["Destination", data.destinationName],
-        ["Vessel / Voyage", `${data.vessel || 'N/A'} / ${data.voyage || 'N/A'}`],
-        ["ETA", data.eta ? new Date(data.eta).toLocaleDateString() : 'N/A'],
-        ["Shipping Line", data.shipping_line],
-        ["Payment Type", data.payment_type],
-        ["Bank", data.bankName],
-        ["Seal No", data.seal_no],
-      ];
-      const colWidth = (pageWidth - margin * 2 - 10) / 2;
-      doc.setFontSize(9).setTextColor(50, 50, 50);
-      const rowHeight = 9; // reduced from 10
-      details.forEach((pair, index) => {
-        const col = index % 2;
-        const row = Math.floor(index / 2);
-        const x = margin + col * (colWidth + 10);
-        const dy = y + row * rowHeight;
-        doc.setFont('helvetica', 'bold');
-        doc.text(pair[0], x, dy);
-        doc.setFont('helvetica', 'normal');
-        doc.text(String(pair[1] || "N/A"), x, dy + 4); // reduced label offset
-      });
-      return y + Math.ceil(details.length / 2) * rowHeight + 6; // tighter bottom spacing
-    };
-    //---------------------------------------------------
-    // REMARKS BOX
-    //---------------------------------------------------
-    const drawRemarks = (y) => {
-      if (!data.remarks) return y;
-      doc.setFillColor(248, 249, 250);
-      doc.roundedRect(margin, y, pageWidth - margin * 2, 20, 2, 2, 'F');
-      doc.setFontSize(9).setFont('helvetica', 'italic').setTextColor(90, 90, 90);
-      const wrapped = doc.splitTextToSize(data.remarks, pageWidth - margin * 2 - 10);
-      doc.text("Remarks:", margin + 3, y + 6);
-      doc.text(wrapped, margin + 3, y + 11);
-      return y + 28;
-    };
-    //---------------------------------------------------
-    // TABLE: Containers
-    //---------------------------------------------------
-    const drawContainers = (y) => {
-      if (!data.containers?.length) return y;
-      doc.setFont('helvetica', 'bold').setFontSize(14).setTextColor(...brandPrimary);
-      doc.text("Containers", margin, y);
-      y += 5;
-      autoTable(doc, {
-        startY: y,
-        head: [['Container No', 'Location', 'Size', 'Type', 'Owner', 'Status']],
-        body: data.containers.map(c => [
-          c.containerNo,
-          c.location,
-          c.size,
-          c.containerType,
-          c.ownership,
-          c.status,
-        ]),
-        headStyles: { fillColor: brandPrimary, textColor: 255 },
-        bodyStyles: { fontSize: 9, cellPadding: 3 },
-        margin: { left: margin, right: margin }
-      });
-      return doc.lastAutoTable.finalY + 10;
-    };
-    //---------------------------------------------------
-    // TABLE: Orders
-    //---------------------------------------------------
-    const drawOrders = (y) => {
-      if (!selectedOrderObjects.length) return y;
-      doc.setFont('helvetica', 'bold').setFontSize(14).setTextColor(...brandAccent);
-      doc.text(`Selected Orders (${selectedOrderObjects.length})`, margin, y);
-      y += 5;
-      autoTable(doc, {
-        startY: y,
-        head: [['Booking Ref', 'POL', 'POD', 'Sender', '#Recv', '#Cont', 'Status']],
-        headStyles: { fillColor: brandAccent, textColor: 255 },
-        bodyStyles: { fontSize: 9, cellPadding: 3 },
-        body: selectedOrderObjects.map(o => [
-          o.booking_ref,
-          getPlaceName(o.place_of_loading),
-          getPlaceName(o.final_destination || o.place_of_delivery),
-          o.sender_name,
-          o.receiver_name || 0,
-          o.receiver_containers_json|| 0,
-          o.status?.substring(0, 12),
-        ]),
-        margin: { left: margin, right: margin }
-      });
-      return doc.lastAutoTable.finalY + 10;
-    };
-    //---------------------------------------------------
-    // FOOTER
-    //---------------------------------------------------
-    const drawFooter = () => {
-      const y = 275;
-      doc.setDrawColor(...brandPrimary);
-      doc.line(margin, y, pageWidth - margin, y);
-      doc.setFontSize(9).setTextColor(80, 80, 80);
-      doc.text(
-        `Generated: ${new Date().toLocaleString()}`,
-        margin,
-        y + 6
-      );
-      doc.text(
-        `Page ${doc.getCurrentPageInfo().pageNumber}`,
-        pageWidth - margin,
-        y + 6,
-        { align: 'right' }
-      );
-    };
-    //---------------------------------------------------
-    // BUILD DOCUMENT
-    //---------------------------------------------------
-    drawHeader();
-    let y = 30;
-    y = drawSummary(y);
-    y = drawDetails(y);
-    y = drawRemarks(y);
-    y = drawContainers(y);
-    y = drawOrders(y);
-    drawFooter();
-    //---------------------------------------------------
-    // SAVE FILE
-    //---------------------------------------------------
-    doc.save(`Manifest_${data.consignment_number}.pdf`);
-  };
-  const generateDocx = () => {
-    // Placeholder for Docx (requires 'docx' and 'file-saver')
-    setSnackbar({ open: true, severity: 'info', message: 'Docx generation: Install docx and file-saver for full support.' });
-  };
+
   const validateField = async (name, value) => {
     try {
       await validationSchema.fields[name]?.validate(value);
@@ -848,6 +664,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
   };
   // Fetch containers
   useEffect(() => {
+    // setSaving(false)
     const fetchContainers = async () => {
       setContainersLoading(true);
       try {
@@ -1266,16 +1083,21 @@ useEffect(() => {
   };
   const advanceStatus = async () => {
     try {
+      setLoading(true)
       const res = await api.put(`/api/consignments/${effectiveConsignmentId}/next`);
       const { message } = res.data || {};
       console.log('Status advanced:', res);
-      await loadConsignment(effectiveConsignmentId);
+       loadConsignment(effectiveConsignmentId);
+      setLoading(false)
+
       setSnackbar({
         open: true,
         message: message || 'Status advanced successfully!',
         severity: 'success',
       });
     } catch (err) {
+      setLoading(false)
+
       console.error('Error advancing status:', err);
       setSnackbar({
         open: true,
@@ -1284,6 +1106,7 @@ useEffect(() => {
       });
     }
   };
+
   const validateForm = async () => {
     try {
       await validationSchema.validate(values, { abortEarly: false });
@@ -1356,7 +1179,7 @@ useEffect(() => {
       bank: values.bankName || '',
       currency_code: values.currency_code || 'GBP',
       vessel: parseInt(values.vessel, 10) || null,
-      eta: values.eta ? dayjs(values.eta).format('YYYY-MM-DD'): '',
+      eta: eta ? dayjs(values.eta).format('YYYY-MM-DD'): '',
       voyage: values.voyage || null,
       shipping_line: parseInt(values.shippingLine, 10) || null,
       delivered: parseInt(values.delivered, 10) || 0,
@@ -1730,6 +1553,791 @@ useEffect(() => {
     borderBottom: `2px solid ${theme.palette.primary.dark}`,
   }));
 
+
+// Helper to load images as Base64 (ensure this is defined/imported if not already)
+const loadImageAsBase64 = (url) =>
+  new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = "Anonymous";
+    img.src = url;
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0);
+      resolve(canvas.toDataURL("image/png"));
+    };
+    img.onerror = () => resolve(null);
+  });
+
+// Assuming getPlaceName is defined elsewhere; if not, define it (e.g., a function mapping IDs to names)
+const getPlaceNamePdf = (id) => {
+  // Example mapping; replace with actual logic
+  const places = { 2: 'Karachi', 5: 'Dubai' }; // Add more as needed
+  return places[id] || 'N/A';
+};
+const generateManifestPDFWithCanvas = async (data, allReceivers, selectedOrderObjects = includedOrders) => {
+  console.log('data for canvas',data,allReceivers,includedOrders)
+  if (!data.consignment_number) {
+    setSnackbar({
+      open: true,
+      severity: 'warning',
+      message: 'Please enter a consignment number to generate the manifest.',
+    });
+    return;
+  }
+     const groupedShipping = allReceivers.reduce((acc, order) => {
+  acc[order.id] = order.receivers.reduce((recAcc, receiver) => {
+    recAcc[receiver.id] = receiver.shippingdetails || [];
+    return recAcc;
+  }, {});
+  return acc;
+}, {});
+  // Helper function to normalize/format dates
+  const formatDate = (dateStr) => {
+    if (!dateStr) return 'N/A';
+    return new Date(dateStr).toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
+  };
+
+  // Helper function to get place name (assuming getPlaceName is defined; fallback here)
+  const getPlaceName = (id) => {
+    const places = { 2: 'Karachi', 5: 'Dubai' }; // Example; replace with actual
+    return places[id] || id || 'N/A';
+  };
+
+  // Helper to format weight
+  const formatWeight = (weight) => weight ? `${weight} KGS` : 'N/A';
+
+  // Load logo as base64
+  const logoBase64 = await loadImageAsBase64(logoPic);
+
+  // Create a temporary div element to render content
+  const tempElement = document.createElement('div');
+  tempElement.style.width = '210mm'; // A4 width
+  tempElement.style.padding = '4mm'; // Match margin
+  tempElement.style.backgroundColor = 'white';
+  tempElement.style.fontFamily = '"Helvetica Neue", Helvetica, Arial, sans-serif';
+  tempElement.style.boxSizing = 'border-box';
+  
+  // Create the content for the PDF with enhanced, user-friendly styling
+  tempElement.innerHTML = `
+    <style>
+      * { box-sizing: border-box; }
+      body { 
+        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; 
+        margin: 0; padding: 0; 
+        color: #2c3e50; background: white; 
+        line-height: 1.4; 
+        font-size: 11px; 
+      }
+      .header { 
+        background: linear-gradient(135deg, #1abc9c 0%, #0d6c6a 100%); 
+        color: white; 
+        height: 30mm; 
+        padding: 4mm 4mm; 
+        display: flex; 
+        justify-content: space-between; 
+        align-items: center; 
+        margin-bottom: 8mm;
+        border-radius: 0 0 0px 0px; 
+        box-shadow: 0 4px 12px rgba(13, 108, 106, 0.2); 
+      }
+      .header-logo { width: 220px; height: 60px; opacity: 0.95; } 
+      .header-left { display: flex; gap: 0mm; }
+      .header-consignment { font-size: 14px; font-weight: bold; margin: 0; }
+      .header-right { text-align: right; flex-shrink: 0; }
+      .header h1 { margin: 0 0 2mm 0; font-size: 20px; font-weight: 600; }
+      .header p { margin: 0.5mm 0; font-size: 10px; opacity: 0.9; }
+      .summary-grid { 
+        display: grid; 
+        grid-template-columns: repeat(auto-fit, minmax(85mm, 1fr)); 
+        gap: 4mm; 
+        margin-bottom: 8mm; 
+      }
+      .card { 
+        background: linear-gradient(145deg, #ffffff 0%, #f8f9fa 100%); 
+        border: 1px solid #e9ecef; 
+        border-radius: 8px; 
+        padding: 6mm; 
+        // height: 60px; 
+        display: flex; 
+        flex-direction: column; 
+        justify-content: space-between; 
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08); 
+        transition: transform 0.2s ease; /* Subtle hover for interactivity */
+      }
+      .card:hover { transform: translateY(-1px); }
+      .card-header { 
+        background: linear-gradient(135deg, #0d6c6a 0%, #1abc9c 100%); 
+        color: white; 
+        padding: 2mm 3mm; 
+        border-radius: 6px 6px 0 0; 
+        font-size: 10px; 
+        font-weight: 600; 
+        text-align: center; 
+      }
+      .card-value { 
+        font-size: 12px; 
+        color: #2c3e50; 
+        font-weight: 500; 
+        text-align: center; 
+        margin-top: 1mm; 
+      }
+      .section { 
+        margin-bottom: 4mm; 
+        background: #fff; 
+        border-radius: 8px; 
+        // overflow: hidden; 
+        box-shadow: 0 2px 10px rgba(0,0,0,0.06); 
+        page-break-inside: avoid; 
+      }
+      .section-header { 
+        background: linear-gradient(135deg, #0d6c6a 0%, #1abc9c 100%); 
+        color: white; 
+        padding: 4mm 6mm; 
+        font-size: 15px; 
+        font-weight: 600; 
+        margin: 0; 
+        border-bottom: 2px solid rgba(255,255,255,0.2); 
+      }
+      .section-content { padding: 6mm; background: #f8f9fa; }
+      .details-grid { 
+        display: flex; 
+        flexDirection:colums;
+        gap: 6mm; 
+        font-size: 10px; 
+      }
+      .details-grid dt { 
+        font-weight: 600; 
+        color: #0d6c6a; 
+        margin-bottom: 2mm; 
+        font-size: 11px; 
+      }
+      .details-grid dd { 
+        margin: 0 0 4mm 0; 
+        color: #34495e; 
+        padding: 2mm; 
+        background: white; 
+        border-left: 3px solid #1abc9c; 
+        border-radius: 0 4px 4px 0; 
+      }
+      .remarks-box { 
+        background: linear-gradient(145deg, #f8f9fa 0%, #e9ecef 100%); 
+        border-radius: 8px; 
+        padding: 6mm; 
+        margin-bottom: 18mm; 
+        font-style: italic; 
+        color: #5a6c7d; 
+        font-size: 10px; 
+        border-left: 4px solid #f58220; 
+        box-shadow: inset 0 2px 4px rgba(0,0,0,0.05); 
+      }
+      table { 
+        width: 100%; 
+        border-collapse: collapse; 
+        margin-bottom: 6mm; 
+        font-size: 9px; 
+        background: white; 
+        border-radius: 8px; 
+        overflow: hidden; 
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08); 
+      }
+      th { 
+        background: linear-gradient(135deg, #f58220 0%, #e67e22 100%); 
+        color: white; 
+        padding: 4mm; 
+        text-align: left; 
+        font-weight: 600; 
+      }
+      td { 
+        padding: 4mm; 
+        border-bottom: 1px solid #e9ecef; 
+        vertical-align: top; 
+      }
+      tr:nth-child(even) td { background: #f8f9fa; }
+      tr:last-child td { border-bottom: none; }
+      tr:hover td { background: #e3f2fd; }
+      .orders-title { 
+        background: linear-gradient(135deg, #f58220 0%, #e67e22 100%); 
+        color: white; 
+        padding: 3mm 6mm; 
+        font-size: 14px; 
+        font-weight: 600; 
+        margin-bottom: 2mm; 
+        border-radius: 6px 6px 0 0; 
+      }
+      .receiver-detail { 
+        margin-bottom: 8mm; 
+        padding: 6mm; 
+        background: white; 
+        border-radius: 8px; 
+        box-shadow: 0 2px 6px rgba(0,0,0,0.05); 
+        border-left: 4px solid #1abc9c; 
+      }
+      .receiver-header { 
+        background: linear-gradient(135deg, #3498db 0%, #2980b9 100%); 
+        color: white; 
+        padding: 4mm; 
+        border-radius: 6px 6px 0 0; 
+        font-size: 13px; 
+        font-weight: 600; 
+        margin: -6mm -6mm 4mm -6mm; 
+      }
+      .shipping-item { 
+        margin-bottom: 6mm; 
+        padding: 4mm; 
+        background: #f8f9fa; 
+        border-radius: 6px; 
+        border-left: 3px solid #f58220; 
+      }
+      .shipping-header { 
+        font-size: 12px; 
+        color: #e67e22; 
+        margin-bottom: 3mm; 
+        font-weight: 600; 
+      }
+      .container-subtable { 
+        font-size: 8px; 
+        margin-top: 3mm; 
+      }
+      .container-subtable th { 
+        background: #3498db; 
+        color: white; 
+        padding: 2mm; 
+      }
+      .container-subtable td { 
+        padding: 2mm; 
+        border-bottom: 1px solid #bdc3c7; 
+      }
+      .footer { 
+        margin-top: 12mm; 
+        padding-top: 5mm; 
+        border-top: 2px solid #0d6c6a; 
+        color: #7f8c8d; 
+        font-size: 10px; 
+        text-align: center; 
+        font-style: italic; 
+      }
+      .page-break { page-break-before: always; }
+    </style>
+    
+    <div class="header">
+      <div class="header-left">
+        <img src="${logoBase64}" alt="Company Logo" class="header-logo" onerror="this.style.display='none';">
+      </div>
+      <div class="header-right">
+        <h1>Manifest Report</h1>
+        <p class="header-consignment">Consignment Number: ${data.consignment_number || 'N/A'}</p>
+        <p>${formatDate(new Date())}</p>
+        <p>Generated: ${new Date().toLocaleString()}</p>
+      </div>
+    </div>
+    
+    <div class="summary-grid">
+      <div class="card">
+        <div class="card-header">Containers</div>
+        <div class="card-value">${data.containers?.length || 0}</div>
+      </div>
+      <div class="card">
+        <div class="card-header">Orders</div>
+        <div class="card-value">${selectedOrderObjects?.length || allReceivers?.length || 0}</div>
+      </div>
+      <div class="card">
+        <div class="card-header">Net Weight</div>
+        <div class="card-value">${formatWeight(data.net_weight)}</div>
+      </div>
+      <div class="card">
+        <div class="card-header">Gross Weight</div>
+        <div class="card-value">${formatWeight(data.gross_weight)}</div>
+      </div>
+      <div class="card">
+        <div class="card-header">Value</div>
+        <div class="card-value">${data.consignment_value || 0} ${data.currency_code || 'USD'}</div>
+      </div>
+      <div class="card">
+        <div class="card-header">Status</div>
+        <div class="card-value">${data.status || "Draft"}</div>
+      </div>
+    </div>
+    
+ <div class="section">
+  <h2 class="section-header">Consignment Details</h2>
+  <div style="display: flex; gap: 10px; justify-content: space-between; align-items: flex-start;">
+    <div style="flex: 1; background-color: #f8f9fa; padding: 5px; border-radius: 8px; border-left: 4px solid #f58220;">
+      <div style="margin-bottom: 6px;">
+        <strong style="display: block; color: #34495e; margin-bottom: 2px;">Consignee</strong>
+        <span style="color: #555;">${data.consigneeName || 'N/A'}</span>
+      </div>
+      <div style="margin-bottom: 6px;">
+        <strong style="display: block; color: #34495e; margin-bottom: 2px;">Destination</strong>
+        <span style="color: #555;">${data.destinationName || 'N/A'}</span>
+      </div>
+      <div style="margin-bottom: 6px;">
+        <strong style="display: block; color: #34495e; margin-bottom: 2px;">ETA</strong>
+        <span style="color: #555;">${formatDate(data.eta)}</span>
+      </div>
+      <div style="margin-bottom: 6px;">
+        <strong style="display: block; color: #34495e; margin-bottom: 2px;">Payment Type</strong>
+        <span style="color: #555;">${data.payment_type || 'N/A'}</span>
+      </div>
+      <div style="margin-bottom: 6px;">
+        <strong style="display: block; color: #34495e; margin-bottom: 2px;">Seal No</strong>
+        <span style="color: #555;">${data.seal_no || 'N/A'}</span>
+      </div>
+    </div>
+  <div style="flex: 1; background-color: #f8f9fa; padding: 5px; border-radius: 8px; border-left: 4px solid #f58220;">
+      <div style="margin-bottom: 6px;">
+        <strong style="display: block; color: #34495e; margin-bottom: 2px;">Shipper</strong>
+        <span style="color: #555;">${data.shipperName || 'N/A'}</span>
+      </div>
+      <div style="margin-bottom: 6px;">
+        <strong style="display: block; color: #34495e; margin-bottom: 2px;">Origin</strong>
+        <span style="color: #555;">${data.originName || 'N/A'}</span>
+      </div>
+      <div style="margin-bottom: 6px;">
+        <strong style="display: block; color: #34495e; margin-bottom: 2px;">Vessel / Voyage</strong>
+        <span style="color: #555;">${(data.vessel || 'N/A') + ' / ' + (data.voyage || 'N/A')}</span>
+      </div>
+      <div style="margin-bottom: 6px;">
+        <strong style="display: block; color: #34495e; margin-bottom: 2px;">Shipping Line</strong>
+        <span style="color: #555;">${data.shipping_line || 'N/A'}</span>
+      </div>
+      <div style="margin-bottom: 6px;">
+        <strong style="display: block; color: #34495e; margin-bottom: 2px;">Bank</strong>
+        <span style="color: #555;">${data.bankName || 'N/A'}</span>
+      </div>
+    </div>
+  </div>
+ ${data.remarks ? `
+    <div style="margin: 24px 0px; padding: 20px; background-color: #e8f5e8; border-radius: 8px; border-left: 4px solid #27ae60;">
+      <strong style="display: block; color: #34495e; margin-bottom: 8px;">Remarks:</strong>
+      <span style="color: #555; white-space: pre-wrap;">${data.remarks}</span>
+    </div>
+  ` : ''}
+</div>
+    
+   ${data.containers && data.containers.length > 0 ? `
+  <div class="section" style={{marginTop:20px}}>
+    <h2 class="section-header">Containers</h2>
+    <table style="width: 100%; border-collapse: collapse;">
+      <thead>
+        <tr style="background-color: #e0e0e0;">
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd;">Container No</th>
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd;">Location</th>
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd;">Size</th>
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd;">Type</th>
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd;">Owner</th>
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd;">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${data.containers.map((c, idx) => `
+          <tr>
+            <td style="padding: 12px; border: 1px solid #ddd;"><strong>${c.containerNo || `Container ${idx + 1}`}</strong></td>
+            <td style="padding: 12px; border: 1px solid #ddd;">${c.location || 'N/A'}</td>
+            <td style="padding: 12px; border: 1px solid #ddd;">${c.size || 'N/A'}</td>
+            <td style="padding: 12px; border: 1px solid #ddd;">${c.containerType || 'N/A'}</td>
+            <td style="padding: 12px; border: 1px solid #ddd;">${c.ownership || 'N/A'}</td>
+            <td style="padding: 12px; border: 1px solid #ddd; color: #27ae60; font-weight: 500;">${c.status || 'Active'}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  </div>
+` : ''}
+
+${allReceivers && allReceivers.length > 0 ? `
+<div class="section">
+    <h2 class="section-header">Selected Orders (${allReceivers.length})</h2>
+    <table style="width: 100%; border-collapse: collapse;">
+      <thead>
+        <tr style="background-color: #f39c12;">
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Booking Ref</th>
+          <th style="text-align: center; padding: 12px; border: 1px solid #ddd; color: white;">POL</th>
+          <th style="text-align: center; padding: 12px; border: 1px solid #ddd; color: white;">POD</th>
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Sender</th>
+          <th style="text-align: center; padding: 12px; border: 1px solid #ddd; color: white;">Receiver</th>
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${allReceivers.map((c, idx) => `
+          <tr>
+            <td style="padding: 12px; border: 1px solid #ddd;"><strong>${c.booking_ref || `Booking ${idx + 1}`}</strong></td>
+            <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">${getPlaceName(c.place_of_loading || 'N/A')}</td>
+            <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">${getPlaceName(c.place_of_delivery || 'N/A')}</td>
+            <td style="padding: 12px; border: 1px solid #ddd;">${c.sender_name || 'N/A'}</td>
+            <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">${c.receiver_name || c?.receivers[0]?.receiver_name}</td>
+            <td style="padding: 12px; border: 1px solid #ddd; color: #27ae60; font-weight: 500;">${c?.receivers[0]?.status || 'N/A'}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  </div>
+` : ''}
+
+${allReceivers && allReceivers.length > 0 ? `
+  <div class="section">
+    <h2 class="section-header">Shipment Details</h2>
+    <table style="width: 100%; border-collapse: collapse;">
+      <thead>
+        <tr style="background-color: #16a085;">
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Tracking No</th>
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Category</th>
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Sub Category</th>
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Type</th>
+          <th style="text-align: center; padding: 12px; border: 1px solid #ddd; color: white;">Total Items</th>
+          <th style="text-align: center; padding: 12px; border: 1px solid #ddd; color: white;">Weight (kg)</th>
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Pickup Location</th>
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Delivery Address</th>
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Container No</th>
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${Object.values(groupedShipping).flatMap(orderGroup => 
+          Object.values(orderGroup).flat()
+        ).map(s => `
+          <tr>
+            <td style="padding: 5px; border: 1px solid #ddd;"><strong>${s.itemRef || 'N/A'}</strong></td>
+            <td style="padding: 5px; border: 1px solid #ddd;">${s.category || 'N/A'}</td>
+            <td style="padding: 5px; border: 1px solid #ddd;">${s.subcategory || 'N/A'}</td>
+            <td style="padding: 5px; border: 1px solid #ddd;">${s.type || 'N/A'}</td>
+            <td style="padding: 5px; border: 1px solid #ddd; text-align: center;">${s.totalNumber || 'N/A'}</td>
+            <td style="padding: 5px; border: 1px solid #ddd; text-align: center;">${(s.weight / 1000).toFixed(2)}</td>
+            <td style="padding: 5px; border: 1px solid #ddd;">${s.pickupLocation || 'N/A'}</td>
+            <td style="padding: 5px; border: 1px solid #ddd;">${s.deliveryAddress || 'N/A'}</td>
+            <td style="padding: 5px; border: 1px solid #ddd;">${s.containerDetails?.[0]?.container?.container_number || 'N/A'}</td>
+            <td style="padding: 5px; border: 1px solid #ddd; color: #27ae60; font-weight: 500;">${s.consignmentStatus || 'Ready for Loading'}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  </div>
+` : ''}
+
+ 
+    <div class="footer">
+      <p><strong>Generated:</strong> ${new Date().toLocaleString()} | <strong>Page:</strong> 1 of ${Math.ceil(allReceivers?.length / 5 || 1)} </p>
+      <p style="margin-top: 2mm; font-size: 9px; opacity: 0.7;">© 2025 Royal Gulf Shipping Management System | This manifest is computer-generated and legally binding.</p>
+    </div>
+  `;
+  
+  // Add the temporary element to the body
+  document.body.appendChild(tempElement);
+  
+  // Convert the element to canvas with higher quality and proper dimensions
+  const scale = 2.5;
+  const canvas = await html2canvas(tempElement, {
+    scale: scale,
+    useCORS: true,
+    allowTaint: true,
+    logging: false,
+    width: tempElement.scrollWidth,
+    height: tempElement.scrollHeight,
+    windowWidth: tempElement.scrollWidth,
+    windowHeight: tempElement.scrollHeight,
+    backgroundColor: '#ffffff' // Ensure white background
+  });
+  
+  // Remove the temporary element
+  document.body.removeChild(tempElement);
+  
+  // Save the canvas as an image file (PNG) - High quality
+  const canvasDataURL = canvas.toDataURL('image/png', 1.0); // Full quality PNG
+  const canvasLink = document.createElement('a');
+  canvasLink.download = `Manifest_${data.consignment_number}_Canvas_${Date.now()}.png`;
+  canvasLink.href = canvasDataURL;
+  canvasLink.click(); // Trigger download
+  
+  // Create PDF from canvas with better quality and margins, with bottom space
+  const innerWidthMm = 210 - 2 * 14; // 182mm
+  const pxPerMm = canvas.width / innerWidthMm;
+  const extraBottomSpaceMm = 8 ; // Approx 70px at 96dpi ~18.5mm, rounded to 20mm
+  const contentHeightPerPageMm = (297 - 2 * 14) - extraBottomSpaceMm; // 269 - 20 = 249mm
+  const contentHeightPerPagePx = contentHeightPerPageMm * pxPerMm;
+  
+  const pdf = new jsPDF('p', 'mm', 'a4');
+  const marginMm = 14;
+  const contentWidthMm = innerWidthMm;
+  
+  let startY = 0;
+  while (startY < canvas.height) {
+    const sliceHeightPx = Math.min(contentHeightPerPagePx, canvas.height - startY);
+    
+    // Create cropped canvas for this page slice
+    const croppedCanvas = document.createElement('canvas');
+    croppedCanvas.width = canvas.width;
+    croppedCanvas.height = sliceHeightPx;
+    const ctx = croppedCanvas.getContext('2d');
+    ctx.drawImage(canvas, 0, startY, canvas.width, sliceHeightPx, 0, 0, canvas.width, sliceHeightPx);
+    
+    const croppedDataURL = croppedCanvas.toDataURL('image/png', 1.0);
+    const drawHeightMm = sliceHeightPx / pxPerMm;
+    
+    // Add to PDF (first page without addPage)
+    if (startY > 0) {
+      pdf.addPage();
+    }
+    pdf.addImage(croppedDataURL, 'PNG', marginMm, marginMm, contentWidthMm, drawHeightMm);
+    
+    startY += sliceHeightPx;
+  }
+  
+  // Save the PDF
+  pdf.save(`Manifest_${data.consignment_number}_Detailed_${Date.now()}.pdf`);
+};
+const generateManifestPDF = async (data, allReceivers, selectedOrderObjects = includedOrders) => {
+  if (!data.consignment_number) {
+    setSnackbar({
+      open: true,
+      severity: 'warning',
+      message: 'Please enter a consignment number to generate the manifest.',
+    });
+    return;
+  }
+  //---------------------------------------------------
+  // SETUP
+  //---------------------------------------------------
+  const doc = new jsPDF('p', 'mm', 'a4');
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const margin = 14;
+  const padding = 10;
+  const brandPrimary = [13, 108, 106]; // #0d6c6a
+  const brandAccent = [245, 130, 32]; // #f58220
+  let y = 30;
+  // -------- HEADER --------
+  const logoBase64 = await loadImageAsBase64("./logo-2.png"); // Note: Ensure this path is correct (e.g., import logo if in src/, or place in public/)
+  const drawHeader = () => { // Removed unused y param
+    const headerHeight = 22;
+    // Main brand color bar (draw FIRST to avoid overwriting text)
+    doc.setFillColor(...brandPrimary);
+    doc.rect(0, 0, pageWidth, headerHeight, 'F');
+    // Logo (left side)
+    if (logoBase64) { // Guard against null logo
+      doc.addImage(logoBase64, "PNG", margin, 4, 60, 12);
+    } else {
+      // Fallback: Draw a placeholder or log error (optional)
+      console.warn('Logo failed to load');
+    }
+    // Consignment number (left side, below/next to logo, white text for visibility)
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.setTextColor(255, 255, 255);
+    doc.text(data.consignment_number, margin + 65, 10); // Position after logo; adjust as needed
+    // Title (right side, white)
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(18);
+    doc.text('Manifest Report', pageWidth - margin, 10, { align: 'right' });
+    // Date (right side, below title, white)
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.text(
+      new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+      pageWidth - margin,
+      17,
+      { align: 'right' }
+    );
+    // Generated time (right side, bottom of header, white)
+    doc.text(
+      `Generated: ${new Date().toLocaleString()}`,
+      pageWidth - margin,
+      22,
+      { align: 'right' }
+    );
+  };
+  //---------------------------------------------------
+  // SUMMARY CARDS (Modern UI)
+  //---------------------------------------------------
+  const drawSummary = (y) => {
+    const cards = [
+      ["Containers", data.containers?.length || 0],
+      ["Orders", selectedOrderObjects?.length || 0],
+      ["Net Weight", `${data.net_weight || 0} KGS`],
+      ["Gross Weight", `${data.gross_weight || 0} KGS`],
+      ["Value", `${data.consignment_value || 0} ${data.currency_code || 'USD'}`],
+      ["Status", data.status || "Draft"],
+    ];
+    const cardWidth = (pageWidth - margin * 2 - 6) / 2;
+    const cardHeight = 16;
+    doc.setFontSize(10);
+    cards.forEach((item, i) => {
+      const col = i % 2;
+      const row = Math.floor(i / 2);
+      const x = margin + (col * (cardWidth + 6));
+      const cardY = y + row * (cardHeight + 6);
+      // Card box
+      doc.setDrawColor(230, 230, 230);
+      doc.setFillColor(248, 249, 250);
+      doc.roundedRect(x, cardY, cardWidth, cardHeight, 2, 2, 'FD');
+      // Title (accent)
+      doc.setFillColor(...brandPrimary);
+      doc.rect(x, cardY, cardWidth, 5, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.text(item[0], x + 2, cardY + 4);
+      // Value
+      doc.setTextColor(60, 60, 60);
+      doc.setFont('helvetica', 'normal');
+      doc.text(String(item[1]), x + 3, cardY + 11);
+    });
+    return y + Math.ceil(cards.length / 2) * (cardHeight + 6) + 5;
+  };
+  //---------------------------------------------------
+  // CONSIGNMENT DETAILS
+  //---------------------------------------------------
+  const drawDetails = (y) => {
+    doc.setFont('helvetica', 'bold').setFontSize(14).setTextColor(...brandPrimary);
+    doc.text("Consignment Details", margin, y);
+    y += 4;
+    // Section underline
+    doc.setDrawColor(...brandPrimary);
+    doc.setLineWidth(0.6);
+    doc.line(margin, y, pageWidth - margin, y);
+    y += 6;
+    const details = [
+      ["Consignment #", data.consignment_number || 'N/A'],
+      ["Shipper", data.shipperName || 'N/A'],
+      ["Consignee", data.consigneeName || 'N/A'],
+      ["Origin", data.originName || 'N/A'],
+      ["Destination", data.destinationName || 'N/A'],
+      ["Vessel / Voyage", `${data.vessel || 'N/A'} / ${data.voyage || 'N/A'}`],
+      ["ETA", data.eta ? new Date(data.eta).toLocaleDateString() : 'N/A'],
+      ["Shipping Line", data.shipping_line || 'N/A'],
+      ["Payment Type", data.payment_type || 'N/A'],
+      ["Bank", data.bankName || 'N/A'],
+      ["Seal No", data.seal_no || 'N/A'],
+    ];
+    const colWidth = (pageWidth - margin * 2 - 10) / 2;
+    doc.setFontSize(9).setTextColor(50, 50, 50);
+    const rowHeight = 9; // reduced from 10
+    details.forEach((pair, index) => {
+      const col = index % 2;
+      const row = Math.floor(index / 2);
+      const x = margin + col * (colWidth + 10);
+      const dy = y + row * rowHeight;
+      doc.setFont('helvetica', 'bold');
+      doc.text(pair[0], x, dy);
+      doc.setFont('helvetica', 'normal');
+      doc.text(String(pair[1] || "N/A"), x, dy + 4); // reduced label offset
+    });
+    return y + Math.ceil(details.length / 2) * rowHeight + 6; // tighter bottom spacing
+  };
+  //---------------------------------------------------
+  // REMARKS BOX
+  //---------------------------------------------------
+  const drawRemarks = (y) => {
+    if (!data.remarks) return y;
+    doc.setFillColor(248, 249, 250);
+    doc.roundedRect(margin, y, pageWidth - margin * 2, 20, 2, 2, 'F');
+    doc.setFontSize(9).setFont('helvetica', 'italic').setTextColor(90, 90, 90);
+    const wrapped = doc.splitTextToSize(data.remarks, pageWidth - margin * 2 - 10);
+    doc.text("Remarks:", margin + 3, y + 6);
+    doc.text(wrapped, margin + 3, y + 11);
+    return y + 28;
+  };
+  //---------------------------------------------------
+  // TABLE: Containers
+  //---------------------------------------------------
+  const drawContainers = (y) => {
+    if (!data.containers?.length) return y;
+    doc.setFont('helvetica', 'bold').setFontSize(14).setTextColor(...brandPrimary);
+    doc.text("Containers", margin, y);
+    y += 5;
+    autoTable(doc, {
+      startY: y,
+      head: [['Container No', 'Location', 'Size', 'Type', 'Owner', 'Status']],
+      body: data.containers.map(c => [
+        c.containerNo || 'N/A',
+        c.location || 'N/A',
+        c.size || 'N/A',
+        c.containerType || 'N/A',
+        c.ownership || 'N/A',
+        c.status || 'N/A',
+      ]),
+      headStyles: { fillColor: brandPrimary, textColor: 255 },
+      bodyStyles: { fontSize: 9, cellPadding: 3 },
+      margin: { left: margin, right: margin }
+    });
+    return doc.lastAutoTable.finalY + 10;
+  };
+  //---------------------------------------------------
+  // TABLE: Orders
+  //---------------------------------------------------
+  const drawOrders = (y) => {
+    if (!allReceivers?.length) return y;
+    doc.setFont('helvetica', 'bold').setFontSize(14).setTextColor(...brandAccent);
+    doc.text(`Shipments (${allReceivers.length})`, margin, y);
+    y += 5;
+    autoTable(doc, {
+      startY: y,
+      head: [['Booking Ref', 'POL', 'POD', 'Receiver', '#Cont', 'Status']],
+      headStyles: { fillColor: brandAccent, textColor: 255 },
+      bodyStyles: { fontSize: 9, cellPadding: 3 },
+      body: allReceivers.map(r => [
+        r?.booking_ref || 'N/A',
+        getPlaceNamePdf(r?.place_of_loading || ''),
+        getPlaceNamePdf(r?.place_of_delivery || r?.final_destination || ''),
+        r.receiver_name || 'N/A',
+        r.containers?.length || 0,
+        r.status ? r.status.substring(0, 12) : 'N/A',
+      ]),
+      margin: { left: margin, right: margin }
+    });
+    return doc.lastAutoTable.finalY + 10;
+  };
+  //---------------------------------------------------
+  // FOOTER
+  //---------------------------------------------------
+  const drawFooter = () => {
+    const y = 275;
+    doc.setDrawColor(...brandPrimary);
+    doc.line(margin, y, pageWidth - margin, y);
+    doc.setFontSize(9).setTextColor(80, 80, 80);
+    doc.text(
+      `Generated: ${new Date().toLocaleString()}`,
+      margin,
+      y + 6
+    );
+    doc.text(
+      `Page ${doc.getCurrentPageInfo().pageNumber}`,
+      pageWidth - margin,
+      y + 6,
+      { align: 'right' }
+    );
+  };
+  //---------------------------------------------------
+  // BUILD DOCUMENT
+  //---------------------------------------------------
+  drawHeader();
+  y = drawSummary(y);
+  y = drawDetails(y);
+  y = drawRemarks(y);
+  y = drawContainers(y);
+  y = drawOrders(y);
+  drawFooter();
+  // Check if y exceeds page height and add new pages if needed (basic handling)
+  if (y > 270) {
+    doc.addPage();
+    y = 20; // Reset for new page
+  }
+  //---------------------------------------------------
+  // SAVE FILE
+  //---------------------------------------------------
+  doc.save(`Manifest_${data.consignment_number}.pdf`);
+};
+
+const generateDocx = () => {
+    // Placeholder for Docx (requires 'docx' and 'file-saver')
+    setSnackbar({ open: true, severity: 'info', message: 'Docx generation: Install docx and file-saver for full support.' });
+  };
+
+
   return (
     <LocalizationProvider dateAdapter={AdapterDayjs}>
       <Snackbar open={snackbar.open} autoHideDuration={6000} onClose={() => setSnackbar({ ...snackbar, open: false })}>
@@ -1755,8 +2363,7 @@ useEffect(() => {
                   </AccordionSummary>
                   <AccordionDetails sx={{ p: 3 }}>
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                      {/* Basic Info Row */}
-                      <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                        <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}> 
                         <Box sx={{ flex: 1, minWidth: 250 }}>
                           <CustomTextField
                             name="consignment_number"
@@ -1765,7 +2372,7 @@ useEffect(() => {
                             onBlur={handleBlur}
                             label="Consignment #"
                             startAdornment={<DescriptionIcon sx={{ mr: 1, color: '#f58220' }} />}
-                            readOnly={mode === 'edit'} // Keep readOnly for consignment_number in edit mode
+                            // readOnly={mode === 'edit'} // Keep readOnly for consignment_number in edit mode
                             required
                             error={touched.consignment_number && Boolean(errors.consignment_number)}
                             helperText={
@@ -1775,46 +2382,64 @@ useEffect(() => {
                             }
                           />
                         </Box>
-                        <Box sx={{ flex: 1, minWidth: 250 }}>
-                          <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 1 }}>
-                            <CustomSelect
-                              name="status"
-                              value={values.status}
-                              onChange={handleChange}
-                              label="Status"
-                              options={options.statusOptions || []}
-                              // disabled={mode === 'edit'} // Keep disabled for status in edit mode (use Next button)
-                              error={touched.status && Boolean(errors.status)}
-                              helperText={
-                                touched.status && errors.status
-                                  ? errors.status
-                                 : ''
-                              }
-                            />
-                            {mode === 'edit' && (
-                              <Button
-                                variant="outlined"
-                                size="small"
-                                onClick={advanceStatus}
-                                sx={{ borderColor: '#f58220', color: '#f58220', minHeight: '56px' }}
-                              >
-                                Next
-                              </Button>
-                            )}
-                          </Box>
-                        </Box>
-                        <Box sx={{ flex: 1, minWidth: 250 }}>
-                          <CustomTextField
-                            name="remarks"
-                            value={values.remarks}
-                            onChange={handleChange}
-                            label="Remarks"
-                            multiline
-                            rows={2}
-                            startAdornment={<AttachFileIcon sx={{ mr: 1, color: '#f58220' }} />}
-                          />
-                        </Box>
-                      </Box>
+    <Box sx={{ flex: 1, minWidth: 350  }}>
+      <CustomSelect
+        name="status"
+        value={values.status}
+        onChange={handleStatusChange}  // Now client-side
+        label="Status"
+        options={options.statusOptions || []}
+        disabled={mode === 'edit'}
+        error={touched.status && Boolean(errors.status)}
+        helperText={touched.status && errors.status ? errors.status : ''}
+        loading={etaLoading}  // Brief spinner (optional, since instant)
+      />
+      {mode === 'edit' && (
+        <Button
+          variant="outlined"
+          size="small"
+          onClick={advanceStatus}
+          sx={{ borderColor: '#f58220', color: '#f58220', minHeight: '56px',marginTop:1 }}
+        >
+          Change
+        </Button>
+      )}
+    </Box>
+    <Box sx={{ flex: 1, minWidth: 250 }}>
+                        <LocalizationProvider dateAdapter={AdapterDayjs}>
+
+      <DatePicker
+        label="ETA"
+        value={eta || etaSuggestion ? dayjs(eta || etaSuggestion) : values?.eta}  // Ensure Day.js or null; handle invalid
+        onChange={(value) => {
+          if (value && value.isValid()) {  // Guard: Check isValid before format
+            const formatted = value.format('YYYY-MM-DD');
+            setEta(formatted);
+            setValues(prev => ({ ...prev, eta: formatted }));  // Sync to form
+          } else {
+            setEta(null);
+            // setValues(prev => ({ ...prev, eta: null }));  // Clear invalid
+          }
+        }}
+        inputFormat="YYYY-MM-DD"
+        slotProps={{ 
+          textField: { 
+            helperText: etaLoading 
+              ? 'Calculating ETA...' 
+              : etaSuggestion && eta !== etaSuggestion
+                ? `Suggested: ${dayjs(etaSuggestion).isValid() ? dayjs(etaSuggestion).format('MMM DD, YYYY') : 'Invalid date'} based on status (edited)`
+                : etaSuggestion 
+                  ? `Suggested: ${dayjs(etaSuggestion).isValid() ? dayjs(etaSuggestion).format('MMM DD, YYYY') : 'Invalid date'} based on status`
+                  : 'Enter ETA'
+          } 
+        }}
+        disabled={['Delivered', 'Cancelled'].includes(values.status)}  // Disable for terminals
+        name="eta"
+      />
+</LocalizationProvider>                        
+
+    </Box>
+  </Box>
                       {/* Eform Row */}
                       <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
                         <Box sx={{ flex: 1, minWidth: 250 }}>
@@ -1906,6 +2531,18 @@ useEffect(() => {
                             multiline
                             rows={4}
                             sx={{ mt: 2 }}
+                          />
+                        </Box>
+                        
+                        <Box sx={{ flex: 1, minWidth: 250 }}>
+                          <CustomTextField
+                            name="remarks"
+                            value={values.remarks}
+                            onChange={handleChange}
+                            label="Remarks"
+                            multiline
+                            rows={2}
+                            startAdornment={<AttachFileIcon sx={{ mr: 1, color: '#f58220' }} />}
                           />
                         </Box>
                       </Box>
@@ -2063,14 +2700,7 @@ useEffect(() => {
                           />
                         </Box>
                         <Box sx={{ flex: 1, minWidth: 250 }}>
-                          <CustomDatePicker
-                            name="eta"
-                            tooltip='Select Date'
-                            value={values.eta}
-                            onChange={handleDateChange}
-                            label="ETA"
-                            slotProps={{ textField: { InputProps: { startAdornment: <DateRangeIcon sx={{ mr: 1, color: '#f58220' }} /> } } }}
-                          />
+                         
                         </Box>
                         <Box sx={{ flex: 1, minWidth: 250 }}>
                           <CustomTextField
@@ -2149,7 +2779,7 @@ useEffect(() => {
                           <Button
                             variant="outlined"
                             startIcon={<LocalPrintshopIcon />}
-                            onClick={() => generateManifestPDF(values, includedOrders)} // Fixed: Pass includedOrders
+                            onClick={() => generateManifestPDFWithCanvas(values, includedOrders)} // Fixed: Pass includedOrders
                             disabled={saving || !values.consignment_number}
                             sx={{ borderColor: '#f58220', color: '#f58220', '&:hover': { borderColor: '#e65100', backgroundColor: '#fff3e0' } }}
                           >
@@ -2160,11 +2790,11 @@ useEffect(() => {
                           <Button
                             variant="outlined"
                             startIcon={<DescriptionIcon />}
-                            onClick={() => generateManifestPDF(values, includedOrders)} // Fixed: Pass includedOrders
+                            onClick={() => generateManifestPDFWithCanvas(values, includedOrders)} // Fixed: Pass includedOrders
                             disabled={saving || !values.consignment_number}
                             sx={{ borderColor: '#f58220', color: '#f58220', '&:hover': { borderColor: '#e65100', backgroundColor: '#fff3e0' } }}
                           >
-                            Print Note (PDF)
+                            Print Canvas (Image) 
                           </Button>
                         </Tooltip>
                         {/* <Tooltip title="Download as Word document (requires additional setup)">
