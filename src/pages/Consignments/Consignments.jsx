@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect,useCallback, useMemo } from 'react';
 import {
   Box,
   Chip,
@@ -9,6 +9,8 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Avatar,
+  ListItemIcon,
   TablePagination,
   Paper,
   TableSortLabel,
@@ -42,9 +44,17 @@ import {
   Delete as DeleteIcon,
   Info as InfoIcon
 } from "@mui/icons-material";
+import dayjs from 'dayjs';
 import { useNavigate } from "react-router-dom"; // Assuming React Router is used
   import { styled } from '@mui/material/styles';
 import {api} from "../../api"; // Assuming api
+import EditNoteIcon from '@mui/icons-material/EditNote';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { applyPlugin } from 'jspdf-autotable';
+import logoPic from "../../../public/logo.png"
+applyPlugin(jsPDF); 
 // Assuming other imports are present: api, styled, MUI components (Paper, Table, etc.), icons, etc.
 export default function Consignments() {
   const navigate = useNavigate();
@@ -55,6 +65,7 @@ export default function Consignments() {
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [filters, setFilters] = useState({ consignment_id: '', status: '' });
   const [selected, setSelected] = useState([]);
+  const [selectedExport, setSelectedExport] = useState([]);
   const [numSelected, setNumSelected] = useState(0);
   const [rowCount, setRowCount] = useState(0);
   const [openStatusDialog, setOpenStatusDialog] = useState(false);
@@ -63,6 +74,7 @@ export default function Consignments() {
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
   const [exporting, setExporting] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [statusList, setStatusList] = useState([]);
 
   const statuses = ["Draft", "In Transit", "Under Processing", "Delivered"];
   const [error, setError] = useState(null); 
@@ -76,9 +88,7 @@ export default function Consignments() {
     consignment_id: filters.consignment_id,
     status: filters.status,
   }), [page, rowsPerPage, orderBy, order, filters]);
-
-  useEffect(() => {
-    const getConsignments = async () => {
+const getConsignments = async () => {
       setLoading(true);
       setError(null);
       try {
@@ -98,6 +108,8 @@ export default function Consignments() {
         setLoading(false);
       }
     };
+  useEffect(() => {
+    
     getConsignments();
   }, []); // Depend on params for re-fetch on changes
 
@@ -111,61 +123,83 @@ export default function Consignments() {
     <Chip 
       label={status} 
       color={status === "Delivered" ? "success" : status === "In Transit" ? "warning" : status === "Draft" ? "default" : "info"} 
-      size="small" 
-      sx={{ fontSize: '0.875rem' }}
+      size="large"
+      sx={{ fontSize: '0.875rem', maxWidth: 240, marginLeft: -8 }}
     />
   );
 
-  // useEffect(() => {
-  //   if (consignments.some(c => c && (!c.shipperName || !c.consigneeName))) {
-  //     console.log('Fetching shippers and consignees for consignments');
-  //     const fetchAndUpdate = async () => {
-  //       try {
-  //         const [shippersRes, consigneesRes] = await Promise.all([
-  //           api.get(`api/options/shippers`),
-  //           api.get(`api/options/consignees`), // Assuming a similar endpoint for consignees
-  //         ]);
+  useEffect(() => {
+    
+    if (consignments.some(c => c && (!c.shipperName || !c.consigneeName))) {
+      console.log('Fetching shippers and consignees for consignments');
+      const fetchAndUpdate = async () => {
+        try {
+          const [shippersRes, consigneesRes,statusRes] = await Promise.all([
+            api.get(`api/options/shippers`),
+              //  api.get('api/consignments/statuses'),
+            api.get(`api/options/consignees`), // Assuming a similar endpoint for consignees
+          ]);
+// setStatusList(statusRes.data)
+          const shippers = shippersRes.data; // Assume { shipperOptions: array of {value, label} objects }
+          const consignees = consigneesRes.data; // Assume { consigneeOptions: array of {value, label} objects }
+          console.log('Fetched shippers:', shippers.shipperOptions);
+          console.log('Fetched consignees:', consignees.consigneeOptions);
+  // const status = statusRes.data;
+          setConsignments(prev => prev.map(consignment => {
+            if (!consignment) return consignment;
+            console.log('Updating consignment:', consignment);
+ // Filter shipper by ID (convert to number for strict equality)
+          
+            // Filter shipper by ID (convert to number for strict equality)
+            const shipperName = shippers.shipperOptions.find(s => {
+              const shipperId = Number(consignment.shipper);
+              console.log('Comparing shipper IDs:', s.value, shipperId);
+              return s.value === shipperId;
+            })?.label;
 
-  //         const shippers = shippersRes.data; // Assume { shipperOptions: array of {value, label} objects }
-  //         const consignees = consigneesRes.data; // Assume { consigneeOptions: array of {value, label} objects }
-  //         console.log('Fetched shippers:', shippers.shipperOptions);
-  //         console.log('Fetched consignees:', consignees.consigneeOptions);
+            // Filter consignee by ID (convert to number for strict equality)
+            const consigneeName = consignees.consigneeOptions.find(c => {
+              const consigneeId = Number(consignment.consignee);
+              console.log('Comparing consignee IDs:', c.value, consigneeId);
+              return c.value === consigneeId;
+            })?.label;
 
-  //         setConsignments(prev => prev.map(consignment => {
-  //           if (!consignment) return consignment;
-  //           console.log('Updating consignment:', consignment);
+            console.log('Updated shipper name:', shipperName);
+            console.log('Updated consignee name:', consigneeName);
 
-  //           // Filter shipper by ID (convert to number for strict equality)
-  //           const shipperName = shippers.shipperOptions.find(s => {
-  //             const shipperId = Number(consignment.shipper);
-  //             console.log('Comparing shipper IDs:', s.value, shipperId);
-  //             return s.value === shipperId;
-  //           })?.label;
+            return {
+              ...consignment,
+              shipperName,
+              consigneeName,
+              // statusOptions
+            };
+          }));
+        } catch (error) {
+          console.error('Error fetching shippers/consignees:', error);
+        }
+      };
 
-  //           // Filter consignee by ID (convert to number for strict equality)
-  //           const consigneeName = consignees.consigneeOptions.find(c => {
-  //             const consigneeId = Number(consignment.consignee);
-  //             console.log('Comparing consignee IDs:', c.value, consigneeId);
-  //             return c.value === consigneeId;
-  //           })?.label;
+      fetchAndUpdate();
+    }
 
-  //           console.log('Updated shipper name:', shipperName);
-  //           console.log('Updated consignee name:', consigneeName);
+    const fetchStatus = async () => {
+    try {
+        const response = await api.get('api/consignments/statuses')           
+           const data = response.data 
+      console.log('Fetched container:', data.statusOptions);
+setStatusList(data.statusOptions)
+          // const shippers = shippersRes.data; // Assume { shipperOptions: array of {value, label} objects }
+          // const consignees = consigneesRes.data; // Assume { consigneeOptions: array of {value, label} objects }
+          // console.log('Fetched shippers:', shippers.shipperOptions);
+          // console.log('Fetched consignees:', consignees.consigneeOptions);
+          
+        } catch (error) {
+          console.error('Error fetching shippers/consignees:', error);
+        }
+      };
+    fetchStatus()
+  }, []);
 
-  //           return {
-  //             ...consignment,
-  //             shipperName,
-  //             consigneeName,
-  //           };
-  //         }));
-  //       } catch (error) {
-  //         console.error('Error fetching shippers/consignees:', error);
-  //       }
-  //     };
-
-  //     fetchAndUpdate();
-  //   }
-  // }, []);
 
   // Columns (removed duplicate "Orders")
   const columns = [
@@ -209,13 +243,13 @@ export default function Consignments() {
   key: "orders", 
   label: "Pieces", 
   sortable: true,
-  render: (item) => <Typography variant="body1" sx={{ fontSize: '0.875rem' }}>{safeParseOrders(item.orders).length}</Typography>
+  render: (item) => <Typography variant="body1" sx={{ fontSize: '0.875rem',maxWidth: 80, }}>{safeParseOrders(item.orders).length}</Typography>
 },
     { 
       key: "delivered", 
       label: "Delivered", 
       sortable: true,
-      render: (item) => <Typography variant="body1" sx={{ fontWeight: 'bold',  color: 'success.main' }}>{item.delivered || 0}</Typography>
+      render: (item) => <Typography variant="body1" sx={{ fontWeight: 'bold',  color: 'success.main',maxWidth: 80 }}>{item.delivered || 0}</Typography>
     },
     { 
       key: "pending", 
@@ -298,10 +332,18 @@ function getSortableValue(item, key) {
     stableSort(filteredConsignments, getComparator(order, orderBy)), 
     [filteredConsignments, order, orderBy]
   );
-
+const handleStatusUpdate = ( consignment) => {
+    setSelectedConsignmentForUpdate(consignment);
+    setSelectedStatus(consignment.status);
+    setOpenStatusDialog(true);
+  };
   const handleSelectAllClick = (event) => {
+    console.log('Select All Clicked, checked:', event.target.checked);  
     if (event.target.checked) {
       const newSelected = sortedConsignments.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((n) => n.id);
+      const newSelectedExport = sortedConsignments.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((n) => n.id);
+      
+      setSelectedExport(newSelectedExport);
       setSelected(newSelected);
       setNumSelected(newSelected.length); // Added
       return;
@@ -310,10 +352,13 @@ function getSortableValue(item, key) {
     setNumSelected(0); // Added
   };
 
-  const isSelected = (id) => selected.indexOf(id) !== -1;
+ console.log('Selected IDs:', selectedExport);
+const isSelected = (id) => selected.indexOf(id) !== -1;
 
   const handleClick = (id) => {
+    console.log('Row clicked, ID:', selected);
     const selectedIndex = selected.indexOf(id);
+    setSelectedExport(selected); // Keep export selection in sync
     let newSelected = [];
 
     if (selectedIndex === -1) {
@@ -340,27 +385,675 @@ function getSortableValue(item, key) {
     setRowsPerPage(parseInt(event.target.value, 10));
     setPage(0);
   };
+const loadImageAsBase64 = (url) =>
+  new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = "Anonymous";
+    img.src = url;
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0);
+      resolve(canvas.toDataURL("image/png"));
+    };
+    img.onerror = () => resolve(null);
+  });
 
-  const handleExport = () => {
-    setExporting(true);
-    setTimeout(() => {
-      setExporting(false);
-      setSnackbar({ open: true, message: 'Exported successfully!', severity: 'success' });
-    }, 2000);
+// Assuming getPlaceName is defined elsewhere; if not, define it (e.g., a function mapping IDs to names)
+const getPlaceNamePdf = (id) => {
+  // Example mapping; replace with actual logic
+  const places = { 2: 'Karachi', 5: 'Dubai' }; // Add more as needed
+  return places[id] || 'N/A';
+};
+
+
+const handleExport = async () => {
+  setExporting(true);
+  console.log('Exporting consignments with params:', selectedExport);
+  
+  // Ensure selectedExport is an array (handle single object or undefined)
+  let consignmentsToExport = [];
+  if (Array.isArray(selectedExport)) {
+    consignmentsToExport = selectedExport;
+  } else if (selectedExport && typeof selectedExport === 'object') {
+    consignmentsToExport = [selectedExport]; // Wrap single object
+  } else {
+    setSnackbar({
+      open: true,
+      severity: 'warning',
+      message: 'No consignments selected for export.',
+    });
+    setExporting(false);
+    return;
+  }
+
+  if (consignmentsToExport.length === 0) {
+    setSnackbar({
+      open: true,
+      severity: 'warning',
+      message: 'No consignments selected for export.',
+    });
+    setExporting(false);
+    return;
+  }
+
+  // For simplicity, generate one PDF per consignment (or combine if needed)
+  // Here, assuming single or loop; adjust for multi if required
+  for (const consignment of consignmentsToExport) {
+    if (!consignment.consignment_number) {
+      console.warn('Skipping consignment without number:', consignment.id);
+      continue;
+    }
+
+    try {
+      // Fetch full details for the consignment to ensure complete data (orders, containers, etc.)
+      const res = await api.get(`/api/consignments/${consignment.id}?autoUpdate=false`);
+      const fullRes = res.data || {};
+      let fullConsignment = fullRes.data || consignment; // Fallback to shallow if fetch fails
+
+      // Apply mapping similar to loadConsignment for consistent field names and formatting
+      const mappedData = {
+        ...fullConsignment,
+        shipper: fullConsignment?.shipper_id?.toString() || '',
+        shipperName: fullConsignment?.shipper || '',
+        shipperAddress: fullConsignment?.shipper_address || '',
+        consignee: fullConsignment?.consignee_id?.toString() || '',
+        consigneeName: fullConsignment?.consignee || '',
+        consigneeAddress: fullConsignment?.consignee_address || '',
+        origin: fullConsignment?.origin_id?.toString() || '',
+        originName: fullConsignment?.origin || '',
+        destination: fullConsignment?.destination_id?.toString() || '',
+        destinationName: fullConsignment?.destination || '',
+        bank: fullConsignment?.bank_id?.toString() || '',
+        bankName: fullConsignment?.bank || '',
+        payment_type: fullConsignment?.payment_type?.toString() || '',
+        status: fullConsignment?.status || '',
+        vessel: fullConsignment?.vessel ? fullConsignment.vessel.toString() : '',
+        shipping_line: fullConsignment?.shipping_line ? fullConsignment.shipping_line.toString() : '',
+        voyage: fullConsignment?.voyage ? fullConsignment.voyage.toString() : '',
+        seal_no: fullConsignment?.seal_no || '',
+        remarks: fullConsignment?.remarks || '',
+        net_weight: fullConsignment?.net_weight || 0,
+        gross_weight: fullConsignment?.gross_weight || 0,
+        consignment_value: fullConsignment?.consignment_value || 0,
+        currency_code: fullConsignment?.currency_code || '',
+        eform_date: fullConsignment?.eform_date ? dayjs(fullConsignment.eform_date) : '',
+        eta: fullConsignment?.eta ? dayjs(fullConsignment.eta) : '',
+        containers: (fullConsignment?.containers || []).map(c => ({
+          location: c?.location || '',
+          containerNo: c?.containerNo || '',
+          size: c?.size || '',
+          ownership: c?.ownership || '',
+          containerType: c?.containerType || '',
+          status: c?.status || 'Pending',
+          id: c?.id || c?.cid
+        })),
+      };
+
+      console.log('Mapped data (focus: vessel/payment/status):', {
+        vessel: mappedData.vessel,
+        payment_type: mappedData.payment_type,
+        status: mappedData.status
+      });
+
+      // allReceivers = mappedData.orders || []; // Align with your data
+      const allReceivers = mappedData.orders || []; // Assuming orders are objects; adjust if IDs
+      // If there is a selectedOrders state, filter here: .filter(o => selectedOrders.includes(o.id))
+
+      // Map orders to include missing fields for template compatibility
+      const mappedReceivers = allReceivers.map(order => ({
+        ...order,
+        booking_ref: `ORD-${order.id}`,
+        place_of_loading: mappedData.originName || mappedData.origin,
+        place_of_delivery: mappedData.destinationName || mappedData.destination,
+        sender_name: mappedData.shipperName || mappedData.shipper,
+        receiver_name: mappedData.consigneeName || mappedData.consignee,
+        status: order.order_status || order.status
+      }));
+
+      const groupedShipping = allReceivers.reduce((acc, order) => {
+        if (order.receivers && Array.isArray(order.receivers)) {
+          acc[order.id] = order.receivers.reduce((recAcc, receiver) => {
+            if (receiver.id && receiver.shippingdetails) {
+              recAcc[receiver.id] = receiver.shippingdetails;
+            }
+            return recAcc;
+          }, {});
+        }
+        return acc;
+      }, {});
+
+      // Prepare shipping details for condition and mapping
+      const shippingDetails = Object.values(groupedShipping).flatMap(orderGroup => 
+        Object.values(orderGroup)
+      );
+
+      await generateManifestPDFWithCanvas(mappedData, mappedReceivers, shippingDetails);
+    } catch (err) {
+      console.error('PDF Generation Error:', err);
+      setSnackbar({
+        open: true,
+        severity: 'error',
+        message: `Failed to generate PDF for ${consignment.consignment_number}`,
+      });
+    }
+  }
+
+  setExporting(false);
+  setSnackbar({ open: true, message: 'Exported successfully!', severity: 'success' });
+};
+
+const generateManifestPDFWithCanvas = async (data, mappedReceivers, shippingDetails) => {
+  console.log('data for canvas data', data);
+  if (!data.consignment_number) {
+    setSnackbar({
+      open: true,
+      severity: 'warning',
+      message: 'Please enter a consignment number to generate the manifest.',
+    });
+    return;
+  }
+
+  // Helper function to normalize/format dates
+  const formatDate = (dateStr) => {
+    if (!dateStr) return 'N/A';
+    return new Date(dateStr).toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
   };
 
-  const handleStatusUpdate = (id, consignment) => {
-    setSelectedConsignmentForUpdate(consignment);
-    setSelectedStatus(consignment.status);
-    setOpenStatusDialog(true);
+  // Helper function to get place name (assuming getPlaceName is defined; fallback here)
+  const getPlaceName = (place) => {
+    const places = { 2: 'Karachi', 5: 'Dubai' }; // Example; replace with actual
+    return places[place] || place || 'N/A';
   };
 
+  // Helper to format weight
+  const formatWeight = (weight) => weight ? `${weight} KGS` : 'N/A';
+
+  // Load logo as base64
+  const logoBase64 = await loadImageAsBase64(logoPic);
+
+  // Create a temporary div element to render content
+  const tempElement = document.createElement('div');
+  tempElement.style.width = '210mm'; // A4 width
+  tempElement.style.padding = '4mm'; // Match margin
+  tempElement.style.backgroundColor = 'white';
+  tempElement.style.fontFamily = '"Helvetica Neue", Helvetica, Arial, sans-serif';
+  tempElement.style.boxSizing = 'border-box';
+  
+  // Create the content for the PDF with enhanced, user-friendly styling
+  tempElement.innerHTML = `
+    <style>
+      * { box-sizing: border-box; }
+      body { 
+        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; 
+        margin: 0; padding: 0; 
+        color: #2c3e50; background: white; 
+        line-height: 1.4; 
+        font-size: 11px; 
+      }
+      .header { 
+        background: linear-gradient(135deg, #1abc9c 0%, #0d6c6a 100%); 
+        color: white; 
+        height: 30mm; 
+        padding: 4mm 4mm; 
+        display: flex; 
+        justify-content: space-between; 
+        align-items: center; 
+        margin-bottom: 8mm;
+        border-radius: 0 0 0px 0px; 
+        box-shadow: 0 4px 12px rgba(13, 108, 106, 0.2); 
+      }
+      .header-logo { width: 220px; height: 60px; opacity: 0.95; } 
+      .header-left { display: flex; gap: 0mm; }
+      .header-consignment { font-size: 14px; font-weight: bold; margin: 0; }
+      .header-right { text-align: right; flex-shrink: 0; }
+      .header h1 { margin: 0 0 2mm 0; font-size: 20px; font-weight: 600; }
+      .header p { margin: 0.5mm 0; font-size: 10px; opacity: 0.9; }
+      .summary-grid { 
+        display: grid; 
+        grid-template-columns: repeat(auto-fit, minmax(85mm, 1fr)); 
+        gap: 4mm; 
+        margin-bottom: 8mm; 
+      }
+      .card { 
+        background: linear-gradient(145deg, #ffffff 0%, #f8f9fa 100%); 
+        border: 1px solid #e9ecef; 
+        border-radius: 8px; 
+        padding: 6mm; 
+        display: flex; 
+        flex-direction: column; 
+        justify-content: space-between; 
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08); 
+        transition: transform 0.2s ease; /* Subtle hover for interactivity */
+      }
+      .card:hover { transform: translateY(-1px); }
+      .card-header { 
+        background: linear-gradient(135deg, #0d6c6a 0%, #1abc9c 100%); 
+        color: white; 
+        padding: 2mm 3mm; 
+        border-radius: 6px 6px 0 0; 
+        font-size: 10px; 
+        font-weight: 600; 
+        text-align: center; 
+      }
+      .card-value { 
+        font-size: 12px; 
+        color: #2c3e50; 
+        font-weight: 500; 
+        text-align: center; 
+        margin-top: 1mm; 
+      }
+      .section { 
+        margin-bottom: 4mm; 
+        background: #fff; 
+        border-radius: 8px; 
+        box-shadow: 0 2px 10px rgba(0,0,0,0.06); 
+        page-break-inside: avoid; 
+      }
+      .section-header { 
+        background: linear-gradient(135deg, #0d6c6a 0%, #1abc9c 100%); 
+        color: white; 
+        padding: 4mm 6mm; 
+        font-size: 15px; 
+        font-weight: 600; 
+        margin: 0; 
+        border-bottom: 2px solid rgba(255,255,255,0.2); 
+      }
+      .section-content { padding: 6mm; background: #f8f9fa; }
+      .details-grid { 
+        display: flex; 
+        flex-direction: column;
+        gap: 6mm; 
+        font-size: 10px; 
+      }
+      .details-grid dt { 
+        font-weight: 600; 
+        color: #0d6c6a; 
+        margin-bottom: 2mm; 
+        font-size: 11px; 
+      }
+      .details-grid dd { 
+        margin: 0 0 4mm 0; 
+        color: #34495e; 
+        padding: 2mm; 
+        background: white; 
+        border-left: 3px solid #1abc9c; 
+        border-radius: 0 4px 4px 0; 
+      }
+      .remarks-box { 
+        background: linear-gradient(145deg, #f8f9fa 0%, #e9ecef 100%); 
+        border-radius: 8px; 
+        padding: 6mm; 
+        margin-bottom: 18mm; 
+        font-style: italic; 
+        color: #5a6c7d; 
+        font-size: 10px; 
+        border-left: 4px solid #f58220; 
+        box-shadow: inset 0 2px 4px rgba(0,0,0,0.05); 
+      }
+      table { 
+        width: 100%; 
+        border-collapse: collapse; 
+        margin-bottom: 6mm; 
+        font-size: 9px; 
+        background: white; 
+        border-radius: 8px; 
+        overflow: hidden; 
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08); 
+      }
+      th { 
+        background: linear-gradient(135deg, #f58220 0%, #e67e22 100%); 
+        color: white; 
+        padding: 4mm; 
+        text-align: left; 
+        font-weight: 600; 
+      }
+      td { 
+        padding: 4mm; 
+        border-bottom: 1px solid #e9ecef; 
+        vertical-align: top; 
+      }
+      tr:nth-child(even) td { background: #f8f9fa; }
+      tr:last-child td { border-bottom: none; }
+      tr:hover td { background: #e3f2fd; }
+      .orders-title { 
+        background: linear-gradient(135deg, #f58220 0%, #e67e22 100%); 
+        color: white; 
+        padding: 3mm 6mm; 
+        font-size: 14px; 
+        font-weight: 600; 
+        margin-bottom: 2mm; 
+        border-radius: 6px 6px 0 0; 
+      }
+      .receiver-detail { 
+        margin-bottom: 8mm; 
+        padding: 6mm; 
+        background: white; 
+        border-radius: 8px; 
+        box-shadow: 0 2px 6px rgba(0,0,0,0.05); 
+        border-left: 4px solid #1abc9c; 
+      }
+      .receiver-header { 
+        background: linear-gradient(135deg, #3498db 0%, #2980b9 100%); 
+        color: white; 
+        padding: 4mm; 
+        border-radius: 6px 6px 0 0; 
+        font-size: 13px; 
+        font-weight: 600; 
+        margin: -6mm -6mm 4mm -6mm; 
+      }
+      .shipping-item { 
+        margin-bottom: 6mm; 
+        padding: 4mm; 
+        background: #f8f9fa; 
+        border-radius: 6px; 
+        border-left: 3px solid #f58220; 
+      }
+      .shipping-header { 
+        font-size: 12px; 
+        color: #e67e22; 
+        margin-bottom: 3mm; 
+        font-weight: 600; 
+      }
+      .container-subtable { 
+        font-size: 8px; 
+        margin-top: 3mm; 
+      }
+      .container-subtable th { 
+        background: #3498db; 
+        color: white; 
+        padding: 2mm; 
+      }
+      .container-subtable td { 
+        padding: 2mm; 
+        border-bottom: 1px solid #bdc3c7; 
+      }
+      .footer { 
+        margin-top: 12mm; 
+        padding-top: 5mm; 
+        border-top: 2px solid #0d6c6a; 
+        color: #7f8c8d; 
+        font-size: 10px; 
+        text-align: center; 
+        font-style: italic; 
+      }
+      .page-break { page-break-before: always; }
+    </style>
+    
+    <div class="header">
+      <div class="header-left">
+        <img src="${logoBase64}" alt="Company Logo" class="header-logo" onerror="this.style.display='none';">
+      </div>
+      <div class="header-right">
+        <h1>Manifest Report</h1>
+        <p class="header-consignment">Consignment Number: ${data.consignment_number || 'N/A'}</p>
+        <p>${formatDate(new Date())}</p>
+        <p>Generated: ${new Date().toLocaleString()}</p>
+      </div>
+    </div>
+    
+    <div class="summary-grid">
+      <div class="card">
+        <div class="card-header">Containers</div>
+        <div class="card-value">${data.containers?.length || 0}</div>
+      </div>
+      <div class="card">
+        <div class="card-header">Orders</div>
+        <div class="card-value">${mappedReceivers?.length || 0}</div>
+      </div>
+      <div class="card">
+        <div class="card-header">Net Weight</div>
+        <div class="card-value">${formatWeight(data.net_weight)}</div>
+      </div>
+      <div class="card">
+        <div class="card-header">Gross Weight</div>
+        <div class="card-value">${formatWeight(data.gross_weight)}</div>
+      </div>
+      <div class="card">
+        <div class="card-header">Value</div>
+        <div class="card-value">${data.consignment_value || 0} ${data.currency_code || 'USD'}</div>
+      </div>
+      <div class="card">
+        <div class="card-header">Status</div>
+        <div class="card-value">${data.status || "Draft"}</div>
+      </div>
+    </div>
+    
+ <div class="section">
+  <h2 class="section-header">Consignment Details</h2>
+  <div style="display: flex; gap: 10px; justify-content: space-between; align-items: flex-start;">
+    <div style="flex: 1; background-color: #f8f9fa; padding: 5px; border-radius: 8px; border-left: 4px solid #f58220;">
+      <div style="margin-bottom: 6px;">
+        <strong style="display: block; color: #34495e; margin-bottom: 2px;">Consignee</strong>
+        <span style="color: #555;">${data.consigneeName || 'N/A'}</span>
+      </div>
+      <div style="margin-bottom: 6px;">
+        <strong style="display: block; color: #34495e; margin-bottom: 2px;">Destination</strong>
+        <span style="color: #555;">${data.destinationName || 'N/A'}</span>
+      </div>
+      <div style="margin-bottom: 6px;">
+        <strong style="display: block; color: #34495e; margin-bottom: 2px;">ETA</strong>
+        <span style="color: #555;">${formatDate(data.eta)}</span>
+      </div>
+      <div style="margin-bottom: 6px;">
+        <strong style="display: block; color: #34495e; margin-bottom: 2px;">Payment Type</strong>
+        <span style="color: #555;">${data.payment_type || 'N/A'}</span>
+      </div>
+      <div style="margin-bottom: 6px;">
+        <strong style="display: block; color: #34495e; margin-bottom: 2px;">Seal No</strong>
+        <span style="color: #555;">${data.seal_no || 'N/A'}</span>
+      </div>
+    </div>
+  <div style="flex: 1; background-color: #f8f9fa; padding: 5px; border-radius: 8px; border-left: 4px solid #f58220;">
+      <div style="margin-bottom: 6px;">
+        <strong style="display: block; color: #34495e; margin-bottom: 2px;">Shipper</strong>
+        <span style="color: #555;">${data.shipperName || 'N/A'}</span>
+      </div>
+      <div style="margin-bottom: 6px;">
+        <strong style="display: block; color: #34495e; margin-bottom: 2px;">Origin</strong>
+        <span style="color: #555;">${data.originName || 'N/A'}</span>
+      </div>
+      <div style="margin-bottom: 6px;">
+        <strong style="display: block; color: #34495e; margin-bottom: 2px;">Vessel / Voyage</strong>
+        <span style="color: #555;">${(data.vessel || 'N/A') + ' / ' + (data.voyage || 'N/A')}</span>
+      </div>
+      <div style="margin-bottom: 6px;">
+        <strong style="display: block; color: #34495e; margin-bottom: 2px;">Shipping Line</strong>
+        <span style="color: #555;">${data.shipping_line || 'N/A'}</span>
+      </div>
+      <div style="margin-bottom: 6px;">
+        <strong style="display: block; color: #34495e; margin-bottom: 2px;">Bank</strong>
+        <span style="color: #555;">${data.bankName || 'N/A'}</span>
+      </div>
+    </div>
+  </div>
+ ${data.remarks ? `
+    <div style="margin: 24px 0px; padding: 20px; background-color: #e8f5e8; border-radius: 8px; border-left: 4px solid #27ae60;">
+      <strong style="display: block; color: #34495e; margin-bottom: 8px;">Remarks:</strong>
+      <span style="color: #555; white-space: pre-wrap;">${data.remarks}</span>
+    </div>
+  ` : ''}
+</div>
+    
+   ${data.containers && data.containers.length > 0 ? `
+  <div class="section" style="margin-top:20px">
+    <h2 class="section-header">Containers</h2>
+    <table style="width: 100%; border-collapse: collapse;">
+      <thead>
+        <tr style="background-color: #e0e0e0;">
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd;">Container No</th>
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd;">Location</th>
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd;">Size</th>
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd;">Type</th>
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd;">Owner</th>
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd;">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${data.containers.map((c, idx) => `
+          <tr>
+            <td style="padding: 12px; border: 1px solid #ddd;"><strong>${c.containerNo || `Container ${idx + 1}`}</strong></td>
+            <td style="padding: 12px; border: 1px solid #ddd;">${c.location || 'N/A'}</td>
+            <td style="padding: 12px; border: 1px solid #ddd;">${c.size || 'N/A'}</td>
+            <td style="padding: 12px; border: 1px solid #ddd;">${c.containerType || 'N/A'}</td>
+            <td style="padding: 12px; border: 1px solid #ddd;">${c.ownership || 'N/A'}</td>
+            <td style="padding: 12px; border: 1px solid #ddd; color: #27ae60; font-weight: 500;">${c.status || 'Active'}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  </div>
+` : ''}
+
+${mappedReceivers && mappedReceivers.length > 0 ? `
+<div class="section">
+    <h2 class="section-header">Orders (${mappedReceivers.length})</h2>
+    <table style="width: 100%; border-collapse: collapse;">
+      <thead>
+        <tr style="background-color: #f39c12;">
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Booking Ref</th>
+          <th style="text-align: center; padding: 12px; border: 1px solid #ddd; color: white;">POL</th>
+          <th style="text-align: center; padding: 12px; border: 1px solid #ddd; color: white;">POD</th>
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Sender</th>
+          <th style="text-align: center; padding: 12px; border: 1px solid #ddd; color: white;">Receiver</th>
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${mappedReceivers.map((c, idx) => `
+          <tr>
+            <td style="padding: 12px; border: 1px solid #ddd;"><strong>${c.booking_ref || `Booking ${idx + 1}`}</strong></td>
+            <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">${getPlaceName(c.place_of_loading || 'N/A')}</td>
+            <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">${getPlaceName(c.place_of_delivery || 'N/A')}</td>
+            <td style="padding: 12px; border: 1px solid #ddd;">${c.sender_name || 'N/A'}</td>
+            <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">${c.receiver_name || 'N/A'}</td>
+            <td style="padding: 12px; border: 1px solid #ddd; color: #27ae60; font-weight: 500;">${c.status || 'N/A'}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  </div>
+` : ''}
+
+${shippingDetails.length > 0 ? `
+  <div class="section">
+    <h2 class="section-header">Shipment Details</h2>
+    <table style="width: 100%; border-collapse: collapse;">
+      <thead>
+        <tr style="background-color: #16a085;">
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Tracking No</th>
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Category</th>
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Sub Category</th>
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Type</th>
+          <th style="text-align: center; padding: 12px; border: 1px solid #ddd; color: white;">Total Items</th>
+          <th style="text-align: center; padding: 12px; border: 1px solid #ddd; color: white;">Weight (kg)</th>
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Pickup Location</th>
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Delivery Address</th>
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Container No</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${shippingDetails.map(s => `
+          <tr>
+            <td style="padding: 5px; border: 1px solid #ddd;"><strong>${s.itemRef || 'N/A'}</strong></td>
+            <td style="padding: 5px; border: 1px solid #ddd;">${s.category || 'N/A'}</td>
+            <td style="padding: 5px; border: 1px solid #ddd;">${s.subcategory || 'N/A'}</td>
+            <td style="padding: 5px; border: 1px solid #ddd;">${s.type || 'N/A'}</td>
+            <td style="padding: 5px; border: 1px solid #ddd; text-align: center;">${s.totalNumber || 'N/A'}</td>
+            <td style="padding: 5px; border: 1px solid #ddd; text-align: center;">${(s.weight / 1000).toFixed(2)}</td>
+            <td style="padding: 5px; border: 1px solid #ddd;">${s.pickupLocation || 'N/A'}</td>
+            <td style="padding: 5px; border: 1px solid #ddd;">${s.deliveryAddress || 'N/A'}</td>
+            <td style="padding: 5px; border: 1px solid #ddd;">${s.containerDetails?.[0]?.container?.container_number || 'N/A'}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  </div>
+` : ''}
+
+ 
+    <div class="footer">
+      <p><strong>Generated:</strong> ${new Date().toLocaleString()} | <strong>Page:</strong> 1 of ${Math.ceil(mappedReceivers?.length / 5 || 1)} </p>
+      <p style="margin-top: 2mm; font-size: 9px; opacity: 0.7;">© 2025 Royal Gulf Shipping Management System | This manifest is computer-generated and legally binding.</p>
+    </div>
+  `;
+  
+  document.body.appendChild(tempElement);
+  
+  // Convert the element to canvas with higher quality and proper dimensions
+  const scale = 2.5;
+  const canvas = await html2canvas(tempElement, {
+    scale: scale,
+    useCORS: true,
+    allowTaint: true,
+    logging: false,
+    width: tempElement.scrollWidth,
+    height: tempElement.scrollHeight,
+    windowWidth: tempElement.scrollWidth,
+    windowHeight: tempElement.scrollHeight,
+    backgroundColor: '#ffffff' // Ensure white background
+  });
+  
+  // Remove the temporary element
+  document.body.removeChild(tempElement);
+  
+  // Save the canvas as an image file (PNG) - High quality
+  const canvasDataURL = canvas.toDataURL('image/png', 1.0); // Full quality PNG
+  const canvasLink = document.createElement('a');
+  canvasLink.download = `Manifest_${data.consignment_number}_Canvas_${Date.now()}.png`;
+  canvasLink.href = canvasDataURL;
+  canvasLink.click(); // Trigger download
+  
+  // Create PDF from canvas with better quality and margins, with bottom space
+  const innerWidthMm = 210 - 2 * 14; // 182mm
+  const pxPerMm = canvas.width / innerWidthMm;
+  const extraBottomSpaceMm = 8 ; // Approx 70px at 96dpi ~18.5mm, rounded to 20mm
+  const contentHeightPerPageMm = (297 - 2 * 14) - extraBottomSpaceMm; // 269 - 20 = 249mm
+  const contentHeightPerPagePx = contentHeightPerPageMm * pxPerMm;
+  
+  const pdf = new jsPDF('p', 'mm', 'a4');
+  const marginMm = 14;
+  const contentWidthMm = innerWidthMm;
+  
+  let startY = 0;
+  while (startY < canvas.height) {
+    const sliceHeightPx = Math.min(contentHeightPerPagePx, canvas.height - startY);
+    
+    // Create cropped canvas for this page slice
+    const croppedCanvas = document.createElement('canvas');
+    croppedCanvas.width = canvas.width;
+    croppedCanvas.height = sliceHeightPx;
+    const ctx = croppedCanvas.getContext('2d');
+    ctx.drawImage(canvas, 0, startY, canvas.width, sliceHeightPx, 0, 0, canvas.width, sliceHeightPx);
+    
+    const croppedDataURL = croppedCanvas.toDataURL('image/png', 1.0);
+    const drawHeightMm = sliceHeightPx / pxPerMm;
+    
+    // Add to PDF (first page without addPage)
+    if (startY > 0) {
+      pdf.addPage();
+    }
+    pdf.addImage(croppedDataURL, 'PNG', marginMm, marginMm, contentWidthMm, drawHeightMm);
+    
+    startY += sliceHeightPx;
+  }
+  
+  // Save the PDF
+  pdf.save(`Manifest_${data.consignment_number}_Detailed_${Date.now()}.pdf`);
+};
   const handleView = (id) => {
         navigate(`/consignments/${id}/edit`,{ state: { mode: 'edit', consignmentId: id  } });
 
   };
 
   const handleEdit = (id) => {
+    
     navigate(`/consignments/${id}/edit`, { state: { mode: 'edit', consignmentId: id } });
   };
 
@@ -375,10 +1068,31 @@ function getSortableValue(item, key) {
     setSelectedStatus(e.target.value);
   };
 
-  const handleConfirmStatusUpdate = () => {
+  const handleConfirmStatusUpdate = async(row) => {
+    console.log('consignments',row)
+        try {
+          const res = await api.put(`/api/consignments/${row.id}/next`);
+          const { message } = res.data || {};
+          getConsignments()
+          console.log('Status advanced:', res)
+          setSnackbar({
+            open: true,
+            message: message || 'Status advanced successfully!',
+            severity: 'success',
+          });
+        } catch (err) {
+          console.error('Error advancing status:', err);
+          setSnackbar({
+            open: true,
+            message: 'Failed to advance status.',
+            severity: 'error',
+          });
+        
+      };
     setOpenStatusDialog(false);
-    setSnackbar({ open: true, message: 'Status updated successfully!', severity: 'success' });
-  };
+    // setSnackbar({ open: true, message: 'Status updated successfully!', severity: 'success' });
+      
+}
 
   const handleCloseStatusDialog = () => {
     setOpenStatusDialog(false);
@@ -406,13 +1120,21 @@ function getSortableValue(item, key) {
 
   const visibleRows = sortedConsignments.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
   const total = rowCount || filteredConsignments.length; // Use rowCount for server-side
+// For accurate totals in server-side pagination, fetch from API (see backend update suggestion below)
+// Client-side fallback for small datasets
+const totalWeight = useMemo(() => 
+  filteredConsignments.reduce((sum, item) => {
+    const weight = parseFloat(item.gross_weight) || 0; // Ensure numeric parsing
+    return sum + weight;
+  }, 0), 
+  [filteredConsignments]
+);
+// Helper for formatting total weight to 4 decimal places (use in render, e.g., {formatWeight(totalWeight)} kg)
+const formatWeight = useCallback((weight) => {
+  if (isNaN(weight) || weight === null || weight === undefined) return '0.0000';
+  return Number(weight).toFixed(4); // Format to 4 decimal places, e.g., "1234.5678"
+}, []);
 
-  // For accurate totals in server-side pagination, fetch from API (see backend update suggestion below)
-  // Client-side fallback for small datasets
-  const totalWeight = useMemo(() => 
-    filteredConsignments.reduce((sum, item) => sum + (item.gross_weight || 0), 0), 
-    [filteredConsignments]
-  );
 const totalOrders = useMemo(() => 
   filteredConsignments.reduce((sum, item) => sum + safeParseOrders(item.orders).length, 0), 
   [filteredConsignments]
@@ -453,7 +1175,7 @@ const totalOrders = useMemo(() =>
         <CardContent sx={{ p: 2 }}>
           <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={2}>
             <Typography variant="body1" color="text.secondary" sx={{ fontSize: { xs: '0.875rem', md: '1rem' } }}>
-              Showing <strong>{total}</strong> consignments • Total Orders: <strong>{totalOrders}</strong> • Total Weight: <strong>{totalWeight.toLocaleString('en-GB')} kg</strong>
+              Showing <strong>{total}</strong> consignments • Total Orders: <strong>{totalOrders}</strong> • Total Weight: <strong>{formatWeight(totalWeight)} kg</strong>
             </Typography>
             <Chip 
               icon={<InfoIcon fontSize="small" />} 
@@ -563,27 +1285,34 @@ const totalOrders = useMemo(() =>
         />
         <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 150 } }}>
           <InputLabel>Status</InputLabel>
-          <Select
-            name="status"
-            value={filters.status}
-            label="Status"
-            onChange={handleFilterChange}
-            sx={{
-              borderRadius: 2,
-              backgroundColor: 'background.paper',
-              '& .MuiOutlinedInput-notchedOutline': {
-                borderColor: '#0d6c6a',
-                '&:focus': { borderColor: '#0d6c6a' }
-              }
-            }}
-          >
-            <MenuItem value="">All</MenuItem>
-            {statuses.map((status) => (
-              <MenuItem key={status} value={status}>
-                {status}
-              </MenuItem>
-            ))}
-          </Select>
+       <Select
+  name="status"
+  value={filters.status}
+  label="Status"
+  onChange={handleFilterChange}
+  labelId="status-select-label"
+  aria-label="Select status"
+  sx={{
+    borderRadius: 2,
+    backgroundColor: 'background.paper',
+    '& .MuiOutlinedInput-notchedOutline': {
+      borderColor: '#0d6c6a',
+      '&:focus': { borderColor: '#0d6c6a' }
+    }
+  }}
+>
+  <MenuItem value="">All</MenuItem>
+  {statusList?.map((status) => (
+    <MenuItem key={status.value} value={status.value}>
+      <ListItemIcon>
+        <Avatar sx={{ width: 16, height: 16, bgcolor: status.color, fontSize: '0.75rem' }}>
+          {status.usage_count > 0 ? status.usage_count : ''}
+        </Avatar>
+      </ListItemIcon>
+      {status.label}
+    </MenuItem>
+  ))}
+</Select>
         </FormControl>
       </Stack>
 
@@ -678,7 +1407,7 @@ const totalOrders = useMemo(() =>
                 return (
                   <StyledTableRow
                     key={row.id}
-                    onClick={() => handleClick(row.id)}
+                    onClick={() => {handleClick(row.id),setSelectedExport(row)}}
                     role="checkbox"
                     aria-checked={isItemSelected}
                     selected={isItemSelected}
@@ -688,6 +1417,7 @@ const totalOrders = useMemo(() =>
                       if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault();
                         handleClick(row.id);
+                        setSelectedExport(row.id);
                       }
                     }}
                     sx={{ 
@@ -703,6 +1433,7 @@ const totalOrders = useMemo(() =>
                         checked={isItemSelected}
                         onClick={(event) => {
                           handleClick(row.id);
+                          setSelectedExport(row);
                           event.stopPropagation();
                         }}
                         size="small"
@@ -716,7 +1447,7 @@ const totalOrders = useMemo(() =>
   const cellContent = column.render(row);
   const isChip = column.key === 'status'; // Or check if React.isValidElement(cellContent) && cellContent.type === Chip
   return (
-    <StyledTableCell key={column.key} sx={{ width: `${100 / (columns.length + 2)}%`, maxWidth: 150 }}>
+    <StyledTableCell key={column.key} sx={{ width: `${100 / (columns.length + 2)}%`, maxWidth: 250 }}>
       <Tooltip 
         sx={{ width: '100%' }} 
         title={typeof cellContent === 'string' ? cellContent : ''} 
@@ -737,10 +1468,10 @@ const totalOrders = useMemo(() =>
 })}
                     <StyledTableCell sx={{ width: 80, padding: '12px 8px' }}>
                       <Stack direction="row" spacing={0.5} justifyContent="center">
-                        <Tooltip title="View Details">
-                          <IconButton 
+                        <Tooltip title="Update Status">
+                          <EditNoteIcon
                             size="small" 
-                            onClick={(e) => { e.stopPropagation(); handleView(row.id); }}
+                            onClick={(e) => { e.stopPropagation(); handleStatusUpdate(row); }}
                             aria-label={`View details for consignment ${row.consignment_number}`}
                             sx={{ 
                               color: '#f58220',
@@ -750,7 +1481,7 @@ const totalOrders = useMemo(() =>
                             }}
                           >
                             <VisibilityIcon fontSize="small" />
-                          </IconButton>
+                          </EditNoteIcon>
                         </Tooltip>
                         <Tooltip title="Edit">
                           <IconButton 
@@ -842,28 +1573,34 @@ const totalOrders = useMemo(() =>
           </Typography>
           <FormControl fullWidth margin="dense" size="small">
             <InputLabel id="status-select-label">Status</InputLabel>
-            <Select
-              labelId="status-select-label"
-              value={selectedStatus}
-              label="Status"
-              onChange={handleStatusChange}
-              aria-label="Select status"
-              sx={{
-                borderRadius: 2,
-                '& .MuiOutlinedInput-notchedOutline': { borderColor: '#0d6c6a' }
-              }}
-            >
-              {statuses.map((status) => (
-                <MenuItem key={status} value={status}>
-                  {status}
-                </MenuItem>
-              ))}
-            </Select>
+<Select
+  labelId="status-select-label"
+  value={selectedStatus}
+  label="Status"
+  onChange={handleStatusChange}
+  aria-label="Select status"
+  sx={{
+    borderRadius: 2,
+    '& .MuiOutlinedInput-notchedOutline': { borderColor: '#0d6c6a' }
+  }}
+>
+  <MenuItem value="">All</MenuItem>
+  {statusList?.map((status) => (
+    <MenuItem key={status.value} value={status.value}>
+      <ListItemIcon>
+        <Avatar sx={{ width: 16, height: 16, bgcolor: status.color, fontSize: '0.75rem' }}>
+          {status.usage_count > 0 ? status.usage_count : ''}
+        </Avatar>
+      </ListItemIcon>
+      {status.label}
+    </MenuItem>
+  ))}
+</Select>
           </FormControl>
         </DialogContent>
         <DialogActions sx={{ p: 2, pt: 0, bgcolor: '#f8f9fa', borderTop: 1, borderColor: 'divider' }}>
           <Button onClick={handleCloseStatusDialog} size="small" variant="outlined">Cancel</Button>
-          <Button onClick={handleConfirmStatusUpdate} variant="contained" size="small" sx={{ backgroundColor: '#0d6c6a', '&:hover': { backgroundColor: '#0a5a59' } }}>
+          <Button onClick={() => handleConfirmStatusUpdate(selectedConsignmentForUpdate)} variant="contained" size="small" sx={{ backgroundColor: '#0d6c6a', '&:hover': { backgroundColor: '#0a5a59' } }}>
             Update
           </Button>
         </DialogActions>

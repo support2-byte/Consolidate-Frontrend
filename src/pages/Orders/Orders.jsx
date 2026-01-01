@@ -1140,31 +1140,32 @@ const PrettyContainersList = ({ items, title }) => {
 // Example usage in your component (assuming 'order' is the JSON data):
 // const containerList = parseContainersToList(order);
 // <PrettyContainersList items={containerList} title="Containers" />
-    const StyledTableRow = styled(TableRow)(({ theme }) => ({
-        '&:nth-of-type(odd)': {
-            backgroundColor: theme.palette.action.hover,
-        },
-        // hide last border
-        '&:last-child td, &:last-child th': {
-            border: 0,
-        },
-        '&:hover': {
-            backgroundColor: theme.palette.action.selected,
-        },
-    }));
-    const StyledTableCell = styled(TableCell)(({ theme }) => ({
-        borderBottom: `1px solid ${theme.palette.divider}`,
-        fontSize: '0.875rem',
-        padding: theme.spacing(1.5, 2),
-    }));
-    const StyledTableHeadCell = styled(TableCell)(({ theme }) => ({
-        backgroundColor: theme.palette.primary.main,
-        color: theme.palette.primary.contrastText,
-        fontWeight: 'bold',
-        fontSize: '0.875rem',
-        padding: theme.spacing(1.5, 2),
-        borderBottom: `2px solid ${theme.palette.primary.dark}`,
-    }));
+     // Styled components (unchanged)
+     const StyledTableRow = styled(TableRow)(({ theme }) => ({
+       '&:nth-of-type(odd)': {
+         backgroundColor: theme.palette.action.hover,
+       },
+       '&:last-child td, &:last-child th': {
+         border: 0,
+       },
+       '&:hover': {
+         backgroundColor: theme.palette.action.selected,
+       },
+     }));
+     const StyledTableCell = styled(TableCell)(({ theme }) => ({
+       borderBottom: `1px solid ${theme.palette.divider}`,
+       fontSize: '0.875rem',
+       padding: theme.spacing(1.5, 2),
+     }));
+   
+     const StyledTableHeadCell = styled(TableCell)(({ theme }) => ({
+       backgroundColor: theme.palette.primary.main,
+       color: theme.palette.primary.contrastText,
+       fontWeight: 'bold',
+       fontSize: '0.875rem',
+       padding: theme.spacing(1.5, 2),
+       borderBottom: `2px solid ${theme.palette.primary.dark}`,
+     }));
     if (loading) {
         return (
             <Paper sx={{ p: 3, borderRadius: 3, boxShadow: 3, bgcolor: "#fafafa" }}>
@@ -1282,18 +1283,37 @@ const PrettyContainersList = ({ items, title }) => {
                         </Select>
                     </FormControl>
                 </Stack>
-        <TableContainer sx={{ borderRadius: 2, overflow: 'hidden', boxShadow: 2 }}>
-    <Table stickyHeader>
+        
+              {/* Table - FIXED: No whitespace between <TableHead> and <TableBody> */}
+              <TableContainer sx={{ 
+                borderRadius: 2, 
+                overflow: 'scroll',
+                boxShadow: 2, 
+                // maxHeight: 600,  
+                width: '100%',
+                '&::-webkit-scrollbar': {
+                  height: 6,
+                  width: 6,
+                },
+                '&::-webkit-scrollbar-track': {
+                  background: 'background.paper',
+                },
+                '&::-webkit-scrollbar-thumb': {
+                  background: '#0d6c6a',
+                  borderRadius: 3,
+                }
+              }}>
+                <Table stickyHeader size="small" aria-label="Consignments table" sx={{ tableLayout: 'fixed' }}>
         <TableHead>
             <TableRow sx={{ bgcolor: '#0d6c6a' }}>
-                <TableCell padding="checkbox" sx={{ bgcolor: '#0d6c6a', color: '#fff' }}>
-                    <Checkbox
+                <StyledTableHeadCell padding="checkbox" sx={{ bgcolor: '#0d6c6a', color: '#fff' }}>
+                {/*     <Checkbox
                         color="primary"
                         indeterminate={numSelected > 0 && numSelected < rowCount}
                         checked={rowCount > 0 && numSelected === rowCount}
                         onChange={handleSelectAllClick}
-                    />
-                </TableCell>
+                    /> */}  
+                </StyledTableHeadCell>
                 {[
                     <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="ref">Booking Ref</StyledTableHeadCell>,
                     <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="loading">POL</StyledTableHeadCell>,
@@ -1303,8 +1323,8 @@ const PrettyContainersList = ({ items, title }) => {
                     <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="containers">Containers</StyledTableHeadCell>,
                     // New column for Products (weight, category, item products, total number)
                     <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="products">Products</StyledTableHeadCell>,
-                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="created">Total Weight</StyledTableHeadCell>,
-                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="actions">Total Items</StyledTableHeadCell>,
+                    // <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="created">Total Weight</StyledTableHeadCell>,
+                    // <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="actions">Total Items</StyledTableHeadCell>,
                 
                     <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="updated_at">Updated At</StyledTableHeadCell>,
                     // <TableCell key="assoc">Associated Container</TableCell>,
@@ -1362,7 +1382,7 @@ console.log('Ren container list:', containersList);
                         selected={isItemSelected}
                         sx={{ cursor: 'pointer' }}
                     >
-                        <TableCell padding="checkbox">
+                        <StyledTableCell padding="checkbox">
                             <Checkbox
                                 checked={isItemSelected}
                                 onChange={(event) => {
@@ -1373,7 +1393,7 @@ console.log('Ren container list:', containersList);
                                     'aria-labelledby': `enhanced-table-checkbox-${order.id}`,
                                 }}
                             />
-                        </TableCell>
+                        </StyledTableCell>
                         <StyledTableCell>{order.booking_ref}</StyledTableCell>
                         <StyledTableCell>{getPlaceName(order?.place_of_loading)}</StyledTableCell>
                         <StyledTableCell>{getPlaceName(order.place_of_delivery)}</StyledTableCell>
@@ -1428,7 +1448,7 @@ console.log('Ren container list:', containersList);
                                                     <Typography variant="body2"><strong>Subcategory:</strong> {product.subcategory || '-'}</Typography>
                                                     <Typography variant="body2"><strong>Item Type:</strong> {product.type}</Typography>
                                                     <Typography variant="body2"><strong>Weight:</strong> {product.weight} kg</Typography>
-                                                    <Typography variant="body2"><strong>Total Number:</strong> {product.total_number}</Typography>
+                                                    <Typography variant="body2"><strong>Total Items:</strong> {product.total_number}</Typography>
                                                     {/* <Typography variant="body2"><strong>Status:</strong> {product.status || '-'}</Typography> */}
                                                     {product.itemRef && <Typography variant="body2"><strong>Item Ref:</strong> {product.itemRef}</Typography>}
                                                 </Box>
@@ -1459,8 +1479,8 @@ console.log('Ren container list:', containersList);
                                 </Typography>
                             </Tooltip>
                         </StyledTableCell>
-                        <StyledTableCell>{totalWeight.toFixed(1)} kg</StyledTableCell>
-                        <StyledTableCell>{totalItems.toFixed()} </StyledTableCell>
+                        {/* <StyledTableCell>{totalWeight.toFixed(1)} kg</StyledTableCell>
+                        <StyledTableCell>{totalItems.toFixed()} </StyledTableCell> */}
 
 
                         <TableCell>
@@ -1486,25 +1506,38 @@ console.log('Ren container list:', containersList);
         </TableBody>
     </Table>
 </TableContainer>
-<TablePagination
-    rowsPerPageOptions={[5, 10, 25]}
-    component="div"
-    count={total}
-    rowsPerPage={rowsPerPage}
-    page={page}
-    onPageChange={handleChangePage}
-    onRowsPerPageChange={handleChangeRowsPerPage}
-    sx={{
-        borderTop: '1px solid rgba(224, 224, 224, 1)',
-        '& .MuiTablePagination-selectLabel, & .MuiTablePagination-displayedRows': {
+  {/* Pagination (unchanged, but uses fixed total) */}
+      <TablePagination
+        rowsPerPageOptions={[5, 10, 25]}
+        component="div"
+        count={total}
+        rowsPerPage={rowsPerPage}
+        page={page}
+        onPageChange={handleChangePage}
+        onRowsPerPageChange={handleChangeRowsPerPage}
+        labelRowsPerPage="Rows per page:"
+        labelDisplayedRows={({ from, to, count }) => `${from}-${to} of ${count}`}
+        sx={{
+          borderTop: '1px solid rgba(224, 224, 224, 1)',
+          '& .MuiTablePagination-selectLabel, & .MuiTablePagination-displayedRows': {
             color: '#f58220',
             fontWeight: 'medium',
-        },
-        '& .MuiTablePagination-actions button': {
+            fontSize: '0.875rem',
+          },
+          '& .MuiTablePagination-select, & .MuiTablePagination-input': {
+            fontSize: '0.875rem',
+            borderRadius: 1,
+            '&:focus': { borderColor: '#0d6c6a' }
+          },
+          '& .MuiTablePagination-actions button': {
             color: '#0d6c6a',
-        }
-    }}
-/>
+            '& svg': { fontSize: '1.125rem' },
+            '&:hover': { backgroundColor: 'rgba(13, 108, 106, 0.08)' },
+            '&:focus': { outline: '2px solid #0d6c6a' }
+          }
+        }}
+        // aria-label="Consignments table pagination"
+      />
                 <OrderModalView
                     openModal={openModal}
                     handleCloseModal={handleCloseModal}
