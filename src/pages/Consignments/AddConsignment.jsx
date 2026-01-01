@@ -259,7 +259,30 @@ const handleStatusChange = (newStatusOrEvent) => {
     setEtaLoading(false);
   }
 };
+// getStatusColor function: Maps consignment/container status to hex color
+// Based on provided status data. Returns color string or fallback gray if unknown.
+const getStatusColor = (status) => {
+  if (!status || typeof status !== 'string') {
+    return '#E0E0E0'; // Fallback for empty/unknown (light gray)
+  }
 
+  const statusColors = {
+    'HOLD': '#FF9800',
+    'Cancelled': '#F44336',
+    'Drafts Cleared': '#E0E0E0',
+    'Submitted On Vessel': '#9C27B0',
+    'Customs Cleared': '#4CAF50',
+    'Submitted': '#FFEB3B',
+    'Under Shipment Processing': '#FF9800',
+    'In Transit': '#4CAF50',
+    'Arrived at Facility': '#795548',
+    'Ready for Delivery': '#FFEB3B',
+    'Arrived at Destination': '#FFEB3B',
+    'Delivered': '#2196F3'
+  };
+
+  return statusColors[status] || '#9E9E9E'; // Default medium gray for unlisted
+}
 // Sync eta state with form values
 
 // console.log('selected roe',effectiveConsignmentId)
@@ -273,7 +296,7 @@ const handleStatusChange = (newStatusOrEvent) => {
         vesselsRes, shippingLinesRes, currenciesRes, statusesRes, containerStatusesRes] =
         await Promise.all([
           api.get('api/options/thirdParty/crud'),
-          api.get('api/options/origins'),
+          api.get('api/options/places/crud'),
           api.get('api/options/places/crud'),
           api.get('api/options/banks/crud'),
           api.get('api/options/payment-types/crud'),
@@ -291,7 +314,7 @@ const handleStatusChange = (newStatusOrEvent) => {
           label: item[labelKey] || item.label || item[valueKey] || ''
         }));
       const filteredDestinations = (destinationsRes?.data?.places || []).filter(place => place.is_destination === true);
-      const filteredOrigins = (destinationsRes?.data?.places || []).filter(place => place.is_destination === false);
+      const filteredOrigins = (destinationsRes?.data?.places || []).filter(place => place.is_destination === true || place.is_origin === true );
       const paymentEnumMap = {
         'AP (Advance Payment)': 'Prepaid',
         'DP (Docs against Payment)': 'Collect',
@@ -851,10 +874,10 @@ useEffect(() => {
       'Received for Shipment': { bg: '#e3f2fd', text: '#1976d2' },
       'Waiting for Authentication': { bg: '#fff3e0', text: '#ef6c00' },
       'Shipper Authentication Confirmed': { bg: '#e8f5e8', text: '#388e3c' },
-      'Waiting for Consignee Authentication': { bg: '#fff3e0', text: '#ef6c00' },
+      'Under Shipment Processing': { bg: '#fff3e0', text: '#ef6c00' },
       'Waiting for Shipper Authentication (if applicable)': { bg: '#fff3e0', text: '#ef6c00' },
-      'Consignee Authentication Confirmed': { bg: '#e8f5e8', text: '#388e3c' },
-      'In Process': { bg: '#fff3e0', text: '#ef6c00' },
+      'Customs Cleared': { bg: '#e8f5e8', text: '#388e3c' },
+      'In Transit': { bg: '#fff3e0', text: '#ef6c00' },
       'Ready for Loading': { bg: '#f3e5f5', text: '#7b1fa2' },
       'Loaded into Container': { bg: '#e0f2f1', text: '#00695c' },
       'Departed for Port': { bg: '#e1f5fe', text: '#0277bd' },
@@ -1366,10 +1389,11 @@ useEffect(() => {
   }));
   const StatusChip = ({ status }) => {
     const colors = getStatusColors(status);
+    console.log('StatusChip colors for', status, colors);
     return (
       <Chip
         label={status}
-        size="small"
+        size="large"
         sx={{
           height: 18,
           fontSize: '0.65rem',
@@ -1577,8 +1601,9 @@ const getPlaceNamePdf = (id) => {
   const places = { 2: 'Karachi', 5: 'Dubai' }; // Add more as needed
   return places[id] || 'N/A';
 };
+
 const generateManifestPDFWithCanvas = async (data, allReceivers, selectedOrderObjects = includedOrders) => {
-  console.log('data for canvas',data,allReceivers,includedOrders)
+  console.log('data for canvas data',data)
   if (!data.consignment_number) {
     setSnackbar({
       open: true,
@@ -1953,7 +1978,7 @@ const generateManifestPDFWithCanvas = async (data, allReceivers, selectedOrderOb
 
 ${allReceivers && allReceivers.length > 0 ? `
 <div class="section">
-    <h2 class="section-header">Selected Orders (${allReceivers.length})</h2>
+    <h2 class="section-header">Orders (${allReceivers.length})</h2>
     <table style="width: 100%; border-collapse: collapse;">
       <thead>
         <tr style="background-color: #f39c12;">
@@ -1972,8 +1997,8 @@ ${allReceivers && allReceivers.length > 0 ? `
             <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">${getPlaceName(c.place_of_loading || 'N/A')}</td>
             <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">${getPlaceName(c.place_of_delivery || 'N/A')}</td>
             <td style="padding: 12px; border: 1px solid #ddd;">${c.sender_name || 'N/A'}</td>
-            <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">${c.receiver_name || c?.receivers[0]?.receiver_name}</td>
-            <td style="padding: 12px; border: 1px solid #ddd; color: #27ae60; font-weight: 500;">${c?.receivers[0]?.status || 'N/A'}</td>
+            <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">${c.receiver_name || c?.receivers[0]?.receiver_name || 'N/A'}</td>
+            <td style="padding: 12px; border: 1px solid #ddd; color: #27ae60; font-weight: 500;">${c?.status || 'N/A'}</td>
           </tr>
         `).join('')}
       </tbody>
@@ -1996,7 +2021,6 @@ ${allReceivers && allReceivers.length > 0 ? `
           <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Pickup Location</th>
           <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Delivery Address</th>
           <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Container No</th>
-          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Status</th>
         </tr>
       </thead>
       <tbody>
@@ -2013,7 +2037,6 @@ ${allReceivers && allReceivers.length > 0 ? `
             <td style="padding: 5px; border: 1px solid #ddd;">${s.pickupLocation || 'N/A'}</td>
             <td style="padding: 5px; border: 1px solid #ddd;">${s.deliveryAddress || 'N/A'}</td>
             <td style="padding: 5px; border: 1px solid #ddd;">${s.containerDetails?.[0]?.container?.container_number || 'N/A'}</td>
-            <td style="padding: 5px; border: 1px solid #ddd; color: #27ae60; font-weight: 500;">${s.consignmentStatus || 'Ready for Loading'}</td>
           </tr>
         `).join('')}
       </tbody>
@@ -2028,7 +2051,6 @@ ${allReceivers && allReceivers.length > 0 ? `
     </div>
   `;
   
-  // Add the temporary element to the body
   document.body.appendChild(tempElement);
   
   // Convert the element to canvas with higher quality and proper dimensions
@@ -2092,7 +2114,9 @@ ${allReceivers && allReceivers.length > 0 ? `
   // Save the PDF
   pdf.save(`Manifest_${data.consignment_number}_Detailed_${Date.now()}.pdf`);
 };
-const generateManifestPDF = async (data, allReceivers, selectedOrderObjects = includedOrders) => {
+
+const generateContainersAndOrdersPDFWithCanvas = async (data, allReceivers, selectedOrderObjects = includedOrders) => {
+  console.log('data for canvas data',data)
   if (!data.consignment_number) {
     setSnackbar({
       open: true,
@@ -2101,235 +2125,451 @@ const generateManifestPDF = async (data, allReceivers, selectedOrderObjects = in
     });
     return;
   }
-  //---------------------------------------------------
-  // SETUP
-  //---------------------------------------------------
-  const doc = new jsPDF('p', 'mm', 'a4');
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const margin = 14;
-  const padding = 10;
-  const brandPrimary = [13, 108, 106]; // #0d6c6a
-  const brandAccent = [245, 130, 32]; // #f58220
-  let y = 30;
-  // -------- HEADER --------
-  const logoBase64 = await loadImageAsBase64("./logo-2.png"); // Note: Ensure this path is correct (e.g., import logo if in src/, or place in public/)
-  const drawHeader = () => { // Removed unused y param
-    const headerHeight = 22;
-    // Main brand color bar (draw FIRST to avoid overwriting text)
-    doc.setFillColor(...brandPrimary);
-    doc.rect(0, 0, pageWidth, headerHeight, 'F');
-    // Logo (left side)
-    if (logoBase64) { // Guard against null logo
-      doc.addImage(logoBase64, "PNG", margin, 4, 60, 12);
-    } else {
-      // Fallback: Draw a placeholder or log error (optional)
-      console.warn('Logo failed to load');
+     const groupedShipping = allReceivers.reduce((acc, order) => {
+  acc[order.id] = order.receivers.reduce((recAcc, receiver) => {
+    recAcc[receiver.id] = receiver.shippingdetails || [];
+    return recAcc;
+  }, {});
+  return acc;
+}, {});
+  // Helper function to normalize/format dates
+  const formatDate = (dateStr) => {
+    if (!dateStr) return 'N/A';
+    return new Date(dateStr).toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
+  };
+
+  // Helper function to get place name (assuming getPlaceName is defined; fallback here)
+  const getPlaceName = (id) => {
+    const places = { 2: 'Karachi', 5: 'Dubai' }; // Example; replace with actual
+    return places[id] || id || 'N/A';
+  };
+
+  // Helper to format weight
+  const formatWeight = (weight) => weight ? `${weight} KGS` : 'N/A';
+
+  // Load logo as base64
+  const logoBase64 = await loadImageAsBase64(logoPic);
+
+  // Create a temporary div element to render content
+  const tempElement = document.createElement('div');
+  tempElement.style.width = '210mm'; // A4 width
+  tempElement.style.padding = '4mm'; // Match margin
+  tempElement.style.backgroundColor = 'white';
+  tempElement.style.fontFamily = '"Helvetica Neue", Helvetica, Arial, sans-serif';
+  tempElement.style.boxSizing = 'border-box';
+  
+  // Create the content for the PDF with enhanced, user-friendly styling
+  tempElement.innerHTML = `
+    <style>
+      * { box-sizing: border-box; }
+      body { 
+        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; 
+        margin: 0; padding: 0; 
+        color: #2c3e50; background: white; 
+        line-height: 1.4; 
+        font-size: 11px; 
+      }
+      .header { 
+        background: linear-gradient(135deg, #1abc9c 0%, #0d6c6a 100%); 
+        color: white; 
+        height: 30mm; 
+        padding: 4mm 4mm; 
+        display: flex; 
+        justify-content: space-between; 
+        align-items: center; 
+        margin-bottom: 8mm;
+        border-radius: 0 0 0px 0px; 
+        box-shadow: 0 4px 12px rgba(13, 108, 106, 0.2); 
+      }
+      .header-logo { width: 220px; height: 60px; opacity: 0.95; } 
+      .header-left { display: flex; gap: 0mm; }
+      .header-consignment { font-size: 14px; font-weight: bold; margin: 0; }
+      .header-right { text-align: right; flex-shrink: 0; }
+      .header h1 { margin: 0 0 2mm 0; font-size: 20px; font-weight: 600; }
+      .header p { margin: 0.5mm 0; font-size: 10px; opacity: 0.9; }
+      .summary-grid { 
+        display: grid; 
+        grid-template-columns: repeat(auto-fit, minmax(85mm, 1fr)); 
+        gap: 4mm; 
+        margin-bottom: 8mm; 
+      }
+      .card { 
+        background: linear-gradient(145deg, #ffffff 0%, #f8f9fa 100%); 
+        border: 1px solid #e9ecef; 
+        border-radius: 8px; 
+        padding: 6mm; 
+        // height: 60px; 
+        display: flex; 
+        flex-direction: column; 
+        justify-content: space-between; 
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08); 
+        transition: transform 0.2s ease; /* Subtle hover for interactivity */
+      }
+      .card:hover { transform: translateY(-1px); }
+      .card-header { 
+        background: linear-gradient(135deg, #0d6c6a 0%, #1abc9c 100%); 
+        color: white; 
+        padding: 2mm 3mm; 
+        border-radius: 6px 6px 0 0; 
+        font-size: 10px; 
+        font-weight: 600; 
+        text-align: center; 
+      }
+      .card-value { 
+        font-size: 12px; 
+        color: #2c3e50; 
+        font-weight: 500; 
+        text-align: center; 
+        margin-top: 1mm; 
+      }
+      .section { 
+        margin-bottom: 4mm; 
+        background: #fff; 
+        border-radius: 8px; 
+        // overflow: hidden; 
+        box-shadow: 0 2px 10px rgba(0,0,0,0.06); 
+        page-break-inside: avoid; 
+      }
+      .section-header { 
+        background: linear-gradient(135deg, #0d6c6a 0%, #1abc9c 100%); 
+        color: white; 
+        padding: 4mm 6mm; 
+        font-size: 15px; 
+        font-weight: 600; 
+        margin: 0; 
+        border-bottom: 2px solid rgba(255,255,255,0.2); 
+      }
+      .section-content { padding: 6mm; background: #f8f9fa; }
+      .details-grid { 
+        display: flex; 
+        flexDirection:colums;
+        gap: 6mm; 
+        font-size: 10px; 
+      }
+      .details-grid dt { 
+        font-weight: 600; 
+        color: #0d6c6a; 
+        margin-bottom: 2mm; 
+        font-size: 11px; 
+      }
+      .details-grid dd { 
+        margin: 0 0 4mm 0; 
+        color: #34495e; 
+        padding: 2mm; 
+        background: white; 
+        border-left: 3px solid #1abc9c; 
+        border-radius: 0 4px 4px 0; 
+      }
+      .remarks-box { 
+        background: linear-gradient(145deg, #f8f9fa 0%, #e9ecef 100%); 
+        border-radius: 8px; 
+        padding: 6mm; 
+        margin-bottom: 18mm; 
+        font-style: italic; 
+        color: #5a6c7d; 
+        font-size: 10px; 
+        border-left: 4px solid #f58220; 
+        box-shadow: inset 0 2px 4px rgba(0,0,0,0.05); 
+      }
+      table { 
+        width: 100%; 
+        border-collapse: collapse; 
+        margin-bottom: 6mm; 
+        font-size: 9px; 
+        background: white; 
+        border-radius: 8px; 
+        overflow: hidden; 
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08); 
+      }
+      th { 
+        background: linear-gradient(135deg, #f58220 0%, #e67e22 100%); 
+        color: white; 
+        padding: 4mm; 
+        text-align: left; 
+        font-weight: 600; 
+      }
+      td { 
+        padding: 4mm; 
+        border-bottom: 1px solid #e9ecef; 
+        vertical-align: top; 
+      }
+      tr:nth-child(even) td { background: #f8f9fa; }
+      tr:last-child td { border-bottom: none; }
+      tr:hover td { background: #e3f2fd; }
+      .orders-title { 
+        background: linear-gradient(135deg, #f58220 0%, #e67e22 100%); 
+        color: white; 
+        padding: 3mm 6mm; 
+        font-size: 14px; 
+        font-weight: 600; 
+        margin-bottom: 2mm; 
+        border-radius: 6px 6px 0 0; 
+      }
+      .receiver-detail { 
+        margin-bottom: 8mm; 
+        padding: 6mm; 
+        background: white; 
+        border-radius: 8px; 
+        box-shadow: 0 2px 6px rgba(0,0,0,0.05); 
+        border-left: 4px solid #1abc9c; 
+      }
+      .receiver-header { 
+        background: linear-gradient(135deg, #3498db 0%, #2980b9 100%); 
+        color: white; 
+        padding: 4mm; 
+        border-radius: 6px 6px 0 0; 
+        font-size: 13px; 
+        font-weight: 600; 
+        margin: -6mm -6mm 4mm -6mm; 
+      }
+      .shipping-item { 
+        margin-bottom: 6mm; 
+        padding: 4mm; 
+        background: #f8f9fa; 
+        border-radius: 6px; 
+        border-left: 3px solid #f58220; 
+      }
+      .shipping-header { 
+        font-size: 12px; 
+        color: #e67e22; 
+        margin-bottom: 3mm; 
+        font-weight: 600; 
+      }
+      .container-subtable { 
+        font-size: 8px; 
+        margin-top: 3mm; 
+      }
+      .container-subtable th { 
+        background: #3498db; 
+        color: white; 
+        padding: 2mm; 
+      }
+      .container-subtable td { 
+        padding: 2mm; 
+        border-bottom: 1px solid #bdc3c7; 
+      }
+      .footer { 
+        margin-top: 12mm; 
+        padding-top: 5mm; 
+        border-top: 2px solid #0d6c6a; 
+        color: #7f8c8d; 
+        font-size: 10px; 
+        text-align: center; 
+        font-style: italic; 
+      }
+      .page-break { page-break-before: always; }
+    </style>
+    
+    <div class="header">
+      <div class="header-left">
+        <img src="${logoBase64}" alt="Company Logo" class="header-logo" onerror="this.style.display='none';">
+      </div>
+      <div class="header-right">
+        <h1>Manifest Report</h1>
+        <p class="header-consignment">Consignment Number: ${data.consignment_number || 'N/A'}</p>
+        <p>${formatDate(new Date())}</p>
+        <p>Generated: ${new Date().toLocaleString()}</p>
+      </div>
+    </div>
+    
+    <div class="summary-grid">
+      <div class="card">
+        <div class="card-header">Containers</div>
+        <div class="card-value">${data.containers?.length || 0}</div>
+      </div>
+      <div class="card">
+        <div class="card-header">Orders</div>
+        <div class="card-value">${selectedOrderObjects?.length || allReceivers?.length || 0}</div>
+      </div>
+      <div class="card">
+        <div class="card-header">Net Weight</div>
+        <div class="card-value">${formatWeight(data.net_weight)}</div>
+      </div>
+      <div class="card">
+        <div class="card-header">Gross Weight</div>
+        <div class="card-value">${formatWeight(data.gross_weight)}</div>
+      </div>
+      <div class="card">
+        <div class="card-header">Value</div>
+        <div class="card-value">${data.consignment_value || 0} ${data.currency_code || 'USD'}</div>
+      </div>
+      <div class="card">
+        <div class="card-header">Status</div>
+        <div class="card-value">${data.status || "Draft"}</div>
+      </div>
+    </div>
+    
+   ${data.containers && data.containers.length > 0 ? `
+  <div class="section" style={{marginTop:20px}}>
+    <h2 class="section-header">Containers</h2>
+    <table style="width: 100%; border-collapse: collapse;">
+      <thead>
+        <tr style="background-color: #e0e0e0;">
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd;">Container No</th>
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd;">Location</th>
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd;">Size</th>
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd;">Type</th>
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd;">Owner</th>
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd;">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${data.containers.map((c, idx) => `
+          <tr>
+            <td style="padding: 12px; border: 1px solid #ddd;"><strong>${c.containerNo || `Container ${idx + 1}`}</strong></td>
+            <td style="padding: 12px; border: 1px solid #ddd;">${c.location || 'N/A'}</td>
+            <td style="padding: 12px; border: 1px solid #ddd;">${c.size || 'N/A'}</td>
+            <td style="padding: 12px; border: 1px solid #ddd;">${c.containerType || 'N/A'}</td>
+            <td style="padding: 12px; border: 1px solid #ddd;">${c.ownership || 'N/A'}</td>
+            <td style="padding: 12px; border: 1px solid #ddd; color: #27ae60; font-weight: 500;">${c.status || 'Active'}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  </div>
+` : ''}
+
+${allReceivers && allReceivers.length > 0 ? `
+<div class="section">
+    <h2 class="section-header">Orders (${allReceivers.length})</h2>
+    <table style="width: 100%; border-collapse: collapse;">
+      <thead>
+        <tr style="background-color: #f39c12;">
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Booking Ref</th>
+          <th style="text-align: center; padding: 12px; border: 1px solid #ddd; color: white;">POL</th>
+          <th style="text-align: center; padding: 12px; border: 1px solid #ddd; color: white;">POD</th>
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Sender</th>
+          <th style="text-align: center; padding: 12px; border: 1px solid #ddd; color: white;">Receiver</th>
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${allReceivers.map((c, idx) => `
+          <tr>
+            <td style="padding: 12px; border: 1px solid #ddd;"><strong>${c.booking_ref || `Booking ${idx + 1}`}</strong></td>
+            <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">${getPlaceName(c.place_of_loading || 'N/A')}</td>
+            <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">${getPlaceName(c.place_of_delivery || 'N/A')}</td>
+            <td style="padding: 12px; border: 1px solid #ddd;">${c.sender_name || 'N/A'}</td>
+            <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">${c.receiver_name || c?.receivers[0]?.receiver_name || 'N/A'}</td>
+            <td style="padding: 12px; border: 1px solid #ddd; color: #27ae60; font-weight: 500;">${c?.status || 'N/A'}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  </div>
+` : ''}
+
+${allReceivers && allReceivers.length > 0 ? `
+  <div class="section">
+    <h2 class="section-header">Shipment Details</h2>
+    <table style="width: 100%; border-collapse: collapse;">
+      <thead>
+        <tr style="background-color: #16a085;">
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Tracking No</th>
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Category</th>
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Sub Category</th>
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Type</th>
+          <th style="text-align: center; padding: 12px; border: 1px solid #ddd; color: white;">Total Items</th>
+          <th style="text-align: center; padding: 12px; border: 1px solid #ddd; color: white;">Weight (kg)</th>
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Pickup Location</th>
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Delivery Address</th>
+          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Container No</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${Object.values(groupedShipping).flatMap(orderGroup => 
+          Object.values(orderGroup).flat()
+        ).map(s => `
+          <tr>
+            <td style="padding: 5px; border: 1px solid #ddd;"><strong>${s.itemRef || 'N/A'}</strong></td>
+            <td style="padding: 5px; border: 1px solid #ddd;">${s.category || 'N/A'}</td>
+            <td style="padding: 5px; border: 1px solid #ddd;">${s.subcategory || 'N/A'}</td>
+            <td style="padding: 5px; border: 1px solid #ddd;">${s.type || 'N/A'}</td>
+            <td style="padding: 5px; border: 1px solid #ddd; text-align: center;">${s.totalNumber || 'N/A'}</td>
+            <td style="padding: 5px; border: 1px solid #ddd; text-align: center;">${(s.weight / 1000).toFixed(2)}</td>
+            <td style="padding: 5px; border: 1px solid #ddd;">${s.pickupLocation || 'N/A'}</td>
+            <td style="padding: 5px; border: 1px solid #ddd;">${s.deliveryAddress || 'N/A'}</td>
+            <td style="padding: 5px; border: 1px solid #ddd;">${s.containerDetails?.[0]?.container?.container_number || 'N/A'}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  </div>
+` : ''}
+
+ 
+    <div class="footer">
+      <p><strong>Generated:</strong> ${new Date().toLocaleString()} | <strong>Page:</strong> 1 of ${Math.ceil(allReceivers?.length / 5 || 1)} </p>
+      <p style="margin-top: 2mm; font-size: 9px; opacity: 0.7;">© 2025 Royal Gulf Shipping Management System | This manifest is computer-generated and legally binding.</p>
+    </div>
+  `;
+  
+  document.body.appendChild(tempElement);
+  
+  // Convert the element to canvas with higher quality and proper dimensions
+  const scale = 2.5;
+  const canvas = await html2canvas(tempElement, {
+    scale: scale,
+    useCORS: true,
+    allowTaint: true,
+    logging: false,
+    width: tempElement.scrollWidth,
+    height: tempElement.scrollHeight,
+    windowWidth: tempElement.scrollWidth,
+    windowHeight: tempElement.scrollHeight,
+    backgroundColor: '#ffffff' // Ensure white background
+  });
+  
+  // Remove the temporary element
+  document.body.removeChild(tempElement);
+  
+  // Save the canvas as an image file (PNG) - High quality
+  const canvasDataURL = canvas.toDataURL('image/png', 1.0); // Full quality PNG
+  const canvasLink = document.createElement('a');
+  canvasLink.download = `Manifest_${data.consignment_number}_Canvas_${Date.now()}.png`;
+  canvasLink.href = canvasDataURL;
+  canvasLink.click(); // Trigger download
+  
+  // Create PDF from canvas with better quality and margins, with bottom space
+  const innerWidthMm = 210 - 2 * 14; // 182mm
+  const pxPerMm = canvas.width / innerWidthMm;
+  const extraBottomSpaceMm = 8 ; // Approx 70px at 96dpi ~18.5mm, rounded to 20mm
+  const contentHeightPerPageMm = (297 - 2 * 14) - extraBottomSpaceMm; // 269 - 20 = 249mm
+  const contentHeightPerPagePx = contentHeightPerPageMm * pxPerMm;
+  
+  const pdf = new jsPDF('p', 'mm', 'a4');
+  const marginMm = 14;
+  const contentWidthMm = innerWidthMm;
+  
+  let startY = 0;
+  while (startY < canvas.height) {
+    const sliceHeightPx = Math.min(contentHeightPerPagePx, canvas.height - startY);
+    
+    // Create cropped canvas for this page slice
+    const croppedCanvas = document.createElement('canvas');
+    croppedCanvas.width = canvas.width;
+    croppedCanvas.height = sliceHeightPx;
+    const ctx = croppedCanvas.getContext('2d');
+    ctx.drawImage(canvas, 0, startY, canvas.width, sliceHeightPx, 0, 0, canvas.width, sliceHeightPx);
+    
+    const croppedDataURL = croppedCanvas.toDataURL('image/png', 1.0);
+    const drawHeightMm = sliceHeightPx / pxPerMm;
+    
+    // Add to PDF (first page without addPage)
+    if (startY > 0) {
+      pdf.addPage();
     }
-    // Consignment number (left side, below/next to logo, white text for visibility)
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
-    doc.setTextColor(255, 255, 255);
-    doc.text(data.consignment_number, margin + 65, 10); // Position after logo; adjust as needed
-    // Title (right side, white)
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(18);
-    doc.text('Manifest Report', pageWidth - margin, 10, { align: 'right' });
-    // Date (right side, below title, white)
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'normal');
-    doc.text(
-      new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
-      pageWidth - margin,
-      17,
-      { align: 'right' }
-    );
-    // Generated time (right side, bottom of header, white)
-    doc.text(
-      `Generated: ${new Date().toLocaleString()}`,
-      pageWidth - margin,
-      22,
-      { align: 'right' }
-    );
-  };
-  //---------------------------------------------------
-  // SUMMARY CARDS (Modern UI)
-  //---------------------------------------------------
-  const drawSummary = (y) => {
-    const cards = [
-      ["Containers", data.containers?.length || 0],
-      ["Orders", selectedOrderObjects?.length || 0],
-      ["Net Weight", `${data.net_weight || 0} KGS`],
-      ["Gross Weight", `${data.gross_weight || 0} KGS`],
-      ["Value", `${data.consignment_value || 0} ${data.currency_code || 'USD'}`],
-      ["Status", data.status || "Draft"],
-    ];
-    const cardWidth = (pageWidth - margin * 2 - 6) / 2;
-    const cardHeight = 16;
-    doc.setFontSize(10);
-    cards.forEach((item, i) => {
-      const col = i % 2;
-      const row = Math.floor(i / 2);
-      const x = margin + (col * (cardWidth + 6));
-      const cardY = y + row * (cardHeight + 6);
-      // Card box
-      doc.setDrawColor(230, 230, 230);
-      doc.setFillColor(248, 249, 250);
-      doc.roundedRect(x, cardY, cardWidth, cardHeight, 2, 2, 'FD');
-      // Title (accent)
-      doc.setFillColor(...brandPrimary);
-      doc.rect(x, cardY, cardWidth, 5, 'F');
-      doc.setTextColor(255, 255, 255);
-      doc.setFont('helvetica', 'bold');
-      doc.text(item[0], x + 2, cardY + 4);
-      // Value
-      doc.setTextColor(60, 60, 60);
-      doc.setFont('helvetica', 'normal');
-      doc.text(String(item[1]), x + 3, cardY + 11);
-    });
-    return y + Math.ceil(cards.length / 2) * (cardHeight + 6) + 5;
-  };
-  //---------------------------------------------------
-  // CONSIGNMENT DETAILS
-  //---------------------------------------------------
-  const drawDetails = (y) => {
-    doc.setFont('helvetica', 'bold').setFontSize(14).setTextColor(...brandPrimary);
-    doc.text("Consignment Details", margin, y);
-    y += 4;
-    // Section underline
-    doc.setDrawColor(...brandPrimary);
-    doc.setLineWidth(0.6);
-    doc.line(margin, y, pageWidth - margin, y);
-    y += 6;
-    const details = [
-      ["Consignment #", data.consignment_number || 'N/A'],
-      ["Shipper", data.shipperName || 'N/A'],
-      ["Consignee", data.consigneeName || 'N/A'],
-      ["Origin", data.originName || 'N/A'],
-      ["Destination", data.destinationName || 'N/A'],
-      ["Vessel / Voyage", `${data.vessel || 'N/A'} / ${data.voyage || 'N/A'}`],
-      ["ETA", data.eta ? new Date(data.eta).toLocaleDateString() : 'N/A'],
-      ["Shipping Line", data.shipping_line || 'N/A'],
-      ["Payment Type", data.payment_type || 'N/A'],
-      ["Bank", data.bankName || 'N/A'],
-      ["Seal No", data.seal_no || 'N/A'],
-    ];
-    const colWidth = (pageWidth - margin * 2 - 10) / 2;
-    doc.setFontSize(9).setTextColor(50, 50, 50);
-    const rowHeight = 9; // reduced from 10
-    details.forEach((pair, index) => {
-      const col = index % 2;
-      const row = Math.floor(index / 2);
-      const x = margin + col * (colWidth + 10);
-      const dy = y + row * rowHeight;
-      doc.setFont('helvetica', 'bold');
-      doc.text(pair[0], x, dy);
-      doc.setFont('helvetica', 'normal');
-      doc.text(String(pair[1] || "N/A"), x, dy + 4); // reduced label offset
-    });
-    return y + Math.ceil(details.length / 2) * rowHeight + 6; // tighter bottom spacing
-  };
-  //---------------------------------------------------
-  // REMARKS BOX
-  //---------------------------------------------------
-  const drawRemarks = (y) => {
-    if (!data.remarks) return y;
-    doc.setFillColor(248, 249, 250);
-    doc.roundedRect(margin, y, pageWidth - margin * 2, 20, 2, 2, 'F');
-    doc.setFontSize(9).setFont('helvetica', 'italic').setTextColor(90, 90, 90);
-    const wrapped = doc.splitTextToSize(data.remarks, pageWidth - margin * 2 - 10);
-    doc.text("Remarks:", margin + 3, y + 6);
-    doc.text(wrapped, margin + 3, y + 11);
-    return y + 28;
-  };
-  //---------------------------------------------------
-  // TABLE: Containers
-  //---------------------------------------------------
-  const drawContainers = (y) => {
-    if (!data.containers?.length) return y;
-    doc.setFont('helvetica', 'bold').setFontSize(14).setTextColor(...brandPrimary);
-    doc.text("Containers", margin, y);
-    y += 5;
-    autoTable(doc, {
-      startY: y,
-      head: [['Container No', 'Location', 'Size', 'Type', 'Owner', 'Status']],
-      body: data.containers.map(c => [
-        c.containerNo || 'N/A',
-        c.location || 'N/A',
-        c.size || 'N/A',
-        c.containerType || 'N/A',
-        c.ownership || 'N/A',
-        c.status || 'N/A',
-      ]),
-      headStyles: { fillColor: brandPrimary, textColor: 255 },
-      bodyStyles: { fontSize: 9, cellPadding: 3 },
-      margin: { left: margin, right: margin }
-    });
-    return doc.lastAutoTable.finalY + 10;
-  };
-  //---------------------------------------------------
-  // TABLE: Orders
-  //---------------------------------------------------
-  const drawOrders = (y) => {
-    if (!allReceivers?.length) return y;
-    doc.setFont('helvetica', 'bold').setFontSize(14).setTextColor(...brandAccent);
-    doc.text(`Shipments (${allReceivers.length})`, margin, y);
-    y += 5;
-    autoTable(doc, {
-      startY: y,
-      head: [['Booking Ref', 'POL', 'POD', 'Receiver', '#Cont', 'Status']],
-      headStyles: { fillColor: brandAccent, textColor: 255 },
-      bodyStyles: { fontSize: 9, cellPadding: 3 },
-      body: allReceivers.map(r => [
-        r?.booking_ref || 'N/A',
-        getPlaceNamePdf(r?.place_of_loading || ''),
-        getPlaceNamePdf(r?.place_of_delivery || r?.final_destination || ''),
-        r.receiver_name || 'N/A',
-        r.containers?.length || 0,
-        r.status ? r.status.substring(0, 12) : 'N/A',
-      ]),
-      margin: { left: margin, right: margin }
-    });
-    return doc.lastAutoTable.finalY + 10;
-  };
-  //---------------------------------------------------
-  // FOOTER
-  //---------------------------------------------------
-  const drawFooter = () => {
-    const y = 275;
-    doc.setDrawColor(...brandPrimary);
-    doc.line(margin, y, pageWidth - margin, y);
-    doc.setFontSize(9).setTextColor(80, 80, 80);
-    doc.text(
-      `Generated: ${new Date().toLocaleString()}`,
-      margin,
-      y + 6
-    );
-    doc.text(
-      `Page ${doc.getCurrentPageInfo().pageNumber}`,
-      pageWidth - margin,
-      y + 6,
-      { align: 'right' }
-    );
-  };
-  //---------------------------------------------------
-  // BUILD DOCUMENT
-  //---------------------------------------------------
-  drawHeader();
-  y = drawSummary(y);
-  y = drawDetails(y);
-  y = drawRemarks(y);
-  y = drawContainers(y);
-  y = drawOrders(y);
-  drawFooter();
-  // Check if y exceeds page height and add new pages if needed (basic handling)
-  if (y > 270) {
-    doc.addPage();
-    y = 20; // Reset for new page
+    pdf.addImage(croppedDataURL, 'PNG', marginMm, marginMm, contentWidthMm, drawHeightMm);
+    
+    startY += sliceHeightPx;
   }
-  //---------------------------------------------------
-  // SAVE FILE
-  //---------------------------------------------------
-  doc.save(`Manifest_${data.consignment_number}.pdf`);
+  
+  // Save the PDF
+  pdf.save(`Manifest_${data.consignment_number}_ContainersOrders_${Date.now()}.pdf`);
 };
 
 const generateDocx = () => {
@@ -2774,7 +3014,7 @@ const generateDocx = () => {
                     </Box>
                     {/* Print Buttons */}
                     <Fade in={true} timeout={800}>
-                      <Box sx={{ mt: 3, display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap' }}>
+                      <Box sx={{ mt: 3, display: 'flex', gap: 2, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                         <Tooltip title="Download PDF manifest with details, containers, and orders">
                           <Button
                             variant="outlined"
@@ -2786,17 +3026,7 @@ const generateDocx = () => {
                             {saving ? <CircularProgress size={20} /> : 'Print Manifest'}
                           </Button>
                         </Tooltip>
-                        <Tooltip title="Download simple consignment note as PDF">
-                          <Button
-                            variant="outlined"
-                            startIcon={<DescriptionIcon />}
-                            onClick={() => generateManifestPDFWithCanvas(values, includedOrders)} // Fixed: Pass includedOrders
-                            disabled={saving || !values.consignment_number}
-                            sx={{ borderColor: '#f58220', color: '#f58220', '&:hover': { borderColor: '#e65100', backgroundColor: '#fff3e0' } }}
-                          >
-                            Print Canvas (Image) 
-                          </Button>
-                        </Tooltip>
+                      
                         {/* <Tooltip title="Download as Word document (requires additional setup)">
                           <Button
                             variant="outlined"
@@ -2813,23 +3043,7 @@ const generateDocx = () => {
                   </AccordionDetails>
                 </Accordion>
                 <Divider sx={{ my: 3 }} />
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, mb: 2, }}>
-                  <Button
-                    variant="outlined"
-                    onClick={resetForm}
-                    sx={{ borderColor: '#9e9e9e', color: '#9e9e9e', '&:hover': { borderColor: '#757575' } }}
-                  >
-                    Reset
-                  </Button>
-                  <Button
-                    type="submit"
-                    variant="contained"
-                    disabled={saving}
-                    sx={{ backgroundColor: '#f58220', color: 'white', px: 4, '&:hover': { backgroundColor: '#e65100' } }}
-                  >
-                    {saving ? 'Saving...' : (mode === 'edit' ? 'Update Consignment' : 'Add Consignment')}
-                  </Button>
-                </Box>
+               
               </form>
               {/* Containers Section */}
               <Accordion sx={{ boxShadow: 2, borderRadius: 2, mt: 3, '&:before': { display: 'none' } }}>
@@ -2840,6 +3054,17 @@ const generateDocx = () => {
                   <Typography variant="h6" sx={{ fontWeight: 'bold' }}>🚚 Containers</Typography>
                 </AccordionSummary>
                 <AccordionDetails sx={{ p: 3 }}>
+                    <Tooltip title="Download simple consignment note as PDF">
+                          <Button
+                            variant="outlined"
+                            startIcon={<DescriptionIcon />}
+                            onClick={() => generateContainersAndOrdersPDFWithCanvas(values, includedOrders)} // Fixed: Pass includedOrders
+                            disabled={saving || !values.consignment_number}
+                            sx={{ borderColor: '#f58220', color: '#f58220', mb: 2, float: "right", flexDirection: 'row', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', alignSelf: 'flex-end', '&:hover': { borderColor: '#e65100', backgroundColor: '#fff3e0' } }}
+                          >
+                            Containers & Orders PDF
+                          </Button>
+                        </Tooltip>
                   <Table sx={{ minWidth: '100%', boxShadow: 1, borderRadius: 1, mb: 2, overflow: 'hidden' }} aria-label="Containers table">
                     <TableHead>
                       <TableRow sx={{ backgroundColor: '#e3f2fd' }}>
@@ -3180,7 +3405,7 @@ const generateDocx = () => {
                                 </StyledTableCell>
                                 <TableCell>{new Date(order.created_at || Date.now()).toLocaleDateString()}</TableCell>
                                 <TableCell>
-                                  <StatusChip status={status} />
+                                  <StatusChip status={order.status} />
                                 </TableCell>
                               </StyledTableRow>
                             );
@@ -3207,7 +3432,23 @@ const generateDocx = () => {
                       }
                     }}
                   />
-                
+                 <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, mb: 2, }}>
+                  <Button
+                    variant="outlined"
+                    onClick={resetForm}
+                    sx={{ borderColor: '#9e9e9e', color: '#9e9e9e', '&:hover': { borderColor: '#757575' } }}
+                  >
+                    Reset
+                  </Button>
+                  <Button
+                    type="submit"
+                    variant="contained"
+                    disabled={saving}
+                    sx={{ backgroundColor: '#f58220', color: 'white', px: 4, '&:hover': { backgroundColor: '#e65100' } }}
+                  >
+                    {saving ? 'Saving...' : (mode === 'edit' ? 'Update Consignment' : 'Add Consignment')}
+                  </Button>
+                </Box>
               </AccordionDetails>
             </Accordion>
           </CardContent>
