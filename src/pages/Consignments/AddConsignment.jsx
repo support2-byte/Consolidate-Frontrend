@@ -2588,11 +2588,12 @@ const generateDocx = () => {
       <Box sx={{ p: 3, backgroundColor: '#f5f7fa', minHeight: '100vh' }}>
         <Slide in timeout={1000}>
           <Card sx={{ boxShadow: 4, borderRadius: 3, overflow: 'hidden' }}>
+              <form onSubmit={mode === 'edit' ? handleEditCon : handleCreate}>
+
             <CardContent sx={{ p: 4 }}>
               <Typography variant="h4" gutterBottom sx={{ color: '#0d6c6a', fontWeight: 'bold', mb: 3 }}>
                 {mode === 'add' ? 'Add' : 'Edit'} Consignment Details
               </Typography>
-              <form onSubmit={mode === 'edit' ? handleEditCon : handleCreate}>
                 {/* Main Data Section */}
                 <Accordion defaultExpanded sx={{ boxShadow: 2, borderRadius: 2, mb: 3, '&:before': { display: 'none' } }}>
                   <AccordionSummary
@@ -3044,7 +3045,6 @@ const generateDocx = () => {
                 </Accordion>
                 <Divider sx={{ my: 3 }} />
                
-              </form>
               {/* Containers Section */}
               <Accordion sx={{ boxShadow: 2, borderRadius: 2, mt: 3, '&:before': { display: 'none' } }}>
                 <AccordionSummary
@@ -3452,6 +3452,8 @@ const generateDocx = () => {
               </AccordionDetails>
             </Accordion>
           </CardContent>
+              </form>
+
         </Card>
       </Slide>
     </Box>
