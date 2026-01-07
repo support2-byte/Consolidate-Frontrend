@@ -3039,6 +3039,7 @@ const OrderForm = () => {
     const [statuses, setStatuses] = useState([]);
     const [places, setPlaces] = useState([]);
     const [selectedOrder, setSelectedOrder] = useState(null);
+    const [previewSd, setPreviewSd] = useState({ });
     const [companies, setCompanies] = useState([]);
     const orderId = location.state?.orderId;
     const [isEditMode, setIsEditMode] = useState(!!orderId);
@@ -3093,62 +3094,84 @@ const OrderForm = () => {
         remarks: "",
         isNew: false
     };
+
     const [formData, setFormData] = useState({
-        // Core orders fields
-        bookingRef: "",
-        rglBookingNumber: "",
-        placeOfLoading: "",
-        pointOfOrigin: "",
-        finalDestination: "",
-        placeOfDelivery: "",
-        orderRemarks: "",
-        attachments: [],
-        // Owner fields (both sender and receiver)
-        senderName: "",
-        senderContact: "",
-        senderAddress: "",
-        senderEmail: "",
-        senderRef: "",
-        senderRemarks: "",
-        receiverName: "",
-        receiverContact: "",
-        receiverAddress: "",
-        receiverEmail: "",
-        receiverRef: "",
-        receiverRemarks: "",
-        // Senders array
-        senders: [],
-        // Receivers array with nested shippingDetails
-        receivers: [{ ...initialReceiver, shippingDetails: [] }],
-        // Computed globals
-        globalTotalItems: 0,
-        globalRemainingItems: 0,
-        // Transport fields
-        transportType: "",
-        thirdPartyTransport: "",
-        driverName: "",
-        driverContact: "",
-        driverNic: "",
-        driverPickupLocation: "",
-        truckNumber: "",
-        dropMethod: "",
-        dropoffName: "",
-        dropOffCnic: "",
-        dropOffMobile: "",
-        plateNo: "",
-        dropDate: "",
-        collectionMethod: "",
-        collection_scope: "Partial",
-        fullPartial: "", // Deprecated
-        qtyDelivered: "", // Deprecated
-        clientReceiverName: "",
-        clientReceiverId: "",
-        clientReceiverMobile: "",
-        deliveryDate: "",
-        gatepass: [],
-        senderType: 'sender',
-        selectedSenderOwner: ''
-    });
+    // Core orders fields
+    bookingRef: "",
+    rglBookingNumber: "",
+    placeOfLoading: "",
+    pointOfOrigin: "",
+    finalDestination: "",
+    placeOfDelivery: "",
+    orderRemarks: "",
+    attachments: [],
+    // Owner fields (both sender and receiver)
+    senderName: "",
+    senderContact: "",
+    senderAddress: "",
+    senderEmail: "",
+    senderRef: "",
+    senderRemarks: "",
+    receiverName: "",
+    receiverContact: "",
+    receiverAddress: "",
+    receiverEmail: "",
+    receiverRef: "",
+    receiverRemarks: "",
+    // Senders array
+    senders: [],
+    // Receivers array with nested shippingDetails
+    receivers: [
+        { 
+            receiverName: "",
+            receiverContact: "",
+            receiverAddress: "",
+            receiverEmail: "",
+            eta: "",
+            etd: "",
+            shippingLine: "",
+            shippingDetails: [],
+            fullPartial: "",
+            qtyDelivered: "",
+            status: "Created",
+            remarks: "",
+            isNew: false
+        },
+       
+    ],
+    // Computed globals
+    globalTotalItems: 0,
+    globalRemainingItems: 0,
+    // Transport fields
+    transportType: "",
+    thirdPartyTransport: "",
+    driverName: "",
+    driverContact: "",
+    driverNic: "",
+    driverPickupLocation: "",
+    truckNumber: "",
+    dropMethod: "",
+    dropoffName: "",
+    dropOffCnic: "",
+    dropOffMobile: "",
+    plateNo: "",
+    dropDate: "",
+    collectionMethod: "",
+    collection_scope: "Partial",
+    fullPartial: "", // Deprecated
+    qtyDelivered: "", // Deprecated
+    clientReceiverName: "",
+    clientReceiverId: "",
+    clientReceiverMobile: "",
+    deliveryDate: "",
+    gatepass: [],
+    senderType: 'sender',
+    selectedSenderOwner: '',
+    // New fields for receiver-specific drop-off
+    selectedReceiver: "",
+    dropOffDetails: {}  // Object: { [receiverIndex]: [{dropMethod: "...", ...}, ...] }
+});
+
     // Editable fields in edit mode
     const editableInEdit = [
         'transportType', 'dropMethod', 'dropoffName', 'dropOffCnic', 'dropOffMobile', 'plateNo', 'dropDate',
@@ -3339,120 +3362,154 @@ const OrderForm = () => {
         }
     }, [isEditMode, formData.selectedSenderOwner, formData.senderType]);
     const validateForm = () => {
-        const newErrors = {};
-        // Core required fields
-        const coreRequired = ['rglBookingNumber', 'pointOfOrigin', 'placeOfLoading', 'placeOfDelivery', 'finalDestination'];
-        coreRequired.forEach(field => {
-            if (!formData[field]?.trim()) {
-                newErrors[field] = `${field.replace(/([A-Z])/g, ' $1').trim()} is required`;
-            }
-        });
+    const newErrors = {};
+    // Core required fields
+    const coreRequired = ['rglBookingNumber', 'pointOfOrigin', 'placeOfLoading', 'placeOfDelivery', 'finalDestination'];
+    coreRequired.forEach(field => {
+        if (!formData[field]?.trim()) {
+            newErrors[field] = `${field.replace(/([A-Z])/g, ' $1').trim()} is required`;
+        }
+    });
 
-        // Validate owner name
-        if (!formData[ownerNameKey]?.trim() && formData.selectedSenderOwner) {
-            newErrors[ownerNameKey] = 'Owner name is recommended (fetch from selected ID)';
+    // Validate owner name
+    if (!formData[ownerNameKey]?.trim() && formData.selectedSenderOwner) {
+        newErrors[ownerNameKey] = 'Owner name is recommended (fetch from selected ID)';
+    }
+    const ownerContactKey = formData.senderType === 'sender' ? 'senderContact' : 'receiverContact';
+    // if (!formData[ownerContactKey]?.trim()) {
+    //     newErrors[ownerContactKey] = 'Owner contact is required';
+    // }
+    const ownerAddressKey = formData.senderType === 'sender' ? 'senderAddress' : 'receiverAddress';
+    // if (!formData[ownerAddressKey]?.trim()) {
+    //     newErrors[ownerAddressKey] = 'Owner address is required';
+    // }
+    // Validate senderType
+    if (!formData.senderType) {
+        newErrors.senderType = 'Sender Type is required';
+    }
+    // NEW: Validate selectedReceiver for Drop Off
+    if (formData.transportType === 'Drop Off') {
+        if (!formData.selectedReceiver) {
+            newErrors.selectedReceiver = 'Please select a receiver for drop-off details';
+        } else if (formData.receivers && !formData.receivers[formData.selectedReceiver]) {
+            newErrors.selectedReceiver = 'Invalid receiver selection';
+        } else {
+            // Validate dropOffDetails for the selected receiver
+            const selectedIdx = formData.selectedReceiver;
+            const receiverDropOffs = formData.dropOffDetails?.[selectedIdx] || [];
+            if (receiverDropOffs.length === 0) {
+                newErrors[`dropOffDetails[${selectedIdx}]`] = 'At least one drop-off detail is required for the selected receiver';
+            } else {
+                receiverDropOffs.forEach((detail, index) => {
+                    if (!detail.dropMethod?.trim()) {
+                        newErrors[`dropOffDetails[${selectedIdx}][${index}].dropMethod`] = 'Drop Method is required';
+                    }
+                    if (!detail.dropoffName?.trim()) {
+                        newErrors[`dropOffDetails[${selectedIdx}][${index}].dropoffName`] = 'Person Name is required';
+                    }
+                    if (!detail.dropOffCnic?.trim()) {
+                        newErrors[`dropOffDetails[${selectedIdx}][${index}].dropOffCnic`] = 'CNIC/ID is required';
+                    }
+                    if (!detail.dropOffMobile?.trim()) {
+                        newErrors[`dropOffDetails[${selectedIdx}][${index}].dropOffMobile`] = 'Mobile is required';
+                    }
+                    if (detail.dropDate && !/^\d{4}-\d{2}-\d{2}$/.test(detail.dropDate)) {
+                        newErrors[`dropOffDetails[${selectedIdx}][${index}].dropDate`] = 'Invalid Drop Date format (YYYY-MM-DD)';
+                    }
+                });
+            }
         }
-        const ownerContactKey = formData.senderType === 'sender' ? 'senderContact' : 'receiverContact';
-        // if (!formData[ownerContactKey]?.trim()) {
-        //     newErrors[ownerContactKey] = 'Owner contact is required';
-        // }
-        const ownerAddressKey = formData.senderType === 'sender' ? 'senderAddress' : 'receiverAddress';
-        // if (!formData[ownerAddressKey]?.trim()) {
-        //     newErrors[ownerAddressKey] = 'Owner address is required';
-        // }
-        // Validate senderType
-        if (!formData.senderType) {
-            newErrors.senderType = 'Sender Type is required';
-        }
-        // Dynamic validation for panel2
-        const isSenderMode = formData.senderType === 'receiver';
-        const items = isSenderMode ? formData.senders : formData.receivers;
-        const itemsKey = isSenderMode ? 'senders' : 'receivers';
-        const itemPrefix = isSenderMode ? 'Sender' : 'Receiver';
-        // if (items.length === 0) {
-        //     newErrors[itemsKey] = `At least one ${itemPrefix.toLowerCase()} is required`;
-        // } else {
-        //     items.forEach((item, i) => {
-        //         const nameField = isSenderMode ? 'senderName' : 'receiverName';
-        //         const contactField = isSenderMode ? 'senderContact' : 'receiverContact';
-        //         const addressField = isSenderMode ? 'senderAddress' : 'receiverAddress';
-        //         const emailField = isSenderMode ? 'senderEmail' : 'receiverEmail';
-        //         if (!item[nameField]?.trim()) {
-        //             newErrors[`${itemsKey}[${i}].${nameField}`] = `${itemPrefix} ${i + 1} name is required`;
-        //         }
-        //         if (!item[contactField]?.trim()) {
-        //             newErrors[`${itemsKey}[${i}].${contactField}`] = `${itemPrefix} ${i + 1} contact is required`;
-        //         }
-        //         if (!item[addressField]?.trim()) {
-        //             newErrors[`${itemsKey}[${i}].${addressField}`] = `${itemPrefix} ${i + 1} address is required`;
-        //         }
-        //         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        //         if (item[emailField] && !emailRegex.test(item[emailField])) {
-        //             newErrors[`${itemsKey}[${i}].${emailField}`] = `Invalid ${itemPrefix.toLowerCase()} ${i + 1} email format`;
-        //         }
-        //         // if (!item.eta?.trim()) {
-        //         //     newErrors[`${itemsKey}[${i}].eta`] = `ETA is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
-        //         // }
-        //         // if (!item.etd?.trim()) {
-        //         //     newErrors[`${itemsKey}[${i}].etd`] = `ETD is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
-        //         // }
-        //         // if (!item.shippingLine?.trim()) {
-        //         // newErrors[`${itemsKey}[${i}].shippingLine`] = `Shipping Line is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
-        //         // }
-        //         // Validate each shippingDetail
-        //         const shippingDetails = item.shippingDetails || [];
-        //         if (shippingDetails.length === 0) {
-        //             newErrors[`${itemsKey}[${i}].shippingDetails`] = `At least one shipping detail is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
-        //         } else {
-        //             shippingDetails.forEach((sd, j) => {
-        //                 const shippingRequiredFields = ['pickupLocation', 'category', 'subcategory', 'type', 'deliveryAddress', 'totalNumber', 'weight'];
-        //                 shippingRequiredFields.forEach(field => {
-        //                     if (!sd[field]?.trim()) {
-        //                         newErrors[`${itemsKey}[${i}].shippingDetails[${j}].${field}`] = `${field.replace(/([A-Z])/g, ' $1').trim()} is required for shipping detail ${j + 1}`;
-        //                     }
-        //                 });
-        //                 const totalNum = parseInt(sd.totalNumber);
-        //                 if (isNaN(totalNum) || totalNum <= 0) {
-        //                     newErrors[`${itemsKey}[${i}].shippingDetails[${j}].totalNumber`] = `Total Number must be a positive number`;
-        //                 }
-        //                 if (sd.weight && (isNaN(parseFloat(sd.weight)) || parseFloat(sd.weight) <= 0)) {
-        //                     newErrors[`${itemsKey}[${i}].shippingDetails[${j}].weight`] = `Weight must be a positive number`;
-        //                 }
-        //             });
-        //         }
-        //         // Validate full/partial
-        //         if (item.fullPartial === 'Partial') {
-        //             if (!item.qtyDelivered?.trim()) {
-        //                 newErrors[`${itemsKey}[${i}].qtyDelivered`] = `Qty Delivered is required for partial ${itemPrefix.toLowerCase()} ${i + 1}`;
-        //             } else {
-        //                 const del = parseInt(item.qtyDelivered);
-        //                 const recTotal = (item.shippingDetails || []).reduce((sum, sd) => sum + (parseInt(sd.totalNumber || 0) || 0), 0);
-        //                 if (isNaN(del) || del <= 0) {
-        //                     newErrors[`${itemsKey}[${i}].qtyDelivered`] = `Qty Delivered must be a positive number`;
-        //                 } else if (del > recTotal) {
-        //                     newErrors[`${itemsKey}[${i}].qtyDelivered`] = `Qty Delivered (${del}) cannot exceed total number (${recTotal})`;
-        //                 }
-        //             }
-        //         }
-        //     });
-        // }
-        // Transport validations
-        if (!formData.transportType) {
-            newErrors.transportType = 'Transport Type is required';
-        }
-        if (formData.transportType === 'Drop Off' && !formData.dropMethod?.trim()) {
-            newErrors.dropMethod = 'Drop Method is required';
-        }
-        // All other transport fields are optional - no additional validations
-        // Email and mobile validations
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        const ownerEmailKey = formData.senderType === 'sender' ? 'senderEmail' : 'receiverEmail';
-        if (formData[ownerEmailKey] && !emailRegex.test(formData[ownerEmailKey])) {
-            newErrors[ownerEmailKey] = 'Invalid owner email format';
-        }
-        setErrors(newErrors);
-        return Object.keys(newErrors).length === 0;
-    };
+    }
+    // Dynamic validation for panel2
+    const isSenderMode = formData.senderType === 'receiver';
+    const items = isSenderMode ? formData.senders : formData.receivers;
+    const itemsKey = isSenderMode ? 'senders' : 'receivers';
+    const itemPrefix = isSenderMode ? 'Sender' : 'Receiver';
+
+    // if (items.length === 0) {
+    //     newErrors[itemsKey] = `At least one ${itemPrefix.toLowerCase()} is required`;
+    // } else {
+    //     items.forEach((item, i) => {
+    //         const nameField = isSenderMode ? 'senderName' : 'receiverName';
+    //         const contactField = isSenderMode ? 'senderContact' : 'receiverContact';
+    //         const addressField = isSenderMode ? 'senderAddress' : 'receiverAddress';
+    //         const emailField = isSenderMode ? 'senderEmail' : 'receiverEmail';
+    //         if (!item[nameField]?.trim()) {
+    //             newErrors[`${itemsKey}[${i}].${nameField}`] = `${itemPrefix} ${i + 1} name is required`;
+    //         }
+    //         if (!item[contactField]?.trim()) {
+    //             newErrors[`${itemsKey}[${i}].${contactField}`] = `${itemPrefix} ${i + 1} contact is required`;
+    //         }
+    //         if (!item[addressField]?.trim()) {
+    //             newErrors[`${itemsKey}[${i}].${addressField}`] = `${itemPrefix} ${i + 1} address is required`;
+    //         }
+    //         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    //         if (item[emailField] && !emailRegex.test(item[emailField])) {
+    //             newErrors[`${itemsKey}[${i}].${emailField}`] = `Invalid ${itemPrefix.toLowerCase()} ${i + 1} email format`;
+    //         }
+    //         // if (!item.eta?.trim()) {
+    //         //     newErrors[`${itemsKey}[${i}].eta`] = `ETA is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
+    //         // }
+    //         // if (!item.etd?.trim()) {
+    //         //     newErrors[`${itemsKey}[${i}].etd`] = `ETD is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
+    //         // }
+    //         // if (!item.shippingLine?.trim()) {
+    //         // newErrors[`${itemsKey}[${i}].shippingLine`] = `Shipping Line is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
+    //         // }
+    //         // Validate each shippingDetail
+    //         const shippingDetails = item.shippingDetails || [];
+    //         if (shippingDetails.length === 0) {
+    //             newErrors[`${itemsKey}[${i}].shippingDetails`] = `At least one shipping detail is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
+    //         } else {
+    //             shippingDetails.forEach((sd, j) => {
+    //                 const shippingRequiredFields = ['pickupLocation', 'category', 'subcategory', 'type', 'deliveryAddress', 'totalNumber', 'weight'];
+    //                 shippingRequiredFields.forEach(field => {
+    //                     if (!sd[field]?.trim()) {
+    //                         newErrors[`${itemsKey}[${i}].shippingDetails[${j}].${field}`] = `${field.replace(/([A-Z])/g, ' $1').trim()} is required for shipping detail ${j + 1}`;
+    //                     }
+    //                 });
+    //                 const totalNum = parseInt(sd.totalNumber);
+    //                 if (isNaN(totalNum) || totalNum <= 0) {
+    //                     newErrors[`${itemsKey}[${i}].shippingDetails[${j}].totalNumber`] = `Total Number must be a positive number`;
+    //                 }
+    //                 if (sd.weight && (isNaN(parseFloat(sd.weight)) || parseFloat(sd.weight) <= 0)) {
+    //                     newErrors[`${itemsKey}[${i}].shippingDetails[${j}].weight`] = `Weight must be a positive number`;
+    //                 }
+    //             });
+    //         }
+    //         // Validate full/partial
+    //         if (item.fullPartial === 'Partial') {
+    //             if (!item.qtyDelivered?.trim()) {
+    //                 newErrors[`${itemsKey}[${i}].qtyDelivered`] = `Qty Delivered is required for partial ${itemPrefix.toLowerCase()} ${i + 1}`;
+    //             } else {
+    //                 const del = parseInt(item.qtyDelivered);
+    //                 const recTotal = (item.shippingDetails || []).reduce((sum, sd) => sum + (parseInt(sd.totalNumber || 0) || 0), 0);
+    //                 if (isNaN(del) || del <= 0) {
+    //                     newErrors[`${itemsKey}[${i}].qtyDelivered`] = `Qty Delivered must be a positive number`;
+    //                 } else if (del > recTotal) {
+    //                     newErrors[`${itemsKey}[${i}].qtyDelivered`] = `Qty Delivered (${del}) cannot exceed total number (${recTotal})`;
+    //                 }
+    //             }
+    //         }
+    //     });
+    // }
+    // Transport validations
+    if (!formData.transportType) {
+        newErrors.transportType = 'Transport Type is required';
+    }
+    if (formData.transportType === 'Drop Off' && !formData.dropMethod?.trim()) {
+        newErrors.dropMethod = 'Drop Method is required';
+    }
+    // All other transport fields are optional - no additional validations
+    // Email and mobile validations
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const ownerEmailKey = formData.senderType === 'sender' ? 'senderEmail' : 'receiverEmail';
+    if (formData[ownerEmailKey] && !emailRegex.test(formData[ownerEmailKey])) {
+        newErrors[ownerEmailKey] = 'Invalid owner email format';
+    }
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+};
     // Fetch options on mount (replaces dummies)
     const fetchOptions = async () => {
         try {
@@ -3828,57 +3885,72 @@ const fetchOrder = async (id) => {
         setLoading(false);
     }
 };
-    const handleChange = (e) => {
-        const { name, value } = e.target;
-        setFormData((prev) => {
-            const updated = { ...prev, [name]: value };
-            if (name === 'transportType' && value !== prev.transportType) {
-                // Clear transport-specific fields
-                updated.dropMethod = '';
-                updated.dropoffName = '';
-                updated.dropOffCnic = '';
-                updated.dropOffMobile = '';
-                updated.plateNo = '';
-                updated.dropDate = '';
-                updated.collectionMethod = '';
-                updated.clientReceiverName = '';
-                updated.clientReceiverId = '';
-                updated.clientReceiverMobile = '';
-                updated.deliveryDate = '';
-                updated.gatepass = [];
-                updated.driverName = '';
-                updated.driverContact = '';
-                updated.driverNic = '';
-                updated.driverPickupLocation = '';
-                updated.truckNumber = '';
-                updated.thirdPartyTransport = '';
-            }
-            if (name === 'dropMethod' && value === 'RGSL Pickup') {
-                updated.dropoffName = '';
-                updated.dropOffCnic = '';
-                updated.dropOffMobile = '';
-            }
-            if (name === 'collectionMethod' && value === 'Delivered by RGSL') {
-                updated.clientReceiverName = '';
-                updated.clientReceiverId = '';
-                updated.clientReceiverMobile = '';
-            }
-            if (name === 'senderType' && value !== prev.senderType) {
-                // Clear opposite owner fields if switching
-                const newPrefix = value;
-                const oldPrefix = prev.senderType;
-                const fields = ['Name', 'Contact', 'Address', 'Email', 'Ref', 'Remarks'];
-                fields.forEach(key => {
-                    const oldKey = `${oldPrefix}${key}`;
-                    if (updated[oldKey]) updated[oldKey] = '';
-                });
-            }
-            return updated;
-        });
-        if (errors[name]) {
-            setErrors((prev) => ({ ...prev, [name]: '' }));
+
+
+
+const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData((prev) => {
+        const updated = { ...prev, [name]: value };
+        if (name === 'transportType' && value !== prev.transportType) {
+            // Clear transport-specific fields
+            updated.dropMethod = '';
+            updated.dropoffName = '';
+            updated.dropOffCnic = '';
+            updated.dropOffMobile = '';
+            updated.plateNo = '';
+            updated.dropDate = '';
+            updated.collectionMethod = '';
+            updated.clientReceiverName = '';
+            updated.clientReceiverId = '';
+            updated.clientReceiverMobile = '';
+            updated.deliveryDate = '';
+            updated.gatepass = [];
+            updated.driverName = '';
+            updated.driverContact = '';
+            updated.driverNic = '';
+            updated.driverPickupLocation = '';
+            updated.truckNumber = '';
+            updated.thirdPartyTransport = '';
+            // Clear receiver-specific drop-off details when switching transport types
+            updated.dropOffDetails = {};
+            updated.selectedReceiver = '';
         }
-    };
+        if (name === 'dropMethod' && value === 'RGSL Pickup') {
+            updated.dropoffName = '';
+            updated.dropOffCnic = '';
+            updated.dropOffMobile = '';
+        }
+        if (name === 'collectionMethod' && value === 'Delivered by RGSL') {
+            updated.clientReceiverName = '';
+            updated.clientReceiverId = '';
+            updated.clientReceiverMobile = '';
+        }
+        if (name === 'senderType' && value !== prev.senderType) {
+            // Clear opposite owner fields if switching
+            const newPrefix = value;
+            const oldPrefix = prev.senderType;
+            const fields = ['Name', 'Contact', 'Address', 'Email', 'Ref', 'Remarks'];
+            fields.forEach(key => {
+                const oldKey = `${oldPrefix}${key}`;
+                if (updated[oldKey]) updated[oldKey] = '';
+            });
+        }
+        // Handle selectedReceiver change: Clear drop-off details for previous receiver
+        if (name === 'selectedReceiver' && value !== prev.selectedReceiver) {
+            if (prev.selectedReceiver !== '' && updated.dropOffDetails[prev.selectedReceiver]) {
+                // Optionally persist or clear previous receiver's details
+                delete updated.dropOffDetails[prev.selectedReceiver];  // Clear for new selection
+            }
+        }
+        return updated;
+    });
+    if (errors[name]) {
+        setErrors((prev) => ({ ...prev, [name]: '' }));
+    }
+};
+
+
     // Receiver handlers
     const addReceiver = () => {
         setFormData(prev => ({
@@ -4507,16 +4579,16 @@ const fetchOrder = async (id) => {
 
 
 const handleSave = async () => {
-    // console.log("Submitting form data:", formData);
-    console.log('Saving owner name:', formData[ownerNameKey]); // Debug
-    if (!validateForm()) {
-        setSnackbar({
-            open: true,
-            message: 'Please fix the errors in the form',
-            severity: 'error',
-        });
-        return;
-    }
+    console.log("Submitting form data:");
+    // console.log('Saving owner name:', formDataToSend); // Debug
+    // if (!validateForm()) {
+    //     setSnackbar({
+    //         open: true,
+    //         message: 'Please fix the errors in the form',
+    //         severity: 'error',
+    //     });
+    //     return;
+    // }
     setLoading(true);
     const formDataToSend = new FormData();
     const dateFields = ['eta', 'etd', 'dropDate', 'deliveryDate'];
@@ -4524,13 +4596,14 @@ const handleSave = async () => {
     const coreKeys = ['bookingRef', 'rglBookingNumber', 'placeOfLoading', 'pointOfOrigin', 'finalDestination', 'placeOfDelivery', 'orderRemarks', 'eta', 'etd', 'attachments'];
     coreKeys.forEach(key => {
         const value = formData[key];
-        if (dateFields.includes(key) && value === '') {
+        if (dateFields.includes(key) && value === '') { 
             // Skip empty dates
         } else {
             const apiKey = camelToSnake(key);
             formDataToSend.append(apiKey, value || '');
         }
     });
+    console.log('Core fields appended', Array.from(formDataToSend.entries())); // Debug
     // Append owner fields dynamically
     const ownerFieldPrefix = formData.senderType === 'sender' ? 'sender' : 'receiver';
     const ownerFields = ['Name', 'Contact', 'Address', 'Email', 'Ref', 'Remarks'];
@@ -4556,11 +4629,11 @@ const handleSave = async () => {
             eta: item.eta || '',
             etd: item.etd || '',
             shipping_line: item.shippingLine || '',
-            full_partial: item.full_partial || item.fullPartial || 'Full',
-            qty_delivered: item.qty_delivered || item.qtyDelivered || '',
-            status: item.status || 'Created',
+            full_partial: item.fullPartial || item.fullPartial || 'Full',
+            qty_delivered: item.qtyDelivered || item.qtyDelivered || '',
+            status: item.status || 'Order Created',   
             remarks: item.remarks || '',
-      containers: Array.isArray(item.containers) ? item.containers.flat().flat() : [],
+            containers: Array.isArray(item.containers) ? item.containers.flat().flat() : [],
         };
         return snakeRec;
     });
@@ -4597,6 +4670,22 @@ const handleSave = async () => {
         const apiKey = camelToSnake(key);
         formDataToSend.append(apiKey, value || '');
     });
+    // NEW: Handle nested dropOffDetails - Flatten all receiver-specific drop-offs into a single JSON array for backend
+    const flattenedDropOffDetails = [];
+    if (formData.dropOffDetails && typeof formData.dropOffDetails === 'object') {
+        Object.keys(formData.dropOffDetails).forEach(receiverIndex => {
+            const receiverDetails = formData.dropOffDetails[receiverIndex];
+            if (Array.isArray(receiverDetails)) {
+                receiverDetails.forEach((detail, detailIndex) => {
+                    flattenedDropOffDetails.push({
+                        receiver_index: receiverIndex,
+                        ...detail  // Spread dropMethod, dropoffName, etc.
+                    });
+                });
+            }
+        });
+    }
+    formDataToSend.append('drop_off_details', JSON.stringify(flattenedDropOffDetails));
     // Handle attachments and gatepass
     ['attachments', 'gatepass'].forEach(key => {
         const value = formData[key];
@@ -4719,7 +4808,7 @@ const handleSave = async () => {
                             </Button>
                             <Button
                                 variant="contained"
-                                onClick={handleSave}
+                                onClick={() => handleSave()}
                                 sx={{
                                     borderRadius: 2,
                                     backgroundColor: "#0d6c6a",
@@ -5063,12 +5152,6 @@ const handleSave = async () => {
     </AccordionSummary>
     <AccordionDetails sx={{ p: 3, bgcolor: "#fff" }}>
         <Stack spacing={2}>
-            {/* {formData.senderType === 'sender' ? (
-                errors.receivers && <Alert severity="error">{errors.receivers}</Alert>
-            ) : (
-                errors.senders && <Alert severity="error">{errors.senders}</Alert>
-            )} */}
-            {/* Dynamic: Summary Table for multiples */}
             {(formData.senderType === 'sender' ? formData.receivers : formData.senders).length > 1 && (
                 <Stack spacing={1}>
                     <Typography variant="subtitle2" color="primary">
@@ -5307,7 +5390,9 @@ const handleSave = async () => {
                     };
                     // NEW: Unified add shipping with values for preview
                     const addShippingWithValues = (recIndex, sdFields, containerFields = null) => {
+                        console.log('Adding shipping detail with values for', isSenderMode ? 'sender' : 'receiver', 'index:', recIndex, 'sdFields:', sdFields, 'containerFields:', containerFields);
                         const key = listKey;
+                        console.log('Current formData for', key, ':', formData[key]);
                         setFormData(prev => ({
                             ...prev,
                             [key]: prev[key].map((item, ii) => {
@@ -5328,7 +5413,23 @@ const handleSave = async () => {
                             })
                         }));
                     };
-                    const handleEmptySdChange = (field, value) => {
+
+
+
+                   
+                    const handlePreviewChange = (e) => {
+                        console.log( 'value:', e.target.value);
+                        setPreviewSd(e.target.value);
+                        // addShippingWithValues(i, previewSd);
+                    };
+
+
+
+    //   const handleAdd = () => {
+    //     addShippingWithValues(i, previewSd); // Now add with all filled values
+    //   };
+
+                          const handleEmptySdChange = (field, value) => {
                         const sdFields = { [field]: value };
                         let containerFields = null;
                         // FIXED: Removed auto-fill for totalNumber and weight
@@ -5336,7 +5437,7 @@ const handleSave = async () => {
                     };
                     // NEW: Handler for shipping change with auto container fill
                     const handleShippingChangeWithAutoFill = (recIndex, shipIndex, field) => (e) => {
-                        if (field !== 'totalNumber' && field !== 'weight') {
+                        if (field !== 'totalNumber' && field !== 'weight' ) {
                             handleShippingChangeFn(recIndex, shipIndex, field)(e);
                             return;
                         }
@@ -5592,7 +5693,7 @@ const handleSave = async () => {
                                 <Box sx={{ p: 1.5, border: 1, borderColor: "grey.200", borderRadius: 1 }}>
                                     <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
                                         <Typography variant="body2" color="primary" fontWeight="bold">
-                                            Shipping Detail 1
+                                            Shipping Details 1
                                         </Typography>
                                         <Stack direction="row" spacing={1}>
                                             <IconButton
@@ -5616,13 +5717,14 @@ const handleSave = async () => {
                                     <Stack spacing={1.5}>
                                         <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
                                             <CustomTextField
-                                                label="Pickup Location"
+                                                 label="Pickup Location"
                                                 value={emptySd.pickupLocation}
                                                 onChange={(e) => handleEmptySdChange('pickupLocation', e.target.value)}
                                                 error={!!errors[`${listKey}[${i}].shippingDetails[0].pickupLocation`]}
                                                 helperText={errors[`${listKey}[${i}].shippingDetails[0].pickupLocation`]}
                                                 disabled={isFieldDisabled(`${recDisabledPrefix}.shippingDetails[0].pickupLocation`)}
                                             />
+        
                                             <CustomSelect
                                                 label="Category"
                                                 value={emptySd.category}
@@ -6233,72 +6335,217 @@ const handleSave = async () => {
                                         </RadioGroup>
                                         {errors.transportType && <FormHelperText error>{errors.transportType}</FormHelperText>}
                                     </FormControl>
-                                    {formData.transportType === 'Drop Off' && (
-                                        <Stack spacing={2}>
-                                            <Typography variant="h6" color="#f58220" gutterBottom>
-                                                🧭 Drop-Off Details
-                                            </Typography>
-                                            <CustomSelect
-                                                label="Drop Method *"
-                                                name="dropMethod"
-                                                value={formData.dropMethod || ""}
-                                                onChange={handleChange}
-                                                error={!!errors.dropMethod}
-                                                helperText={errors.dropMethod || "Required"}
-                                                renderValue={(selected) => selected || "Select Drop Method"}
-                                            >
-                                                <MenuItem value="">Select Drop Method</MenuItem>
-                                                <MenuItem value="Drop-Off">Drop-Off</MenuItem>
-                                                <MenuItem value="RGSL Pickup">RGSL Pickup</MenuItem>
-                                            </CustomSelect>
-                                            <Stack spacing={2}>
-                                                <CustomTextField
-                                                    label="Person Name"
-                                                    name="dropoffName"
-                                                    value={formData.dropoffName}
-                                                    onChange={handleChange}
-                                                    error={!!errors.dropoffName}
-                                                    helperText={errors.dropoffName}
-                                                />
-                                                <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                                    <CustomTextField
-                                                        label="CNIC/ID"
-                                                        name="dropOffCnic"
-                                                        value={formData.dropOffCnic}
-                                                        onChange={handleChange}
-                                                        error={!!errors.dropOffCnic}
-                                                        helperText={errors.dropOffCnic}
-                                                    />
-                                                    <CustomTextField
-                                                        label="Mobile"
-                                                        name="dropOffMobile"
-                                                        value={formData.dropOffMobile}
-                                                        onChange={handleChange}
-                                                        error={!!errors.dropOffMobile}
-                                                        helperText={errors.dropOffMobile}
-                                                    />
-                                                </Box>
-                                            </Stack>
-                                            <CustomTextField
-                                                label="Plate No (optional)"
-                                                name="plateNo"
-                                                value={formData.plateNo}
-                                                onChange={handleChange}
-                                                error={!!errors.plateNo}
-                                                helperText={errors.plateNo}
-                                            />
-                                            <CustomTextField
-                                                label="Drop Date"
-                                                name="dropDate"
-                                                type="date"
-                                                value={formData.dropDate}
-                                                onChange={handleChange}
-                                                InputLabelProps={{ shrink: true }}
-                                                error={!!errors.dropDate}
-                                                helperText={errors.dropDate}
-                                            />
-                                        </Stack>
-                                    )}
+  {formData.transportType === 'Drop Off' && (
+  <Stack spacing={3}>
+    {/* Receiver Selector */}
+    <FormControl fullWidth error={!!errors.selectedReceiver}>
+      <InputLabel>Select Receiver *</InputLabel>
+      <Select
+        label="Select Receiver *"
+        value={formData.selectedReceiver ?? ""}
+        onChange={(e) => {
+          const receiverIndex = e.target.value;
+          setFormData(prev => ({
+            ...prev,
+            selectedReceiver: receiverIndex,
+            // Ensure dropOffDetails exists for this receiver
+            dropOffDetails: {
+              ...prev.dropOffDetails,
+              [receiverIndex]: prev.dropOffDetails?.[receiverIndex] || []
+            }
+          }));
+        }}
+      >
+        <MenuItem value="">Select a Receiver</MenuItem>
+        {(formData.receivers || []).map((receiver, index) => (
+          <MenuItem key={index} value={index}>
+            {receiver.receiverName?.trim() || `Receiver ${index + 1}`}
+          </MenuItem>
+        ))}
+        {(formData.receivers || []).length === 0 && (
+          <MenuItem disabled>No Receivers Available</MenuItem>
+        )}
+      </Select>
+      {errors.selectedReceiver && (
+        <FormHelperText>{errors.selectedReceiver}</FormHelperText>
+      )}
+    </FormControl>
+
+    {/* Drop-Off Details for Selected Receiver */}
+    {formData.selectedReceiver !== undefined && 
+     formData.selectedReceiver !== "" && 
+     formData.receivers?.[formData.selectedReceiver] && (
+      <Stack spacing={3}>
+        <Typography variant="h6" color="#f58220" gutterBottom>
+          Drop-Off Details for{' '}
+          {formData.receivers[formData.selectedReceiver].receiverName?.trim() || 
+           `Receiver ${parseInt(formData.selectedReceiver) + 1}`}
+        </Typography>
+
+        {/* List of Drop-Off Entries */}
+        {(formData.dropOffDetails?.[formData.selectedReceiver] || []).map((detail, index) => (
+          <Stack
+            key={index}
+            spacing={3}
+            sx={{
+              p: 3,
+              border: '1px solid #e0e0e0',
+              borderRadius: 2,
+              backgroundColor: '#fafafa'
+            }}
+          >
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="subtitle1" color="text.primary">
+                Drop-Off Entry {index + 1}
+              </Typography>
+              {index > 0 && (
+                <Button
+                  size="small"
+                  color="error"
+                  variant="text"
+                  onClick={() => {
+                    setFormData(prev => ({
+                      ...prev,
+                      dropOffDetails: {
+                        ...prev.dropOffDetails,
+                        [formData.selectedReceiver]: prev.dropOffDetails[formData.selectedReceiver].filter((_, i) => i !== index)
+                      }
+                    }));
+                  }}
+                >
+                  Remove
+                </Button>
+              )}
+            </Box>
+
+            <CustomSelect
+              label="Drop Method *"
+              value={detail.dropMethod || ""}
+              onChange={(e) => {
+                setFormData(prev => {
+                  const updated = { ...prev };
+                  updated.dropOffDetails[formData.selectedReceiver][index].dropMethod = e.target.value;
+                  return updated;
+                });
+              }}
+              error={!!errors[`dropOffDetails[${formData.selectedReceiver}][${index}].dropMethod`]}
+              helperText={errors[`dropOffDetails[${formData.selectedReceiver}][${index}].dropMethod`] || "Required"}
+            >
+              <MenuItem value="">Select Drop Method</MenuItem>
+              <MenuItem value="Drop-Off">Drop-Off</MenuItem>
+              <MenuItem value="RGSL Pickup">RGSL Pickup</MenuItem>
+            </CustomSelect>
+
+            <CustomTextField
+              label="Person Name"
+              value={detail.dropoffName || ""}
+              onChange={(e) => {
+                setFormData(prev => {
+                  const updated = { ...prev };
+                  updated.dropOffDetails[formData.selectedReceiver][index].dropoffName = e.target.value;
+                  return updated;
+                });
+              }}
+              error={!!errors[`dropOffDetails[${formData.selectedReceiver}][${index}].dropoffName`]}
+              helperText={errors[`dropOffDetails[${formData.selectedReceiver}][${index}].dropoffName`]}
+            />
+
+            <Box sx={{ display: 'flex', gap: 2, flexDirection: { xs: 'column', sm: 'row' } }}>
+              <CustomTextField
+                label="CNIC/ID"
+                value={detail.dropOffCnic || ""}
+                onChange={(e) => {
+                  setFormData(prev => {
+                    const updated = { ...prev };
+                    updated.dropOffDetails[formData.selectedReceiver][index].dropOffCnic = e.target.value;
+                    return updated;
+                  });
+                }}
+              />
+              <CustomTextField
+                label="Mobile"
+                value={detail.dropOffMobile || ""}
+                onChange={(e) => {
+                  setFormData(prev => {
+                    const updated = { ...prev };
+                    updated.dropOffDetails[formData.selectedReceiver][index].dropOffMobile = e.target.value;
+                    return updated;
+                  });
+                }}
+              />
+            </Box>
+
+            <CustomTextField
+              label="Plate No (optional)"
+              value={detail.plateNo || ""}
+              onChange={(e) => {
+                setFormData(prev => {
+                  const updated = { ...prev };
+                  updated.dropOffDetails[formData.selectedReceiver][index].plateNo = e.target.value;
+                  return updated;
+                });
+              }}
+            />
+
+            <CustomTextField
+              label="Drop Date"
+              type="date"
+              value={detail.dropDate || ""}
+              onChange={(e) => {
+                setFormData(prev => {
+                  const updated = { ...prev };
+                  updated.dropOffDetails[formData.selectedReceiver][index].dropDate = e.target.value;
+                  return updated;
+                });
+              }}
+              InputLabelProps={{ shrink: true }}
+            />
+          </Stack>
+        ))}
+
+        {/* Add More Drop-Off Button */}
+        <Button
+          variant="outlined"
+          startIcon={<AddIcon />}
+          onClick={() => {
+            setFormData(prev => ({
+              ...prev,
+              dropOffDetails: {
+                ...prev.dropOffDetails,
+                [formData.selectedReceiver]: [
+                  ...(prev.dropOffDetails?.[formData.selectedReceiver] || []),
+                  {
+                    dropMethod: "",
+                    dropoffName: "",
+                    dropOffCnic: "",
+                    dropOffMobile: "",
+                    plateNo: "",
+                    dropDate: ""
+                  }
+                ]
+              }
+            }));
+          }}
+          sx={{
+            alignSelf: 'flex-start',
+            borderColor: "#f58220",
+            color: "#f58220",
+            '&:hover': { borderColor: "#e5731a", backgroundColor: "rgba(245, 130, 32, 0.04)" }
+          }}
+        >
+          Add Another Drop-Off Entry
+        </Button>
+      </Stack>
+    )}
+
+    {/* Optional: Show message if no receiver selected */}
+    {formData.selectedReceiver === "" && (
+      <Alert severity="info" sx={{ mt: 2 }}>
+        Please select a receiver to add drop-off details.
+      </Alert>
+    )}
+  </Stack>
+)}
                                     {formData.transportType === 'Collection' && (
                                         <Stack spacing={2}>
                                             <Typography variant="h6" color="#f58220" gutterBottom>

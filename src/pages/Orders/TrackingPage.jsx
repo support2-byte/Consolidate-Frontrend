@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import {
   Box,
@@ -47,21 +47,43 @@ import { api } from '../../api';
 const TrackingPage = () => {
   const [itemRef, setItemRef] = useState('');
   const [orderData, setOrderData] = useState(null);
+  const [allOrders, setAllOrders] = useState([]);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const theme = useTheme();
 
   const handleTrack = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
+    console.log('Tracking initiated for itemRef:', itemRef);
+    // e.preventDefault();
+    setLoading(true); 
+    // setError('');
     try {
+      console.log('Sending request to track itemRef:', itemRef);  
       const response = await api.get(`/api/orders/track/item/${itemRef}`);
+      console.log('Tracking data received:', response);
       setOrderData(response.data.data);
     } catch (err) {
       setError(err.response?.data?.error || 'Tracking failed');
     }
     setLoading(false);
+  };
+
+
+  useEffect(() => {
+    // Preload all orders on component mount (optional)
+    getAllOrders();
+  }, []);
+
+
+  const getAllOrders = async () => {
+    try {
+      const response = await api.get('/api/orders');
+      console.log('All orders loaded for tracking page', response.data.data);
+      setAllOrders(response.data.data);
+    } catch (err) {
+      console.error('Error fetching all orders:', err);
+    }
   };
 
   // Enhanced timeline data with more details (use real API for history)
@@ -85,7 +107,7 @@ const TrackingPage = () => {
       </Box>
     );
   }
-
+console.log('Rendering TrackingPage with orderData:', orderData);
   return (
     <Box
       sx={{
@@ -128,7 +150,7 @@ const TrackingPage = () => {
         }}
       />
 
-      <Box sx={{ maxWidth: 1100, mx: 'auto', px: 2, position: 'relative', zIndex: 1 }}>
+      <Box sx={{ maxWidth: 1300, mx: 'auto', px: 2, position: 'relative', zIndex: 1 }}>
         {/* Header */}
         <Box sx={{ textAlign: 'center', mb: 6 }}>
           <Avatar
@@ -216,24 +238,24 @@ const TrackingPage = () => {
               <Box sx={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: { xs: 'column', md: 'row' }, justifyContent: 'space-between', alignItems: { xs: 'flex-start', md: 'center' }, gap: 3 }}>
                 <Box>
                   <Typography variant="h3" component="h2" fontWeight="bold" gutterBottom>
-                    Order #{orderData.booking_ref}
+                    Order #{orderData[0].booking_ref}
                   </Typography>
                   <Typography variant="h6" sx={{ opacity: 0.9 }}>
-                    Item Ref: <Chip label={orderData.item_ref || orderData.receiver_item_ref} variant="outlined" sx={{ color: 'white', borderColor: 'white', ml: 1 }} />
+                    Item Ref: <Chip label={orderData[0].item_ref || orderData[0].receiver_item_ref} variant="outlined" sx={{ color: 'white', borderColor: 'white', ml: 1 }} />
                   </Typography>
                   <Typography variant="body1" sx={{ opacity: 0.8 }}>
-                    Consignment: {orderData.consignment_number || 'N/A'}
+                    Consignment: {orderData[0].consignment_number || 'N/A'}
                   </Typography>
                 </Box>
                 <Box sx={{ display: 'flex'}}>
                   <Box>
                   
             
-                    <Typography variant="h6" fontWeight="bold">ETA: {new Date(orderData.eta).toLocaleDateString()}</Typography>
-                    <Typography variant="h6" sx={{ fontWeight: 'bold' }}>ETD: {new Date(orderData.etd).toLocaleDateString()}</Typography>
+                    <Typography variant="h6" fontWeight="bold">ETA: {new Date(orderData[0].eta).toLocaleDateString()}</Typography>
+                    <Typography variant="h6" sx={{ fontWeight: 'bold' }}>ETD: {new Date(orderData[0].etd).toLocaleDateString()}</Typography>
                    {/* <Chip
-                      label={orderData.overall_status}
-                      color={statusColors[orderData.overall_status] || 'default'}
+                      label={orderData[0].overall_status}
+                      color={statusColors[orderData[0].overall_status] || 'default'}
                       variant="filled"
                       size="large"
                       sx={{ fontSize: '1rem', px: 2 ,bgcolor:'#fff'}}
@@ -259,23 +281,23 @@ const TrackingPage = () => {
       <List dense>
         <ListItem>
           <ListItemIcon><PersonIcon color="primary" /></ListItemIcon>
-          <ListItemText primary="Name" secondary={orderData.receiver_name} />
+          <ListItemText primary="Name" secondary={orderData[0].receiver_name} />
         </ListItem>
         <ListItem>
           <ListItemIcon><PhoneIcon color="primary" /></ListItemIcon>
-          <ListItemText primary="Contact" secondary={orderData.receiver_contact || 'N/A'} />
+          <ListItemText primary="Contact" secondary={orderData[0].receiver_contact || 'N/A'} />
         </ListItem>
         <ListItem>
           <ListItemIcon><LocationIcon color="primary" /></ListItemIcon>
-          <ListItemText primary="Address" secondary={orderData.receiver_address || 'N/A'} />
+          <ListItemText primary="Address" secondary={orderData[0].receiver_address || 'N/A'} />
         </ListItem>
         <ListItem>
           <ListItemIcon><EmailIcon color="primary" /></ListItemIcon>
-          <ListItemText primary="Email" secondary={orderData.receiver_email || 'N/A'} />
+          <ListItemText primary="Email" secondary={orderData[0].receiver_email || 'N/A'} />
         </ListItem>
         <ListItem>
           <ListItemIcon><InventoryIcon color="primary" /></ListItemIcon>
-          <ListItemText primary="Total Weight" secondary={`${orderData.receiver_total_weight || orderData.total_weight} kg`} />
+          <ListItemText primary="Total Weight" secondary={`${orderData[0].receiver_total_weight || orderData[0].total_weight} kg`} />
         </ListItem>
       </List>
     </Paper>
@@ -293,23 +315,23 @@ const TrackingPage = () => {
       <List dense>
         <ListItem>
           <ListItemIcon><PackageIcon color="primary" /></ListItemIcon>
-          <ListItemText primary="Containers" secondary={orderData.receiver_containers_json || orderData.container_number || 'None'} />
+          <ListItemText primary="Containers" secondary={orderData[0].receiver_containers_json || orderData[0].container_number || 'None'} />
         </ListItem>
         <ListItem>
           <ListItemIcon><LocalShipping color="primary" /></ListItemIcon>
-          <ListItemText primary="Transport Type" secondary={orderData.transport_type || 'N/A'} />
+          <ListItemText primary="Transport Type" secondary={orderData[0].transport_type || 'N/A'} />
         </ListItem>
         <ListItem>
           <ListItemIcon><PersonIcon color="primary" /></ListItemIcon>
-          <ListItemText primary="Driver" secondary={orderData.driver_name || 'N/A'} />
+          <ListItemText primary="Driver" secondary={orderData[0].driver_name || 'N/A'} />
         </ListItem>
         <ListItem>
           <ListItemIcon><TruckIcon color="primary" /></ListItemIcon>
-          <ListItemText primary="Truck Number" secondary={orderData.truck_number || 'N/A'} />
+          <ListItemText primary="Truck Number" secondary={orderData[0].truck_number || 'N/A'} />
         </ListItem>
         <ListItem>
           <ListItemIcon><ClockIcon color="primary" /></ListItemIcon>
-          <ListItemText primary="Drop Date" secondary={new Date(orderData.drop_date).toLocaleDateString() || 'N/A'} />
+          <ListItemText primary="Drop Date" secondary={new Date(orderData[0].drop_date).toLocaleDateString() || 'N/A'} />
         </ListItem>
       </List>
     </Paper>
@@ -326,19 +348,19 @@ const TrackingPage = () => {
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
         <Box sx={{ flex: '1 1 calc(50% - 8px)', minWidth: 0 }}>
           <Typography variant="body2" color="grey.600">Shipping Line</Typography>
-          <Typography variant="body1" fontWeight="medium">{orderData.shipping_line || 'N/A'}</Typography>
+          <Typography variant="body1" fontWeight="medium">{orderData[0].shipping_line || 'N/A'}</Typography>
         </Box>
         <Box sx={{ flex: '1 1 calc(50% - 8px)', minWidth: 0 }}>
           <Typography variant="body2" color="grey.600">Place of Loading</Typography>
-          <Typography variant="body1" fontWeight="medium">{orderData.place_of_loading || 'N/A'}</Typography>
+          <Typography variant="body1" fontWeight="medium">{orderData[0].place_of_loading || 'N/A'}</Typography>
         </Box>
         <Box sx={{ flex: '1 1 calc(50% - 8px)', minWidth: 0 }}>
           <Typography variant="body2" color="grey.600">Final Destination</Typography>
-          <Typography variant="body1" fontWeight="medium">{orderData.final_destination || 'N/A'}</Typography>
+          <Typography variant="body1" fontWeight="medium">{orderData[0].final_destination || 'N/A'}</Typography>
         </Box>
         <Box sx={{ flex: '1 1 calc(50% - 8px)', minWidth: 0 }}>
           <Typography variant="body2" color="grey.600">Status</Typography>
-          <Chip label={orderData.overall_status} color={statusColors[orderData.overall_status] || 'default'} size="small" />
+          <Chip label={orderData[0].overall_status} color={statusColors[orderData[0].overall_status] || 'default'} size="small" />
         </Box>
       </Box>
     </Paper>

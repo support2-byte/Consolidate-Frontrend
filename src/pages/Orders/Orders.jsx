@@ -835,7 +835,7 @@ const getStatusColors = (status) => {
     };
     // Updated helper: parse and enhance with icons/chips for better UX
     const parseSummaryToList = (receivers, order) => {
-        console.log('Parsing receivers:', receivers,order);
+        // console.log('Parsing receivers:', receivers,order);
         if (!receivers || !Array.isArray(receivers)) return [];
         return receivers.map(rec => ({
             primary: rec.receiver_name,
@@ -1062,9 +1062,9 @@ const parseContainersToList = (order) => {
     }
 
     const containerSet = new Set(); // Use Set for uniqueness
-console.log('Parsing containers from order:', order);   
+// console.log('Parsing containers from order:', order);   
     order.receivers.forEach((receiver) => {
-        console.log('Processing receiver:', receiver);
+        // console.log('Processing receiver:', receiver);
         if (receiver.shippingdetails && Array.isArray(receiver.shippingdetails)) {
             receiver.shippingdetails.forEach((shippingDetail) => {
                 if (shippingDetail.containerDetails && Array.isArray(shippingDetail.containerDetails)) {
@@ -1335,11 +1335,11 @@ const PrettyContainersList = ({ items, title }) => {
         </TableHead>
         <TableBody>
             {orders.map((order) => {
-                console.log('Rendering order: conatiners', order.receivers);
+                // console.log('Rendering order: conatiners', order.receivers);
                 const isItemSelected = isSelected(order.id);
                 // renderReceivers( order.receivers);
                 const containersList = order.receivers.forEach((receiver) => {
-        console.log('Processing receiver: connnnnnnntainerssss', receiver);
+        // console.log('Processing receiver: connnnnnnntainerssss', receiver);
         if (receiver.shippingdetails && Array.isArray(receiver.shippingdetails)) {
             receiver.shippingdetails.forEach((shippingDetail) => {
                 if (shippingDetail.containerDetails && Array.isArray(shippingDetail.containerDetails)) {

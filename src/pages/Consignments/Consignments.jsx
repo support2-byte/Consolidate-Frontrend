@@ -1564,11 +1564,11 @@ const totalOrders = useMemo(() =>
         aria-describedby="status-dialog-description"
         sx={{ '& .MuiDialog-paper': { borderRadius: 3, boxShadow: 4 } }}
       >
-        <DialogTitle id="status-dialog-title" sx={{ fontSize: '1.25rem', p: 2, bgcolor: '#f8f9fa', borderBottom: 1, borderColor: 'divider' }}>
-          Update Status
+        <DialogTitle id="status-dialog-title" sx={{ fontSize: '1.25rem', p: 2, bgcolor: '#0d6c6a', color: "#fff", borderBottom: 1, borderColor: 'divider' }}>
+          Consignment Status
         </DialogTitle>
-        <DialogContent sx={{ p: 2 }}>
-          <Typography id="status-dialog-description" variant="body1" color="text.secondary" mb={2} sx={{ fontSize: '1rem' }}>
+        <DialogContent sx={{ pt: 2 }}>
+          <Typography id="status-dialog-description" variant="body1" color="text.secondary" m={2} sx={{ fontSize: '1rem' }}>
             Update status for <strong>{selectedConsignmentForUpdate?.consignment_number}</strong>
           </Typography>
           <FormControl fullWidth margin="dense" size="small">
@@ -1598,9 +1598,9 @@ const totalOrders = useMemo(() =>
 </Select>
           </FormControl>
         </DialogContent>
-        <DialogActions sx={{ p: 2, pt: 0, bgcolor: '#f8f9fa', borderTop: 1, borderColor: 'divider' }}>
+        <DialogActions sx={{ p: 2, pt: 2, bgcolor: '#f8f9fa', borderTop: 1, borderColor: 'divider' }}>
           <Button onClick={handleCloseStatusDialog} size="small" variant="outlined">Cancel</Button>
-          <Button onClick={() => handleConfirmStatusUpdate(selectedConsignmentForUpdate)} variant="contained" size="small" sx={{ backgroundColor: '#0d6c6a', '&:hover': { backgroundColor: '#0a5a59' } }}>
+          <Button onClick={() => handleConfirmStatusUpdate(selectedConsignmentForUpdate)} variant="contained" size="small" sx={{ backgroundColor: '#0d6c6a', color: "#fff", '&:hover': { backgroundColor: '#0a5a59', } }}>
             Update
           </Button>
         </DialogActions>

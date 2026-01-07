@@ -1638,7 +1638,7 @@ const generatePDFWithCanvas = async () => {
                                             '&.Mui-selected': { color: '#f58220' }
                                         }} 
                                     />
-                                    <Tab 
+                                    {/* <Tab 
                                         label="Inbound/Outbound" 
                                         icon={<LocalShippingIcon />} 
                                         iconPosition="start" 
@@ -1649,24 +1649,12 @@ const generatePDFWithCanvas = async () => {
                                             fontSize: '0.9rem',
                                             '&.Mui-selected': { color: '#f58220' }
                                         }} 
-                                    />
+                                    /> */}
                                     <Tab 
                                         label="Files" 
                                         icon={<AttachFileIcon />} 
                                         iconPosition="start" 
                                         {...a11yProps(5)} 
-                                        sx={{ 
-                                            color: '#666', 
-                                            fontWeight: 'bold',
-                                            fontSize: '0.9rem',
-                                            '&.Mui-selected': { color: '#f58220' }
-                                        }} 
-                                    />
-                                    <Tab 
-                                        label="Containers" 
-                                        icon={<LocalShippingIcon />} 
-                                        iconPosition="start" 
-                                        {...a11yProps(6)} 
                                         sx={{ 
                                             color: '#666', 
                                             fontWeight: 'bold',
@@ -1805,109 +1793,90 @@ const generatePDFWithCanvas = async () => {
                                         </Grid>
                                     </Grid>
                                 </TabPanel>
+<TabPanel value={tabValue} index={3}>
+  <Grid container spacing={3}>
 
-                                <TabPanel value={tabValue} index={3}>
-                                    <Grid container spacing={3}>
-                                        {/* Transport Details Card */}
-                                        <Grid item xs={12}>
-                                            <Card sx={{ 
-                                                boxShadow: 3, 
-                                                borderRadius: 3,
-                                                border: '1px solid #e3f2fd',
-                                                transition: 'all 0.3s ease',
-                                                '&:hover': { boxShadow: '0 8px 25px rgba(245, 130, 32, 0.1)' }
-                                            }}>
-                                                <CardContent sx={{ p: 3 }}>
-                                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
-                                                        <DriveEtaIcon color="primary" sx={{ fontSize: '1.5rem' }} />
-                                                        <Typography variant="h5" fontWeight="bold" color="#f58220" sx={{ fontSize: '1.5rem' }}>
-                                                            Transport Details
-                                                        </Typography>
-                                                    </Box>
-                                                    <HorizontalKeyValue 
-                                                        data={{
-                                                            'Transport Type': selectedOrder?.transport_type,
-                                                            'Driver Name': selectedOrder?.driver_name,
-                                                            'Driver Contact': selectedOrder?.driver_contact,
-                                                            'Driver NIC': selectedOrder?.driver_nic,
-                                                            'Driver Pickup Location': selectedOrder?.driver_pickup_location,
-                                                            'Truck Number': selectedOrder?.truck_number,
-                                                            'Third Party Transport': selectedOrder?.third_party_transport
-                                                        }} 
-                                                    />
-                                                </CardContent>
-                                            </Card>
-                                        </Grid>
-                                    </Grid>
-                                </TabPanel>
+    {/* Drop-Off Details Section - Only show if Transport Type is Drop Off */}
+    {selectedOrder?.transport_type === 'Drop Off' && (
+      <Grid item xs={12}>
+        <Typography
+          variant="h5"
+          fontWeight="bold"
+          color="#f58220"
+          sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1.5 }}
+        >
+          <LocalShippingIcon sx={{ fontSize: '1.5rem' }} />
+          Drop-Off Details
+        </Typography>
 
-                                <TabPanel value={tabValue} index={4}>
-                                    <Grid container spacing={3}>
-                                        {/* Drop-Off / Inbound Details Card */}
-                                        <Grid item xs={12} md={6}>
-                                            <Card sx={{ 
-                                                boxShadow: 3, 
-                                                borderRadius: 3,
-                                                border: '1px solid #e3f2fd',
-                                                transition: 'all 0.3s ease',
-                                                '&:hover': { boxShadow: '0 8px 25px rgba(245, 130, 32, 0.1)' }
-                                            }}>
-                                                <CardContent sx={{ p: 3 }}>
-                                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
-                                                        <LocalShippingIcon color="primary" sx={{ fontSize: '1.5rem' }} />
-                                                        <Typography variant="h5" fontWeight="bold" color="#f58220" sx={{ fontSize: '1.5rem' }}>
-                                                            Drop-Off (Inbound)
-                                                        </Typography>
-                                                    </Box>
-                                                    <HorizontalKeyValue 
-                                                        data={{
-                                                            'Drop Method': selectedOrder?.drop_method,
-                                                            'Dropoff Name': selectedOrder?.dropoff_name,
-                                                            'Drop-Off CNIC/ID': selectedOrder?.drop_off_cnic,
-                                                            'Drop-Off Mobile': selectedOrder?.drop_off_mobile,
-                                                            'Plate No': selectedOrder?.plate_no,
-                                                            'Drop Date': formatDate(selectedOrder?.drop_date)
-                                                        }} 
-                                                        spacing={2}
-                                                    />
-                                                </CardContent>
-                                            </Card>
-                                        </Grid>
+        {/* Loop through receivers and show drop-off details if any */}
+        {selectedOrder?.receivers?.map((receiver, receiverIndex) => {
+          const dropOffs = receiver.drop_off_details || [];
 
-                                        {/* Collection / Outbound Details Card */}
-                                        <Grid item xs={12} md={6}>
-                                            <Card sx={{ 
-                                                boxShadow: 3, 
-                                                borderRadius: 3,
-                                                border: '1px solid #e3f2fd',
-                                                transition: 'all 0.3s ease',
-                                                '&:hover': { boxShadow: '0 8px 25px rgba(245, 130, 32, 0.1)' }
-                                            }}>
-                                                <CardContent sx={{ p: 3 }}>
-                                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
-                                                        <LocalShippingIcon color="primary" sx={{ fontSize: '1.5rem' }} />
-                                                        <Typography variant="h5" fontWeight="bold" color="#f58220" sx={{ fontSize: '1.5rem' }}>
-                                                            Collection (Outbound)
-                                                        </Typography>
-                                                    </Box>
-                                                    <HorizontalKeyValue 
-                                                        data={{
-                                                            'Collection Method': selectedOrder?.collection_method,
-                                                            'Collection Scope': selectedOrder?.collection_scope,
-                                                            'Full/Partial': selectedOrder?.full_partial,
-                                                            'Qty Delivered': selectedOrder?.qty_delivered,
-                                                            'Client Receiver Name': selectedOrder?.client_receiver_name,
-                                                            'Client Receiver ID': selectedOrder?.client_receiver_id,
-                                                            'Client Receiver Mobile': selectedOrder?.client_receiver_mobile,
-                                                            'Delivery Date': formatDate(selectedOrder?.delivery_date)
-                                                        }} 
-                                                        spacing={2}
-                                                    />
-                                                </CardContent>
-                                            </Card>
-                                        </Grid>
-                                    </Grid>
-                                </TabPanel>
+          if (!dropOffs.length) return null;
+
+          return (
+            <Card
+              key={receiver.id || receiverIndex}
+              sx={{ mb: 3, boxShadow: 2, borderRadius: 3, border: '1px solid #fff3e0' }}
+            >
+              <CardContent sx={{ p: 3 }}>
+                <Typography variant="h6" color="#f58220" gutterBottom>
+                  {receiver.receiver_name?.trim() || `Receiver ${receiverIndex + 1}`}
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  {dropOffs.length} Drop-Off Entr{dropOffs.length > 1 ? 'ies' : 'y'}
+                </Typography>
+
+                <Grid container spacing={3}>
+                  {dropOffs.map((drop, idx) => (
+                    <Grid item xs={12} md={6} key={idx}>
+                      <Box
+                        sx={{
+                          p: 2.5,
+                          border: '1px dashed #ffcc80',
+                          borderRadius: 2,
+                          backgroundColor: '#fff8e1',
+                          height: '100%',
+                        }}
+                      >
+                        <Typography variant="subtitle2" fontWeight="bold" color="#e65100" gutterBottom>
+                          Drop-Off Entry {idx + 1}
+                        </Typography>
+                        <HorizontalKeyValue
+                          data={{
+                            'Drop Method': drop.drop_method || '-',
+                            'Person Name': drop.dropoff_name || '-',
+                            'CNIC/ID': drop.drop_off_cnic || '-',
+                            'Mobile': drop.drop_off_mobile || '-',
+                            'Plate No': drop.plate_no || '-',
+                            'Drop Date': drop.drop_date
+                              ? new Date(drop.drop_date).toLocaleDateString('en-GB')
+                              : '-',
+                          }}
+                          direction="vertical"
+                          sx={{ '& .key': { fontWeight: 600, color: '#555' } }}
+                        />
+                      </Box>
+                    </Grid>
+                  ))}
+                </Grid>
+              </CardContent>
+            </Card>
+          );
+        })}
+
+        {/* Fallback: No drop-off details across all receivers */}
+        {selectedOrder?.receivers?.every((r) => !(r.drop_off_details || []).length) && (
+          <Alert severity="info" sx={{ mt: 2 }}>
+            No drop-off details recorded for this order.
+          </Alert>
+        )}
+      </Grid>
+    )}
+  </Grid>
+</TabPanel>
+
 
                                 <TabPanel value={tabValue} index={5}>
                                     <Grid container spacing={3}>
@@ -1955,9 +1924,9 @@ const generatePDFWithCanvas = async () => {
                                     </Grid>
                                 </TabPanel>
 
-                                <TabPanel value={tabValue} index={6}>
+                                {/* <TabPanel value={tabValue} index={6}>
                                     {renderContainersTab()}
-                                </TabPanel>
+                                </TabPanel> */}
                             </Box>
                         </>
                     ) : (
