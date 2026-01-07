@@ -15,9 +15,11 @@ import {
   Chip, Stack, Grid, Avatar,
   CircularProgress,
   Card as MuiCard,
+  AlertTitle
 } from '@mui/material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
+import InfoIcon from '@mui/icons-material/Info';
 import dayjs from 'dayjs';
 import * as Yup from 'yup';
 // import CircularProgress 
@@ -259,6 +261,9 @@ const handleStatusChange = (newStatusOrEvent) => {
     setEtaLoading(false);
   }
 };
+
+
+
 // getStatusColor function: Maps consignment/container status to hex color
 // Based on provided status data. Returns color string or fallback gray if unknown.
 const getStatusColor = (status) => {
@@ -842,8 +847,39 @@ useEffect(() => {
     (selectedOrders || []).map(id => (orders || []).find(o => o.id === id)).filter(Boolean),
     [selectedOrders, orders]
   );
-  // Fixed: allReceivers definition
+
   const allReceivers = useMemo(() => orders.flatMap(order => order.receivers || []), [orders]);
+// === AUTO CALCULATE NET & GROSS WEIGHT FROM SELECTED ORDERS ===
+  const calculatedTotals = useMemo(() => {
+    let totalNetWeight = 0;
+
+    const ordersToSum = includedOrders.length > 0 ? includedOrders : orders;
+
+    ordersToSum.forEach(order => {
+      (order.receivers || []).forEach(receiver => {
+        (receiver.shippingdetails || []).forEach(detail => {
+          const weight = parseFloat(detail.weight || 0);
+          const quantity = parseInt(detail.totalNumber || 1);
+          totalNetWeight += weight * quantity;
+        });
+      });
+    });
+
+    const net = parseFloat(totalNetWeight.toFixed(2));
+    const gross = parseFloat((net * 1.15).toFixed(2)); // 15% extra for packaging
+
+    return { netWeight: net, grossWeight: gross };
+  }, [includedOrders, orders]);
+
+  // Sync calculated weights into form values
+  useEffect(() => {
+    setValues(prev => ({
+      ...prev,
+      netWeight: calculatedTotals.netWeight,
+      gross_weight: calculatedTotals.grossWeight,
+    }));
+  }, [calculatedTotals.netWeight, calculatedTotals.grossWeight]);
+
   useEffect(() => {
     setValues(prev => ({ ...prev, orders: (selectedOrders || []).map(id => ({ id })) }));
   }, [selectedOrders]);
@@ -1130,6 +1166,15 @@ useEffect(() => {
     }
   };
 
+
+  useEffect(() => {
+    
+      if (orders && orders.length > 0) {
+        const allOrderIds = orders.map((order) => order.id);
+        setSelectedOrders(allOrderIds);
+      }
+    }, [orders]);
+
   const validateForm = async () => {
     try {
       await validationSchema.validate(values, { abortEarly: false });
@@ -1152,6 +1197,7 @@ useEffect(() => {
     const isValid = await validateForm();
     if (!isValid) return null;
     const allFields = Object.keys(validationSchema.fields);
+    // console.log('Marking all fields as touched for validation:', allFields);
     setTouched(prev => ({ ...prev, ...allFields.reduce((acc, f) => ({ ...acc, [f]: true }), {}) }));
     const validContainers = (values.containers || []).filter(c =>
       c.containerNo && c.size && c.containerNo.trim() !== ''
@@ -1204,7 +1250,7 @@ useEffect(() => {
       vessel: parseInt(values.vessel, 10) || null,
       eta: eta ? dayjs(values.eta).format('YYYY-MM-DD'): '',
       voyage: values.voyage || null,
-      shipping_line: parseInt(values.shippingLine, 10) || null,
+      shipping_line: values.shippingLine || null,
       delivered: parseInt(values.delivered, 10) || 0,
       pending: parseInt(values.pending, 10) || 0,
       seal_no: values.seal_no || null,
@@ -1215,14 +1261,18 @@ useEffect(() => {
     return submitData;
   };
   const handleCreate = async (e) => {
-    console.log('Creating consignment', e);
+
     if (e) e.preventDefault();
     const submitData = await validateAndPrepare();
+
     if (!submitData) return;
+
     setSaving(true);
     try {
+
       const res = await api.post('/api/consignments', submitData);
-      console.log('[handleCreate] Success response:', res.data);
+setSaving(true);
+      // console.log('[handleCreate] Success response:', res.data);
       const { data: responseData, message } = res.data || {};
       setSnackbar({
         open: true,
@@ -1602,55 +1652,184 @@ const getPlaceNamePdf = (id) => {
   return places[id] || 'N/A';
 };
 
+
+
 const generateManifestPDFWithCanvas = async (data, allReceivers, selectedOrderObjects = includedOrders) => {
-  console.log('data for canvas data',data)
-  if (!data.consignment_number) {
-    setSnackbar({
-      open: true,
-      severity: 'warning',
-      message: 'Please enter a consignment number to generate the manifest.',
+    console.log('data for canvas data', data)
+    if (!data.consignment_number) {
+      setSnackbar({
+        open: true,
+        severity: 'warning',
+        message: 'Please enter a consignment number to generate the manifest.',
+      });
+      return;
+    }
+    const groupedShipping = allReceivers.reduce((acc, order) => {
+      acc[order.id] = order.receivers.reduce((recAcc, receiver) => {
+        recAcc[receiver.id] = receiver.shippingdetails || [];
+        return recAcc;
+      }, {});
+      return acc;
+    }, {});
+
+
+    let total_assign_boxes_all = 0;
+
+    allReceivers.forEach(order => {
+      order.receivers.forEach(receiver => {
+        const shippingDetails = receiver.shippingdetails || [];
+
+        shippingDetails.forEach(detail => {
+          const containerDetails = detail.containerDetails || [];
+
+          containerDetails.forEach(container => {
+            total_assign_boxes_all += Number(container.assign_total_box) || 0;
+          });
+        });
+      });
     });
-    return;
-  }
-     const groupedShipping = allReceivers.reduce((acc, order) => {
-  acc[order.id] = order.receivers.reduce((recAcc, receiver) => {
-    recAcc[receiver.id] = receiver.shippingdetails || [];
-    return recAcc;
-  }, {});
-  return acc;
-}, {});
-  // Helper function to normalize/format dates
-  const formatDate = (dateStr) => {
-    if (!dateStr) return 'N/A';
-    return new Date(dateStr).toLocaleDateString('en-US', { 
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric' 
+
+    console.log(`Total Assign Boxes (All Orders): ${total_assign_boxes_all}`);
+
+
+    // Helper function to normalize/format dates
+    const formatDate = (dateStr) => {
+      if (!dateStr) return 'N/A';
+      return new Date(dateStr).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+    };
+
+    // Helper function to get place name (assuming getPlaceName is defined; fallback here)
+    const getPlaceName = (id) => {
+      const places = { 2: 'Karachi', 5: 'Dubai' }; // Example; replace with actual
+      return places[id] || id || 'N/A';
+    };
+
+    // Helper to format weight
+    const formatWeight = (weight) => weight ? `${weight} KGS` : 'N/A';
+
+    // Load logo as base64
+    const logoBase64 = await loadImageAsBase64(logoPic);
+
+    // Create a temporary div element to render content
+    const tempElement = document.createElement('div');
+    tempElement.style.width = '210mm'; // A4 width
+    tempElement.style.padding = '4mm'; // Match margin
+    tempElement.style.backgroundColor = 'white';
+    tempElement.style.fontFamily = '"Helvetica Neue", Helvetica, Arial, sans-serif';
+    tempElement.style.boxSizing = 'border-box';
+
+
+    // Commodity-wise data group karein with assign_total_box
+    const commoditySummary = allReceivers.reduce((summary, order) => {
+      order.receivers.forEach(receiver => {
+        receiver.shippingdetails?.forEach(detail => {
+          const commodity = detail.category || 'Unknown';
+          const subcategory = detail.subcategory || '';
+          const commodityKey = subcategory ? `${commodity} - ${subcategory}` : commodity;
+
+          if (!summary[commodityKey]) {
+            summary[commodityKey] = {
+              commodity: commodityKey,
+              totalOrders: 0,
+              totalPkgs: 0,
+              totalWeight: 0
+            };
+          }
+
+          // Har shipping detail ko ek order consider karein
+          summary[commodityKey].totalOrders += 1;
+
+          // Assign total box calculate karein (containerDetails se)
+          let assignBoxes = 0;
+          detail.containerDetails?.forEach(container => {
+            assignBoxes += Number(container.assign_total_box) || 0;
+          });
+
+          summary[commodityKey].totalPkgs += assignBoxes;
+          summary[commodityKey].totalWeight += detail.weight || 0;
+        });
+      });
+
+      return summary;
+    }, {});
+
+    // Array mein convert karein aur totals calculate karein
+    const commodityArray = Object.values(commoditySummary);
+
+    // Grand totals calculate karein
+    const grandTotal = commodityArray.reduce((total, item) => {
+      total.totalOrders += item.totalOrders;
+      total.totalPkgs += item.totalPkgs;
+      total.totalWeight += item.totalWeight;
+      return total;
+    }, { totalOrders: 0, totalPkgs: 0, totalWeight: 0 });
+
+    let manifestData = [];
+    let serialNo = 1;
+
+    allReceivers.forEach(order => {
+      order.receivers.forEach(receiver => {
+        receiver.shippingdetails?.forEach(detail => {
+          // Container number nikalne ke liye
+          let containerNo = '';
+          if (detail.containerDetails && detail.containerDetails.length > 0) {
+            containerNo = detail.containerDetails[0]?.container?.container_number ||
+              order.receiver_containers_json ||
+              order.container_number ||
+              'N/A';
+          } else {
+            containerNo = order.receiver_containers_json ||
+              order.container_number ||
+              'N/A';
+          }
+
+          // Marks & Nos (itemRef se)
+          const marksNos = detail.itemRef || 'N/A';
+
+          // PKGS (assign_total_box se)
+          let pkgs = 0;
+          detail.containerDetails?.forEach(container => {
+            pkgs += Number(container.assign_total_box) || 0;
+          });
+
+          // Agar assign_total_box nahi hai to totalNumber use karo
+          if (pkgs === 0) {
+            pkgs = detail.totalNumber || 0;
+          }
+
+          // Commodity
+          const commodity = detail.category || 'Unknown';
+          const subcategory = detail.subcategory ? ` - ${detail.subcategory}` : '';
+          const fullCommodity = `${commodity}${subcategory}`;
+
+          manifestData.push({
+            sno: serialNo++,
+            orderNo: order.booking_ref || order.rgl_booking_number || 'N/A',
+            containerNo: containerNo,
+            sender: order.sender_name || 'N/A',
+            receiver: receiver.receiver_name || 'N/A',
+            marksNos: marksNos,
+            pkgs: pkgs,
+            weight: detail.weight || 0,
+            commodity: fullCommodity
+          });
+        });
+      });
     });
-  };
 
-  // Helper function to get place name (assuming getPlaceName is defined; fallback here)
-  const getPlaceName = (id) => {
-    const places = { 2: 'Karachi', 5: 'Dubai' }; // Example; replace with actual
-    return places[id] || id || 'N/A';
-  };
+    // Totals calculate karein
+    const manifestTotals = manifestData.reduce((total, item) => {
+      total.totalPkgs += item.pkgs;
+      total.totalWeight += item.weight;
+      return total;
+    }, { totalPkgs: 0, totalWeight: 0 });
 
-  // Helper to format weight
-  const formatWeight = (weight) => weight ? `${weight} KGS` : 'N/A';
-
-  // Load logo as base64
-  const logoBase64 = await loadImageAsBase64(logoPic);
-
-  // Create a temporary div element to render content
-  const tempElement = document.createElement('div');
-  tempElement.style.width = '210mm'; // A4 width
-  tempElement.style.padding = '4mm'; // Match margin
-  tempElement.style.backgroundColor = 'white';
-  tempElement.style.fontFamily = '"Helvetica Neue", Helvetica, Arial, sans-serif';
-  tempElement.style.boxSizing = 'border-box';
-  
-  // Create the content for the PDF with enhanced, user-friendly styling
-  tempElement.innerHTML = `
+    // Create the content for the PDF with enhanced, user-friendly styling
+    tempElement.innerHTML = `
     <style>
       * { box-sizing: border-box; }
       body { 
@@ -1661,19 +1840,13 @@ const generateManifestPDFWithCanvas = async (data, allReceivers, selectedOrderOb
         font-size: 11px; 
       }
       .header { 
-        background: linear-gradient(135deg, #1abc9c 0%, #0d6c6a 100%); 
-        color: white; 
-        height: 30mm; 
         padding: 4mm 4mm; 
         display: flex; 
         justify-content: space-between; 
-        align-items: center; 
-        margin-bottom: 8mm;
-        border-radius: 0 0 0px 0px; 
-        box-shadow: 0 4px 12px rgba(13, 108, 106, 0.2); 
+        align-items: start; 
       }
-      .header-logo { width: 220px; height: 60px; opacity: 0.95; } 
-      .header-left { display: flex; gap: 0mm; }
+      .header-logo { width: 185px; opacity: 0.95;   image-rendering: optimizeQuality;-webkit-image-rendering: optimizeQuality; } 
+      .header-left { display: flex; gap: 0mm; flex-direction: column; line-height: 0;}
       .header-consignment { font-size: 14px; font-weight: bold; margin: 0; }
       .header-right { text-align: right; flex-shrink: 0; }
       .header h1 { margin: 0 0 2mm 0; font-size: 20px; font-weight: 600; }
@@ -1689,7 +1862,6 @@ const generateManifestPDFWithCanvas = async (data, allReceivers, selectedOrderOb
         border: 1px solid #e9ecef; 
         border-radius: 8px; 
         padding: 6mm; 
-        // height: 60px; 
         display: flex; 
         flex-direction: column; 
         justify-content: space-between; 
@@ -1717,23 +1889,18 @@ const generateManifestPDFWithCanvas = async (data, allReceivers, selectedOrderOb
         margin-bottom: 4mm; 
         background: #fff; 
         border-radius: 8px; 
-        // overflow: hidden; 
         box-shadow: 0 2px 10px rgba(0,0,0,0.06); 
         page-break-inside: avoid; 
       }
       .section-header { 
-        background: linear-gradient(135deg, #0d6c6a 0%, #1abc9c 100%); 
-        color: white; 
-        padding: 4mm 6mm; 
+        padding: 1mm 3mm; 
         font-size: 15px; 
-        font-weight: 600; 
         margin: 0; 
-        border-bottom: 2px solid rgba(255,255,255,0.2); 
       }
       .section-content { padding: 6mm; background: #f8f9fa; }
       .details-grid { 
         display: flex; 
-        flexDirection:colums;
+        flex-Direction:colums;
         gap: 6mm; 
         font-size: 10px; 
       }
@@ -1765,24 +1932,19 @@ const generateManifestPDFWithCanvas = async (data, allReceivers, selectedOrderOb
       table { 
         width: 100%; 
         border-collapse: collapse; 
-        margin-bottom: 6mm; 
         font-size: 9px; 
-        background: white; 
-        border-radius: 8px; 
-        overflow: hidden; 
-        box-shadow: 0 2px 8px rgba(0,0,0,0.08); 
+        border: 1px solid #909090;
       }
       th { 
-        background: linear-gradient(135deg, #f58220 0%, #e67e22 100%); 
-        color: white; 
-        padding: 4mm; 
-        text-align: left; 
-        font-weight: 600; 
+        text-align: center; 
+        font-weight: normal;
       }
       td { 
-        padding: 4mm; 
+        padding: 2mm; 
         border-bottom: 1px solid #e9ecef; 
         vertical-align: top; 
+        text-align: center;
+        font-weight: 600;
       }
       tr:nth-child(even) td { background: #f8f9fa; }
       tr:last-child td { border-bottom: none; }
@@ -1854,724 +2016,882 @@ const generateManifestPDFWithCanvas = async (data, allReceivers, selectedOrderOb
     <div class="header">
       <div class="header-left">
         <img src="${logoBase64}" alt="Company Logo" class="header-logo" onerror="this.style.display='none';">
+        <div>
+            <h2>ROYAL GULF SHIPPING & LOGISTICS LLC</h2>
+            <h5 style="color: gray;">Dubai • London • Karachi • Shenzhen</h5>
+        </div>
+        <h2>CONSOLIDATION MANIFEST – CONSIGNMENT LEVEL</h2>
+
       </div>
       <div class="header-right">
-        <h1>Manifest Report</h1>
-        <p class="header-consignment">Consignment Number: ${data.consignment_number || 'N/A'}</p>
-        <p>${formatDate(new Date())}</p>
-        <p>Generated: ${new Date().toLocaleString()}</p>
-      </div>
+    <h1>Manifest Report</h1>
+    <p class="header-consignment">Consignment ID: ${data.consignment_number || 'N/A'}</p>
+    <p>POL: ${data.originName || 'N/A'}</p>
+    <p>POD: ${data.destinationName || 'N/A'}</p>
+    <p>ETD / ETA: ${data.eta}, ${data.etd}</p>
+    <p>Vessel / Voyage: ${data.vessel}, ${data.voyage}</p>
+    <p>Generated: ${new Date().toLocaleString()}</p>
+  </div>
     </div>
-    
-    <div class="summary-grid">
-      <div class="card">
-        <div class="card-header">Containers</div>
-        <div class="card-value">${data.containers?.length || 0}</div>
-      </div>
-      <div class="card">
-        <div class="card-header">Orders</div>
-        <div class="card-value">${selectedOrderObjects?.length || allReceivers?.length || 0}</div>
-      </div>
-      <div class="card">
-        <div class="card-header">Net Weight</div>
-        <div class="card-value">${formatWeight(data.net_weight)}</div>
-      </div>
-      <div class="card">
-        <div class="card-header">Gross Weight</div>
-        <div class="card-value">${formatWeight(data.gross_weight)}</div>
-      </div>
-      <div class="card">
-        <div class="card-header">Value</div>
-        <div class="card-value">${data.consignment_value || 0} ${data.currency_code || 'USD'}</div>
-      </div>
-      <div class="card">
-        <div class="card-header">Status</div>
-        <div class="card-value">${data.status || "Draft"}</div>
-      </div>
-    </div>
+
     
  <div class="section">
-  <h2 class="section-header">Consignment Details</h2>
-  <div style="display: flex; gap: 10px; justify-content: space-between; align-items: flex-start;">
-    <div style="flex: 1; background-color: #f8f9fa; padding: 5px; border-radius: 8px; border-left: 4px solid #f58220;">
-      <div style="margin-bottom: 6px;">
-        <strong style="display: block; color: #34495e; margin-bottom: 2px;">Consignee</strong>
-        <span style="color: #555;">${data.consigneeName || 'N/A'}</span>
-      </div>
-      <div style="margin-bottom: 6px;">
-        <strong style="display: block; color: #34495e; margin-bottom: 2px;">Destination</strong>
-        <span style="color: #555;">${data.destinationName || 'N/A'}</span>
-      </div>
-      <div style="margin-bottom: 6px;">
-        <strong style="display: block; color: #34495e; margin-bottom: 2px;">ETA</strong>
-        <span style="color: #555;">${formatDate(data.eta)}</span>
-      </div>
-      <div style="margin-bottom: 6px;">
-        <strong style="display: block; color: #34495e; margin-bottom: 2px;">Payment Type</strong>
-        <span style="color: #555;">${data.payment_type || 'N/A'}</span>
-      </div>
-      <div style="margin-bottom: 6px;">
-        <strong style="display: block; color: #34495e; margin-bottom: 2px;">Seal No</strong>
-        <span style="color: #555;">${data.seal_no || 'N/A'}</span>
-      </div>
+ <div class="section">
+        <h2 class="section-header">PARTIES</h2>
+        <div style="display: flex; flex-direction: column; margin-left: 10px;">
+            <div style="display: flex;gap: 50px;">
+                <h5>Shipper:</h5>
+                <h5>${data.shipperName}</h5>
+            </div>
+            <div style="display: flex;gap: 37px;">
+                <h5>Consignee:</h5>
+                <h5>${data.consigneeName}</h5>
+            </div>
+        </div>
     </div>
-  <div style="flex: 1; background-color: #f8f9fa; padding: 5px; border-radius: 8px; border-left: 4px solid #f58220;">
-      <div style="margin-bottom: 6px;">
-        <strong style="display: block; color: #34495e; margin-bottom: 2px;">Shipper</strong>
-        <span style="color: #555;">${data.shipperName || 'N/A'}</span>
-      </div>
-      <div style="margin-bottom: 6px;">
-        <strong style="display: block; color: #34495e; margin-bottom: 2px;">Origin</strong>
-        <span style="color: #555;">${data.originName || 'N/A'}</span>
-      </div>
-      <div style="margin-bottom: 6px;">
-        <strong style="display: block; color: #34495e; margin-bottom: 2px;">Vessel / Voyage</strong>
-        <span style="color: #555;">${(data.vessel || 'N/A') + ' / ' + (data.voyage || 'N/A')}</span>
-      </div>
-      <div style="margin-bottom: 6px;">
-        <strong style="display: block; color: #34495e; margin-bottom: 2px;">Shipping Line</strong>
-        <span style="color: #555;">${data.shipping_line || 'N/A'}</span>
-      </div>
-      <div style="margin-bottom: 6px;">
-        <strong style="display: block; color: #34495e; margin-bottom: 2px;">Bank</strong>
-        <span style="color: #555;">${data.bankName || 'N/A'}</span>
-      </div>
-    </div>
-  </div>
- ${data.remarks ? `
-    <div style="margin: 24px 0px; padding: 20px; background-color: #e8f5e8; border-radius: 8px; border-left: 4px solid #27ae60;">
-      <strong style="display: block; color: #34495e; margin-bottom: 8px;">Remarks:</strong>
-      <span style="color: #555; white-space: pre-wrap;">${data.remarks}</span>
-    </div>
-  ` : ''}
+
+
+<div class="section" >
+    <h2 class="section-header">CONSIGNMENT SUMMARY</h2>
+    <table>
+        <thead>
+            <tr style="border-bottom: 1px solid #909090;">
+                <th style="border: 1px solid #ddd;">TOTAL CONTAINERS</th>
+                <th style="border: 1px solid #ddd;">TOTAL ORDERS</th>
+                <th style="border: 1px solid #ddd;">TOTAL PACKAGES</th>
+                <th style="border: 1px solid #ddd;">TOTAL WEIGHT (KGS)</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td style="border: 1px solid #ddd;">${data.containers?.length || 0}</td>
+                <td style="border: 1px solid #ddd;">${selectedOrderObjects?.length || allReceivers?.length || 0}</td>
+                <td style="border: 1px solid #ddd;">${Number(total_assign_boxes_all).toLocaleString()} Packages</td>
+                <td style="border: 1px solid #ddd;">${Number(manifestTotals.totalWeight).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            </tr>
+        </tbody>
+    </table>
 </div>
-    
+
+
    ${data.containers && data.containers.length > 0 ? `
-  <div class="section" style={{marginTop:20px}}>
-    <h2 class="section-header">Containers</h2>
-    <table style="width: 100%; border-collapse: collapse;">
+    <div class="section">
+        <h2 class="section-header">COMMODITY SUMMARY (ALL CONTAINERS)</h2>
+        <small>System clubs all orders with the same commodity and shows combined packages & weight.</small>
+        <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr>
+                    <th style="border: 1px solid #ddd;">COMMODITY</th>
+                    <th style="border: 1px solid #ddd;">TOTAL ORDERS</th>
+                    <th style="border: 1px solid #ddd;">TOTAL PKGS</th>
+                    <th style="border: 1px solid #ddd;">TOTAL WEIGHT (KGS)</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${commodityArray.map(item => `
+                <tr>
+                    <td style="text-align:left; border: 1px solid #ddd;font-weight: normal;">${item.commodity}</td>
+                    <td style="border: 1px solid #ddd;font-weight: normal;">${item.totalOrders}</td>
+                    <td style="border: 1px solid #ddd;font-weight: normal;">${item.totalPkgs.toLocaleString()}</td>
+                    <td style="border: 1px solid #ddd;font-weight: normal;">
+                        ${Number(item.totalWeight).toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    })}
+                </tr>
+                `).join('')}
+
+                <!-- Grand Total Row -->
+                <tr style="background-color: #f5f5f5; font-weight: bold;">
+                    <td style="text-align: left; padding: 12px; border: 1px solid #ddd;">TOTAL (All Commodities)</td>
+                    <td style="padding: 12px; border: 1px solid #ddd;">${grandTotal.totalOrders}</td>
+                    <td style="padding: 12px; border: 1px solid #ddd;">${grandTotal.totalPkgs.toLocaleString()}</td>
+                    <td style="padding: 12px; border: 1px solid #ddd;">
+                        ${Number(grandTotal.totalWeight).toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    })}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>` : ''}
+
+  <div class="section" style="page-break-before: always;">
+    <h2 class="section-header">DETAILED MANIFEST – ALL CONTAINERS</h2>
+    <table style="width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 12px;">
       <thead>
-        <tr style="background-color: #e0e0e0;">
-          <th style="text-align: left; padding: 12px; border: 1px solid #ddd;">Container No</th>
-          <th style="text-align: left; padding: 12px; border: 1px solid #ddd;">Location</th>
-          <th style="text-align: left; padding: 12px; border: 1px solid #ddd;">Size</th>
-          <th style="text-align: left; padding: 12px; border: 1px solid #ddd;">Type</th>
-          <th style="text-align: left; padding: 12px; border: 1px solid #ddd;">Owner</th>
-          <th style="text-align: left; padding: 12px; border: 1px solid #ddd;">Status</th>
+        <tr>
+          <th style="text-align: center; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 5%;">S.NO</th>
+          <th style="text-align: center; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 10%;">ORDER NO</th>
+          <th style="text-align: center; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 12%;">CONTAINER NO</th>
+          <th style="text-align: center; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 10%;">Tracking ID</th>
+          <th style="text-align: center; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 18%;">SENDER</th>
+          <th style="text-align: center; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 18%;">RECEIVER</th>
+          <th style="text-align: center; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 10%;">MARKS & NOS</th>
+          <th style="text-align: right; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 7%;">PKGS</th>
+          <th style="text-align: right; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 8%;">WEIGHT (KGS)</th>
+          <th style="text-align: center; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 12%;">COMMODITY</th>
         </tr>
       </thead>
       <tbody>
-        ${data.containers.map((c, idx) => `
+        ${manifestData.map(item => `
           <tr>
-            <td style="padding: 12px; border: 1px solid #ddd;"><strong>${c.containerNo || `Container ${idx + 1}`}</strong></td>
-            <td style="padding: 12px; border: 1px solid #ddd;">${c.location || 'N/A'}</td>
-            <td style="padding: 12px; border: 1px solid #ddd;">${c.size || 'N/A'}</td>
-            <td style="padding: 12px; border: 1px solid #ddd;">${c.containerType || 'N/A'}</td>
-            <td style="padding: 12px; border: 1px solid #ddd;">${c.ownership || 'N/A'}</td>
-            <td style="padding: 12px; border: 1px solid #ddd; color: #27ae60; font-weight: 500;">${c.status || 'Active'}</td>
+            <td style="text-align: center; padding: 8px; border: 1px solid #ddd;">${item.sno}</td>
+            <td style="font-weight: normal; padding: 8px; border: 1px solid #ddd;">${item.orderNo}</td>
+            <td style="font-weight: normal; padding: 8px; border: 1px solid #ddd;">${item.containerNo}</td>
+            <td style="font-weight: normal; padding: 8px; border: 1px solid #ddd;">${item.marksNos}</td>
+            <td style="font-weight: normal; padding: 8px; border: 1px solid #ddd;">${item.sender}</td>
+            <td style="font-weight: normal; padding: 8px; border: 1px solid #ddd;">${item.receiver}</td>
+            <td style="font-weight: normal; padding: 8px; border: 1px solid #ddd;">Marks and Nos</td>
+            <td style="font-weight: normal; text-align: right; padding: 8px; border: 1px solid #ddd;">${item.pkgs.toLocaleString()}</td>
+            <td style="font-weight: normal; text-align: right; padding: 8px; border: 1px solid #ddd;">${Number(item.weight).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            <td style="font-weight: normal;padding: 8px; border: 1px solid #ddd;">${item.commodity}</td>
           </tr>
         `).join('')}
-      </tbody>
-    </table>
-  </div>
-` : ''}
-
-${allReceivers && allReceivers.length > 0 ? `
-<div class="section">
-    <h2 class="section-header">Orders (${allReceivers.length})</h2>
-    <table style="width: 100%; border-collapse: collapse;">
-      <thead>
-        <tr style="background-color: #f39c12;">
-          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Booking Ref</th>
-          <th style="text-align: center; padding: 12px; border: 1px solid #ddd; color: white;">POL</th>
-          <th style="text-align: center; padding: 12px; border: 1px solid #ddd; color: white;">POD</th>
-          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Sender</th>
-          <th style="text-align: center; padding: 12px; border: 1px solid #ddd; color: white;">Receiver</th>
-          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Status</th>
+        
+        <!-- Total Row -->
+        <tr style="background-color: #f5f5f5; font-weight: bold;">
+          <td colspan="7" style="text-align: right; padding: 10px; border: 1px solid #ddd;">TOTAL:</td>
+          <td style="text-align: right; padding: 10px; border: 1px solid #ddd;">${manifestTotals.totalPkgs.toLocaleString()}</td>
+          <td style="text-align: right; padding: 10px; border: 1px solid #ddd;">${Number(manifestTotals.totalWeight).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+          <td style="padding: 10px; border: 1px solid #ddd;"></td>
         </tr>
-      </thead>
-      <tbody>
-        ${allReceivers.map((c, idx) => `
-          <tr>
-            <td style="padding: 12px; border: 1px solid #ddd;"><strong>${c.booking_ref || `Booking ${idx + 1}`}</strong></td>
-            <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">${getPlaceName(c.place_of_loading || 'N/A')}</td>
-            <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">${getPlaceName(c.place_of_delivery || 'N/A')}</td>
-            <td style="padding: 12px; border: 1px solid #ddd;">${c.sender_name || 'N/A'}</td>
-            <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">${c.receiver_name || c?.receivers[0]?.receiver_name || 'N/A'}</td>
-            <td style="padding: 12px; border: 1px solid #ddd; color: #27ae60; font-weight: 500;">${c?.status || 'N/A'}</td>
-          </tr>
-        `).join('')}
       </tbody>
     </table>
   </div>
-` : ''}
 
-${allReceivers && allReceivers.length > 0 ? `
-  <div class="section">
-    <h2 class="section-header">Shipment Details</h2>
-    <table style="width: 100%; border-collapse: collapse;">
-      <thead>
-        <tr style="background-color: #16a085;">
-          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Tracking No</th>
-          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Category</th>
-          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Sub Category</th>
-          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Type</th>
-          <th style="text-align: center; padding: 12px; border: 1px solid #ddd; color: white;">Total Items</th>
-          <th style="text-align: center; padding: 12px; border: 1px solid #ddd; color: white;">Weight (kg)</th>
-          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Pickup Location</th>
-          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Delivery Address</th>
-          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Container No</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${Object.values(groupedShipping).flatMap(orderGroup => 
-          Object.values(orderGroup).flat()
-        ).map(s => `
-          <tr>
-            <td style="padding: 5px; border: 1px solid #ddd;"><strong>${s.itemRef || 'N/A'}</strong></td>
-            <td style="padding: 5px; border: 1px solid #ddd;">${s.category || 'N/A'}</td>
-            <td style="padding: 5px; border: 1px solid #ddd;">${s.subcategory || 'N/A'}</td>
-            <td style="padding: 5px; border: 1px solid #ddd;">${s.type || 'N/A'}</td>
-            <td style="padding: 5px; border: 1px solid #ddd; text-align: center;">${s.totalNumber || 'N/A'}</td>
-            <td style="padding: 5px; border: 1px solid #ddd; text-align: center;">${(s.weight / 1000).toFixed(2)}</td>
-            <td style="padding: 5px; border: 1px solid #ddd;">${s.pickupLocation || 'N/A'}</td>
-            <td style="padding: 5px; border: 1px solid #ddd;">${s.deliveryAddress || 'N/A'}</td>
-            <td style="padding: 5px; border: 1px solid #ddd;">${s.containerDetails?.[0]?.container?.container_number || 'N/A'}</td>
-          </tr>
-        `).join('')}
-      </tbody>
-    </table>
-  </div>
-` : ''}
-
- 
     <div class="footer">
       <p><strong>Generated:</strong> ${new Date().toLocaleString()} | <strong>Page:</strong> 1 of ${Math.ceil(allReceivers?.length / 5 || 1)} </p>
       <p style="margin-top: 2mm; font-size: 9px; opacity: 0.7;">© 2025 Royal Gulf Shipping Management System | This manifest is computer-generated and legally binding.</p>
     </div>
+</div>
+
   `;
-  
-  document.body.appendChild(tempElement);
-  
-  // Convert the element to canvas with higher quality and proper dimensions
-  const scale = 2.5;
-  const canvas = await html2canvas(tempElement, {
-    scale: scale,
-    useCORS: true,
-    allowTaint: true,
-    logging: false,
-    width: tempElement.scrollWidth,
-    height: tempElement.scrollHeight,
-    windowWidth: tempElement.scrollWidth,
-    windowHeight: tempElement.scrollHeight,
-    backgroundColor: '#ffffff' // Ensure white background
-  });
-  
-  // Remove the temporary element
-  document.body.removeChild(tempElement);
-  
-  // Save the canvas as an image file (PNG) - High quality
-  const canvasDataURL = canvas.toDataURL('image/png', 1.0); // Full quality PNG
-  const canvasLink = document.createElement('a');
-  canvasLink.download = `Manifest_${data.consignment_number}_Canvas_${Date.now()}.png`;
-  canvasLink.href = canvasDataURL;
-  canvasLink.click(); // Trigger download
-  
-  // Create PDF from canvas with better quality and margins, with bottom space
-  const innerWidthMm = 210 - 2 * 14; // 182mm
-  const pxPerMm = canvas.width / innerWidthMm;
-  const extraBottomSpaceMm = 8 ; // Approx 70px at 96dpi ~18.5mm, rounded to 20mm
-  const contentHeightPerPageMm = (297 - 2 * 14) - extraBottomSpaceMm; // 269 - 20 = 249mm
-  const contentHeightPerPagePx = contentHeightPerPageMm * pxPerMm;
-  
-  const pdf = new jsPDF('p', 'mm', 'a4');
-  const marginMm = 14;
-  const contentWidthMm = innerWidthMm;
-  
-  let startY = 0;
-  while (startY < canvas.height) {
-    const sliceHeightPx = Math.min(contentHeightPerPagePx, canvas.height - startY);
-    
-    // Create cropped canvas for this page slice
-    const croppedCanvas = document.createElement('canvas');
-    croppedCanvas.width = canvas.width;
-    croppedCanvas.height = sliceHeightPx;
-    const ctx = croppedCanvas.getContext('2d');
-    ctx.drawImage(canvas, 0, startY, canvas.width, sliceHeightPx, 0, 0, canvas.width, sliceHeightPx);
-    
-    const croppedDataURL = croppedCanvas.toDataURL('image/png', 1.0);
-    const drawHeightMm = sliceHeightPx / pxPerMm;
-    
-    // Add to PDF (first page without addPage)
-    if (startY > 0) {
-      pdf.addPage();
+
+    document.body.appendChild(tempElement);
+
+    // Convert the element to canvas with higher quality and proper dimensions
+    const scale = 1.5;
+    const canvas = await html2canvas(tempElement, {
+      scale: scale,
+      useCORS: true,
+      allowTaint: true,
+      logging: false,
+      width: tempElement.scrollWidth,
+      height: tempElement.scrollHeight,
+      windowWidth: tempElement.scrollWidth,
+      windowHeight: tempElement.scrollHeight,
+      backgroundColor: '#ffffff',
+      // Optimization settings
+      imageTimeout: 0,
+      removeContainer: true,
+      onclone: function (clonedDoc) {
+        clonedDoc.querySelectorAll('img').forEach(img => {
+          img.style.maxWidth = '100%';
+          img.style.height = 'auto';
+        });
+      }
+    });
+
+    // Remove the temporary element
+    document.body.removeChild(tempElement);
+
+    // Save the canvas as an image file (PNG) - High quality
+    const canvasDataURL = canvas.toDataURL('image/png', 0.85); // Full quality PNG
+    const canvasLink = document.createElement('a');
+    canvasLink.download = `Manifest_${data.consignment_number}_Canvas_${Date.now()}.png`;
+    canvasLink.href = canvasDataURL;
+    canvasLink.click(); // Trigger download
+
+    // Create PDF from canvas with better quality and margins, with bottom space
+    const innerWidthMm = 210 - 2 * 14; // 182mm
+    const pxPerMm = canvas.width / innerWidthMm;
+    const extraBottomSpaceMm = 8; // Approx 70px at 96dpi ~18.5mm, rounded to 20mm
+    const contentHeightPerPageMm = (297 - 2 * 14) - extraBottomSpaceMm; // 269 - 20 = 249mm
+    const contentHeightPerPagePx = contentHeightPerPageMm * pxPerMm;
+
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const marginMm = 14;
+    const contentWidthMm = innerWidthMm;
+
+    let startY = 0;
+    while (startY < canvas.height) {
+      const sliceHeightPx = Math.min(contentHeightPerPagePx, canvas.height - startY);
+
+      // Create cropped canvas for this page slice
+      const croppedCanvas = document.createElement('canvas');
+      croppedCanvas.width = canvas.width;
+      croppedCanvas.height = sliceHeightPx;
+      const ctx = croppedCanvas.getContext('2d');
+      ctx.drawImage(canvas, 0, startY, canvas.width, sliceHeightPx, 0, 0, canvas.width, sliceHeightPx);
+
+      // const croppedDataURL = croppedCanvas.toDataURL('image/png', 1.0);
+      const croppedDataURL = croppedCanvas.toDataURL('image/jpeg', 0.85);
+      const drawHeightMm = sliceHeightPx / pxPerMm;
+
+      // Add to PDF (first page without addPage)
+      if (startY > 0) {
+        pdf.addPage();
+      }
+      pdf.addImage(croppedDataURL, 'JPEG', marginMm, marginMm, contentWidthMm, drawHeightMm, undefined, 'FAST');
+      croppedCanvas.remove();
+
+      startY += sliceHeightPx;
     }
-    pdf.addImage(croppedDataURL, 'PNG', marginMm, marginMm, contentWidthMm, drawHeightMm);
-    
-    startY += sliceHeightPx;
-  }
-  
-  // Save the PDF
-  pdf.save(`Manifest_${data.consignment_number}_Detailed_${Date.now()}.pdf`);
-};
+
+    // Save the PDF
+    pdf.save(`Manifest_${data.consignment_number}_Detailed_${Date.now()}.pdf`);
+  };
 
 const generateContainersAndOrdersPDFWithCanvas = async (data, allReceivers, selectedOrderObjects = includedOrders) => {
-  console.log('data for canvas data',data)
-  if (!data.consignment_number) {
-    setSnackbar({
-      open: true,
-      severity: 'warning',
-      message: 'Please enter a consignment number to generate the manifest.',
+    console.log('data for canvas data', data)
+    if (!data.consignment_number) {
+      setSnackbar({
+        open: true,
+        severity: 'warning',
+        message: 'Please enter a consignment number to generate the manifest.',
+      });
+      return;
+    }
+
+    // DEBUG: Check what data we have
+    console.log('All Receivers:', allReceivers);
+    console.log('Data Containers:', data.containers);
+
+    // 1. GROUP ORDERS BY CONTAINER - CORRECT WAY
+    const containerOrdersMap = {};
+
+    // Pehle har container ke liye empty array bana lo
+    if (data.containers && data.containers.length > 0) {
+      data.containers.forEach(container => {
+        containerOrdersMap[container.containerNo] = {
+          container: container,
+          orders: []
+        };
+      });
+    } else {
+      // Agar containers nahi hai to ek default bana lo
+      containerOrdersMap['DEFAULT'] = {
+        container: { containerNo: 'DEFAULT', size: 'N/A', type: 'N/A', seal_no: 'N/A' },
+        orders: []
+      };
+    }
+
+    // 2. CORRECT METHOD TO ASSIGN ORDERS TO CONTAINERS
+    // Using shippingdetails.containerDetails[0].container.container_number
+    if (allReceivers && allReceivers.length > 0) {
+      console.log('Processing', allReceivers.length, 'orders');
+
+      allReceivers.forEach(order => {
+        let assignedContainerNo = null;
+
+        // Method 1: Check shippingdetails.containerDetails
+        if (order.receivers && order.receivers.length > 0) {
+          order.receivers.forEach(receiver => {
+            if (receiver.shippingdetails && receiver.shippingdetails.length > 0) {
+              receiver.shippingdetails.forEach(shippingDetail => {
+                if (shippingDetail.containerDetails && shippingDetail.containerDetails.length > 0) {
+                  const containerDetail = shippingDetail.containerDetails[0];
+                  if (containerDetail.container && containerDetail.container.container_number) {
+                    assignedContainerNo = containerDetail.container.container_number;
+                  }
+                }
+              });
+            }
+          });
+        }
+
+        // Method 2: Check receiver_containers_json field (backup)
+        if (!assignedContainerNo && order.receiver_containers_json) {
+          assignedContainerNo = order.receiver_containers_json;
+        }
+
+        // Method 3: Check containers array in receiver
+        if (!assignedContainerNo && order.receivers && order.receivers.length > 0) {
+          const receiver = order.receivers[0];
+          if (receiver.containers && receiver.containers.length > 0) {
+            assignedContainerNo = receiver.containers[0];
+          }
+        }
+
+        // Assign order to container
+        if (assignedContainerNo && containerOrdersMap[assignedContainerNo]) {
+          containerOrdersMap[assignedContainerNo].orders.push(order);
+          console.log(`Order ${order.id} assigned to container ${assignedContainerNo}`);
+        } else {
+          // If no container found, put in first container
+          const firstKey = Object.keys(containerOrdersMap)[0];
+          if (firstKey) {
+            containerOrdersMap[firstKey].orders.push(order);
+            console.log(`Order ${order.id} assigned to default container ${firstKey}`);
+          }
+        }
+      });
+    }
+
+    // DEBUG: Check distribution
+    console.log('Container Orders Distribution:');
+    Object.keys(containerOrdersMap).forEach(key => {
+      console.log(`Container ${key}: ${containerOrdersMap[key].orders.length} orders`);
+      if (containerOrdersMap[key].orders.length > 0) {
+        console.log('Order IDs:', containerOrdersMap[key].orders.map(o => o.id));
+      }
     });
-    return;
-  }
-     const groupedShipping = allReceivers.reduce((acc, order) => {
-  acc[order.id] = order.receivers.reduce((recAcc, receiver) => {
-    recAcc[receiver.id] = receiver.shippingdetails || [];
-    return recAcc;
-  }, {});
-  return acc;
-}, {});
-  // Helper function to normalize/format dates
-  const formatDate = (dateStr) => {
-    if (!dateStr) return 'N/A';
-    return new Date(dateStr).toLocaleDateString('en-US', { 
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric' 
+
+    // Helper functions
+    const formatDate = (dateStr) => {
+      if (!dateStr) return 'N/A';
+      return new Date(dateStr).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+    };
+
+    // 3. FUNCTION TO CALCULATE STATISTICS FOR A SINGLE CONTAINER
+    const calculateContainerStats = (orders) => {
+      if (!orders || orders.length === 0) {
+        return {
+          totalOrders: 0,
+          totalPackages: 0,
+          totalWeight: 0,
+          grossWeight: 0
+        };
+      }
+
+      let totalOrders = 0;
+      let totalPackages = 0;
+      let totalWeight = 0;
+
+      orders.forEach(order => {
+        totalOrders++;
+
+        if (order.receivers && order.receivers.length > 0) {
+          order.receivers.forEach(receiver => {
+            if (receiver.shippingdetails && receiver.shippingdetails.length > 0) {
+              receiver.shippingdetails.forEach(item => {
+                totalPackages += parseInt(item.totalNumber) || 0;
+                totalWeight += parseFloat(item.weight) || 0;
+              });
+            }
+          });
+        }
+      });
+
+      // Gross weight distribution based on weight ratio
+      const totalAllContainersWeight = Object.keys(containerOrdersMap).reduce((sum, key) => {
+        const ordersInContainer = containerOrdersMap[key].orders;
+        const containerWeight = ordersInContainer.reduce((wSum, order) => {
+          let weight = 0;
+          if (order.receivers && order.receivers.length > 0) {
+            order.receivers.forEach(receiver => {
+              if (receiver.shippingdetails && receiver.shippingdetails.length > 0) {
+                receiver.shippingdetails.forEach(item => {
+                  weight += parseFloat(item.weight) || 0;
+                });
+              }
+            });
+          }
+          return wSum + weight;
+        }, 0);
+        return sum + containerWeight;
+      }, 0);
+
+      const grossWeightRatio = totalAllContainersWeight > 0 ? totalWeight / totalAllContainersWeight : 1;
+      const grossWeight = data.gross_weight ? parseFloat(data.gross_weight) * grossWeightRatio : totalWeight;
+
+      return {
+        totalOrders: totalOrders,
+        totalPackages: totalPackages,
+        totalWeight: totalWeight,
+        grossWeight: grossWeight
+      };
+    };
+
+    // 4. FUNCTION TO CALCULATE COMMODITY SUMMARY FOR A SINGLE CONTAINER
+    const calculateCommoditySummary = (orders) => {
+      const commodityMap = {};
+
+      if (orders && orders.length > 0) {
+        orders.forEach(order => {
+          if (order.receivers && order.receivers.length > 0) {
+            order.receivers.forEach(receiver => {
+              if (receiver.shippingdetails && receiver.shippingdetails.length > 0) {
+                receiver.shippingdetails.forEach(item => {
+                  const commodity = item.category || 'General';
+                  if (!commodityMap[commodity]) {
+                    commodityMap[commodity] = {
+                      commodity: commodity,
+                      totalOrders: new Set(),
+                      totalPackages: 0,
+                      totalWeight: 0
+                    };
+                  }
+
+                  commodityMap[commodity].totalOrders.add(order.id);
+                  commodityMap[commodity].totalPackages += parseInt(item.totalNumber) || 0;
+                  commodityMap[commodity].totalWeight += parseFloat(item.weight) || 0;
+                });
+              }
+            });
+          }
+        });
+      }
+
+      return Object.values(commodityMap).map(item => ({
+        commodity: item.commodity,
+        totalOrders: item.totalOrders.size,
+        totalPackages: item.totalPackages,
+        totalWeight: item.totalWeight
+      }));
+    };
+
+    // 5. FUNCTION TO GET DETAILED MANIFEST FOR A SINGLE CONTAINER
+    const getDetailedManifestData = (orders) => {
+      const detailedData = [];
+      let serialNumber = 1;
+
+      if (orders && orders.length > 0) {
+        orders.forEach(order => {
+          if (order.receivers && order.receivers.length > 0) {
+            order.receivers.forEach(receiver => {
+              if (receiver.shippingdetails && receiver.shippingdetails.length > 0) {
+                receiver.shippingdetails.forEach(item => {
+                  detailedData.push({
+                    sno: serialNumber++,
+                    orderNumber: order.booking_ref || `ORD-${order.id}`,
+                    sender: order.sender_name || 'N/A',
+                    receiver: receiver.receiver_name || 'N/A',
+                    marksNos: item.type || 'N/A',
+                    packages: parseInt(item.totalNumber) || 0,
+                    weight: parseFloat(item.weight) || 0,
+                    commodity: item.category || 'N/A'
+                  });
+                });
+              }
+            });
+          }
+        });
+      }
+
+      return detailedData;
+    };
+
+    // Load logo as base64
+    const logoBase64 = await loadImageAsBase64(logoPic);
+
+    // Create a temporary div element
+    const tempElement = document.createElement('div');
+    tempElement.style.width = '210mm';
+    tempElement.style.padding = '4mm';
+    tempElement.style.backgroundColor = 'white';
+    tempElement.style.fontFamily = '"Helvetica Neue", Helvetica, Arial, sans-serif';
+    tempElement.style.boxSizing = 'border-box';
+
+    // 6. GENERATE HTML FOR EACH CONTAINER
+    let allContainersHTML = '';
+    let containerCounter = 0;
+
+    // Loop through each container and generate its tables
+    Object.keys(containerOrdersMap).forEach((containerNo) => {
+      const containerData = containerOrdersMap[containerNo];
+      const orders = containerData.orders;
+
+      // Calculate data for this specific container
+      const containerStats = calculateContainerStats(orders);
+      const commoditySummary = calculateCommoditySummary(orders);
+      const detailedData = getDetailedManifestData(orders);
+
+      containerCounter++;
+
+      // Add page break for containers after the first one
+      const pageBreakClass = containerCounter > 1 ? 'page-break' : '';
+
+      allContainersHTML += `
+        <div class="${pageBreakClass}" style="margin-top: ${containerCounter > 1 ? '30px' : '0'}">
+          <!-- Container Header -->
+          <div class="container-title">
+            CONTAINER ${containerCounter}: ${containerNo}
+          </div>
+          
+          <!-- TABLE 1: Container Summary -->
+          <div class="section-title">CONTAINER SUMMARY - ${containerNo}</div>
+          ${orders.length > 0 ? `
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="border-right: #7e7e7e 1px solid;">ORDERS IN CONTAINER</th>
+                <th style="border-right: #7e7e7e 1px solid;">TOTAL PACKAGES</th>
+                <th style="border-right: #7e7e7e 1px solid;">TOTAL WEIGHT (KGS)</th>
+                <th>GROSS WEIGHT (APPROX.)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="border-right: #7e7e7e 1px solid;">${containerStats.totalOrders}</td>
+                <td style="border-right: #7e7e7e 1px solid;">${containerStats.totalPackages}</td>
+                <td style="border-right: #7e7e7e 1px solid;">${(containerStats.totalWeight).toFixed(2)}</td>
+                <td>${(containerStats.grossWeight).toFixed(2)}</td>
+              </tr>
+            </tbody>
+          </table>
+          ` : `
+          <div style="text-align: center; padding: 30px; background: #f9f9f9; border: 1px dashed #ccc; margin-bottom: 20px;">
+            <h4 style="color: #666; font-style: italic;">NO ORDERS FOUND IN THIS CONTAINER</h4>
+            <p style="color: #999;">This container has no orders assigned to it.</p>
+          </div>
+          `}
+          
+          <!-- TABLE 2: Container Commodity Summary -->
+          ${orders.length > 0 ? `
+          <div class="section-title">CONTAINER COMMODITY SUMMARY - ${containerNo}</div>
+          <div class="note">Commodity-wise breakdown for this container</div>
+          ${commoditySummary.length > 0 ? `
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="text-align:left; border-right: #7e7e7e 1px solid;">COMMODITY</th>
+                <th style="border-right: #7e7e7e 1px solid;">TOTAL ORDERS</th>
+                <th style="border-right: #7e7e7e 1px solid;">TOTAL PKGS</th>
+                <th>TOTAL WEIGHT (KGS)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${commoditySummary.map(item => `
+              <tr>
+                <td style="text-align:left;border-right: #7e7e7e 1px solid;">${item.commodity}</td>
+                <td style="border-right: #7e7e7e 1px solid;">${item.totalOrders}</td>
+                <td style="border-right: #7e7e7e 1px solid;">${item.totalPackages}</td>
+                <td>${(item.totalWeight).toFixed(2)}</td>
+              </tr>
+              `).join('')}
+              <tr class="total-row">
+                <td class="bold" style="text-align:left;border-right: #7e7e7e 1px solid;">TOTAL</td>
+                <td class="bold" style="border-right: #7e7e7e 1px solid;">${commoditySummary.reduce((sum, item) => sum + item.totalOrders, 0)}</td>
+                <td class="bold" style="border-right: #7e7e7e 1px solid;">${commoditySummary.reduce((sum, item) => sum + item.totalPackages, 0)}</td>
+                <td class="bold">${(commoditySummary.reduce((sum, item) => sum + item.totalWeight, 0)).toFixed(2)}</td>
+              </tr>
+            </tbody>
+          </table>
+          ` : '<p style="text-align: center; color: #666; font-style: italic;">No commodity data available</p>'}
+          ` : ''}
+          
+          <!-- TABLE 3: Detailed Manifest -->
+          ${orders.length > 0 ? `
+          <div class="section-title">DETAILED MANIFEST - ${containerNo}</div>
+          ${detailedData.length > 0 ? `
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>S.NO</th>
+                <th>ORDER NO</th>
+                <th>SENDER</th>
+                <th>RECEIVER</th>
+                <th>MARKS & NOS</th>
+                <th>PKGS</th>
+                <th>WEIGHT (KGS)</th>
+                <th>COMMODITY</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${detailedData.map(item => `
+              <tr>
+                <td>${item.sno}</td>
+                <td>${item.orderNumber}</td>
+                <td>${item.sender}</td>
+                <td>${item.receiver}</td>
+                <td>${item.marksNos}</td>
+                <td>${item.packages}</td>
+                <td>${(item.weight).toFixed(2)}</td>
+                <td>${item.commodity}</td>
+              </tr>
+              `).join('')}
+              <tr class="total-row">
+                <td colspan="5" class="text-align:right; bold text-right">TOTAL:</td>
+                <td class="bold">${detailedData.reduce((sum, item) => sum + item.packages, 0)}</td>
+                <td class="bold">${(detailedData.reduce((sum, item) => sum + item.weight, 0)).toFixed(2)}</td>
+                <td></td>
+              </tr>
+            </tbody>
+          </table>
+          ` : '<p style="text-align: center; color: #666; font-style: italic;">No detailed manifest data available</p>'}
+          ` : ''}
+        </div>
+      `;
     });
-  };
 
-  // Helper function to get place name (assuming getPlaceName is defined; fallback here)
-  const getPlaceName = (id) => {
-    const places = { 2: 'Karachi', 5: 'Dubai' }; // Example; replace with actual
-    return places[id] || id || 'N/A';
-  };
-
-  // Helper to format weight
-  const formatWeight = (weight) => weight ? `${weight} KGS` : 'N/A';
-
-  // Load logo as base64
-  const logoBase64 = await loadImageAsBase64(logoPic);
-
-  // Create a temporary div element to render content
-  const tempElement = document.createElement('div');
-  tempElement.style.width = '210mm'; // A4 width
-  tempElement.style.padding = '4mm'; // Match margin
-  tempElement.style.backgroundColor = 'white';
-  tempElement.style.fontFamily = '"Helvetica Neue", Helvetica, Arial, sans-serif';
-  tempElement.style.boxSizing = 'border-box';
-  
-  // Create the content for the PDF with enhanced, user-friendly styling
-  tempElement.innerHTML = `
+    // Create the complete HTML
+    tempElement.innerHTML = `
     <style>
-      * { box-sizing: border-box; }
-      body { 
-        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; 
-        margin: 0; padding: 0; 
-        color: #2c3e50; background: white; 
-        line-height: 1.4; 
-        font-size: 11px; 
+      * {
+        box-sizing: border-box;
       }
-      .header { 
-        background: linear-gradient(135deg, #1abc9c 0%, #0d6c6a 100%); 
-        color: white; 
-        height: 30mm; 
-        padding: 4mm 4mm; 
-        display: flex; 
-        justify-content: space-between; 
-        align-items: center; 
-        margin-bottom: 8mm;
-        border-radius: 0 0 0px 0px; 
-        box-shadow: 0 4px 12px rgba(13, 108, 106, 0.2); 
+
+      body {
+        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+        margin: 0;
+        padding: 0;
+        color: #2c3e50;
+        background: white;
+        line-height: 1.4;
+        font-size: 11px;
       }
-      .header-logo { width: 220px; height: 60px; opacity: 0.95; } 
-      .header-left { display: flex; gap: 0mm; }
-      .header-consignment { font-size: 14px; font-weight: bold; margin: 0; }
-      .header-right { text-align: right; flex-shrink: 0; }
-      .header h1 { margin: 0 0 2mm 0; font-size: 20px; font-weight: 600; }
-      .header p { margin: 0.5mm 0; font-size: 10px; opacity: 0.9; }
-      .summary-grid { 
-        display: grid; 
-        grid-template-columns: repeat(auto-fit, minmax(85mm, 1fr)); 
-        gap: 4mm; 
-        margin-bottom: 8mm; 
+
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: start;
+        border-bottom: 2px solid #f58220;
+        margin-bottom: 20px;
+        padding-bottom: 15px;
       }
-      .card { 
-        background: linear-gradient(145deg, #ffffff 0%, #f8f9fa 100%); 
-        border: 1px solid #e9ecef; 
-        border-radius: 8px; 
-        padding: 6mm; 
-        // height: 60px; 
-        display: flex; 
-        flex-direction: column; 
-        justify-content: space-between; 
-        box-shadow: 0 2px 8px rgba(0,0,0,0.08); 
-        transition: transform 0.2s ease; /* Subtle hover for interactivity */
+
+      .header-logo {
+        width: 185px;
+        opacity: 0.95;
       }
-      .card:hover { transform: translateY(-1px); }
-      .card-header { 
-        background: linear-gradient(135deg, #0d6c6a 0%, #1abc9c 100%); 
-        color: white; 
-        padding: 2mm 3mm; 
-        border-radius: 6px 6px 0 0; 
-        font-size: 10px; 
-        font-weight: 600; 
-        text-align: center; 
+
+      .header-left {
+        display: flex;
+        flex-direction: column;
       }
-      .card-value { 
-        font-size: 12px; 
-        color: #2c3e50; 
-        font-weight: 500; 
-        text-align: center; 
-        margin-top: 1mm; 
+
+      .header-consignment {
+        font-size: 14px;
+        font-weight: bold;
+        margin: 0;
+        color: #f58220;
       }
-      .section { 
-        margin-bottom: 4mm; 
-        background: #fff; 
-        border-radius: 8px; 
-        // overflow: hidden; 
-        box-shadow: 0 2px 10px rgba(0,0,0,0.06); 
-        page-break-inside: avoid; 
+
+      .header-right {
+        text-align: right;
+        flex-shrink: 0;
       }
-      .section-header { 
-        background: linear-gradient(135deg, #0d6c6a 0%, #1abc9c 100%); 
-        color: white; 
-        padding: 4mm 6mm; 
-        font-size: 15px; 
-        font-weight: 600; 
-        margin: 0; 
-        border-bottom: 2px solid rgba(255,255,255,0.2); 
+
+      .header h2 {
+        margin: 0 0 2mm 0;
+        font-size: 20px;
+        font-weight: 600;
       }
-      .section-content { padding: 6mm; background: #f8f9fa; }
-      .details-grid { 
-        display: flex; 
-        flexDirection:colums;
-        gap: 6mm; 
-        font-size: 10px; 
+
+      .header p {
+        margin: 0.5mm 0;
+        font-size: 10px;
+        opacity: 0.9;
       }
-      .details-grid dt { 
-        font-weight: 600; 
-        color: #0d6c6a; 
-        margin-bottom: 2mm; 
-        font-size: 11px; 
+
+      .section-title {
+        font-size: 16px;
+        font-weight: bold;
+        color: #000000;
+        margin: 25px 0 10px 0;
+        padding-bottom: 5px;
+        border-bottom: 2px solid #f58220;
+        text-transform: uppercase;
       }
-      .details-grid dd { 
-        margin: 0 0 4mm 0; 
-        color: #34495e; 
-        padding: 2mm; 
-        background: white; 
-        border-left: 3px solid #1abc9c; 
-        border-radius: 0 4px 4px 0; 
+
+      .data-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 25px;
+        font-size: 11px;
+        border: 1px solid #7e7e7e;
       }
-      .remarks-box { 
-        background: linear-gradient(145deg, #f8f9fa 0%, #e9ecef 100%); 
-        border-radius: 8px; 
-        padding: 6mm; 
-        margin-bottom: 18mm; 
-        font-style: italic; 
-        color: #5a6c7d; 
-        font-size: 10px; 
-        border-left: 4px solid #f58220; 
-        box-shadow: inset 0 2px 4px rgba(0,0,0,0.05); 
+
+      .data-table th {
+        color: #000000;
+        font-weight: bold;
+        text-align: center;
+        padding: 10px 8px;
+        border-bottom: 1px solid #7e7e7e;
+        text-transform: uppercase;
+        background-color: #f8f9fa;
       }
-      table { 
-        width: 100%; 
-        border-collapse: collapse; 
-        margin-bottom: 6mm; 
-        font-size: 9px; 
-        background: white; 
-        border-radius: 8px; 
-        overflow: hidden; 
-        box-shadow: 0 2px 8px rgba(0,0,0,0.08); 
+
+      .data-table td {
+        padding: 8px;
+        text-align: center;
+        border-right: 1px solid #e0e0e0;
       }
-      th { 
-        background: linear-gradient(135deg, #f58220 0%, #e67e22 100%); 
-        color: white; 
-        padding: 4mm; 
-        text-align: left; 
-        font-weight: 600; 
+
+      .data-table tr {
+        border-bottom: 1px solid #e0e0e0;
       }
-      td { 
-        padding: 4mm; 
-        border-bottom: 1px solid #e9ecef; 
-        vertical-align: top; 
+
+      .data-table tr:hover {
+        background-color: #f5f5f5;
       }
-      tr:nth-child(even) td { background: #f8f9fa; }
-      tr:last-child td { border-bottom: none; }
-      tr:hover td { background: #e3f2fd; }
-      .orders-title { 
-        background: linear-gradient(135deg, #f58220 0%, #e67e22 100%); 
-        color: white; 
-        padding: 3mm 6mm; 
-        font-size: 14px; 
-        font-weight: 600; 
-        margin-bottom: 2mm; 
-        border-radius: 6px 6px 0 0; 
+
+      .data-table .total-row {
+        font-weight: bold;
+        background-color: #e8f5e8;
       }
-      .receiver-detail { 
-        margin-bottom: 8mm; 
-        padding: 6mm; 
-        background: white; 
-        border-radius: 8px; 
-        box-shadow: 0 2px 6px rgba(0,0,0,0.05); 
-        border-left: 4px solid #1abc9c; 
+
+      .container-title {
+        font-size: 15px;
+        font-weight: bold;
+        color: #000000;
+        margin: 30px 0 15px 0;
+        background: #f5f5f5;
+        padding: 12px;
+        border-left: 4px solid #f58220;
+        border-radius: 4px;
       }
-      .receiver-header { 
-        background: linear-gradient(135deg, #3498db 0%, #2980b9 100%); 
-        color: white; 
-        padding: 4mm; 
-        border-radius: 6px 6px 0 0; 
-        font-size: 13px; 
-        font-weight: 600; 
-        margin: -6mm -6mm 4mm -6mm; 
+
+      .page-break {
+        page-break-before: always;
+        padding-top: 20px;
       }
-      .shipping-item { 
-        margin-bottom: 6mm; 
-        padding: 4mm; 
-        background: #f8f9fa; 
-        border-radius: 6px; 
-        border-left: 3px solid #f58220; 
+
+      .note {
+        font-size: 10px;
+        color: #666666;
+        font-style: italic;
+        margin: 5px 0 15px 0;
       }
-      .shipping-header { 
-        font-size: 12px; 
-        color: #e67e22; 
-        margin-bottom: 3mm; 
-        font-weight: 600; 
+
+      .footer {
+        margin-top: 40px;
+        padding-top: 20px;
+        text-align: center;
+        color: #000000;
+        font-size: 11px;
+        border-top: 2px solid #f58220;
       }
-      .container-subtable { 
-        font-size: 8px; 
-        margin-top: 3mm; 
+
+      .footer-line {
+        margin: 5px 0;
       }
-      .container-subtable th { 
-        background: #3498db; 
-        color: white; 
-        padding: 2mm; 
+
+      .shipper-info {
+        display: flex;
+        flex-direction: column;
+        margin: 20px 0;
+        padding: 15px;
+        background: #f8f9fa;
+        border-radius: 6px;
       }
-      .container-subtable td { 
-        padding: 2mm; 
-        border-bottom: 1px solid #bdc3c7; 
+
+      .shipper-row {
+        display: flex;
+        margin: 5px 0;
       }
-      .footer { 
-        margin-top: 12mm; 
-        padding-top: 5mm; 
-        border-top: 2px solid #0d6c6a; 
-        color: #7f8c8d; 
-        font-size: 10px; 
-        text-align: center; 
-        font-style: italic; 
+
+      .shipper-label {
+        font-weight: bold;
+        min-width: 120px;
       }
-      .page-break { page-break-before: always; }
     </style>
-    
+
     <div class="header">
       <div class="header-left">
         <img src="${logoBase64}" alt="Company Logo" class="header-logo" onerror="this.style.display='none';">
+        <div>
+          <h2 style="margin: 5px 0;">ROYAL GULF SHIPPING & LOGISTICS LLC</h2>
+          <h5 style="color: gray; margin: 3px 0;">Dubai • London • Karachi • Shenzhen</h5>
+        </div>
+        <h2 style="color: #f58220; margin-top: 10px;">CONSOLIDATION MANIFEST - CONTAINER LEVEL</h2>
       </div>
       <div class="header-right">
-        <h1>Manifest Report</h1>
-        <p class="header-consignment">Consignment Number: ${data.consignment_number || 'N/A'}</p>
-        <p>${formatDate(new Date())}</p>
+        <p class="header-consignment">Consignment: ${data.consignment_number || 'N/A'}</p>
+        <p>Total Containers: ${data.containers ? data.containers.length : 0}</p>
+        <p>POL: ${data.originName || 'N/A'}</p>
+        <p>POD: ${data.destinationName || 'N/A'}</p>
+        <p>ETD: ${data.etd || 'N/A'}</p>
+        <p>ETA: ${formatDate(data.eta) || 'N/A'}</p>
         <p>Generated: ${new Date().toLocaleString()}</p>
       </div>
     </div>
-    
-    <div class="summary-grid">
-      <div class="card">
-        <div class="card-header">Containers</div>
-        <div class="card-value">${data.containers?.length || 0}</div>
+
+    <div class="shipper-info">
+      <div class="shipper-row">
+        <div class="shipper-label">Shipper:</div>
+        <div>${data.shipperName || 'N/A'}</div>
       </div>
-      <div class="card">
-        <div class="card-header">Orders</div>
-        <div class="card-value">${selectedOrderObjects?.length || allReceivers?.length || 0}</div>
-      </div>
-      <div class="card">
-        <div class="card-header">Net Weight</div>
-        <div class="card-value">${formatWeight(data.net_weight)}</div>
-      </div>
-      <div class="card">
-        <div class="card-header">Gross Weight</div>
-        <div class="card-value">${formatWeight(data.gross_weight)}</div>
-      </div>
-      <div class="card">
-        <div class="card-header">Value</div>
-        <div class="card-value">${data.consignment_value || 0} ${data.currency_code || 'USD'}</div>
-      </div>
-      <div class="card">
-        <div class="card-header">Status</div>
-        <div class="card-value">${data.status || "Draft"}</div>
+      <div class="shipper-row">
+        <div class="shipper-label">Consignee:</div>
+        <div>${data.consigneeName || 'N/A'}</div>
       </div>
     </div>
-    
-   ${data.containers && data.containers.length > 0 ? `
-  <div class="section" style={{marginTop:20px}}>
-    <h2 class="section-header">Containers</h2>
-    <table style="width: 100%; border-collapse: collapse;">
-      <thead>
-        <tr style="background-color: #e0e0e0;">
-          <th style="text-align: left; padding: 12px; border: 1px solid #ddd;">Container No</th>
-          <th style="text-align: left; padding: 12px; border: 1px solid #ddd;">Location</th>
-          <th style="text-align: left; padding: 12px; border: 1px solid #ddd;">Size</th>
-          <th style="text-align: left; padding: 12px; border: 1px solid #ddd;">Type</th>
-          <th style="text-align: left; padding: 12px; border: 1px solid #ddd;">Owner</th>
-          <th style="text-align: left; padding: 12px; border: 1px solid #ddd;">Status</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${data.containers.map((c, idx) => `
-          <tr>
-            <td style="padding: 12px; border: 1px solid #ddd;"><strong>${c.containerNo || `Container ${idx + 1}`}</strong></td>
-            <td style="padding: 12px; border: 1px solid #ddd;">${c.location || 'N/A'}</td>
-            <td style="padding: 12px; border: 1px solid #ddd;">${c.size || 'N/A'}</td>
-            <td style="padding: 12px; border: 1px solid #ddd;">${c.containerType || 'N/A'}</td>
-            <td style="padding: 12px; border: 1px solid #ddd;">${c.ownership || 'N/A'}</td>
-            <td style="padding: 12px; border: 1px solid #ddd; color: #27ae60; font-weight: 500;">${c.status || 'Active'}</td>
-          </tr>
-        `).join('')}
-      </tbody>
-    </table>
-  </div>
-` : ''}
 
-${allReceivers && allReceivers.length > 0 ? `
-<div class="section">
-    <h2 class="section-header">Orders (${allReceivers.length})</h2>
-    <table style="width: 100%; border-collapse: collapse;">
-      <thead>
-        <tr style="background-color: #f39c12;">
-          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Booking Ref</th>
-          <th style="text-align: center; padding: 12px; border: 1px solid #ddd; color: white;">POL</th>
-          <th style="text-align: center; padding: 12px; border: 1px solid #ddd; color: white;">POD</th>
-          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Sender</th>
-          <th style="text-align: center; padding: 12px; border: 1px solid #ddd; color: white;">Receiver</th>
-          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Status</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${allReceivers.map((c, idx) => `
-          <tr>
-            <td style="padding: 12px; border: 1px solid #ddd;"><strong>${c.booking_ref || `Booking ${idx + 1}`}</strong></td>
-            <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">${getPlaceName(c.place_of_loading || 'N/A')}</td>
-            <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">${getPlaceName(c.place_of_delivery || 'N/A')}</td>
-            <td style="padding: 12px; border: 1px solid #ddd;">${c.sender_name || 'N/A'}</td>
-            <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">${c.receiver_name || c?.receivers[0]?.receiver_name || 'N/A'}</td>
-            <td style="padding: 12px; border: 1px solid #ddd; color: #27ae60; font-weight: 500;">${c?.status || 'N/A'}</td>
-          </tr>
-        `).join('')}
-      </tbody>
-    </table>
-  </div>
-` : ''}
+    <!-- CONTAINER WISE REPORTS -->
+    ${allContainersHTML || '<p style="text-align: center; color: red; font-weight: bold;">No container data available</p>'}
 
-${allReceivers && allReceivers.length > 0 ? `
-  <div class="section">
-    <h2 class="section-header">Shipment Details</h2>
-    <table style="width: 100%; border-collapse: collapse;">
-      <thead>
-        <tr style="background-color: #16a085;">
-          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Tracking No</th>
-          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Category</th>
-          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Sub Category</th>
-          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Type</th>
-          <th style="text-align: center; padding: 12px; border: 1px solid #ddd; color: white;">Total Items</th>
-          <th style="text-align: center; padding: 12px; border: 1px solid #ddd; color: white;">Weight (kg)</th>
-          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Pickup Location</th>
-          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Delivery Address</th>
-          <th style="text-align: left; padding: 12px; border: 1px solid #ddd; color: white;">Container No</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${Object.values(groupedShipping).flatMap(orderGroup => 
-          Object.values(orderGroup).flat()
-        ).map(s => `
-          <tr>
-            <td style="padding: 5px; border: 1px solid #ddd;"><strong>${s.itemRef || 'N/A'}</strong></td>
-            <td style="padding: 5px; border: 1px solid #ddd;">${s.category || 'N/A'}</td>
-            <td style="padding: 5px; border: 1px solid #ddd;">${s.subcategory || 'N/A'}</td>
-            <td style="padding: 5px; border: 1px solid #ddd;">${s.type || 'N/A'}</td>
-            <td style="padding: 5px; border: 1px solid #ddd; text-align: center;">${s.totalNumber || 'N/A'}</td>
-            <td style="padding: 5px; border: 1px solid #ddd; text-align: center;">${(s.weight / 1000).toFixed(2)}</td>
-            <td style="padding: 5px; border: 1px solid #ddd;">${s.pickupLocation || 'N/A'}</td>
-            <td style="padding: 5px; border: 1px solid #ddd;">${s.deliveryAddress || 'N/A'}</td>
-            <td style="padding: 5px; border: 1px solid #ddd;">${s.containerDetails?.[0]?.container?.container_number || 'N/A'}</td>
-          </tr>
-        `).join('')}
-      </tbody>
-    </table>
-  </div>
-` : ''}
-
- 
     <div class="footer">
-      <p><strong>Generated:</strong> ${new Date().toLocaleString()} | <strong>Page:</strong> 1 of ${Math.ceil(allReceivers?.length / 5 || 1)} </p>
-      <p style="margin-top: 2mm; font-size: 9px; opacity: 0.7;">© 2025 Royal Gulf Shipping Management System | This manifest is computer-generated and legally binding.</p>
+      <div class="footer-line">Generated by Royal Gulf Shipping Management System</div>
+      <div class="footer-line">Date: ${new Date().toLocaleDateString()} | Time: ${new Date().toLocaleTimeString()}</div>
     </div>
-  `;
-  
-  document.body.appendChild(tempElement);
-  
-  // Convert the element to canvas with higher quality and proper dimensions
-  const scale = 2.5;
-  const canvas = await html2canvas(tempElement, {
-    scale: scale,
-    useCORS: true,
-    allowTaint: true,
-    logging: false,
-    width: tempElement.scrollWidth,
-    height: tempElement.scrollHeight,
-    windowWidth: tempElement.scrollWidth,
-    windowHeight: tempElement.scrollHeight,
-    backgroundColor: '#ffffff' // Ensure white background
-  });
-  
-  // Remove the temporary element
-  document.body.removeChild(tempElement);
-  
-  // Save the canvas as an image file (PNG) - High quality
-  const canvasDataURL = canvas.toDataURL('image/png', 1.0); // Full quality PNG
-  const canvasLink = document.createElement('a');
-  canvasLink.download = `Manifest_${data.consignment_number}_Canvas_${Date.now()}.png`;
-  canvasLink.href = canvasDataURL;
-  canvasLink.click(); // Trigger download
-  
-  // Create PDF from canvas with better quality and margins, with bottom space
-  const innerWidthMm = 210 - 2 * 14; // 182mm
-  const pxPerMm = canvas.width / innerWidthMm;
-  const extraBottomSpaceMm = 8 ; // Approx 70px at 96dpi ~18.5mm, rounded to 20mm
-  const contentHeightPerPageMm = (297 - 2 * 14) - extraBottomSpaceMm; // 269 - 20 = 249mm
-  const contentHeightPerPagePx = contentHeightPerPageMm * pxPerMm;
-  
-  const pdf = new jsPDF('p', 'mm', 'a4');
-  const marginMm = 14;
-  const contentWidthMm = innerWidthMm;
-  
-  let startY = 0;
-  while (startY < canvas.height) {
-    const sliceHeightPx = Math.min(contentHeightPerPagePx, canvas.height - startY);
-    
-    // Create cropped canvas for this page slice
-    const croppedCanvas = document.createElement('canvas');
-    croppedCanvas.width = canvas.width;
-    croppedCanvas.height = sliceHeightPx;
-    const ctx = croppedCanvas.getContext('2d');
-    ctx.drawImage(canvas, 0, startY, canvas.width, sliceHeightPx, 0, 0, canvas.width, sliceHeightPx);
-    
-    const croppedDataURL = croppedCanvas.toDataURL('image/png', 1.0);
-    const drawHeightMm = sliceHeightPx / pxPerMm;
-    
-    // Add to PDF (first page without addPage)
-    if (startY > 0) {
-      pdf.addPage();
-    }
-    pdf.addImage(croppedDataURL, 'PNG', marginMm, marginMm, contentWidthMm, drawHeightMm);
-    
-    startY += sliceHeightPx;
-  }
-  
-  // Save the PDF
-  pdf.save(`Manifest_${data.consignment_number}_ContainersOrders_${Date.now()}.pdf`);
-};
+    `;
 
+    // Rest of the code remains same (canvas generation and PDF creation)
+    document.body.appendChild(tempElement);
+
+    const scale = 1.5;
+    const canvas = await html2canvas(tempElement, {
+      scale: scale,
+      useCORS: true,
+      allowTaint: true,
+      logging: false,
+      width: tempElement.scrollWidth,
+      height: tempElement.scrollHeight,
+      windowWidth: tempElement.scrollWidth,
+      windowHeight: tempElement.scrollHeight,
+      backgroundColor: '#ffffff',
+      imageTimeout: 0,
+      removeContainer: true,
+      onclone: function (clonedDoc) {
+        clonedDoc.querySelectorAll('img').forEach(img => {
+          img.style.maxWidth = '100%';
+          img.style.height = 'auto';
+        });
+      }
+    });
+
+    document.body.removeChild(tempElement);
+
+    // Save as PNG
+    const canvasDataURL = canvas.toDataURL('image/png', 0.85);
+    const canvasLink = document.createElement('a');
+    canvasLink.download = `Manifest_${data.consignment_number}_${Date.now()}.png`;
+    canvasLink.href = canvasDataURL;
+    canvasLink.click();
+
+    // Create PDF
+    const innerWidthMm = 210 - 2 * 14;
+    const pxPerMm = canvas.width / innerWidthMm;
+    const extraBottomSpaceMm = 8;
+    const contentHeightPerPageMm = (297 - 2 * 14) - extraBottomSpaceMm;
+    const contentHeightPerPagePx = contentHeightPerPageMm * pxPerMm;
+
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const marginMm = 14;
+    const contentWidthMm = innerWidthMm;
+
+    let startY = 0;
+    while (startY < canvas.height) {
+      const sliceHeightPx = Math.min(contentHeightPerPagePx, canvas.height - startY);
+
+      const croppedCanvas = document.createElement('canvas');
+      croppedCanvas.width = canvas.width;
+      croppedCanvas.height = sliceHeightPx;
+      const ctx = croppedCanvas.getContext('2d');
+      ctx.drawImage(canvas, 0, startY, canvas.width, sliceHeightPx, 0, 0, canvas.width, sliceHeightPx);
+
+      const croppedDataURL = croppedCanvas.toDataURL('image/png', 0.85);
+      const drawHeightMm = sliceHeightPx / pxPerMm;
+
+      if (startY > 0) {
+        pdf.addPage();
+      }
+      pdf.addImage(croppedDataURL, 'PNG', marginMm, marginMm, contentWidthMm, drawHeightMm);
+      croppedCanvas.remove();
+
+      startY += sliceHeightPx;
+    }
+
+    pdf.save(`Manifest_${data.consignment_number}_Containers_${Date.now()}.pdf`);
+  };
+  
 const generateDocx = () => {
     // Placeholder for Docx (requires 'docx' and 'file-saver')
     setSnackbar({ open: true, severity: 'info', message: 'Docx generation: Install docx and file-saver for full support.' });
@@ -2613,7 +2933,7 @@ const generateDocx = () => {
                             onBlur={handleBlur}
                             label="Consignment #"
                             startAdornment={<DescriptionIcon sx={{ mr: 1, color: '#f58220' }} />}
-                            // readOnly={mode === 'edit'} // Keep readOnly for consignment_number in edit mode
+                            readOnly={mode === 'edit'} // Keep readOnly for consignment_number in edit mode
                             required
                             error={touched.consignment_number && Boolean(errors.consignment_number)}
                             helperText={
@@ -2630,7 +2950,7 @@ const generateDocx = () => {
         onChange={handleStatusChange}  // Now client-side
         label="Status"
         options={options.statusOptions || []}
-        disabled={mode === 'edit'}
+        // disabled={mode === 'edit'}
         error={touched.status && Boolean(errors.status)}
         helperText={touched.status && errors.status ? errors.status : ''}
         loading={etaLoading}  // Brief spinner (optional, since instant)
@@ -2651,7 +2971,7 @@ const generateDocx = () => {
 
       <DatePicker
         label="ETA"
-        value={eta || etaSuggestion ? dayjs(eta || etaSuggestion) : values?.eta}  // Ensure Day.js or null; handle invalid
+        value={eta || etaSuggestion ? dayjs(eta || etaSuggestion) : dayjs(values?.eta)}  // Ensure Day.js or null; handle invalid
         onChange={(value) => {
           if (value && value.isValid()) {  // Guard: Check isValid before format
             const formatted = value.format('YYYY-MM-DD');
@@ -2826,13 +3146,18 @@ const generateDocx = () => {
                           />
                         </Box>
                         <Box sx={{ flex: 1, minWidth: 250 }}>
-                          <CustomSelect
-                            name="shippingLine"
-                            value={values.shippingLine}
-                            onChange={handleChange}
-                            label="Shipping Line"
-                            options={options.shippingLineOptions || []}
-                          />
+                     <CustomTextField
+  name="shippingLine"
+  value={values.shippingLine || ''}  // Ensure controlled value (add fallback for undefined)
+  onChange={handleChange}
+  onBlur={handleBlur}              // Optional: recommended if using Formik for validation on blur
+  label="Shipping Line"
+  type="text"
+  placeholder="e.g., Maersk, MSC, COSCO"  // Helpful placeholder
+  fullWidth
+  variant="outlined"               // Common props for Material-UI style fields
+  // Remove the 'options' prop completely since it's now a free text input
+/>
                         </Box>
                       </Box>
                       {/* Payment & Value Row */}
@@ -2963,8 +3288,8 @@ const generateDocx = () => {
                         </Box>
                       </Box>
                       {/* Counts & Seal Row */}
+                     {/* Counts & Seal Row - UPDATED WITH AUTO WEIGHTS */}
                       <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
-
                         <Box sx={{ flex: 1, minWidth: 250 }}>
                           <CustomTextField
                             name="seal_no"
@@ -2974,45 +3299,65 @@ const generateDocx = () => {
                             startAdornment={<LocalPrintshopIcon sx={{ mr: 1, color: '#f58220' }} />}
                           />
                         </Box>
+
+                        {/* Net Weight - Auto & Disabled */}
                         <Box sx={{ flex: 1, minWidth: 300 }}>
                           <CustomTextField
                             name="netWeight"
-                            value={values.netWeight}
-                            onChange={handleNumberChange}
+                            value={values.netWeight || 0}
                             label="Net Weight"
                             type="number"
                             required
+                            disabled
+                            InputProps={{ readOnly: true }}
                             startAdornment={<LocalShippingIcon sx={{ mr: 1, color: '#f58220' }} />}
                             endAdornment={<Typography variant="body2" color="text.secondary">KGS</Typography>}
-                            error={touched.netWeight && Boolean(errors.netWeight)}
-                            helperText={
-                              touched.netWeight && errors.netWeight
-                                ? errors.netWeight
-                               : ''
-                            }
+                            helperText="Auto-calculated from selected orders"
+                            sx={{
+                              '& .MuiInputBase-input.Mui-disabled': {
+                                WebkitTextFillColor: '#000000',
+                                color: '#000000',
+                                fontWeight: 'bold',
+                              },
+                            }}
                           />
                         </Box>
+
+                        {/* Gross Weight - Auto & Disabled */}
                         <Box sx={{ flex: 1, minWidth: 300 }}>
                           <CustomTextField
                             name="gross_weight"
-                            value={values.gross_weight}
-                            onChange={handleNumberChange}
-                            onBlur={handleBlur}
+                            value={values.gross_weight || 0}
                             label="Gross Weight"
                             type="number"
                             required
+                            disabled
+                            InputProps={{ readOnly: true }}
                             startAdornment={<LocalShippingIcon sx={{ mr: 1, color: '#f58220' }} />}
                             endAdornment={<Typography variant="body2" color="text.secondary">KGS</Typography>}
-                            error={touched.gross_weight && Boolean(errors.gross_weight)}
-                            helperText={
-                              touched.gross_weight && errors.gross_weight
-                                ? errors.gross_weight
-                               : ''
-                            }
+                            helperText="Net + 15% (packaging estimate)"
+                            sx={{
+                              '& .MuiInputBase-input.Mui-disabled': {
+                                WebkitTextFillColor: '#000000',
+                                color: '#000000',
+                                fontWeight: 'bold',
+                              },
+                            }}
                           />
                         </Box>
                       </Box>
+
+                      {/* Optional: Show summary when orders selected */}
+                      {selectedOrders.length > 0 && (
+                        <Alert severity="info" icon={<InfoIcon />} sx={{ borderLeft: '4px solid #f58220' }}>
+                          <AlertTitle>Weight Summary</AlertTitle>
+                          Based on <strong>{selectedOrders.length}</strong> selected order(s): {' '}
+                          <strong>{calculatedTotals.netWeight} KGS</strong> net →{' '}
+                          <strong>{calculatedTotals.grossWeight} KGS</strong> gross (estimated)
+                        </Alert>
+                      )}
                     </Box>
+
                     {/* Print Buttons */}
                     <Fade in={true} timeout={800}>
                       <Box sx={{ mt: 3, display: 'flex', gap: 2, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
@@ -3020,25 +3365,13 @@ const generateDocx = () => {
                           <Button
                             variant="outlined"
                             startIcon={<LocalPrintshopIcon />}
-                            onClick={() => generateManifestPDFWithCanvas(values, includedOrders)} // Fixed: Pass includedOrders
+                            onClick={() => generateManifestPDFWithCanvas(values, includedOrders)}
                             disabled={saving || !values.consignment_number}
                             sx={{ borderColor: '#f58220', color: '#f58220', '&:hover': { borderColor: '#e65100', backgroundColor: '#fff3e0' } }}
                           >
                             {saving ? <CircularProgress size={20} /> : 'Print Manifest'}
                           </Button>
                         </Tooltip>
-                      
-                        {/* <Tooltip title="Download as Word document (requires additional setup)">
-                          <Button
-                            variant="outlined"
-                            startIcon={<DescriptionIcon />}
-                            onClick={generateDocx}
-                            disabled={saving || !values.consignment_number}
-                            sx={{ borderColor: '#f58220', color: '#f58220', '&:hover': { borderColor: '#e65100', backgroundColor: '#fff3e0' } }}
-                          >
-                            Print Docx
-                          </Button>
-                        </Tooltip> */}
                       </Box>
                     </Fade>
                   </AccordionDetails>

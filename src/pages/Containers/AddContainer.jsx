@@ -130,7 +130,7 @@ const   ContainerModule = ({ propContainers = [] }) => {
     purchasePrice: '',
     purchaseFrom: '',
     ownershipDetails: 'Self-Owned',
-    availableAtDate: '',
+    availableAtDate: new Date().toISOString().split('T')[0],
     currency: 'USD',
     hireStartDate: new Date().toISOString().split('T')[0],
     hireEndDate: new Date().toISOString().split('T')[0],
@@ -192,8 +192,8 @@ const   ContainerModule = ({ propContainers = [] }) => {
         api.get('/api/containers/ownership-types'),
         api.get('api/options/places/crud')
       ]);
-
-      setLocations(locationRes.data || []);
+console.log('Fetched options:', { statusRes, locationRes, sizeRes, typeRes, ownershipRes, placesRes });
+      // setLocations(locationRes.data || []);
       setSizes(sizeRes.data || []);
       setTypes(typeRes.data || []);
       setOwnershipTypes(ownershipRes.data || []);
@@ -314,7 +314,6 @@ const   ContainerModule = ({ propContainers = [] }) => {
           }
         });
       }
-
       const historyArray = Object.keys(enhancedGroupedHistory).length > 0
         ? Object.values(enhancedGroupedHistory)
         : [];
@@ -403,6 +402,7 @@ const   ContainerModule = ({ propContainers = [] }) => {
     setEditingId(null);
     setTempData({ status: '', location: '' });
   };
+console.log('Enhanced Grouped History:', locations);
 
   // Handle edit container
   const handleEdit = async (container) => {
@@ -640,7 +640,7 @@ const   ContainerModule = ({ propContainers = [] }) => {
         purchasePrice: '',
         purchaseFrom: '',
         ownershipDetails: 'Self-Owned',
-        availableAtDate: '',
+        availableAtDate: new Date().toISOString().split('T')[0],
         currency: 'USD',
         hireStartDate: '',
         hireEndDate: '',
@@ -2536,14 +2536,18 @@ const   ContainerModule = ({ propContainers = [] }) => {
             </Box>
             {/* NEW: Physical Location Select */}
             <Box sx={{ mb: 1 }}>
-              <FormControl fullWidth variant="outlined" sx={{ bgcolor: 'white' }}>
-                <InputLabel>Location</InputLabel>
-                <Select name="location" label="Location" value={formData.location || 'karachi_port'} onChange={handleFormChange}>
-                  {locations.map((loc) => (
-                    <MenuItem key={loc.value} value={loc.value}>{loc.label}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+           <FormControl fullWidth variant="outlined" sx={{ bgcolor: 'white' }}>
+  <InputLabel>Location</InputLabel>
+  <Select
+    name="location"
+    label="Location"
+    value={formData.location || 'karachi_port'}
+    onChange={handleFormChange}
+  >
+    <MenuItem value="karachi_port">Karachi Port</MenuItem>
+    <MenuItem value="dubai_port">Dubai Port</MenuItem>
+  </Select>
+</FormControl>
             </Box>
             {formData.ownership === 'soc' && (
               <>
