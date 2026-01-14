@@ -165,7 +165,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     voyage: '',
     consignment_value: 0,
     currency_code: '',
-    // eta: currentDate,
+    eta: currentDate,
     vessel: '',
     shippingLine: '',
     delivered: 0,
@@ -178,6 +178,11 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
   });
   const [errors, setErrors] = useState({});
   const [touched, setTouched] = useState({});
+  const [eta, setEta] = useState(null); // Current ETA in form
+  const [etaSuggestion, setEtaSuggestion] = useState(null);
+  const [etaLoading, setEtaLoading] = useState(false);
+  const [statusOffsets, setStatusOffsets] = useState({}); // { "Shipment In Transit": 4, ... 
+
   const [options, setOptions] = useState({
     third_parties: [],
     banks: [],
@@ -190,8 +195,11 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     vesselOptions: [],
     shippingLineOptions: [],
     currencyOptions: [],
-    statusOptions: []
+    statusOptions: [],
+    containerStatusOptions: []
   });
+
+  // Add your other states here (containers, orders, etc.)
   const [containerModalOpen, setContainerModalOpen] = useState(false);
   const [selectedContainers, setSelectedContainers] = useState([]);
   const [selectedOrders, setSelectedOrders] = useState([]);
@@ -203,103 +211,104 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
   const [orderPage, setOrderPage] = useState(0);
   const [orderRowsPerPage, setOrderRowsPerPage] = useState(100);
   const [orderTotal, setOrderTotal] = useState(0);
-  const navigate = useNavigate();
-  const [filters, setFilters] = useState({
-    status: "",
-    booking_ref: "",
-  });
-  // Fixed: setFieldError -> setContainerError (local state for container errors)
+  const [filters, setFilters] = useState({ status: "", booking_ref: "" });
   const [containerErrors, setContainerErrors] = useState({});
   const setContainerError = (path, message) => {
     setContainerErrors(prev => ({ ...prev, [path]: message }));
   };
-// State (add if missing)
-const [eta, setEta] = useState(currentDate || null);
-const [etaSuggestion, setEtaSuggestion] = useState(null);
-const [etaLoading, setEtaLoading] = useState(false);
 
-// Local offsets (from your status_config table; map aliases as needed)
-const statusOffsets = {
-  'Drafts Cleared': 30,
-  'Submitted On Vessel': 14,
-  'Customs Cleared': 10,
-  'Submitted': 10,
-  'Under Shipment Processing': 7,
-  'In Transit On Vessel': 4,
-  'In Transit': 5,
-  'Arrived at Facility': 1,
-  'Ready for Delivery': 0,
-  'Arrived at Destination': 0,
-  'Delivered': 0,
-  'HOLD for Delivery': 2,  // Fallback
-  'HOLD': 0,
-  'Cancelled': 0
-  // Add legacy if needed: 'Draft': 30, 'Submitted': 10
+  const CONSIGNMENT_TO_ETA_STATUS = {
+ 'Drafts Cleared': 'Ready for Loading',              // → 12 days
+    'Submitted On Vessel': 'Shipment Processing',       // → 7 days
+    'Customs Cleared': 'Shipment Processing',           // → 7 days
+    'Submitted': 'Shipment Processing',                 // → 7 days
+    'Under Shipment Processing': 'Shipment Processing', // → 7 days
+    'In Transit': 'Shipment In Transit',                // → 4 days
+    'In Transit On Vessel': 'Shipment In Transit',      // → 4 days
+    'Arrived at Facility': 'Arrived at Sort Facility',  // → 1 day
+    'Ready for Delivery': 'Ready for Delivery',         // → 0 days
+    'Arrived at Destination': 'Under Processing',       // → 2 days
+    'Delivered': 'Shipment Delivered',                  // → 0 days
+    'HOLD': 'Shipment Delivered',
+    'HOLD for Delivery': 'Ready for Delivery',
+    'Cancelled': 'Shipment Delivered',
 };
 
-// Updated handler (client-side calc; no API)
-const handleStatusChange = (newStatusOrEvent) => {
-  const newStatus = newStatusOrEvent.target ? newStatusOrEvent.target.value : newStatusOrEvent;  // Destructure if event
-  setValues(prev => ({ ...prev, status: newStatus }));
-  setEtaLoading(true);
-  try {
-    // Client-side ETA calc
-    const today = dayjs();  // Fixed for testing; use dayjs() in prod
-    const offsetDays = statusOffsets[newStatus] || 0;
-    const suggestedEta = today.add(offsetDays, 'day').format('YYYY-MM-DD');
-    setEtaSuggestion(suggestedEta);
-    if (!eta) {
-      setEta(suggestedEta);
-      // setValues(prev => ({ ...prev, eta: suggestedEta }));  // Sync to form
-      // setValues({eta:suggestedEta})
-    }
-    console.log(`Client-side ETA for '${newStatus}': ${suggestedEta} (+${offsetDays} days)`);  // Debug
-  } catch (err) {
-    console.warn('ETA suggestion failed:', err);
-    setEtaSuggestion(null);
-  } finally {
-    setEtaLoading(false);
-  }
-};
+  
 
+  // === Status Colors (Client-side only) ===
+  const getStatusColor = (status) => {
+    if (!status || typeof status !== 'string') return '#E0E0E0';
 
+    const statusColors = {
+      'HOLD': '#FF9800',
+      'Cancelled': '#F44336',
+      'Drafts Cleared': '#E0E0E0',
+      'Submitted On Vessel': '#9C27B0',
+      'Customs Cleared': '#4CAF50',
+      'Submitted': '#FFEB3B',
+      'Under Shipment Processing': '#FF9800',
+      'In Transit': '#4CAF50',
+      'Arrived at Facility': '#795548',
+      'Ready for Delivery': '#FFEB3B',
+      'Arrived at Destination': '#FFEB3B',
+      'Delivered': '#2196F3'
+    };
 
-// getStatusColor function: Maps consignment/container status to hex color
-// Based on provided status data. Returns color string or fallback gray if unknown.
-const getStatusColor = (status) => {
-  if (!status || typeof status !== 'string') {
-    return '#E0E0E0'; // Fallback for empty/unknown (light gray)
-  }
-
-  const statusColors = {
-    'HOLD': '#FF9800',
-    'Cancelled': '#F44336',
-    'Drafts Cleared': '#E0E0E0',
-    'Submitted On Vessel': '#9C27B0',
-    'Customs Cleared': '#4CAF50',
-    'Submitted': '#FFEB3B',
-    'Under Shipment Processing': '#FF9800',
-    'In Transit': '#4CAF50',
-    'Arrived at Facility': '#795548',
-    'Ready for Delivery': '#FFEB3B',
-    'Arrived at Destination': '#FFEB3B',
-    'Delivered': '#2196F3'
+    return statusColors[status] || '#9E9E9E';
   };
 
-  return statusColors[status] || '#9E9E9E'; // Default medium gray for unlisted
-}
-// Sync eta state with form values
+  // === Updated ETA Suggestion Handler ===
+  const handleStatusChange = (newStatusOrEvent) => {
+    const newStatus = typeof newStatusOrEvent === 'string'
+      ? newStatusOrEvent
+      : newStatusOrEvent.target.value;
 
-// console.log('selected roe',effectiveConsignmentId)
-  // Consolidated initData
- useEffect(() => {
-  // setLoading(false)
-  const initData = async () => {
+    setValues(prev => ({ ...prev, status: newStatus }));
+
+    if (!statusOffsets || Object.keys(statusOffsets).length === 0) {
+      console.warn('ETA offsets not loaded yet');
+      return;
+    }
+
+    setEtaLoading(true);
+
     try {
-      setLoading(true);
-      const [thirdPartiesRes, originsRes, destinationsRes, banksRes, paymentTypesRes,
-        vesselsRes, shippingLinesRes, currenciesRes, statusesRes, containerStatusesRes] =
-        await Promise.all([
+      const receiverStatus = CONSIGNMENT_TO_ETA_STATUS[newStatus] || newStatus;
+      const offsetDays = statusOffsets[receiverStatus] ?? 0;
+
+      const today = dayjs(); // Today is January 08, 2026
+      const suggestedEta = today.add(offsetDays, 'day').format('YYYY-MM-DD');
+
+      setEtaSuggestion(suggestedEta);
+
+      // Only auto-fill if ETA is empty or default
+      if (!eta || !eta.trim()) {
+        setEta(suggestedEta);
+        setValues(prev => ({ ...prev, eta: suggestedEta }));
+      }
+
+      console.log(
+        `Consignment Status: "${newStatus}" → Receiver Status: "${receiverStatus}" → +${offsetDays} days → Suggested ETA: ${suggestedEta}`
+      );
+    } catch (err) {
+      console.warn('ETA suggestion failed:', err);
+      setEtaSuggestion(null);
+    } finally {
+      setEtaLoading(false);
+    }
+  };
+
+  // === Load All Options + ETA Config ===
+  useEffect(() => {
+    const initData = async () => {
+      try {
+        setLoading(true);
+
+        const [
+          thirdPartiesRes, originsRes, destinationsRes, banksRes, paymentTypesRes,
+          vesselsRes, shippingLinesRes, currenciesRes, statusesRes, containerStatusesRes, etaConfigRes
+        ] = await Promise.all([
           api.get('api/options/thirdParty/crud'),
           api.get('api/options/places/crud'),
           api.get('api/options/places/crud'),
@@ -309,76 +318,106 @@ const getStatusColor = (status) => {
           api.get('api/options/shipping-lines'),
           api.get('api/options/currencies'),
           api.get('api/consignments/statuses'),
-          api.get('api/options/container-statuses')
+          api.get('api/options/container-statuses'),
+          api.get('api/options/eta-configs')
         ]);
-      const third_parties = thirdPartiesRes?.data?.third_parties || [];
-      const banks = banksRes?.data?.banks || [];
-      const mapOptions = (items, valueKey = 'id', labelKey = 'name') =>
-        (items || []).map(item => ({
-          value: (item[valueKey] || item.value)?.toString() || '',
-          label: item[labelKey] || item.label || item[valueKey] || ''
-        }));
-      const filteredDestinations = (destinationsRes?.data?.places || []).filter(place => place.is_destination === true);
-      const filteredOrigins = (destinationsRes?.data?.places || []).filter(place => place.is_destination === true || place.is_origin === true );
-      const paymentEnumMap = {
-        'AP (Advance Payment)': 'Prepaid',
-        'DP (Docs against Payment)': 'Collect',
-        'DA (30 Days Payment)': 'Collect',
-        'DA (60 Days Payment)': 'Collect',
-        'DA (90 Days Payment)': 'Collect',
-        'DA (120 Days Payment)': 'Collect',
-        'DA (180 Days Payment)': 'Collect',
-      };
-      setOptions({
-        third_parties,
-        banks,
-        shipperOptions: third_parties.filter(tp => tp.type === 'shipper').map(tp => ({ value: tp.id.toString(), label: tp.company_name })),
-        consigneeOptions: third_parties.filter(tp => tp.type === 'consignee').map(tp => ({ value: tp.id.toString(), label: tp.company_name })),
-        originOptions: mapOptions(originsRes?.data?.originOptions || filteredOrigins, 'id', 'name'),
-        destinationOptions: mapOptions(filteredDestinations, 'id', 'name'),
-        bankOptions: mapOptions(banks, 'id', 'name'),
-        paymentTypeOptions: (paymentTypesRes?.data?.paymentTypes || []).map(pt => ({
-          value: paymentEnumMap[pt.name] || 'Collect',
-          label: pt.name,
-          id: pt.id,
-        })),
-        vesselOptions: mapOptions(vesselsRes?.data?.vessels || [], 'id', 'name'),
-        shippingLineOptions: mapOptions(shippingLinesRes?.data?.shippingLineOptions || [], 'id', 'name'),
-        currencyOptions: mapOptions(currenciesRes?.data?.currencyOptions || [], 'code', 'name'),
-        statusOptions: statusesRes?.data?.statusOptions || mapOptions(statusesRes?.data?.statuses || [], 'value', 'label'),
-        containerStatusOptions: containerStatusesRes?.data?.containerStatusOptions || []
-      });
-      if (mode === 'add') {
-        const defaultStatus = (statusesRes?.data?.statusOptions || []).find(opt => opt.value === 'Drafts Cleared')?.value || (statusesRes?.data?.statusOptions || [])[0]?.value || '';
-        const defaultPaymentType = (paymentTypesRes?.data?.paymentTypes || [])[0]?.value || '';
-        const defaultCurrency = (currenciesRes?.data?.currencyOptions || []).find(opt => opt.value === 'GBP')?.value || (currenciesRes?.data?.currencyOptions || [])[0]?.value || '';
-        const defaultBank = mapOptions(banks || [])[0]?.value || '';
-        const defaultVessel = mapOptions(vesselsRes?.data?.vessels || [])[0]?.value || '';
-        setValues(prev => ({
-          ...prev,
-          status: defaultStatus,
-          paymentType: defaultPaymentType,
-          currency_code: defaultCurrency,
-          bank: defaultBank,
-          vessel: defaultVessel,
-        }));
+
+        // Process options...
+        const third_parties = thirdPartiesRes?.data?.third_parties || [];
+        const banks = banksRes?.data?.banks || [];
+
+        const mapOptions = (items, valueKey = 'id', labelKey = 'name') =>
+          (items || []).map(item => ({
+            value: (item[valueKey] || item.value)?.toString() || '',
+            label: item[labelKey] || item.label || item[valueKey] || ''
+          }));
+
+        const filteredDestinations = (destinationsRes?.data?.places || []).filter(place => place.is_destination === true);
+        const filteredOrigins = (destinationsRes?.data?.places || []).filter(place => place.is_destination === true || place.is_origin === true);
+
+        const paymentEnumMap = {
+          'AP (Advance Payment)': 'Prepaid',
+          'DP (Docs against Payment)': 'Collect',
+          'DA (30 Days Payment)': 'Collect',
+          'DA (60 Days Payment)': 'Collect',
+          'DA (90 Days Payment)': 'Collect',
+          'DA (120 Days Payment)': 'Collect',
+          'DA (180 Days Payment)': 'Collect',
+        };
+
+        setOptions({
+          third_parties,
+          banks,
+          shipperOptions: third_parties.filter(tp => tp.type === 'shipper').map(tp => ({ value: tp.id.toString(), label: tp.company_name })),
+          consigneeOptions: third_parties.filter(tp => tp.type === 'consignee').map(tp => ({ value: tp.id.toString(), label: tp.company_name })),
+          originOptions: mapOptions(filteredOrigins, 'id', 'name'),
+          destinationOptions: mapOptions(filteredDestinations, 'id', 'name'),
+          bankOptions: mapOptions(banks, 'id', 'name'),
+          paymentTypeOptions: (paymentTypesRes?.data?.paymentTypes || []).map(pt => ({
+            value: paymentEnumMap[pt.name] || 'Collect',
+            label: pt.name,
+            id: pt.id,
+          })),
+          vesselOptions: mapOptions(vesselsRes?.data?.vessels || [], 'id', 'name'),
+          shippingLineOptions: mapOptions(shippingLinesRes?.data?.shippingLineOptions || [], 'id', 'name'),
+          currencyOptions: mapOptions(currenciesRes?.data?.currencyOptions || [], 'code', 'name'),
+          statusOptions: statusesRes?.data?.statusOptions || mapOptions(statusesRes?.data?.statuses || [], 'value', 'label'),
+          containerStatusOptions: containerStatusesRes?.data?.containerStatusOptions || []
+        });
+
+        // === Load ETA Offsets from DB ===
+        const offsets = etaConfigRes?.data?.reduce((acc, row) => {
+          acc[row.status] = row.days_offset;
+          return acc;
+        }, {}) || {};
+        console.log('Loaded ETA offsets:', offsets);
+        setStatusOffsets(offsets);
+
+        // === Set Defaults for Add Mode ===
+        if (mode === 'add') {
+          const defaultStatus = (statusesRes?.data?.statusOptions || [])
+            .find(opt => opt.value === 'Drafts Cleared')?.value
+            || (statusesRes?.data?.statusOptions || [])[0]?.value
+            || '';
+
+          const defaultPaymentType = (paymentTypesRes?.data?.paymentTypes || [])[0]?.value || '';
+          const defaultCurrency = (currenciesRes?.data?.currencyOptions || []).find(opt => opt.value === 'GBP')?.value || (currenciesRes?.data?.currencyOptions || [])[0]?.value || '';
+          const defaultBank = mapOptions(banks || [])[0]?.value || '';
+          const defaultVessel = mapOptions(vesselsRes?.data?.vessels || [])[0]?.value || '';
+
+          setValues(prev => ({
+            ...prev,
+            status: defaultStatus,
+            paymentType: defaultPaymentType,
+            currency_code: defaultCurrency,
+            bank: defaultBank,
+            vessel: defaultVessel,
+          }));
+
+          // Trigger ETA suggestion after status is set
+          if (defaultStatus && Object.keys(offsets).length > 0) {
+            setTimeout(() => handleStatusChange(defaultStatus), 100);
+          }
+        }
+
+        if (mode === 'edit' && effectiveConsignmentId) {
+          await loadConsignment(effectiveConsignmentId);
+        }
+
+      } catch (err) {
+        console.error('Error fetching options:', err);
+        setSnackbar({
+          open: true,
+          message: 'Failed to load options. Using defaults.',
+          severity: 'warning'
+        });
+      } finally {
+        setLoading(false);
       }
-      if (mode === 'edit' && effectiveConsignmentId) {
-        await loadConsignment(effectiveConsignmentId);
-      }
-    } catch (err) {
-      console.error('Error fetching options:', err);
-      setSnackbar({
-        open: true,
-        message: 'Failed to load options. Using defaults.',
-        severity: 'warning'
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-  initData();
-}, [mode, effectiveConsignmentId]);
+    };
+
+    initData();
+  }, [mode, effectiveConsignmentId]);
 
 const loadConsignment = async (id) => {
   try {
@@ -626,7 +665,7 @@ const loadConsignment = async (id) => {
       voyage: '',
       consignment_value: 0,
       currency_code: '',
-      eta: currentDate,
+      // eta: suggestedEta || currentDate,
       vessel: '',
       shippingLine: '',
       delivered: 0,
@@ -1260,6 +1299,8 @@ useEffect(() => {
     console.log('Full submitData before API:', JSON.stringify(submitData, null, 3));
     return submitData;
   };
+
+  const navigate = useNavigate();
   const handleCreate = async (e) => {
 
     if (e) e.preventDefault();
@@ -2897,7 +2938,7 @@ const generateDocx = () => {
     setSnackbar({ open: true, severity: 'info', message: 'Docx generation: Install docx and file-saver for full support.' });
   };
 
-
+console.log('Rendering Add/Edit Consignment form in', eta,etaSuggestion);
   return (
     <LocalizationProvider dateAdapter={AdapterDayjs}>
       <Snackbar open={snackbar.open} autoHideDuration={6000} onClose={() => setSnackbar({ ...snackbar, open: false })}>
@@ -2926,6 +2967,7 @@ const generateDocx = () => {
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                         <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}> 
                         <Box sx={{ flex: 1, minWidth: 250 }}>
+                          
                           <CustomTextField
                             name="consignment_number"
                             value={values.consignment_number}
@@ -2966,14 +3008,17 @@ const generateDocx = () => {
         </Button>
       )}
     </Box>
+
+{mode === 'edit' && (
     <Box sx={{ flex: 1, minWidth: 250 }}>
+
                         <LocalizationProvider dateAdapter={AdapterDayjs}>
 
       <DatePicker
         label="ETA"
-        value={eta || etaSuggestion ? dayjs(eta || etaSuggestion) : dayjs(values?.eta)}  // Ensure Day.js or null; handle invalid
+        value={eta ? dayjs(eta) : dayjs(etaSuggestion)}  // Ensure Day.js or null; handle invalid
         onChange={(value) => {
-          if (value && value.isValid()) {  // Guard: Check isValid before format
+          if (value && value?.isValid()) {  // Guard: Check isValid before format
             const formatted = value.format('YYYY-MM-DD');
             setEta(formatted);
             setValues(prev => ({ ...prev, eta: formatted }));  // Sync to form
@@ -2983,6 +3028,7 @@ const generateDocx = () => {
           }
         }}
         inputFormat="YYYY-MM-DD"
+        readOnly={true}
         slotProps={{ 
           textField: { 
             helperText: etaLoading 
@@ -2991,7 +3037,7 @@ const generateDocx = () => {
                 ? `Suggested: ${dayjs(etaSuggestion).isValid() ? dayjs(etaSuggestion).format('MMM DD, YYYY') : 'Invalid date'} based on status (edited)`
                 : etaSuggestion 
                   ? `Suggested: ${dayjs(etaSuggestion).isValid() ? dayjs(etaSuggestion).format('MMM DD, YYYY') : 'Invalid date'} based on status`
-                  : 'Enter ETA'
+                  : 'Set ETA based on status' ,
           } 
         }}
         disabled={['Delivered', 'Cancelled'].includes(values.status)}  // Disable for terminals
@@ -3000,6 +3046,7 @@ const generateDocx = () => {
 </LocalizationProvider>                        
 
     </Box>
+  )}
   </Box>
                       {/* Eform Row */}
                       <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
@@ -3641,10 +3688,11 @@ const generateDocx = () => {
                               itemRef: detail.itemRef || '',
                               shippingDetailStatus: detail.consignmentStatus || '',
                             }));
-                            console.log('productsSummary', productsSummary);
+                            console.log('productsSummary', order);
                             const totalItems = productsSummary.reduce((sum, p) => sum + p.total_number, 0);
                             const totalWeight = productsSummary.reduce((sum, p) => sum + p.weight, 0);
                             const categoryList = [...new Set(productsSummary.map(p => p.category))].join(', ');
+                            const shipmentStatus = order.receivers?.find(r => r.id === receiver.id)?.status || 'In Process';
                             // Status from receiver
                             const status = receiver.status || order.status || 'Created';
                             // Containers from this receiver
@@ -3738,7 +3786,7 @@ const generateDocx = () => {
                                 </StyledTableCell>
                                 <TableCell>{new Date(order.created_at || Date.now()).toLocaleDateString()}</TableCell>
                                 <TableCell>
-                                  <StatusChip status={order.status} />
+                                  <StatusChip status={shipmentStatus} />
                                 </TableCell>
                               </StyledTableRow>
                             );
