@@ -228,7 +228,7 @@ const generateOrderPDF = async (order) => {
     ["Order ID", order.id],
     ["Status", order.status],
     ["Drop Method", order.drop_method],
-    ["Point of Origin", order.point_of_origin],
+    ["Point of Origin", getPlaceName(order.point_of_origin)],
     ["Total Assigned Qty", order.total_assigned_qty],
     ["Collection Scope", order.collection_scope],
   ];
@@ -263,16 +263,16 @@ const generateOrderPDF = async (order) => {
   const orderDetails = [
     ["Booking Ref", order.booking_ref],
     ["RGL Booking #", order.rgl_booking_number],
-    ["Place of Loading", order.place_of_loading],
-    ["Final Destination", order.final_destination],
-    ["Place of Delivery", order.place_of_delivery],
-    ["ETA", order.eta || "N/A"],
-    ["ETD", order.etd || "N/A"],
-    ["Shipping Line", order.shipping_line || "N/A"],
-    ["Plate No", order.plate_no],
-    ["Drop Off CNIC", order.drop_off_cnic],
-    ["Drop Off Mobile", order.drop_off_mobile],
-    ["Drop Date", order.drop_date ? new Date(order.drop_date).toLocaleString() : "N/A"],
+    ["Place of Loading", getPlaceName(order.place_of_loading)],
+    ["Final Destination", getPlaceName(order.final_destination)],
+    ["Place of Delivery", getPlaceName(order.place_of_delivery)],
+    // ["ETA", order.eta || "N/A"],
+    // ["ETD", order.etd || "N/A"],
+    // ["Shipping Line", order.shipping_line || "N/A"],
+    // ["Plate No", order.plate_no],
+    // ["Drop Off CNIC", order.drop_off_cnic],
+    // ["Drop Off Mobile", order.drop_off_mobile],
+    // ["Drop Date", order.drop_date ? new Date(order.drop_date).toLocaleString() : "N/A"],
   ];
 
   const drawKeyValueSection = (y, title, details) => {
@@ -655,15 +655,15 @@ const generatePDFWithCanvas = async () => {
                     </tr>
                     <tr>
                         <th>Place of Loading</th>
-                        <td>${selectedOrder.place_of_loading || 'N/A'}</td>
+                        <td>${getPlaceName(selectedOrder.place_of_loading) || 'N/A'}</td>
                     </tr>
                     <tr>
                         <th>Final Destination</th>
-                        <td>${selectedOrder.final_destination || 'N/A'}</td>
+                        <td>${getPlaceName(selectedOrder.final_destination) || 'N/A'}</td>
                     </tr>
                     <tr>
                         <th>Place of Delivery</th>
-                        <td>${selectedOrder.place_of_delivery || 'N/A'}</td>
+                        <td>${getPlaceName(selectedOrder.place_of_delivery) || 'N/A'}</td>
                     </tr>
                     <tr>
                         <th>ETA</th>
@@ -675,11 +675,11 @@ const generatePDFWithCanvas = async () => {
                     </tr>
                     <tr>
                         <th>Shipping Line</th>
-                        <td>${selectedOrder.shipping_line || 'N/A'}</td>
+                        <td>${getPlaceName(selectedOrder.shipping_line) || 'N/A'}</td>
                     </tr>
                     <tr>
                         <th>Point of Origin</th>
-                        <td>${selectedOrder.point_of_origin || 'N/A'}</td>
+                        <td>${getPlaceName(selectedOrder.point_of_origin) || 'N/A'}</td>
                     </tr>
                     <tr>
                         <th>Order Remarks</th>
