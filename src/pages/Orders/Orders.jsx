@@ -43,7 +43,7 @@ import EditIcon from "@mui/icons-material/Edit";
 import Tooltip from '@mui/material/Tooltip';
 import List from '@mui/material/List';
 import AssignmentIcon from '@mui/icons-material/Assignment';
-import {Autocomplete} from "@mui/material";
+import { Autocomplete } from "@mui/material";
 import CargoIcon from '@mui/icons-material/LocalShipping'; // Or use InventoryIcon
 import { styled } from '@mui/material/styles';
 import VisibilityIcon from "@mui/icons-material/Visibility";
@@ -73,7 +73,7 @@ const OrdersList = () => {
     const [places, setPlaces] = useState([]);
     const [filters, setFilters] = useState({
         status: "",
-        booking_ref: "", // Updated: Use booking_ref for search
+        search: "",               // ← single search field instead of booking_ref
     });
     const [snackbar, setSnackbar] = useState({
         open: false,
@@ -102,7 +102,7 @@ const OrdersList = () => {
     // ... your existing component logic (useState, handlers, etc.)
     // Handlers
     const handleStatusUpdate = (orderId, order) => {
-      //  console.log('Updating status for order:', orderId);
+        //  console.log('Updating status for order:', orderId);
         setSelectedOrderForUpdate(orderId);
         if (orderId && orderId.length) {
             const firstRec = orderId[0];
@@ -118,7 +118,7 @@ const OrdersList = () => {
         setSelectedStatus('');
     };
     const handleStatusChange = (event) => {
-      //  console.log('Selected status:', event.target.value);
+        //  console.log('Selected status:', event.target.value);
         setSelectedStatus(event.target.value);
     };
     const handleReceiverChange = (event) => {
@@ -157,104 +157,152 @@ const OrdersList = () => {
         // setLoading(false);
         handleCloseStatusDialog();
     };
-const fetchOrders = async () => {
-    // console.log('Fetching orders with filters:', filters, 'page:', page, 'rowsPerPage:', rowsPerPage);
-    setLoading(true);
-    setError(null);
-    try {
-        const nonEmptyFilters = Object.fromEntries(
-            Object.entries(filters).filter(([_, v]) => v && v.trim())
-        );
-        const params = {
-            page: page + 1,
-            limit: rowsPerPage,
-            includeContainer: true,
-            ...nonEmptyFilters,  // Use this instead of ...filters
-        };
-        const response = await api.get(`/api/orders`, { params });
-        console.log('Fetched orders:', response.data);
-        
-        // NEW: Auto-populate owner fields for each order if selected_sender_owner exists but name is empty
-        const ordersWithAutoPopulate = await Promise.all(
-            (response.data.data || []).map(async (order) => {
-                const ownerPrefix = order.sender_type === 'sender' ? 'sender' : 'receiver';
-                const ownerNameKey = `${ownerPrefix}_name`;
-                const selectedOwnerKey = 'selected_sender_owner';
-                
-                if (order[selectedOwnerKey] && !order[ownerNameKey]?.trim()) {
-                    try {
-                        // console.log(`Auto-populating owner for order ${order.id} from ID: ${order[selectedOwnerKey]}`); // Debug log
-                        const customerRes = await api.get(`/api/customers/${order[selectedOwnerKey]}`);
-                        if (customerRes?.data) {
-                            const customer = customerRes.data;
-                            // Map customer fields to owner (adjust paths based on your API response structure)
-                            const updatedOrder = { ...order };
-                            updatedOrder[ownerNameKey] = customer.contact_name || customer.contact_persons?.[0]?.name || '';
-                            updatedOrder[`${ownerPrefix}_contact`] = customer.primary_phone || customer.contact_persons?.[0]?.phone || '';
-                            updatedOrder[`${ownerPrefix}_address`] = customer.zoho_notes || customer.billing_address || '';
-                            updatedOrder[`${ownerPrefix}_email`] = customer.email || customer.contact_persons?.[0]?.email || '';
-                            updatedOrder[`${ownerPrefix}_ref`] = customer.zoho_id || customer.ref || '';
-                            updatedOrder[`${ownerPrefix}_remarks`] = customer.zoho_notes || customer.system_notes || '';
-                            // console.log(`Auto-populated ${ownerNameKey} for order ${order.id}:`, updatedOrder[ownerNameKey]); // Debug log
-                            return updatedOrder;
+
+
+    const handleFilterText = (e) => {
+        const { name, value } = e.target;
+        console.log("Filter change:", name, value);
+
+        setFilters((prev) => ({ ...prev, [name]: value }));
+
+        // Very important: reset to first page on every filter change
+        setPage(0);
+    };
+
+    // 3. Handler for status dropdown (also reset page)
+    const handleFilterChange = (e) => {
+        const { name, value } = e.target;
+        setFilters((prev) => ({ ...prev, [name]: value }));
+        setPage(0);
+    };
+
+    // 4. Fetch logic – clean & consistent
+    const fetchOrders = async () => {
+        setLoading(true);
+        setError(null);
+
+        try {
+            const params = {
+                page: page + 1,           // 1-based paging (common convention)
+                limit: rowsPerPage,
+                includeContainer: true,
+            };
+
+            // ───────────────────────────────
+            // Option A: General search field
+            // ───────────────────────────────
+            if (filters.search?.trim()) {
+                params.search = filters.search.trim();     // backend should search multiple columns
+                // or: params.q = filters.search.trim();
+                // or: params.keyword = filters.search.trim();
+            }
+
+            // ───────────────────────────────
+            // Option B: If you still want separate booking_ref / form_no
+            // ───────────────────────────────
+            // if (filters.booking_ref?.trim()) {
+            //   params.booking_ref = filters.booking_ref.trim();
+            // }
+
+            if (filters.status) {
+                params.status = filters.status;
+            }
+            console.log("parametors", params)
+            const response = await api.get("/api/orders", { params });
+            // ────────────────────────────────────────────────
+            //  VERY IMPORTANT: Check what your backend actually returns
+            // ────────────────────────────────────────────────
+            console.log("API RESPONSE STRUCTURE:", response.data);
+
+            const ordersData = response.data.data || response.data.orders || response.data || [];
+            const totalCount = response.data.total || response.data.count || response.data.totalCount || 0;
+
+            // Auto-populate logic (your existing code)
+            const ordersWithAutoPopulate = await Promise.all(
+                ordersData.map(async (order) => {
+                    const ownerPrefix = order.sender_type === 'sender' ? 'sender' : 'receiver';
+                    const ownerNameKey = `${ownerPrefix}_name`;
+                    const selectedOwnerKey = 'selected_sender_owner';
+
+                    if (order[selectedOwnerKey] && !order[ownerNameKey]?.trim()) {
+                        try {
+                            // console.log(`Auto-populating owner for order ${order.id} from ID: ${order[selectedOwnerKey]}`); // Debug log
+                            const customerRes = await api.get(`/api/customers/${order[selectedOwnerKey]}`);
+                            if (customerRes?.data) {
+                                const customer = customerRes.data;
+                                // Map customer fields to owner (adjust paths based on your API response structure)
+                                const updatedOrder = { ...order };
+                                updatedOrder[ownerNameKey] = customer.contact_name || customer.contact_persons?.[0]?.name || '';
+                                updatedOrder[`${ownerPrefix}_contact`] = customer.primary_phone || customer.contact_persons?.[0]?.phone || '';
+                                updatedOrder[`${ownerPrefix}_address`] = customer.zoho_notes || customer.billing_address || '';
+                                updatedOrder[`${ownerPrefix}_email`] = customer.email || customer.contact_persons?.[0]?.email || '';
+                                updatedOrder[`${ownerPrefix}_ref`] = customer.zoho_id || customer.ref || '';
+                                updatedOrder[`${ownerPrefix}_remarks`] = customer.zoho_notes || customer.system_notes || '';
+                                // console.log(`Auto-populated ${ownerNameKey} for order ${order.id}:`, updatedOrder[ownerNameKey]); // Debug log
+                                return updatedOrder;
+                            }
+                        } catch (autoErr) {
+                            console.error(`Auto-populate owner failed for order ${order.id}:`, autoErr);
+                            // Fallback: Return original order unchanged
                         }
-                    } catch (autoErr) {
-                        console.error(`Auto-populate owner failed for order ${order.id}:`, autoErr);
-                        // Fallback: Return original order unchanged
                     }
-                }
-                return order; // No change needed
-            })
-        );
-        
-        setOrders(ordersWithAutoPopulate);
-        setTotal(response.data.total || 0);
-    } catch (err) {
-        console.error("Error fetching orders:", err);
-        setError("Failed to fetch orders");
-        setSnackbar({
-            open: true,
-            message: err.response?.data?.error || err.message || 'Failed to fetch orders',
-            severity: 'error',
-        });
-    } finally {
-        setLoading(false);
-    }
-};
+                    return order; // No change needed
+                })
+            );
+
+            setOrders(ordersWithAutoPopulate);
+            setTotal(totalCount)
+        } catch (err) {
+            console.error("Error fetching orders:", err);
+            setError("Failed to fetch orders");
+            setSnackbar({
+                open: true,
+                message: err.response?.data?.error || err.message || 'Failed to fetch orders',
+                severity: 'error',
+            });
+        } finally {
+            setLoading(false);
+        }
+    };
+    useEffect(() => {
+        fetchOptions();
+        fetchOrders();
+    }, [page, rowsPerPage, filters.status, filters.search]);
+
 
     // Fetch options on mount (replaces dummies)
-const fetchOptions = async () => {
-    try {
-        setLoading(true);
-        const [placesRes, companiesRes, categoriesRes, subcategoriesRes, statusesRes] = await Promise.all([
-            api.get('api/options/places/crud'),
-            api.get('api/options/thirdParty/crud'),
-            api.get('api/options/categories/crud'), // Assumed endpoint; adjust if different
-            api.get('api/options/subcategories/crud'), // For subcategories
-            api.get('api/options/statuses'),
-        ]);
-        // Places: assume data.places = [{id, name, is_destination, ...}]
-        // console.log('optionssss', placesRes, companiesRes, categoriesRes, subcategoriesRes, statusesRes);
-        const allPlaces = placesRes?.data?.places || [];
-        setPlaces(allPlaces.map(p => ({ value: p.id.toString(), label: p.name })));
-    } catch (error) {
-        console.error('Error fetching options:', error);
-        setSnackbar({
-            open: true,
-            message: error.response?.data?.error || error.message || 'Failed to fetch options',
-            severity: 'error',
-        });
-       } finally {
-        setLoading(false);
-    }
-};
+    const fetchOptions = async () => {
+        try {
+            setLoading(true);
+            const [placesRes, companiesRes, categoriesRes, subcategoriesRes, statusesRes] = await Promise.all([
+                api.get('api/options/places/crud'),
+                api.get('api/options/thirdParty/crud'),
+                api.get('api/options/categories/crud'), // Assumed endpoint; adjust if different
+                api.get('api/options/subcategories/crud'), // For subcategories
+                api.get('api/options/statuses'),
+            ]);
+            // Places: assume data.places = [{id, name, is_destination, ...}]
+            // console.log('optionssss', placesRes, companiesRes, categoriesRes, subcategoriesRes, statusesRes);
+            const allPlaces = placesRes?.data?.places || [];
+            setPlaces(allPlaces.map(p => ({ value: p.id.toString(), label: p.name })));
+        } catch (error) {
+            console.error('Error fetching options:', error);
+            setSnackbar({
+                open: true,
+                message: error.response?.data?.error || error.message || 'Failed to fetch options',
+                severity: 'error',
+            });
+        } finally {
+            setLoading(false);
+        }
+    };
 
-// Helper function to get place name by ID
-const getPlaceName = (placeId) => {
-    if (!placeId) return '-';
-    const place = places.find(p => p.value === placeId.toString());
-    return place ? place.label : placeId;
-};
+    // Helper function to get place name by ID
+    const getPlaceName = (placeId) => {
+        if (!placeId) return '-';
+        const place = places.find(p => p.value === placeId.toString());
+        return place ? place.label : placeId;
+    };
 
 
     const handleReceiverAction = (receiver) => {
@@ -309,25 +357,25 @@ const getPlaceName = (placeId) => {
         );
         // Optional: Show success snackbar
     };
-        // Fetch open containers
+    // Fetch open containers
     const fetchContainers = async (payload) => {
-    if (loadingContainers) return; // Prevent multiple calls
-    setLoadingContainers(true);
-    setAssignmentError(null);
-    try {
-        const response = await api.get('/api/containers', { params: payload });
-        // console.log('Fetched containers:', response);
-        // Filter for only available containers based on derived_status
-        const availableContainers = (response.data.data || [])  
-        setContainers(availableContainers);
-    } catch (err) {
-        console.error("Error fetching containers:", err);
-        setAssignmentError('Failed to fetch containers. Please check the backend query for table "cm".');
-        setSnackbar({ open: true, message: 'Failed to fetch containers', severity: 'error' });
-    } finally {
-        setLoadingContainers(false);
-    }
-};
+        if (loadingContainers) return; // Prevent multiple calls
+        setLoadingContainers(true);
+        setAssignmentError(null);
+        try {
+            const response = await api.get('/api/containers', { params: payload });
+            // console.log('Fetched containers:', response);
+            // Filter for only available containers based on derived_status
+            const availableContainers = (response.data.data || [])
+            setContainers(availableContainers);
+        } catch (err) {
+            console.error("Error fetching containers:", err);
+            setAssignmentError('Failed to fetch containers. Please check the backend query for table "cm".');
+            setSnackbar({ open: true, message: 'Failed to fetch containers', severity: 'error' });
+        } finally {
+            setLoadingContainers(false);
+        }
+    };
     const fetchOrderDetails = async (orderId) => {
         setModalLoading(true);
         setModalError(null);
@@ -367,205 +415,250 @@ const getPlaceName = (placeId) => {
         setSelectedOrders([]);
     };
     const isSelected = (id) => selectedOrders.indexOf(id) !== -1;
- const handleAssign = async (assignments) => {
-    console.log('handleAssign called with assignments:', assignments);
-    if (!assignments || Object.keys(assignments).length === 0) {
-        setSnackbar({
-            open: true,
-            message: 'No valid assignments provided.',
-            severity: 'warning',
-        });
-        return;
-    }
+const handleAssign = async (assignments) => {
+  console.log('handleAssign called with assignments:', assignments);
 
-    // Validate: Ensure at least one order and one detail with qty > 0 and containers
-    let hasValidAssignment = false;
-    for (const orderAssign of Object.values(assignments)) {
-        for (const recAssign of Object.values(orderAssign)) {
-            for (const detailAssign of Object.values(recAssign)) {
-                if (detailAssign.qty > 0 && Array.isArray(detailAssign.containers) && detailAssign.containers.length > 0) {
-                    hasValidAssignment = true;
-                    break;
+  if (!assignments || Object.keys(assignments).length === 0) {
+    setSnackbar({
+      open: true,
+      message: 'No valid assignments provided.',
+      severity: 'warning',
+    });
+    return;
+  }
+
+  // Basic validation
+  let hasValid = false;
+  Object.values(assignments).forEach(orderAssign => {
+    Object.values(orderAssign).forEach(recAssign => {
+      Object.values(recAssign).forEach(detail => {
+        if (
+          detail.qty > 0 &&
+          (detail.totalAssignedWeight > 0 || detail.weight > 0) &&
+          Array.isArray(detail.containers) &&
+          detail.containers.length > 0
+        ) {
+          hasValid = true;
+        }
+      });
+    });
+  });
+
+  if (!hasValid) {
+    setSnackbar({
+      open: true,
+      message: 'Please assign qty > 0, weight > 0 and containers to at least one detail.',
+      severity: 'warning',
+    });
+    return;
+  }
+
+  // Clean & normalize – now also require orderItemId
+  const cleanAssignments = {};
+  Object.entries(assignments).forEach(([orderIdStr, orderAssign]) => {
+    const cleanOrder = {};
+    Object.entries(orderAssign).forEach(([recIdStr, recAssign]) => {
+      const cleanRec = {};
+      Object.entries(recAssign).forEach(([idxStr, detail]) => {
+        if (!detail.orderItemId) {
+          console.warn(
+            `Skipping detail ${idxStr} for receiver ${recIdStr} in order ${orderIdStr}: missing orderItemId`
+          );
+          return; // skip invalid details
+        }
+
+        const containers = (detail.containers || [])
+          .map(cid => parseInt(cid, 10))
+          .filter(cid => !isNaN(cid));
+
+        const qty = parseInt(detail.qty, 10);
+        const weightKg = parseFloat(detail.totalAssignedWeight ?? detail.weight ?? 0);
+
+        if (qty > 0 && weightKg > 0 && containers.length > 0) {
+          cleanRec[idxStr] = {
+            orderItemId: parseInt(detail.orderItemId),  // ensure it's a number
+            qty,
+            totalAssignedWeight: weightKg,
+            containers,
+          };
+        }
+      });
+
+      if (Object.keys(cleanRec).length > 0) {
+        cleanOrder[recIdStr] = cleanRec;
+      }
+    });
+
+    if (Object.keys(cleanOrder).length > 0) {
+      cleanAssignments[orderIdStr] = cleanOrder;
+    }
+  });
+
+  if (Object.keys(cleanAssignments).length === 0) {
+    setSnackbar({
+      open: true,
+      message: 'No valid assignments after cleaning (check missing orderItemId).',
+      severity: 'warning',
+    });
+    return;
+  }
+
+  console.log('Sending cleaned payload:', cleanAssignments);
+
+  try {
+    const res = await api.post('/api/orders/assign-container', cleanAssignments);
+
+    const { success, message, updatedOrders, tracking } = res.data;
+
+    if (success) {
+      setSnackbar({
+        open: true,
+        message: message || `Assigned successfully (${tracking?.length || 0} receivers)`,
+        severity: 'success',
+      });
+
+      fetchContainers();
+      fetchOrders();
+
+      setSelectedOrders([]);
+      setSelectedContainer('');
+    } else {
+      throw new Error(message || 'Assignment failed');
+    }
+  } catch (err) {
+    console.error('Assignment error:', err);
+    const msg =
+      err.response?.data?.error ||
+      err.response?.data?.details ||
+      err.message ||
+      'Failed to assign containers';
+    setSnackbar({ open: true, message: msg, severity: 'error' });
+  }
+};
+    // Updated handleDirectAssign to build batch assignments and use the main endpoint for multiple orders/receivers
+    const handleDirectAssign = async () => {
+        if (!directSelectedContainers.length || !selectedOrders.length) {
+            setSnackbar({
+                open: true,
+                message: 'Please select at least one container and one order.',
+                severity: 'warning',
+            });
+            return;
+        }
+
+        try {
+            // Log selected containers for debugging
+            // console.log('Selected containers before filtering:', directSelectedContainers.map(c => ({ cid: c.cid, container_number: c.container_number, derived_status: c.derived_status })));
+
+            // Filter to only available containers based on derived_status
+            const availableContainers = directSelectedContainers.filter(c => c.derived_status === 'Available' || 'Assigned to job');
+            // console.log('Available containers after filtering:', availableContainers.map(c => ({ cid: c.cid, container_number: c.container_number })));
+
+            if (!availableContainers.length) {
+                // Provide more details on why filtered
+                const unavailable = directSelectedContainers.filter(c => c.derived_status !== 'Available' || 'Assigned to job');
+                const reasons = [...new Set(unavailable.map(c => c.derived_status))].join(', ');
+                throw new Error(`No available containers selected. Skipped due to statuses: ${reasons}. Please select containers with status "Available".`);
+            }
+
+            // Collect all eligible targets (receivers with positive remaining items in first detail)
+            const allTargets = [];
+            for (const orderId of selectedOrders) {
+                const order = orders.find(o => o.id === orderId);
+                if (!order || !order.receivers?.length) continue;
+
+                for (const receiver of order.receivers) {
+                    const receiverId = receiver.id;
+                    if (!receiverId) continue;
+
+                    // Handle possible casing issues in property name
+                    const orderItems = receiver.shippingdetails || receiver.shippingDetails || [];
+                    if (orderItems.length === 0) continue;
+
+                    const firstDetail = orderItems[0];
+                    const remaining = parseInt(firstDetail.remainingItems) || 0;
+                    if (remaining <= 0) continue;
+
+                    allTargets.push({
+                        orderId: orderId.toString(),
+                        receiverId: receiverId.toString(),
+                        detailIndex: '0',
+                        remaining
+                    });
                 }
             }
-            if (hasValidAssignment) break;
-        }
-        if (hasValidAssignment) break;
-    }
 
-    if (!hasValidAssignment) {
-        setSnackbar({
-            open: true,
-            message: 'Please specify quantities and containers for at least one detail.',
-            severity: 'warning',
-        });
-        return;
-    }
+            if (allTargets.length === 0) {
+                throw new Error('No valid receivers with remaining items found');
+            }
 
-    try {
-        // FIXED: Send assignments directly (no wrapping key)
-        const res = await api.post('/api/orders/assign-container', assignments);  // <-- Changed: assignments, not { assignments }
+            // Build assignments by distributing containers round-robin to targets
+            const assignments = {};
+            const assignedReceivers = new Set();
 
-        const { success, message, updatedOrders, tracking } = res.data;
-        if (success) {
-            setSnackbar({
-                open: true,
-                message: message || `Successfully assigned to ${tracking?.length || 0} receivers across ${Object.keys(assignments).length} orders.`,
-                severity: 'success',
+            for (let i = 0; i < availableContainers.length; i++) {
+                const cont = availableContainers[i];
+                const contId = cont.cid || cont.container_number;
+                if (!contId) continue;
+
+                const target = allTargets[i % allTargets.length];
+                assignedReceivers.add(target.receiverId);
+
+                if (!assignments[target.orderId]) {
+                    assignments[target.orderId] = {};
+                }
+                if (!assignments[target.orderId][target.receiverId]) {
+                    assignments[target.orderId][target.receiverId] = {};
+                }
+                const detailKey = target.detailIndex;
+                if (!assignments[target.orderId][target.receiverId][detailKey]) {
+                    assignments[target.orderId][target.receiverId][detailKey] = {
+                        qty: target.remaining,
+                        containers: []
+                    };
+                }
+                assignments[target.orderId][target.receiverId][detailKey].containers.push(contId);
+            }
+
+            if (Object.keys(assignments).length === 0) {
+                throw new Error('No valid assignments could be built');
+            }
+
+            console.log('Built assignments for direct batch:', assignments);
+
+            // Call the batch endpoint with assignments - adjusted route to avoid :id conflict
+            const response = await api.post('/api/orders/assign-containers-to-orders', {
+                assignments,
+                order_ids: selectedOrders // Optional, for fallback
             });
-            console.log('Assignment response:', res.data);
 
-            // Refresh data
-            fetchContainers(); // Refresh available containers
-           
-            fetchOrders(); // Refresh full orders list
-           
-            // setOpenAssignModal(false);
-            setSelectedOrders([]); // Clear order selection
-            setSelectedContainer(''); // Clear if single-container mode, but deprecated
-
-            // Optional: Update local orders state with updatedOrders if needed
-            // if (updatedOrders && onRefreshOrders) {
-            //     onRefreshOrders(updatedOrders);
-            // }
-
-        } else {
-            throw new Error(message || 'Assignment failed');
-        }
-    } catch (err) {
-        console.error('Error assigning containers:', err);
-        const errorMsg = err.response?.data?.error || err.response?.data?.details || err.message || 'Failed to assign containers';
-        setSnackbar({
-            open: true,
-            message: errorMsg,
-            severity: 'error',
-        });
-    }
-};
-// Updated handleDirectAssign to build batch assignments and use the main endpoint for multiple orders/receivers
-const handleDirectAssign = async () => {
-    if (!directSelectedContainers.length || !selectedOrders.length) {
-        setSnackbar({
-            open: true,
-            message: 'Please select at least one container and one order.',
-            severity: 'warning',
-        });
-        return;
-    }
-
-    try {
-        // Log selected containers for debugging
-        // console.log('Selected containers before filtering:', directSelectedContainers.map(c => ({ cid: c.cid, container_number: c.container_number, derived_status: c.derived_status })));
-
-        // Filter to only available containers based on derived_status
-        const availableContainers = directSelectedContainers.filter(c => c.derived_status === 'Available' || 'Assigned to job');
-        // console.log('Available containers after filtering:', availableContainers.map(c => ({ cid: c.cid, container_number: c.container_number })));
-
-        if (!availableContainers.length) {
-            // Provide more details on why filtered
-            const unavailable = directSelectedContainers.filter(c => c.derived_status !== 'Available'|| 'Assigned to job');
-            const reasons = [...new Set(unavailable.map(c => c.derived_status))].join(', ');
-            throw new Error(`No available containers selected. Skipped due to statuses: ${reasons}. Please select containers with status "Available".`);
-        }
-
-        // Collect all eligible targets (receivers with positive remaining items in first detail)
-        const allTargets = [];
-        for (const orderId of selectedOrders) {
-            const order = orders.find(o => o.id === orderId);
-            if (!order || !order.receivers?.length) continue;
-
-            for (const receiver of order.receivers) {
-                const receiverId = receiver.id;
-                if (!receiverId) continue;
-
-                // Handle possible casing issues in property name
-                const orderItems = receiver.shippingdetails || receiver.shippingDetails || [];
-                if (orderItems.length === 0) continue;
-
-                const firstDetail = orderItems[0];
-                const remaining = parseInt(firstDetail.remainingItems) || 0;
-                if (remaining <= 0) continue;
-
-                allTargets.push({
-                    orderId: orderId.toString(),
-                    receiverId: receiverId.toString(),
-                    detailIndex: '0',
-                    remaining
+            if (response.data.success) {
+                setSnackbar({
+                    open: true,
+                    message: `Successfully assigned ${availableContainers.length} containers to ${assignedReceivers.size} receivers across ${selectedOrders.length} orders.`,
+                    severity: 'success',
                 });
+                fetchContainers(); // Refresh available containers
+                fetchOrders(); // Refresh orders list
+            } else {
+                // Handle backend-specific errors like skipped containers
+                if (response.data.error && response.data.skipped) {
+                    throw new Error(`${response.data.error}. Skipped containers: ${response.data.skipped}`);
+                }
+                throw new Error(response.data.message || 'Assignment failed');
             }
-        }
-
-        if (allTargets.length === 0) {
-            throw new Error('No valid receivers with remaining items found');
-        }
-
-        // Build assignments by distributing containers round-robin to targets
-        const assignments = {};
-        const assignedReceivers = new Set();
-
-        for (let i = 0; i < availableContainers.length; i++) {
-            const cont = availableContainers[i];
-            const contId = cont.cid || cont.container_number;
-            if (!contId) continue;
-
-            const target = allTargets[i % allTargets.length];
-            assignedReceivers.add(target.receiverId);
-
-            if (!assignments[target.orderId]) {
-                assignments[target.orderId] = {};
-            }
-            if (!assignments[target.orderId][target.receiverId]) {
-                assignments[target.orderId][target.receiverId] = {};
-            }
-            const detailKey = target.detailIndex;
-            if (!assignments[target.orderId][target.receiverId][detailKey]) {
-                assignments[target.orderId][target.receiverId][detailKey] = {
-                    qty: target.remaining,
-                    containers: []
-                };
-            }
-            assignments[target.orderId][target.receiverId][detailKey].containers.push(contId);
-        }
-
-        if (Object.keys(assignments).length === 0) {
-            throw new Error('No valid assignments could be built');
-        }
-
-        console.log('Built assignments for direct batch:', assignments);
-
-        // Call the batch endpoint with assignments - adjusted route to avoid :id conflict
-        const response = await api.post('/api/orders/assign-containers-to-orders', {
-            assignments,
-            order_ids: selectedOrders // Optional, for fallback
-        });
-
-        if (response.data.success) {
+        } catch (err) {
+            console.error('Error in direct assign:', err);
             setSnackbar({
                 open: true,
-                message: `Successfully assigned ${availableContainers.length} containers to ${assignedReceivers.size} receivers across ${selectedOrders.length} orders.`,
-                severity: 'success',
+                message: err.message || 'Failed to assign containers',
+                severity: 'error',
             });
-            fetchContainers(); // Refresh available containers
-            fetchOrders(); // Refresh orders list
-        } else {
-            // Handle backend-specific errors like skipped containers
-            if (response.data.error && response.data.skipped) {
-                throw new Error(`${response.data.error}. Skipped containers: ${response.data.skipped}`);
-            }
-            throw new Error(response.data.message || 'Assignment failed');
+        } finally {
+            setOpenDirectAssign(false);
+            setDirectSelectedContainers([]);
         }
-    } catch (err) {
-        console.error('Error in direct assign:', err);
-        setSnackbar({
-            open: true,
-            message: err.message || 'Failed to assign containers',
-            severity: 'error',
-        });
-    } finally {
-        setOpenDirectAssign(false);
-        setDirectSelectedContainers([]);
-    }
-};      
+    };
     const onUpdateAssignedQty = (receiverId, newQty) => {
         setOrders(prevOrders => prevOrders.map(order => ({
             ...order,
@@ -670,28 +763,28 @@ const handleDirectAssign = async () => {
             setExporting(false);
         }
     };
-    
 
-    const handleOpenDirectAssign =async  (tempData) => {
 
-    try {
-        const response = await api.get('/api/containers?container_number=&container_size=&container_type=&owner_type=&status=&location=&page=1&limit=50');
-        console.log('Fetched containers:', response);
-        // Filter for only available containers based on derived_status
-        // const availableContainers = (response.data.data || []).filter(container => 
-        //     container.derived_status === 'Available' || container.status === 1 // Adjust based on your API response structure
-        // );
-        setContainers(response.data.data || [] );
-    } catch (err) {
-        console.error("Error fetching containers:", err);
-        setAssignmentError('Failed to fetch containers. Please check the backend query for table "cm".');
-        setSnackbar({ open: true, message: 'Failed to fetch containers', severity: 'error' });
-    } finally {
-        setLoadingContainers(false);
-    }
+    const handleOpenDirectAssign = async (tempData) => {
+
+        try {
+            const response = await api.get('/api/containers?container_number=&container_size=&container_type=&owner_type=&status=&location=&page=1&limit=50');
+            console.log('Fetched containers:', response);
+            // Filter for only available containers based on derived_status
+            // const availableContainers = (response.data.data || []).filter(container => 
+            //     container.derived_status === 'Available' || container.status === 1 // Adjust based on your API response structure
+            // );
+            setContainers(response.data.data || []);
+        } catch (err) {
+            console.error("Error fetching containers:", err);
+            setAssignmentError('Failed to fetch containers. Please check the backend query for table "cm".');
+            setSnackbar({ open: true, message: 'Failed to fetch containers', severity: 'error' });
+        } finally {
+            setLoadingContainers(false);
+        }
 
         // if (!containers.length) {
-            // fetchContainers(payload);
+        // fetchContainers(payload);
         // }
         setOpenDirectAssign(true);
     };
@@ -700,13 +793,13 @@ const handleDirectAssign = async () => {
         setOpenDirectAssign(false);
         setDirectSelectedContainers([]);
     };
-    useEffect(() => {
-        fetchOptions();
-        fetchOrders();
-    }, [page, rowsPerPage, filters]);
+    // useEffect(() => {
+    //     fetchOrders();
+    // }, [page, rowsPerPage, filters]);
     useEffect(() => {
         fetchContainers();
     }, [openAssignModal]); // Fetch when modal opens
+
     const handleChangePage = (event, newPage) => {
         setPage(newPage);
     };
@@ -714,19 +807,13 @@ const handleDirectAssign = async () => {
         setRowsPerPage(parseInt(event.target.value, 10));
         setPage(0);
     };
-    const handleFilterChange = (e) => {
-        console.log('Filter change:', e.target.name, e.target.value);
-        const { name, value } = e.target;
-        setFilters((prev) => ({ ...prev, [name]: value }));
-        setPage(0);
-    };
+    // const handleFilterChange = (e) => {
+    //     console.log('Filter change:', e.target.name, e.target.value);
+    //     const { name, value } = e.target;
+    //     setFilters((prev) => ({ ...prev, [name]: value }));
+    //     setPage(0);
+    // };
 
-    const handleFilterText = (e) => {
-        console.log('Filter change:', e.target.name, e.target.value );
-        const { name, value } = e.target;
-        setFilters((prev) => ({ ...prev, [name]: value }));
-        setPage(0);
-    };
     const handleEdit = (orderId) => {
         navigate(`/orders/${orderId}/edit/`, { state: { orderId } });
     };
@@ -743,43 +830,50 @@ const handleDirectAssign = async () => {
         setSnackbar((prev) => ({ ...prev, open: false }));
     };
     const statuses = [
-    'Ready for Loading',
-    'Loaded Into container',
-    'Shipment Processing',
-    'Shipment In Transit',
-    'Under Processing',
-    'Arrived at Sort Facility',
-    'Ready for Delivery',
-    'Shipment Delivered'
-];
-const getStatusColors = (status) => {
-    // Extend your existing getStatusColors function to handle new statuses
-    const colorMap = {
-        'Ready for Loading': { bg: '#f3e5f5', text: '#7b1fa2' },
-        'Loaded Into container': { bg: '#e0f2f1', text: '#00695c' },
-        'Shipment Processing': { bg: '#fff3e0', text: '#ef6c00' },
-        'Shipment In Transit': { bg: '#e1f5fe', text: '#0277bd' },
-        'Under Processing': { bg: '#fff3e0', text: '#f57c00' },
-        'Arrived at Sort Facility': { bg: '#f1f8e9', text: '#689f38' },
-        'Ready for Delivery': { bg: '#fce4ec', text: '#c2185b' },
-        'Shipment Delivered': { bg: '#e8f5e8', text: '#2e7d32' },
-        // Fallback for unknown
-        default: { bg: '#f5f5f5', text: '#666' }
+        'Ready for Loading',
+        'Loaded Into container',
+        'Shipment Processing',
+        'Shipment In Transit',
+        'Under Processing',
+        'Arrived at Sort Facility',
+        'Ready for Delivery',
+        'Shipment Delivered'
+    ];
+    const getStatusColors = (status) => {
+        // Extend your existing getStatusColors function to handle new statuses
+        const colorMap = {
+            'Ready for Loading': { bg: '#f3e5f5', text: '#7b1fa2' },
+            'Loaded Into Container': { bg: '#e0f2f1', text: '#00695c' },
+            'Shipment Processing': { bg: '#fff3e0', text: '#ef6c00' },
+            'In Transit': { bg: '#e1f5fe', text: '#0277bd' },
+            'Under Processing': { bg: '#fff3e0', text: '#f57c00' },
+            'Arrived at Sort Facility': { bg: '#f1f8e9', text: '#689f38' },
+            'Ready for Delivery': { bg: '#fce4ec', text: '#c2185b' },
+            'Shipment Delivered': { bg: '#e8f5e8', text: '#2e7d32' },
+            'Loaded': { bg: '#e8f5e8', text: '#2e7d32' },
+            'Shipment Processing': { bg: '#fff3e0', text: '#ef6c00' },
+            'Shipment In Transit': { bg: '#e1f5fe', text: '#0277bd' },
+            'Assigned to Job': { bg: '#fff3e0', text: '#f57c00' },
+            'Arrived at Sort Facility': { bg: '#f1f8e9', text: '#689f38' },
+            'Ready for Delivery': { bg: '#fce4ec', text: '#c2185b' },
+            'Shipment Delivered': { bg: '#e8f5e8', text: '#2e7d32' },
+            // Fallback for unknown
+            default: { bg: '#f5f5f5', text: '#666' }
+        };
+        return colorMap[status] || colorMap.default;
     };
-    return colorMap[status] || colorMap.default;
-};
     const StyledTooltip = styled(Tooltip)(({ theme }) => ({
         [`& .MuiTooltip-tooltip`]: {
-            backgroundColor: theme.palette.common.white,
-            color: theme.palette.text.primary,
-            boxShadow: theme.shadows[3],
+            // backgroundColor: theme.palette.common.white, 
+            // color: theme.palette.text.primary,
+            // boxShadow: theme.shadows[3],
             borderRadius: theme.shape.borderRadius,
             fontSize: theme.typography.body2.fontSize,
-            maxWidth: '300px',
-            border: `1px solid ${theme.palette.divider}`,
+            width: 600,
+            // border: `1px solid ${theme.palette.divider}`,
         },
         [`& .MuiTooltip-arrow`]: {
-            color: theme.palette.common.white,
+            // color: theme.palette.common.white,
         },
     }));
     const StyledList = styled(List)(({ theme }) => ({
@@ -835,337 +929,314 @@ const getStatusColors = (status) => {
     };
     // Updated helper: parse and enhance with icons/chips for better UX
     const parseSummaryToList = (receivers, order) => {
-        // console.log('Parsing receivers:', receivers,order);
+        console.log('Parsing receivers:', receivers);
         if (!receivers || !Array.isArray(receivers)) return [];
-        return receivers.map(rec => ({
-            primary: rec.receiver_name,
-            status: rec.status,
-            eta: rec.eta ? `ETA: ${new Date(rec.eta).toLocaleDateString()}` : null,
-            receivers
-        }));
+        // return receivers.map(rec => ({
+            return receivers
+        // }));
     };
 
-const parseSummaryToListTwo = (receivers, order) => {
-    if (!receivers || !Array.isArray(receivers)) return [];
-    
-    const containerList = [];
-    
-    receivers.forEach(rec => {
-        if (rec.shippingdetails && Array.isArray(rec.shippingdetails)) {
-            rec.shippingdetails.forEach(detail => {
-                if (detail.containerDetails && Array.isArray(detail.containerDetails)) {
-                    detail.containerDetails.forEach(containerDetail => {
-                        if (containerDetail.container && containerDetail.status) {
-                            containerList.push({
-                                primary: `${containerDetail.container.container_number} (${rec.receiver_name || 'Unnamed Receiver'})`,
-                                status: containerDetail.status,
-                                receiverId: rec.id,
-                                shippingDetailId: detail.id,
-                                containerNumber: containerDetail.container.container_number,
-                                // Optional: Add more fields if needed, e.g., total_number: containerDetail.total_number
-                            });
-                        }
-                    });
-                }
-            });
-        }
-    });
-    
-    // Optional: Deduplicate by container_number if needed
-    // const uniqueContainers = containerList.filter((item, index, self) =>
-    //     index === self.findIndex(t => t.containerNumber === item.containerNumber)
-    // );
-    
-    return containerList;
+    const parseSummaryToListTwo = (receivers, order) => {
+        if (!receivers || !Array.isArray(receivers)) return [];
+
+        const containerList = [];
+
+        receivers.forEach(rec => {
+            if (rec.shippingdetails && Array.isArray(rec.shippingdetails)) {
+                rec.shippingdetails.forEach(detail => {
+                    if (detail.containerDetails && Array.isArray(detail.containerDetails)) {
+                        detail.containerDetails.forEach(containerDetail => {
+                            if (containerDetail.container && containerDetail.status) {
+                                containerList.push({
+                                    primary: `${containerDetail.container.container_number} (${rec.receiver_name || 'Unnamed Receiver'})`,
+                                    status: containerDetail.status,
+                                    receiverId: rec.id,
+                                    shippingDetailId: detail.id,
+                                    containerNumber: containerDetail.container.container_number,
+                                    // Optional: Add more fields if needed, e.g., total_number: containerDetail.total_number
+                                });
+                            }
+                        });
+                    }
+                });
+            }
+        });
+
+        // Optional: Deduplicate by container_number if needed
+        // const uniqueContainers = containerList.filter((item, index, self) =>
+        //     index === self.findIndex(t => t.containerNumber === item.containerNumber)
+        // );
+
+        return containerList;
+    };
+
+const PrettyList = ({ receivers, title }) => {
+  return (
+    <Card
+      variant="outlined"
+      sx={{
+        p: 2,
+        borderRadius: 2,
+        border: '1px solid',
+        borderColor: 'divider',
+        backgroundColor: '#fafafa',
+        width:600,
+        boxShadow: 'none',
+        // '&:hover': { boxShadow: '0 2px 8px rgba(0,0,0,0.08)' },
+      }}
+    >
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+        {/* Title */}
+        <Box
+          sx={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            pb: 1,
+            borderBottom: '1px solid',
+            borderColor: 'divider',
+          }}
+        >
+          <Typography variant="subtitle2" sx={{ fontWeight: 'bold', color: '#f58220' }}>
+            {title}
+          </Typography>
+          <Chip
+            label={`(${receivers?.length || 0})`}
+            size="small"
+            color="primary"
+            variant="outlined"
+            sx={{ fontSize: '0.7rem', height: 20, '& .MuiChip-label': { px: 0.5 } }}
+          />
+        </Box>
+
+        {/* Receivers List */}
+        <Stack spacing={1} sx={{ maxHeight: 'auto', overflow: 'auto' }}>
+          {receivers?.length > 0 ? (
+            receivers.map((receiver, rIdx) => (
+              <Card
+                key={rIdx}
+                variant="outlined"
+                sx={{
+                  p: 1.5,
+                  borderRadius: 1.5,
+                  border: '1px solid',
+                  borderColor: 'grey.200',
+                  backgroundColor: '#fff',
+                  boxShadow: 'none',
+                //   transition: 'all 0.2s ease',
+                //   '&:hover': { boxShadow: '0 1px 4px rgba(0,0,0,0.1)', borderColor: 'primary.light' },
+                }}
+              >
+                {/* Receiver Info */}
+                <Stack direction="row" alignItems="center" spacing={1.5}>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography variant="body2" fontWeight="medium" noWrap>
+                      {receiver.receiver_name || 'Unnamed Receiver'}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Qty Delivered: {receiver.qty_delivered ?? 0} / {receiver.total_number ?? 0}
+                    </Typography>
+                  </Box>
+                  <StatusChip status={receiver.status} size="small" />
+                </Stack>
+
+                <Divider sx={{ mt: 1 }} />
+
+                {/* Shipping Details */}
+                {receiver.shippingdetails?.length > 0 ? (
+                  receiver.shippingdetails.map((item, sIdx) => (
+                    <Box key={sIdx} sx={{ mt: 1, pl: 1 }}>
+                      <Typography variant="body2" fontWeight="bold">
+                        {item.category || 'Unknown Category'} - {item.subcategory || 'Unknown Subcategory'} ({item.type || 'Unknown Type'})
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Total: {item.totalNumber ?? 0}, Weight: {item.weight ?? 0}
+                      </Typography>
+
+                      {/* Container Details */}
+                      {item.containerDetails?.length > 0 ? (
+                        <Stack direction="row" justifyContent={"space-between"} alignItems={"center"} display={'flex'}  spacing={1} sx={{ justifyContent:'space-between', flexWrap: 'wrap',}}>
+                          {item.containerDetails.map((c, cIdx) => (
+                           <div style={{marginTop:5,flexDirection:'row',justifyContent:'space-between',alignItems:'center',alignSelf:'center', flex:1,display:'flex'}}>
+                           <Chip
+                              key={cIdx}
+                              label={`${c.container.container_number} - ${c.assign_total_box} boxes (${c.assign_weight} kg)`}
+                              size="large"
+                              color="secondary"
+                              variant="outlined"
+                              sx={{marginBottom:2}}
+                              spacing={1}
+                            
+                            />
+                             <StatusChip status={c.status} size="small" />
+
+
+
+                            {/* <Divider /> */}
+                            </div>
+                          ))}
+                        </Stack>
+                      ) : (
+                        <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
+                          No containers assigned
+                        </Typography>
+                      )}
+                    </Box>
+                  ))
+                ) : (
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
+                    No shipping details
+                  </Typography>
+                )}
+
+                {/* Drop Off Details */}
+                {receiver.drop_off_details?.length > 0 && (
+                  <Box sx={{ mt: 1, pl: 1 }}>
+                    <Typography variant="body2" fontWeight="medium">
+                      Drop Off Details:
+                    </Typography>
+                    {receiver.drop_off_details.map((dod, dIdx) => (
+                      <Typography variant="caption" color="text.secondary" key={dIdx} display="block">
+                        {dod.drop_method} - {dod.dropoff_name} ({dod.drop_off_mobile}) on {dod.drop_date}
+                      </Typography>
+                    ))}
+                  </Box>
+                )}
+              </Card>
+            ))
+          ) : (
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 3, color: 'text.secondary' }}>
+              <EmojiEventsIcon sx={{ fontSize: 40, color: 'grey.300', mb: 1 }} />
+              <Typography variant="body2" sx={{ fontStyle: 'italic' }}>
+                No receivers available
+              </Typography>
+            </Box>
+          )}
+        </Stack>
+      </Box>
+    </Card>
+  );
 };
 
-    // Enhanced PrettyList: Modern vertical card-based layout for receivers with improved alignment, avatars, and status badges
-    const PrettyList = ({ items, title }) => (
-        console.log('PrettyListPrettyListPrettyList',title),
-        <Card
-            variant="outlined"
-            sx={{
-                p: 2,
-                borderRadius: 2,
-                border: '1px solid',
-                borderColor: 'divider',
-                backgroundColor: '#fafafa', // Subtle off-white background for better contrast
-                boxShadow: 'none',
-                '&:hover': {
-                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)' // Gentle shadow on hover for depth
-                }
-            }}
-        >
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-                {/* Title Section - Centered and prominent */}
-                <Box sx={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    pb: 1,
-                    borderBottom: '1px solid',
-                    borderColor: 'divider'
-                }}>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 'bold', color: '#f58220' }}> {/* Use brand color for title */}
-                        {title}
-                    </Typography>
-                    
-                    <Chip
-                        label={`(${items.length})`}
-                        size="small"
-                        color="primary"
-                        variant="outlined"
-                        sx={{
-                            fontSize: '0.7rem',
-                            height: 20,
-                            '& .MuiChip-label': { px: 0.5 }
-                        }}
-                    />
-                </Box>
-                {/* Items List - Vertical stack with improved spacing */}
-                <Stack spacing={1} sx={{ maxHeight: 'auto', overflow: 'auto', }}>
-                    
-                     {/* Add scrollable height for better UX in dense lists */}
+// Combine both receivers and container details into one tooltip content
+const CombinedTooltip = ({ order }) => {
+  // You can merge both datasets or just pass receivers since shippingdetails contains containers
+  return <PrettyList receivers={order.receivers} title="Receivers & Containers" />;
+};
+
+    // Updated parse function to extract unique container numbers from the full order structure
+    // Assumes 'order' is the full JSON object provided (e.g., { id: 77, receivers: [...] })
+    const parseContainersToList = (order) => {
+        if (!order || !order.receivers || order.receivers.length === 0) {
+            return [];
+        }
+
+        const containerSet = new Set(); // Use Set for uniqueness
+        // console.log('Parsing containers from order:', order);   
+        order.receivers.forEach((receiver) => {
+            // console.log('Processing receiver:', receiver);
+            if (receiver.shippingdetails && Array.isArray(receiver.shippingdetails)) {
+                receiver.shippingdetails.forEach((shippingDetail) => {
+                    if (shippingDetail.containerDetails && Array.isArray(shippingDetail.containerDetails)) {
+                        shippingDetail.containerDetails.forEach((containerDetail) => {
+                            if (containerDetail.container && containerDetail.container.container_number) {
+                                containerSet.add(containerDetail.container.container_number.trim());
+                            } else if (containerDetail.container_number) {
+                                // Handle cases where container_number is directly on containerDetail.container
+                                containerSet.add(containerDetail.container_number.trim());
+                            }
+                        });
+                    }
+                });
+            }
+        });
+
+        // Convert to array of { primary: containerNumber } objects
+        return Array.from(containerSet).map((num) => ({ primary: num }));
+    };
+
+
+    // Enhanced PrettyContainersList remains the same, but now feed it the parsed list
+    const PrettyContainersList = ({ items, title }) => {
+        console.log('Containers items:', items);
+        return (
+            <Box sx={{ p: 1, maxWidth: 280 }}>
+                <Typography variant="caption" sx={{ fontWeight: 'medium', color: 'text.secondary', mb: 1, display: 'block' }}>
+                    {title} ({items.length})
+                </Typography>
+                <Stack direction="row" flexWrap="wrap" spacing={0.75} useFlexGap>
                     {items.length > 0 ? (
-                    console.log('Rendering items:', items), 
-                    items.map((item, index) => (
-                            <Card
+                        items.map((item, index) => (
+                            console.log('statussss', item),
+
+                            <Chip
                                 key={index}
+                                label={item.primary}
+                                icon={<CargoIcon fontSize="small" />}
+                                size="small"
                                 variant="outlined"
                                 sx={{
-                                    p: 1.5,
                                     borderRadius: 1.5,
-                                    border: '1px solid',
-                                    borderColor: 'grey.200',
-                                    backgroundColor: '#fff', // Clean white for individual cards
-                                    boxShadow: 'none',
-                                    // overflow:"scroll",
-                                    transition: 'all 0.2s ease', // Smooth transitions
-                                    '&:hover': {
-                                        boxShadow: '0 1px 4px rgba(0, 0, 0, 0.1)',
-                                        transform: 'translateY(-1px)', // Subtle lift on hover
-                                        borderColor: 'primary.light'
-                                    },
-                                    cursor: 'pointer' // Indicate interactivity
+                                    borderColor: 'divider',
+                                    backgroundColor: '#0d6c6a',
+                                    '& .MuiChip-icon': { color: 'secondary.main' },
+                                    fontSize: '0.75rem',
+                                    height: 24,
+                                    '&:hover': { backgroundColor: '#e9ecef' }
                                 }}
-                                onClick={() =>  handleStatusUpdate(item.receivers)} // Example action on click
-                            >
-                                <Stack direction="row" alignItems="center" spacing={1.5} sx={{ width: '100%' }}>
-                                    {/* Avatar - Slightly larger for better touch targets */}
-                                    {/* <Avatar
-                                        sx={{
-                                            width: 32,
-                                            height: 32,
-                                            bgcolor: 'primary.main',
-                                            fontSize: '1rem',
-                                            flexShrink: 0 // Prevent shrinking
-                                        }}
-                                    >
-                                        {item.primary ? item.primary.charAt(0).toUpperCase() : '?'}
-                                    </Avatar> */}
-                                    {/* Content - Flexible box for text wrapping */}
-                                    <Box sx={{ flex: 1, minWidth: 0 }}>
-                                        <Typography
-                                            variant="body2"
-                                            fontWeight="medium"
-                                            noWrap
-                                            sx={{
-                                                color: 'text.primary',
-                                                // overflow: 'hidden',
-                                                textOverflow: 'ellipsis',
-                                                whiteSpace: 'nowrap'
-                                            }}
-                                        >
-                                            {item.primary || 'Unnamed Item'}
-                                        </Typography>
-                                      
-                                        {item.secondary && (
-                                            <Typography
-                                                variant="caption"
-                                                sx={{
-                                                    backgroundColor: '#00695c',
-                                                    color: 'text.secondary',
-                                                    display: 'block',
-                                                    mt: 0.25
-                                                }}
-                                            >
-                                                {item.secondary}
-                                            </Typography>
-                                        )}
+                            />
 
-                                       
 
-                                    </Box>
-                                    {/* Status Badge - Aligned to the right */}
-                                    {item.status && (
-                                        <Box sx={{ ml: 'auto' }}>
-                                        <StatusChip
-                                            status={item.status}
-                                            size="small"
-                                            sx={{
-                                                fontSize: '0.7rem',
-                                                height: 20,
-                                                minWidth: 60,
-                                                flexShrink: 0,
-                                                '& .MuiChip-label': { px: 0.5 }
-                                            }}
-                                        />
-
-                                      
-                                       
-                                    </Box>
-                                    )}
-                                 
-                                </Stack>
-                                <Divider sx={{ mt: 1 }} />
-                                <Box sx={{  }}>
-                                           <Typography
-                                       variant="body2"
-                                            fontWeight="medium"
-                                        sx={{
-                                            color: '#000',
-                                            display: 'block',
-                                            mt: 1,   
-                                            marginRight: 10
-                                        }}
-                                    >
-                                        {item.eta}
-                                    </Typography>
-                                </Box>
-                           
-                            </Card>
                         ))
                     ) : (
-                        <Box sx={{
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            py: 3,
-                            color: 'text.secondary'
-                        }}>
-                            <EmojiEventsIcon sx={{ fontSize: 40, color: 'grey.300', mb: 1 }} /> {/* Visual placeholder */}
-                            <Typography variant="body2" sx={{ fontStyle: 'italic' }}>
-                                No items available
-                            </Typography>
-                        </Box>
-                    )}
-                </Stack>
-            </Box>
-        </Card>
-    );
-// Updated parse function to extract unique container numbers from the full order structure
-// Assumes 'order' is the full JSON object provided (e.g., { id: 77, receivers: [...] })
-const parseContainersToList = (order) => {
-    if (!order || !order.receivers || order.receivers.length === 0) {
-        return [];
-    }
-
-    const containerSet = new Set(); // Use Set for uniqueness
-// console.log('Parsing containers from order:', order);   
-    order.receivers.forEach((receiver) => {
-        // console.log('Processing receiver:', receiver);
-        if (receiver.shippingdetails && Array.isArray(receiver.shippingdetails)) {
-            receiver.shippingdetails.forEach((shippingDetail) => {
-                if (shippingDetail.containerDetails && Array.isArray(shippingDetail.containerDetails)) {
-                    shippingDetail.containerDetails.forEach((containerDetail) => {
-                        if (containerDetail.container && containerDetail.container.container_number) {
-                            containerSet.add(containerDetail.container.container_number.trim());
-                        } else if (containerDetail.container_number) {
-                            // Handle cases where container_number is directly on containerDetail.container
-                            containerSet.add(containerDetail.container_number.trim());
-                        }
-                    });
-                }
-            });
-        }
-    });
-
-    // Convert to array of { primary: containerNumber } objects
-    return Array.from(containerSet).map((num) => ({ primary: num }));
-};
-
-// Enhanced PrettyContainersList remains the same, but now feed it the parsed list
-const PrettyContainersList = ({ items, title }) => {
-    console.log('Containers items:', items);
-    return (
-        <Box sx={{ p: 1, maxWidth: 280 }}>
-            <Typography variant="caption" sx={{ fontWeight: 'medium', color: 'text.secondary', mb: 1, display: 'block' }}>
-                {title} ({items.length})
-            </Typography>
-            <Stack direction="row" flexWrap="wrap" spacing={0.75} useFlexGap>
-                {items.length > 0 ? (
-                    items.map((item, index) => (
-                        console.log('statussss',item),
-                    
                         <Chip
-                            key={index}
-                            label={item.primary}
-                            icon={<CargoIcon fontSize="small" />}
+                            label="No containers"
                             size="small"
                             variant="outlined"
                             sx={{
                                 borderRadius: 1.5,
                                 borderColor: 'divider',
-                                backgroundColor: '#0d6c6a',
-                                '& .MuiChip-icon': { color: 'secondary.main' },
+                                backgroundColor: '#f8f9fa',
+                                color: 'text.secondary',
                                 fontSize: '0.75rem',
                                 height: 24,
-                                '&:hover': { backgroundColor: '#e9ecef' }
                             }}
                         />
-                        
-                                
-                    ))
-                ) : (
-                    <Chip
-                        label="No containers"
-                        size="small"
-                        variant="outlined"
-                        sx={{
-                            borderRadius: 1.5,
-                            borderColor: 'divider',
-                            backgroundColor: '#f8f9fa',
-                            color: 'text.secondary',
-                            fontSize: '0.75rem',
-                            height: 24,
-                        }}
-                    />
-                )}
-            </Stack>
-        </Box>
-    );
-};
+                    )}
+                </Stack>
+            </Box>
+        );
+    };
 
-// Example usage in your component (assuming 'order' is the JSON data):
-// const containerList = parseContainersToList(order);
-// <PrettyContainersList items={containerList} title="Containers" />
-     // Styled components (unchanged)
-     const StyledTableRow = styled(TableRow)(({ theme }) => ({
-       '&:nth-of-type(odd)': {
-         backgroundColor: theme.palette.action.hover,
-       },
-       '&:last-child td, &:last-child th': {
-         border: 0,
-       },
-       '&:hover': {
-         backgroundColor: theme.palette.action.selected,
-       },
-     }));
-     const StyledTableCell = styled(TableCell)(({ theme }) => ({
-       borderBottom: `1px solid ${theme.palette.divider}`,
-       fontSize: '0.875rem',
-       padding: theme.spacing(1.5, 2),
-     }));
-   
-     const StyledTableHeadCell = styled(TableCell)(({ theme }) => ({
-       backgroundColor: theme.palette.primary.main,
-       color: theme.palette.primary.contrastText,
-       fontWeight: 'bold',
-       fontSize: '0.875rem',
-       padding: theme.spacing(1.5, 2),
-       borderBottom: `2px solid ${theme.palette.primary.dark}`,
-     }));
+    // Example usage in your component (assuming 'order' is the JSON data):
+    // const containerList = parseContainersToList(order);
+    // <PrettyContainersList items={containerList} title="Containers" />
+    // Styled components (unchanged)
+    const StyledTableRow = styled(TableRow)(({ theme }) => ({
+        '&:nth-of-type(odd)': {
+            backgroundColor: theme.palette.action.hover,
+        },
+        '&:last-child td, &:last-child th': {
+            border: 0,
+        },
+        '&:hover': {
+            backgroundColor: theme.palette.action.selected,
+        },
+    }));
+    const StyledTableCell = styled(TableCell)(({ theme }) => ({
+        borderBottom: `1px solid ${theme.palette.divider}`,
+        fontSize: '0.875rem',
+        padding: theme.spacing(1.5, 2),
+    }));
+
+    const StyledTableHeadCell = styled(TableCell)(({ theme }) => ({
+        backgroundColor: theme.palette.primary.main,
+        color: theme.palette.primary.contrastText,
+        fontWeight: 'bold',
+        fontSize: '0.875rem',
+        padding: theme.spacing(1.5, 2),
+        borderBottom: `2px solid ${theme.palette.primary.dark}`,
+    }));
     if (loading) {
         return (
             <Paper sx={{ p: 3, borderRadius: 3, boxShadow: 3, bgcolor: "#fafafa" }}>
@@ -1188,7 +1259,7 @@ const PrettyContainersList = ({ items, title }) => {
     }
     const numSelected = selectedOrders.length;
     const rowCount = orders.length;
-        return (
+    return (
         <>
             <Paper sx={{ p: 3, borderRadius: 3, boxShadow: 3, bgcolor: "#fafafa" }}>
                 <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}>
@@ -1257,14 +1328,16 @@ const PrettyContainersList = ({ items, title }) => {
                 </Stack>
                 {/* Filters - Updated: booking_ref for search */}
                 <Stack direction="row" spacing={2} mb={3} alignItems="center">
+                    {/* General search input */}
                     <TextField
-                        label="Search Booking Ref"
-                        type="text"
-                        name="booking_ref" // Updated to match backend filter
-                        value={filters.booking_ref || ''}
+                        label="Search orders..."
+                        placeholder="Booking ref, sender, receiver, container..."
+                        type="search"
+                        name="search"                     // ← important: matches filters.search
+                        value={filters.search || ""}
                         onChange={handleFilterText}
                         size="small"
-                        sx={{ width: 200 }}
+                        sx={{ width: 280 }}
                     />
                     <FormControl size="small" sx={{ minWidth: 150 }}>
                         <InputLabel>Status</InputLabel>
@@ -1283,261 +1356,275 @@ const PrettyContainersList = ({ items, title }) => {
                         </Select>
                     </FormControl>
                 </Stack>
-        
-              {/* Table - FIXED: No whitespace between <TableHead> and <TableBody> */}
-              <TableContainer sx={{ 
-                borderRadius: 2, 
-                overflow: 'scroll',
-                boxShadow: 2, 
-                // maxHeight: 600,  
-                width: '100%',
-                '&::-webkit-scrollbar': {
-                  height: 6,
-                  width: 6,
-                },
-                '&::-webkit-scrollbar-track': {
-                  background: 'background.paper',
-                },
-                '&::-webkit-scrollbar-thumb': {
-                  background: '#0d6c6a',
-                  borderRadius: 3,
-                }
-              }}>
-                <Table stickyHeader size="small" aria-label="Consignments table" sx={{ tableLayout: 'fixed' }}>
-        <TableHead>
-            <TableRow sx={{ bgcolor: '#0d6c6a' }}>
-                <StyledTableHeadCell padding="checkbox" sx={{ bgcolor: '#0d6c6a', color: '#fff' }}>
-                {/*     <Checkbox
+
+                {/* Table - FIXED: No whitespace between <TableHead> and <TableBody> */}
+                <TableContainer sx={{
+                    borderRadius: 2,
+                    overflow: 'scroll',
+                    boxShadow: 2,
+                    // maxHeight: 600,  
+                    width: '100%',
+                    '&::-webkit-scrollbar': {
+                        height: 6,
+                        width: 6,
+                    },
+                    '&::-webkit-scrollbar-track': {
+                        background: 'background.paper',
+                    },
+                    '&::-webkit-scrollbar-thumb': {
+                        background: '#0d6c6a',
+                        borderRadius: 3,
+                    }
+                }}>
+                    <Table stickyHeader size="small" aria-label="Consignments table" sx={{ tableLayout: 'fixed' }}>
+                        <TableHead>
+                            <TableRow sx={{ bgcolor: '#0d6c6a' }}>
+                                <StyledTableHeadCell padding="checkbox" sx={{ bgcolor: '#0d6c6a', color: '#fff' }}>
+                                    {/*     <Checkbox
                         color="primary"
                         indeterminate={numSelected > 0 && numSelected < rowCount}
                         checked={rowCount > 0 && numSelected === rowCount}
                         onChange={handleSelectAllClick}
-                    /> */}  
-                </StyledTableHeadCell>
-                {[
-                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="ref">Booking Ref</StyledTableHeadCell>,
-                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="loading">POL</StyledTableHeadCell>,
-                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="dest">POD</StyledTableHeadCell>,
-                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="sender">Sender</StyledTableHeadCell>,
-                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="receivers">Receivers</StyledTableHeadCell>, // Multiple receivers with status
-                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="containers">Containers</StyledTableHeadCell>,
-                    // New column for Products (weight, category, item products, total number)
-                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="products">Products</StyledTableHeadCell>,
-                    // <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="created">Total Weight</StyledTableHeadCell>,
-                    // <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="actions">Total Items</StyledTableHeadCell>,
-                
-                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="updated_at">Updated At</StyledTableHeadCell>,
-                    // <TableCell key="assoc">Associated Container</TableCell>,
-                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="created">Created At</StyledTableHeadCell>,
-                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="actions">Actions</StyledTableHeadCell>
-                ]}
-            </TableRow>
-        </TableHead>
-        <TableBody>
-            {orders.map((order) => {
-                // console.log('Rendering order: conatiners', order.receivers);
-                const isItemSelected = isSelected(order.id);
-                // renderReceivers( order.receivers);
-                const containersList = order.receivers.forEach((receiver) => {
-        // console.log('Processing receiver: connnnnnnntainerssss', receiver);
-        if (receiver.shippingdetails && Array.isArray(receiver.shippingdetails)) {
-            receiver.shippingdetails.forEach((shippingDetail) => {
-                if (shippingDetail.containerDetails && Array.isArray(shippingDetail.containerDetails)) {
-                    shippingDetail.containerDetails.forEach((containerDetail) => {
-                        if (containerDetail && containerDetail) {
-                            // console.log('Found container detail:', containerDetail.container);
-                            // return containersList.push({primary: containerDetail.container.container_number.trim() } );
-                        }
-                    });
-                }
-            });
-        }
-    });
-                const status = order.overall_status || order.status || 'Created';
-                const colors = getStatusColors(status);
-console.log('Ren container list:', containersList);
-                // Updated: Compute products summary from receivers[].shippingDetails (corrected field names to snake_case)
-                const productsSummary = order.receivers.flatMap(receiver => 
-                    (receiver.shippingdetails || []).map(detail => ({
-                        category: detail.category || 'Unknown',
-                        subcategory: detail.subcategory || '',
-                        type: detail.type || 'Package', // Item type (e.g., "Package")
-                        weight: parseFloat(detail.weight || 0),
-                        total_number: parseInt(detail.totalNumber || 0),
-                        itemRef: detail.itemRef || '',
-                        shippingDetailStatus: detail.status || '',
-                        // containerName: detail.containerDetails || []
-                    }))
-                );
-                const totalItems = productsSummary.reduce((sum, p) => sum + p.total_number, 0);
-                const totalWeight = productsSummary.reduce((sum, p) => sum + p.weight, 0);
-                const categoryList = [...new Set(productsSummary.map(p => p.category))].join(', '); // Unique categories
+                    /> */}
+                                </StyledTableHeadCell>
+                                {[
+                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="ref">Booking Ref</StyledTableHeadCell>,
+                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="form_no">Form No</StyledTableHeadCell>,
 
-                return (
-                    <StyledTableRow
-                        key={order.id}
-                        onClick={() => handleClick(order.id)}
-                        role="checkbox"
-                        aria-checked={isItemSelected}
-                        selected={isItemSelected}
-                        sx={{ cursor: 'pointer' }}
-                    >
-                        <StyledTableCell padding="checkbox">
-                            <Checkbox
-                                checked={isItemSelected}
-                                onChange={(event) => {
-                                    handleClick(order.id);
-                                    event.stopPropagation();
-                                }}
-                                inputProps={{
-                                    'aria-labelledby': `enhanced-table-checkbox-${order.id}`,
-                                }}
-                            />
-                        </StyledTableCell>
-                        <StyledTableCell>{order.booking_ref}</StyledTableCell>
-                        <StyledTableCell>{getPlaceName(order?.place_of_loading)}</StyledTableCell>
-                        <StyledTableCell>{getPlaceName(order.place_of_delivery)}</StyledTableCell>
-                        <StyledTableCell>{order.sender_name}</StyledTableCell>
-                        <StyledTableCell>
-                            <StyledTooltip
-                                title={<PrettyList items={parseSummaryToList(order.receivers,order)} title="Receivers" />}
-                                arrow
-                                placement="top"
-                                PopperProps={{
-                                    sx: { '& .MuiTooltip-tooltip': { border: '1px solid #e0e0e0' } }
-                                }}
-                            >
-                                <Typography variant="body2" noWrap sx={{ maxWidth: 220, cursor: 'help', fontWeight: 'medium' }}>
-                                    {order.receivers.length > 0
-                                        ? <>{order.receivers.length > 1 && <sup style={{ padding: 4, borderRadius: 50, float: 'left', background: '#00695c', color: '#fff' }}>({order.receivers.length})</sup>}
-                                            <span style={{ padding: 0 }}>{order.receivers.map(c => c.receiver_name || '').join(', ').substring(0, 25)}...</span></>
-                                        : '-'
-                                    }
-                                </Typography>
-                            </StyledTooltip>
-                        </StyledTableCell>
-                       <TableCell>
-                           <StyledTooltip
-                               title={<PrettyList  items={parseSummaryToListTwo(order.receivers,order)} title="Containers Details"  />}
-                               arrow
-                               placement="top"
-                               PopperProps={{
+                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="loading">POL</StyledTableHeadCell>,
+                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="dest">POD</StyledTableHeadCell>,
+                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="sender">Sender</StyledTableHeadCell>,
+                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff',width:200 }} key="receivers">Receivers & Containers</StyledTableHeadCell>, // Multiple receivers with status
+                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff',width:100 }} key="containers"></StyledTableHeadCell>,
+                                    // New column for Products (weight, category, item products, total number)
+                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="products">Products</StyledTableHeadCell>,
+                                    // <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="actions">Total Items</StyledTableHeadCell>,
 
-                                    sx: { '& .MuiTooltip-tooltip': { border: '1px solid #e0e0e0' } }
-                                }}
-                            >
-                                <Typography variant="body2" noWrap sx={{ maxWidth: 120, cursor: 'help', fontWeight: 'medium' }}>
-                                    {parseContainersToList(order)?.length > 0
-                                        ? <>{parseContainersToList(order)?.length > 1 && <sup style={{ padding: 4, borderRadius: 50, float: 'left', background: '#00695c', color: '#fff' }}>({parseContainersToList(order).length})</sup>}
-                                            <span style={{ padding: 0 }}>{parseContainersToList(order).map(c => c.primary).join(', ').substring(0, 25)}...</span></>
-                                        : '-'   
+                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="updated_at">Updated At</StyledTableHeadCell>,
+                                    // <TableCell key="assoc">Associated Container</TableCell>,
+                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="created">Created At</StyledTableHeadCell>,
+                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="actions">Actions</StyledTableHeadCell>
+                                ]}
+                            </TableRow>
+                        </TableHead>
+                        <TableBody>
+                            {orders.map((order) => {
+                                // console.log('Rendering order: conatiners', order.receivers);
+                                const isItemSelected = isSelected(order.id);
+                                // renderReceivers( order.receivers);
+                                const containersList = order.receivers.forEach((receiver) => {
+                                    // console.log('Processing receiver: connnnnnnntainerssss', receiver);
+                                    if (receiver.shippingdetails && Array.isArray(receiver.shippingdetails)) {
+                                        receiver.shippingdetails.forEach((shippingDetail) => {
+                                            if (shippingDetail.containerDetails && Array.isArray(shippingDetail.containerDetails)) {
+                                                shippingDetail.containerDetails.forEach((containerDetail) => {
+                                                    if (containerDetail && containerDetail) {
+                                                        // console.log('Found container detail:', containerDetail.container);
+                                                        // return containersList.push({primary: containerDetail.container.container_number.trim() } );
+                                                    }
+                                                });
+                                            }
+                                        });
                                     }
-                                </Typography>
-                            </StyledTooltip>
-                        </TableCell>    
-                        {/* Updated Products column using actual shippingDetails data (corrected field names) */}
-                        <StyledTableCell>
-                            <Tooltip
-                                title={
-                                    <Box sx={{ minWidth: 250 }}>
-                                        <Typography variant="subtitle2" gutterBottom>Product Details</Typography>
-                                        {productsSummary.length > 0 ? (
-                                            productsSummary.map((product, idx) => (
-                                                <Box key={idx} sx={{ mb: 1, p: 1, border: '1px solid #e0e0e0', borderRadius: 1 }}>
-                                                    <Typography variant="body2"><strong>Category:</strong> {product.category}</Typography>
-                                                    <Typography variant="body2"><strong>Subcategory:</strong> {product.subcategory || '-'}</Typography>
-                                                    <Typography variant="body2"><strong>Item Type:</strong> {product.type}</Typography>
-                                                    <Typography variant="body2"><strong>Weight:</strong> {product.weight} kg</Typography>
-                                                    <Typography variant="body2"><strong>Total Items:</strong> {product.total_number}</Typography>
-                                                    {/* <Typography variant="body2"><strong>Status:</strong> {product.status || '-'}</Typography> */}
-                                                    {product.itemRef && <Typography variant="body2"><strong>Item Ref:</strong> {product.itemRef}</Typography>}
-                                                </Box>
-                                            ))
-                                        ) : (
-                                            <Typography variant="body2">-</Typography>
-                                        )}
-                                        {productsSummary.length > 0 && (
-                                            <Box sx={{ mt: 1, pt: 1, borderTop: '1px solid #e0e0e0' }}>
-                                                <Typography variant="body2"><strong>Total Weight:</strong> {totalWeight.toFixed(1)} kg</Typography>
-                                                <Typography variant="body2"><strong>Total Items:</strong>{totalItems}</Typography>
-                                            </Box>
-                                        )}
-                                    </Box>
-                                }
-                                arrow
-                                placement="top"
-                            >
-                                <Typography variant="body2" noWrap sx={{ maxWidth: 120, cursor: 'help', fontWeight: 'medium' }}>
-                                    {productsSummary.length > 0 ? (
-                                        <>
-                                            {productsSummary.length > 1 && <sup style={{ padding: 2, borderRadius: 50, float: 'left', background: '#00695c', color: '#fff', fontSize: '0.75rem' }}>({productsSummary.length})</sup>}
-                                            <span style={{ paddingLeft: productsSummary.length > 1 ? 20 : 0 }}>
-                                                Cat: {categoryList.substring(0, 10)}... | Wt: {totalWeight.toFixed(0)}kg | Items: {totalItems}
-                                            </span>
-                                        </>
-                                    ) : '-'}
-                                </Typography>
-                            </Tooltip>
-                        </StyledTableCell>
-                        {/* <StyledTableCell>{totalWeight.toFixed(1)} kg</StyledTableCell>
+                                });
+                                const status = order.overall_status || order.status || 'Created';
+                                const colors = getStatusColors(status);
+                                console.log('Ren container list:', containersList);
+                                // Updated: Compute products summary from receivers[].shippingDetails (corrected field names to snake_case)
+                                const productsSummary = order.receivers.flatMap(receiver =>
+                                    (receiver.shippingdetails || []).map(detail => ({
+                                        category: detail.category || 'Unknown',
+                                        subcategory: detail.subcategory || '',
+                                        type: detail.type || 'Package', // Item type (e.g., "Package")
+                                        weight: parseFloat(detail.weight || 0),
+                                        total_number: parseInt(detail.totalNumber || 0),
+                                        itemRef: detail.itemRef || '',
+                                        shippingDetailStatus: detail.status || '',
+                                        // containerName: detail.containerDetails || []
+                                    }))
+                                );
+                                const totalItems = productsSummary.reduce((sum, p) => sum + p.total_number, 0);
+                                const totalWeight = productsSummary.reduce((sum, p) => sum + p.weight, 0);
+                                const categoryList = [...new Set(productsSummary.map(p => p.category))].join(', '); // Unique categories
+
+                                return (
+                                    <StyledTableRow
+                                        key={order.id}
+                                        onClick={() => handleClick(order.id)}
+                                        role="checkbox"
+                                        aria-checked={isItemSelected}
+                                        selected={isItemSelected}
+                                        sx={{ cursor: 'pointer' }}
+                                    >
+                                        <StyledTableCell padding="checkbox">
+                                            <Checkbox
+                                                checked={isItemSelected}
+                                                onChange={(event) => {
+                                                    handleClick(order.id);
+                                                    event.stopPropagation();
+                                                }}
+                                                inputProps={{
+                                                    'aria-labelledby': `enhanced-table-checkbox-${order.id}`,
+                                                }}
+                                            />
+                                        </StyledTableCell>
+                                        <StyledTableCell>{order.booking_ref}</StyledTableCell>
+                                        <StyledTableCell>{order?.rgl_booking_number}</StyledTableCell>
+                                        <StyledTableCell>{getPlaceName(order?.place_of_loading)}</StyledTableCell>
+                                        <StyledTableCell>{getPlaceName(order.place_of_delivery)}</StyledTableCell>
+                                        <StyledTableCell>{order.sender_name}</StyledTableCell>
+                                       
+<TableCell colSpan={2}> {/* optional: merge visually */}
+  <StyledTooltip
+    title={<CombinedTooltip order={order} />}
+    arrow
+    placement="bottom-start"
+    PopperProps={{
+      sx: {
+        '& .MuiTooltip-tooltip': {
+          border: '1px solid #e0e0e0',
+          background:"transparent",
+          width: 600, // set your preferred width
+        //   maxHeight: 400,
+        //   overflow: 'auto',
+        },
+      },
+    }}
+  >
+    <Typography
+      variant="body2"
+      noWrap
+      sx={{ maxWidth: 200, cursor: 'help', fontWeight: 'medium' }}
+    >
+      {order.receivers.length > 0
+        ? <>
+            {order.receivers.length > 1 && (
+              <sup
+                style={{
+                  padding: 4,
+                  borderRadius: 50,
+                  float: 'left',
+                  background: '#00695c',
+                  color: '#fff',
+                }}
+              >
+                ({order.receivers.length})
+              </sup>
+            )}
+            <span style={{ padding: 0 }}>
+              {order.receivers.map(r => r.receiver_name || '').join(', ').substring(0, 25)}...
+            </span>
+          </>
+        : '-'}
+    </Typography>
+  </StyledTooltip>
+</TableCell>
+
+                                        {/* Updated Products column using actual shippingDetails data (corrected field names) */}
+                                        <StyledTableCell>
+                                            <Tooltip
+                                                title={
+                                                    <Box sx={{ minWidth: 250 }}>
+                                                        <Typography variant="subtitle2" gutterBottom>Product Details</Typography>
+                                                        {productsSummary.length > 0 ? (
+                                                            productsSummary.map((product, idx) => (
+                                                                <Box key={idx} sx={{ mb: 1, p: 1, border: '1px solid #e0e0e0', borderRadius: 1 }}>
+                                                                    <Typography variant="body2"><strong>Category:</strong> {product.category}</Typography>
+                                                                    <Typography variant="body2"><strong>Subcategory:</strong> {product.subcategory || '-'}</Typography>
+                                                                    <Typography variant="body2"><strong>Item Type:</strong> {product.type}</Typography>
+                                                                    <Typography variant="body2"><strong>Weight:</strong> {product.weight} kg</Typography>
+                                                                    <Typography variant="body2"><strong>Total Items:</strong> {product.total_number}</Typography>
+                                                                    {/* <Typography variant="body2"><strong>Status:</strong> {product.status || '-'}</Typography> */}
+                                                                    {product.itemRef && <Typography variant="body2"><strong>Item Ref:</strong> {product.itemRef}</Typography>}
+                                                                </Box>
+                                                            ))
+                                                        ) : (
+                                                            <Typography variant="body2">-</Typography>
+                                                        )}
+                                                        {productsSummary.length > 0 && (
+                                                            <Box sx={{ mt: 1, pt: 1, borderTop: '1px solid #e0e0e0' }}>
+                                                                <Typography variant="body2"><strong>Total Weight:</strong> {totalWeight.toFixed(1)} kg</Typography>
+                                                                <Typography variant="body2"><strong>Total Items:</strong>{totalItems}</Typography>
+                                                            </Box>
+                                                        )}
+                                                    </Box>
+                                                }
+                                                arrow
+                                                placement="top"
+                                            >
+                                                <Typography variant="body2" noWrap sx={{ maxWidth: 120, cursor: 'help', fontWeight: 'medium' }}>
+                                                    {productsSummary.length > 0 ? (
+                                                        <>
+                                                            {productsSummary.length > 1 && <sup style={{ padding: 2, borderRadius: 50, float: 'left', background: '#00695c', color: '#fff', fontSize: '0.75rem' }}>({productsSummary.length})</sup>}
+                                                            <span style={{ paddingLeft: productsSummary.length > 1 ? 20 : 0 }}>
+                                                                Cat: {categoryList.substring(0, 10)}... | Wt: {totalWeight.toFixed(0)}kg | Items: {totalItems}
+                                                            </span>
+                                                        </>
+                                                    ) : '-'}
+                                                </Typography>
+                                            </Tooltip>
+                                        </StyledTableCell>
+                                        {/* <StyledTableCell>{totalWeight.toFixed(1)} kg</StyledTableCell>
                         <StyledTableCell>{totalItems.toFixed()} </StyledTableCell> */}
 
 
-                        <TableCell>
-                        {new Date(order.updated_at).toLocaleDateString()}
-                        </TableCell>
-                        <StyledTableCell>{new Date(order.created_at).toLocaleDateString()}</StyledTableCell>
-                        <StyledTableCell>
-                            <Stack direction="row" spacing={1}>
-                                {/* <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleStatusUpdate(order.id, order); }} title="Update Status">
+                                        <TableCell>
+                                            {new Date(order.updated_at).toLocaleDateString()}
+                                        </TableCell>
+                                        <StyledTableCell>{new Date(order.created_at).toLocaleDateString()}</StyledTableCell>
+                                        <StyledTableCell>
+                                            <Stack direction="row" spacing={1}>
+                                                {/* <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleStatusUpdate(order.id, order); }} title="Update Status">
                                     <UpdateIcon />
                                 </IconButton> */}
-                                <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleView(order.id); }} title="View Details">
-                                    <VisibilityIcon />
-                                </IconButton>
-                                <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleEdit(order.id); }} title="Edit">
-                                    <EditIcon />
-                                </IconButton>
-                            </Stack>
-                        </StyledTableCell>
-                    </StyledTableRow>
-                );
-            })}
-        </TableBody>
-    </Table>
-</TableContainer>
-  {/* Pagination (unchanged, but uses fixed total) */}
-      <TablePagination
-        rowsPerPageOptions={[5, 10, 25]}
-        component="div"
-        count={total}
-        rowsPerPage={rowsPerPage}
-        page={page}
-        onPageChange={handleChangePage}
-        onRowsPerPageChange={handleChangeRowsPerPage}
-        labelRowsPerPage="Rows per page:"
-        labelDisplayedRows={({ from, to, count }) => `${from}-${to} of ${count}`}
-        sx={{
-          borderTop: '1px solid rgba(224, 224, 224, 1)',
-          '& .MuiTablePagination-selectLabel, & .MuiTablePagination-displayedRows': {
-            color: '#f58220',
-            fontWeight: 'medium',
-            fontSize: '0.875rem',
-          },
-          '& .MuiTablePagination-select, & .MuiTablePagination-input': {
-            fontSize: '0.875rem',
-            borderRadius: 1,
-            '&:focus': { borderColor: '#0d6c6a' }
-          },
-          '& .MuiTablePagination-actions button': {
-            color: '#0d6c6a',
-            '& svg': { fontSize: '1.125rem' },
-            '&:hover': { backgroundColor: 'rgba(13, 108, 106, 0.08)' },
-            '&:focus': { outline: '2px solid #0d6c6a' }
-          }
-        }}
-        // aria-label="Consignments table pagination"
-      />
+                                                <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleView(order.id); }} title="View Details">
+                                                    <VisibilityIcon />
+                                                </IconButton>
+                                                <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleEdit(order.id); }} title="Edit">
+                                                    <EditIcon />
+                                                </IconButton>
+                                            </Stack>
+                                        </StyledTableCell>
+                                    </StyledTableRow>
+                                );
+                            })}
+                        </TableBody>
+                    </Table>
+                </TableContainer>
+                {/* Pagination (unchanged, but uses fixed total) */}
+                <TablePagination
+                    rowsPerPageOptions={[5, 10, 25, 50]}
+                    component="div"
+                    count={total}                     // ← must be correct number!
+                    rowsPerPage={rowsPerPage}
+                    page={page}                       // 0-based in MUI TablePagination
+                    onPageChange={handleChangePage}
+                    onRowsPerPageChange={handleChangeRowsPerPage}
+                    labelRowsPerPage="Rows per page:"
+                    labelDisplayedRows={({ from, to, count }) =>
+                        `${from}–${to} of ${count !== -1 ? count : `more than ${to}`}`
+                    }
+                    sx={{
+                        borderTop: '1px solid rgba(224, 224, 224, 1)',
+                        '& .MuiTablePagination-selectLabel, & .MuiTablePagination-displayedRows': {
+                            color: '#f58220',
+                            fontWeight: 'medium',
+                            fontSize: '0.875rem',
+                        },
+                        '& .MuiTablePagination-select, & .MuiTablePagination-input': {
+                            fontSize: '0.875rem',
+                            borderRadius: 1,
+                            '&:focus': { borderColor: '#0d6c6a' }
+                        },
+                        '& .MuiTablePagination-actions button': {
+                            color: '#0d6c6a',
+                            '& svg': { fontSize: '1.125rem' },
+                            '&:hover': { backgroundColor: 'rgba(13, 108, 106, 0.08)' },
+                            '&:focus': { outline: '2px solid #0d6c6a' }
+                        }
+                    }}
+                // aria-label="Consignments table pagination"
+                />
                 <OrderModalView
                     openModal={openModal}
                     handleCloseModal={handleCloseModal}
@@ -1572,7 +1659,7 @@ console.log('Ren container list:', containersList);
                     handleAssign={handleAssign}
                     handleReceiverAction={handleReceiverAction}
                     onUpdateReceiver={handleUpdateReceiver}
-   
+
                 />
                 {/* New Direct Assign Dialog */}
                 <Dialog

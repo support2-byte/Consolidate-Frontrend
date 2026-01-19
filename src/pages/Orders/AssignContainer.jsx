@@ -506,45 +506,87 @@ const handleAssignWeightBlur = useCallback((key, max) => {
     setSnackbar({ open: true, message, severity });
   }, []);
 
-  // Enhanced assign handler - Ensure weight is included in payload
-  const enhancedHandleAssign = useCallback(() => {
-    console.log('Assignment Quantities:', assignmentQuantities);
-    console.log('Assignment Weights:', assignmentWeights);
-    if (selectedOrders.length === 0) return;
+const enhancedHandleAssign = useCallback(() => {
+  if (selectedOrders.length === 0) return;
 
-    const assignments = selectedOrders.reduce((acc, orderId) => {
-      acc[orderId] = {};
-      const fullOrder = detailedOrders[orderId] || orders.find(o => o.id === orderId);
-      if (fullOrder?.receivers) {
-        fullOrder.receivers.forEach(rec => {
-          const details = rec.shippingDetails || [];
-          acc[orderId][rec.id] = details.reduce((recAcc, _, idx) => {
-            const key = getDetailKey(orderId, rec.id, idx);
-            const qty = assignmentQuantities[key] || 0;
-            const weight = assignmentWeights[key] || 0;
-            const conts = selectedContainersPerDetail[key] || [];
-            if (qty > 0 && weight > 0 && conts.length > 0) {
-              recAcc[idx] = { qty, weight, containers: conts };
-            }
+  const assignments = selectedOrders.reduce((acc, orderId) => {
+    acc[orderId] = {};
+    const fullOrder = detailedOrders[orderId] || orders.find(o => o.id === orderId);
+    if (!fullOrder?.receivers) return acc;
+
+    fullOrder.receivers.forEach(rec => {
+      const details = rec.shippingDetails || [];
+      
+      const recAssignments = details.reduce((recAcc, detailItem, idx) => {
+        const key = getDetailKey(orderId, rec.id, idx);
+        const qty = assignmentQuantities[key] || 0;
+        const totalWeightKg = assignmentWeights[key] || 0;
+        const conts = selectedContainersPerDetail[key] || [];
+
+        if (qty > 0 && totalWeightKg > 0 && conts.length > 0) {
+          // ─── CRITICAL FIX ───
+          if (!detailItem?.id) {
+            console.error(
+              `Missing id on shipping detail for order ${orderId}, receiver ${rec.id}, index ${idx}`,
+              detailItem
+            );
+            // Optionally skip or show UI warning
             return recAcc;
-          }, {});
-          if (Object.keys(acc[orderId][rec.id]).length === 0) delete acc[orderId][rec.id];
-        });
-        if (Object.keys(acc[orderId]).length === 0) delete acc[orderId];
-      }
-      return acc;
-    }, {});
+          }
 
-    if (Object.keys(assignments).length === 0) {
-      showToast('Please assign at least one detail with qty, weight, and containers.', 'warning');
-      return;
+          recAcc[idx] = {
+            orderItemId: detailItem.id,              // ← this is the real DB ID
+            qty,
+            totalAssignedWeight: totalWeightKg,
+            containers: conts,
+          };
+        }
+        return recAcc;
+      }, {});
+
+      if (Object.keys(recAssignments).length > 0) {
+        acc[orderId][rec.id] = recAssignments;
+      }
+    });
+
+    if (Object.keys(acc[orderId]).length === 0) {
+      delete acc[orderId];
     }
 
-    console.log('Built assignments payload:', assignments);
-    handleAssign(assignments);
-    setOpenAssignModal(false);
-  }, [selectedOrders, detailedOrders, orders, assignmentQuantities, assignmentWeights, selectedContainersPerDetail, getDetailKey, handleAssign, setOpenAssignModal, showToast]);
+    return acc;
+  }, {});
 
+  // ... rest unchanged ...
+
+  // Helpful debug before sending
+  console.log('Final assignments payload:', JSON.stringify(assignments, null, 2));
+
+  // Optional: quick check for missing IDs
+  const missingIds = [];
+  Object.values(assignments).flatMap(Object.values).flatMap(Object.values).forEach(detail => {
+    if (!detail.orderItemId) missingIds.push(detail);
+  });
+  if (missingIds.length > 0) {
+    console.warn('Some details missing orderItemId:', missingIds);
+    showToast('Some items are missing required data – check console', 'warning');
+    return;
+  }
+
+  handleAssign(assignments);
+  setOpenAssignModal(false);
+
+}, [
+  selectedOrders,
+  detailedOrders,
+  orders,
+  assignmentQuantities,
+  assignmentWeights,
+  selectedContainersPerDetail,
+  getDetailKey,
+  handleAssign,
+  setOpenAssignModal,
+  showToast,
+]);
   // Computed values
   const totalReceivers = useMemo(() => selectedOrders.reduce((total, id) => total + (orders.find(o => o.id === id)?.receivers?.length || 0), 0), [selectedOrders, orders]);
   const totalAssignedDetails = useMemo(() => {

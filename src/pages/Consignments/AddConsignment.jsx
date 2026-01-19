@@ -442,7 +442,7 @@ const loadConsignment = async (id) => {
       paymentType: data?.payment_type?.toString() || '',
       status: data?.status || '',
       vessel: data?.vessel ? data.vessel.toString() : '',
-      shippingLine: data?.shipping_line ? data.shipping_line.toString() : '',
+      shippingLine: data?.shipping_line_name || '',
       netWeight: data?.net_weight || 0,
       gross_weight: data?.gross_weight || 0,
       consignment_value: data?.consignment_value || 0,
@@ -753,7 +753,7 @@ const loadConsignment = async (id) => {
 useEffect(() => {
   const filterOrdersByContainers = (orders, selectedContainerIds) => {
     if (!Array.isArray(orders)) {
-      console.warn('filterOrdersByContainers: Input "orders" is not an array:', orders);
+      // console.warn('filterOrdersByContainers: Input "orders" is not an array:', orders);
       return [];
     }
     if (!selectedContainerIds || selectedContainerIds.length === 0) {
@@ -863,7 +863,7 @@ useEffect(() => {
   // Added deps if needed
   const isSelected = (id) => (selectedOrders || []).indexOf(id) !== -1;
   const handleOrderToggle = (orderId) => () => {
-    console.log('toggle order', orderId);
+    // console.log('toggle order', orderId);
     const currentIndex = (selectedOrders || []).indexOf(orderId);
     const newSelected = [...(selectedOrders || [])];
     if (currentIndex === -1) {
@@ -942,7 +942,7 @@ useEffect(() => {
     setOrderPage(0);
   };
   const numSelected = (orders || []).filter((o) => isSelected(o.id)).length;
-  const rowCount = (orders || []).length;
+  // const rowCount = (orders || []).length;
   const getStatusColors = (status) => {
     const colorMap = {
       'Created': { bg: '#00695c', text: '#f1f8e9' },
@@ -954,7 +954,7 @@ useEffect(() => {
       'Customs Cleared': { bg: '#e8f5e8', text: '#388e3c' },
       'In Transit': { bg: '#fff3e0', text: '#ef6c00' },
       'Ready for Loading': { bg: '#f3e5f5', text: '#7b1fa2' },
-      'Loaded into Container': { bg: '#e0f2f1', text: '#00695c' },
+      'Loaded Into Container': { bg: '#fff3e0', text: '#00695c' },
       'Departed for Port': { bg: '#e1f5fe', text: '#0277bd' },
       'Offloaded at Port': { bg: '#f1f8e9', text: '#689f38' },
       'Clearance Completed': { bg: '#fce4ec', text: '#c2185b' },
@@ -966,15 +966,7 @@ useEffect(() => {
     };
     return colorMap[status] || colorMap.default;
   };
-  const handleStatusUpdate = (id, order) => {
-    console.log('Update status for order:', id, order);
-  };
-  const handleView = (id) => {
-    console.log('View order:', id);
-  };
-  const handleEdit = (id) => {
-    console.log('Edit order:', id);
-  };
+
   const handleContainerToggle = (containerId) => () => {
     const currentIndex = (selectedContainers || []).indexOf(containerId);
     const newSelected = [...(selectedContainers || [])];
@@ -1478,23 +1470,22 @@ setSaving(true);
       color: theme.palette.common.white,
     },
   }));
-  const StatusChip = ({ status }) => {
-    const colors = getStatusColors(status);
-    console.log('StatusChip colors for', status, colors);
-    return (
-      <Chip
-        label={status}
-        size="large"
-        sx={{
-          height: 18,
-          fontSize: '0.65rem',
-          marginLeft: 2,
-          backgroundColor: colors.bg,
-          color: colors.text,
-        }}
-      />
-    );
-  };
+   const StatusChip = ({ status }) => {
+        const colors = getStatusColors(status);
+        return (
+            <Chip
+                label={status}
+                size="small"
+                sx={{
+                    height: 18,
+                    fontSize: '0.65rem',
+                    marginLeft: 2,
+                    backgroundColor: colors.bg,
+                    color: colors.text,
+                }}
+            />
+        );
+    };
   const parseSummaryToList = (receivers) => {
     if (!receivers || !Array.isArray(receivers)) return [];
     return receivers.map(rec => ({
@@ -2932,13 +2923,8 @@ const generateContainersAndOrdersPDFWithCanvas = async (data, allReceivers, sele
 
     pdf.save(`Manifest_${data.consignment_number}_Containers_${Date.now()}.pdf`);
   };
-  
-const generateDocx = () => {
-    // Placeholder for Docx (requires 'docx' and 'file-saver')
-    setSnackbar({ open: true, severity: 'info', message: 'Docx generation: Install docx and file-saver for full support.' });
-  };
 
-console.log('Rendering Add/Edit Consignment form in', eta,etaSuggestion);
+// console.log('Rendering Add/Edit Consignment form in', eta,etaSuggestion);
   return (
     <LocalizationProvider dateAdapter={AdapterDayjs}>
       <Snackbar open={snackbar.open} autoHideDuration={6000} onClose={() => setSnackbar({ ...snackbar, open: false })}>
