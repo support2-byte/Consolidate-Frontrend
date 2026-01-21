@@ -216,7 +216,7 @@ const OrdersList = () => {
 
             const ordersData = response.data.data || response.data.orders || response.data || [];
             const totalCount = response.data.total || response.data.count || response.data.totalCount || 0;
-
+            console.log('ordersssss dT ', ordersData)
             // Auto-populate logic (your existing code)
             const ordersWithAutoPopulate = await Promise.all(
                 ordersData.map(async (order) => {
@@ -415,126 +415,125 @@ const OrdersList = () => {
         setSelectedOrders([]);
     };
     const isSelected = (id) => selectedOrders.indexOf(id) !== -1;
-const handleAssign = async (assignments) => {
-  console.log('handleAssign called with assignments:', assignments);
+    const handleAssign = async (assignments) => {
+        console.log('handleAssign called with assignments:', assignments);
 
-  if (!assignments || Object.keys(assignments).length === 0) {
-    setSnackbar({
-      open: true,
-      message: 'No valid assignments provided.',
-      severity: 'warning',
-    });
-    return;
-  }
-
-  // Basic validation
-  let hasValid = false;
-  Object.values(assignments).forEach(orderAssign => {
-    Object.values(orderAssign).forEach(recAssign => {
-      Object.values(recAssign).forEach(detail => {
-        if (
-          detail.qty > 0 &&
-          (detail.totalAssignedWeight > 0 || detail.weight > 0) &&
-          Array.isArray(detail.containers) &&
-          detail.containers.length > 0
-        ) {
-          hasValid = true;
-        }
-      });
-    });
-  });
-
-  if (!hasValid) {
-    setSnackbar({
-      open: true,
-      message: 'Please assign qty > 0, weight > 0 and containers to at least one detail.',
-      severity: 'warning',
-    });
-    return;
-  }
-
-  // Clean & normalize – now also require orderItemId
-  const cleanAssignments = {};
-  Object.entries(assignments).forEach(([orderIdStr, orderAssign]) => {
-    const cleanOrder = {};
-    Object.entries(orderAssign).forEach(([recIdStr, recAssign]) => {
-      const cleanRec = {};
-      Object.entries(recAssign).forEach(([idxStr, detail]) => {
-        if (!detail.orderItemId) {
-          console.warn(
-            `Skipping detail ${idxStr} for receiver ${recIdStr} in order ${orderIdStr}: missing orderItemId`
-          );
-          return; // skip invalid details
+        if (!assignments || Object.keys(assignments).length === 0) {
+            setSnackbar({
+                open: true,
+                message: 'No valid assignments provided.',
+                severity: 'warning',
+            });
+            return;
         }
 
-        const containers = (detail.containers || [])
-          .map(cid => parseInt(cid, 10))
-          .filter(cid => !isNaN(cid));
+        // Validation — only require qty > 0, weight > 0, containers
+        let hasValid = false;
+        Object.values(assignments).forEach(orderAssign => {
+            Object.values(orderAssign).forEach(recAssign => {
+                Object.values(recAssign).forEach(detail => {
+                    const qty = parseInt(detail.qty, 10);
+                    const assignedWeight = parseFloat(detail.totalAssignedWeight ?? detail.weight ?? 0);
 
-        const qty = parseInt(detail.qty, 10);
-        const weightKg = parseFloat(detail.totalAssignedWeight ?? detail.weight ?? 0);
+                    if (
+                        qty > 0 &&
+                        assignedWeight > 0 &&
+                        Array.isArray(detail.containers) &&
+                        detail.containers.length > 0 &&
+                        detail.orderItemId
+                    ) {
+                        hasValid = true;
+                    }
+                });
+            });
+        });
 
-        if (qty > 0 && weightKg > 0 && containers.length > 0) {
-          cleanRec[idxStr] = {
-            orderItemId: parseInt(detail.orderItemId),  // ensure it's a number
-            qty,
-            totalAssignedWeight: weightKg,
-            containers,
-          };
+        if (!hasValid) {
+            setSnackbar({
+                open: true,
+                message: 'Please assign qty > 0, weight > 0, containers, and orderItemId to at least one detail.',
+                severity: 'warning',
+            });
+            return;
         }
-      });
 
-      if (Object.keys(cleanRec).length > 0) {
-        cleanOrder[recIdStr] = cleanRec;
-      }
-    });
+        // Clean & normalize — use exactly what user entered for weight
+        const cleanAssignments = {};
+        Object.entries(assignments).forEach(([orderIdStr, orderAssign]) => {
+            const cleanOrder = {};
+            Object.entries(orderAssign).forEach(([recIdStr, recAssign]) => {
+                const cleanRec = {};
+                Object.entries(recAssign).forEach(([idxStr, detail]) => {
+                    if (!detail.orderItemId) {
+                        console.warn(`Skipping detail ${idxStr}: missing orderItemId`);
+                        return;
+                    }
 
-    if (Object.keys(cleanOrder).length > 0) {
-      cleanAssignments[orderIdStr] = cleanOrder;
-    }
-  });
+                    const containers = (detail.containers || [])
+                        .map(cid => parseInt(cid, 10))
+                        .filter(cid => !isNaN(cid));
 
-  if (Object.keys(cleanAssignments).length === 0) {
-    setSnackbar({
-      open: true,
-      message: 'No valid assignments after cleaning (check missing orderItemId).',
-      severity: 'warning',
-    });
-    return;
-  }
+                    const qty = parseInt(detail.qty, 10);
+                    const weightKg = parseFloat(detail.totalAssignedWeight ?? detail.weight ?? 0);
 
-  console.log('Sending cleaned payload:', cleanAssignments);
+                    // No auto-calculation — trust user input
+                    if (qty > 0 && weightKg > 0 && containers.length > 0) {
+                        cleanRec[idxStr] = {
+                            orderItemId: parseInt(detail.orderItemId),
+                            qty,
+                            totalAssignedWeight: weightKg,   // ← exactly what user entered
+                            containers,
+                        };
+                    }
+                });
 
-  try {
-    const res = await api.post('/api/orders/assign-container', cleanAssignments);
+                if (Object.keys(cleanRec).length > 0) {
+                    cleanOrder[recIdStr] = cleanRec;
+                }
+            });
 
-    const { success, message, updatedOrders, tracking } = res.data;
+            if (Object.keys(cleanOrder).length > 0) {
+                cleanAssignments[orderIdStr] = cleanOrder;
+            }
+        });
 
-    if (success) {
-      setSnackbar({
-        open: true,
-        message: message || `Assigned successfully (${tracking?.length || 0} receivers)`,
-        severity: 'success',
-      });
+        if (Object.keys(cleanAssignments).length === 0) {
+            setSnackbar({
+                open: true,
+                message: 'No valid assignments after cleaning.',
+                severity: 'warning',
+            });
+            return;
+        }
 
-      fetchContainers();
-      fetchOrders();
+        console.log('Sending payload (user-provided weights):', JSON.stringify(cleanAssignments, null, 2));
 
-      setSelectedOrders([]);
-      setSelectedContainer('');
-    } else {
-      throw new Error(message || 'Assignment failed');
-    }
-  } catch (err) {
-    console.error('Assignment error:', err);
-    const msg =
-      err.response?.data?.error ||
-      err.response?.data?.details ||
-      err.message ||
-      'Failed to assign containers';
-    setSnackbar({ open: true, message: msg, severity: 'error' });
-  }
-};
+        try {
+            const res = await api.post('/api/orders/assign-container', cleanAssignments);
+
+            const { success, message, updatedOrders, tracking } = res.data;
+
+            if (success) {
+                setSnackbar({
+                    open: true,
+                    message: message || `Assigned successfully (${tracking?.length || 0} receivers)`,
+                    severity: 'success',
+                });
+
+                fetchContainers();
+                fetchOrders();
+
+                setSelectedOrders([]);
+                setSelectedContainer('');
+            } else {
+                throw new Error(message || 'Assignment failed');
+            }
+        } catch (err) {
+            console.error('Assignment error:', err);
+            const msg = err.response?.data?.error || err.response?.data?.details || err.message || 'Failed to assign containers';
+            setSnackbar({ open: true, message: msg, severity: 'error' });
+        }
+    };
     // Updated handleDirectAssign to build batch assignments and use the main endpoint for multiple orders/receivers
     const handleDirectAssign = async () => {
         if (!directSelectedContainers.length || !selectedOrders.length) {
@@ -932,7 +931,7 @@ const handleAssign = async (assignments) => {
         console.log('Parsing receivers:', receivers);
         if (!receivers || !Array.isArray(receivers)) return [];
         // return receivers.map(rec => ({
-            return receivers
+        return receivers
         // }));
     };
 
@@ -970,159 +969,162 @@ const handleAssign = async (assignments) => {
         return containerList;
     };
 
-const PrettyList = ({ receivers, title }) => {
-  return (
-    <Card
-      variant="outlined"
-      sx={{
-        p: 2,
-        borderRadius: 2,
-        border: '1px solid',
-        borderColor: 'divider',
-        backgroundColor: '#fafafa',
-        width:600,
-        boxShadow: 'none',
-        // '&:hover': { boxShadow: '0 2px 8px rgba(0,0,0,0.08)' },
-      }}
-    >
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-        {/* Title */}
-        <Box
-          sx={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            pb: 1,
-            borderBottom: '1px solid',
-            borderColor: 'divider',
-          }}
-        >
-          <Typography variant="subtitle2" sx={{ fontWeight: 'bold', color: '#f58220' }}>
-            {title}
-          </Typography>
-          <Chip
-            label={`(${receivers?.length || 0})`}
-            size="small"
-            color="primary"
-            variant="outlined"
-            sx={{ fontSize: '0.7rem', height: 20, '& .MuiChip-label': { px: 0.5 } }}
-          />
-        </Box>
-
-        {/* Receivers List */}
-        <Stack spacing={1} sx={{ maxHeight: 'auto', overflow: 'auto' }}>
-          {receivers?.length > 0 ? (
-            receivers.map((receiver, rIdx) => (
-              <Card
-                key={rIdx}
+    const PrettyList = ({ receivers, title }) => {
+        console.log('receiversss', receivers)
+        return (
+            <Card
                 variant="outlined"
                 sx={{
-                  p: 1.5,
-                  borderRadius: 1.5,
-                  border: '1px solid',
-                  borderColor: 'grey.200',
-                  backgroundColor: '#fff',
-                  boxShadow: 'none',
-                //   transition: 'all 0.2s ease',
-                //   '&:hover': { boxShadow: '0 1px 4px rgba(0,0,0,0.1)', borderColor: 'primary.light' },
+                    p: 2,
+                    borderRadius: 2,
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    backgroundColor: '#fafafa',
+                    width: 600,
+                    boxShadow: 'none',
+                    // '&:hover': { boxShadow: '0 2px 8px rgba(0,0,0,0.08)' },
                 }}
-              >
-                {/* Receiver Info */}
-                <Stack direction="row" alignItems="center" spacing={1.5}>
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography variant="body2" fontWeight="medium" noWrap>
-                      {receiver.receiver_name || 'Unnamed Receiver'}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      Qty Delivered: {receiver.qty_delivered ?? 0} / {receiver.total_number ?? 0}
-                    </Typography>
-                  </Box>
-                  <StatusChip status={receiver.status} size="small" />
-                </Stack>
-
-                <Divider sx={{ mt: 1 }} />
-
-                {/* Shipping Details */}
-                {receiver.shippingdetails?.length > 0 ? (
-                  receiver.shippingdetails.map((item, sIdx) => (
-                    <Box key={sIdx} sx={{ mt: 1, pl: 1 }}>
-                      <Typography variant="body2" fontWeight="bold">
-                        {item.category || 'Unknown Category'} - {item.subcategory || 'Unknown Subcategory'} ({item.type || 'Unknown Type'})
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        Total: {item.totalNumber ?? 0}, Weight: {item.weight ?? 0}
-                      </Typography>
-
-                      {/* Container Details */}
-                      {item.containerDetails?.length > 0 ? (
-                        <Stack direction="row" justifyContent={"space-between"} alignItems={"center"} display={'flex'}  spacing={1} sx={{ justifyContent:'space-between', flexWrap: 'wrap',}}>
-                          {item.containerDetails.map((c, cIdx) => (
-                           <div style={{marginTop:5,flexDirection:'row',justifyContent:'space-between',alignItems:'center',alignSelf:'center', flex:1,display:'flex'}}>
-                           <Chip
-                              key={cIdx}
-                              label={`${c.container.container_number} - ${c.assign_total_box} boxes (${c.assign_weight} kg)`}
-                              size="large"
-                              color="secondary"
-                              variant="outlined"
-                              sx={{marginBottom:2}}
-                              spacing={1}
-                            
-                            />
-                             <StatusChip status={c.status} size="small" />
-
-
-
-                            {/* <Divider /> */}
-                            </div>
-                          ))}
-                        </Stack>
-                      ) : (
-                        <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
-                          No containers assigned
+            >
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                    {/* Title */}
+                    <Box
+                        sx={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            pb: 1,
+                            borderBottom: '1px solid',
+                            borderColor: 'divider',
+                        }}
+                    >
+                        <Typography variant="subtitle2" sx={{ fontWeight: 'bold', color: '#f58220' }}>
+                            {title}
                         </Typography>
-                      )}
+                        <Chip
+                            label={`(${receivers?.length || 0})`}
+                            size="small"
+                            color="primary"
+                            variant="outlined"
+                            sx={{ fontSize: '0.7rem', height: 20, '& .MuiChip-label': { px: 0.5 } }}
+                        />
                     </Box>
-                  ))
-                ) : (
-                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
-                    No shipping details
-                  </Typography>
-                )}
 
-                {/* Drop Off Details */}
-                {receiver.drop_off_details?.length > 0 && (
-                  <Box sx={{ mt: 1, pl: 1 }}>
-                    <Typography variant="body2" fontWeight="medium">
-                      Drop Off Details:
-                    </Typography>
-                    {receiver.drop_off_details.map((dod, dIdx) => (
-                      <Typography variant="caption" color="text.secondary" key={dIdx} display="block">
-                        {dod.drop_method} - {dod.dropoff_name} ({dod.drop_off_mobile}) on {dod.drop_date}
-                      </Typography>
-                    ))}
-                  </Box>
-                )}
-              </Card>
-            ))
-          ) : (
-            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 3, color: 'text.secondary' }}>
-              <EmojiEventsIcon sx={{ fontSize: 40, color: 'grey.300', mb: 1 }} />
-              <Typography variant="body2" sx={{ fontStyle: 'italic' }}>
-                No receivers available
-              </Typography>
-            </Box>
-          )}
-        </Stack>
-      </Box>
-    </Card>
-  );
-};
+                    {/* Receivers List */}
+                    <Stack spacing={1} sx={{ maxHeight: 'auto', overflow: 'auto' }}>
+                        {receivers?.length > 0 ? (
+                            receivers.map((receiver, rIdx) => (
+                                <Card
+                                    key={rIdx}
+                                    variant="outlined"
+                                    sx={{
+                                        p: 1.5,
+                                        borderRadius: 1.5,
+                                        border: '1px solid',
+                                        borderColor: 'grey.200',
+                                        backgroundColor: '#fff',
+                                        boxShadow: 'none',
+                                        //   transition: 'all 0.2s ease',
+                                        //   '&:hover': { boxShadow: '0 1px 4px rgba(0,0,0,0.1)', borderColor: 'primary.light' },
+                                    }}
+                                >
+                                    {/* Receiver Info */}
+                                    <Stack direction="row" alignItems="center" spacing={1.5}>
+                                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                                            <Typography variant="body2" fontWeight="medium" noWrap>
+                                                {receiver.receivername || 'Unnamed Receiver'}
+                                            </Typography>
 
-// Combine both receivers and container details into one tooltip content
-const CombinedTooltip = ({ order }) => {
-  // You can merge both datasets or just pass receivers since shippingdetails contains containers
-  return <PrettyList receivers={order.receivers} title="Receivers & Containers" />;
-};
+                                        </Box>
+                                        <StatusChip status={receiver.status} size="small" />
+                                    </Stack>
+
+                                    <Divider sx={{ mt: 1 }} />
+
+                                    {/* Shipping Details */}
+                                    {receiver.shippingdetails?.length > 0 ? (
+                                        receiver.shippingdetails.map((item, sIdx) => (
+                                            <Box key={sIdx} sx={{ mt: 1, pl: 1 }}>
+                                                <Box sx={{ flexDirection: "column", }}>
+
+
+                                                    <Typography variant="body2" fontWeight="bold">
+                                                        {item.category || 'Unknown Category'} - {item.subcategory || 'Unknown Subcategory'} ({item.type || 'Unknown Type'})  Total: {item.totalNumber ?? 0}, Weight: {item.weight ?? 0}
+                                                    </Typography>
+                                                    <Typography variant="caption" color="text.secondary">
+                                                        Qty Total Assigned: {Math.max(0, parseInt(item.totalNumber || 0) - parseInt(item.remainingItems || 0)).toLocaleString()} /
+                                                        Remaining Items: {parseInt(item.remainingItems || 0).toLocaleString()}
+                                                    </Typography>
+                                                </Box>
+                                                {/* Container Details */}
+                                                {item.containerDetails?.length > 0 ? (
+                                                    <Stack direction="row" justifyContent={"space-between"} alignItems={"center"} display={'flex'} spacing={1} sx={{ justifyContent: 'space-between', flexWrap: 'wrap', }}>
+                                                        {item.containerDetails.map((c, cIdx) => (
+                                                            <div style={{ marginTop: 5, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', alignSelf: 'center', flex: 1, display: 'flex' }}>
+                                                                <Chip
+                                                                    key={cIdx}
+                                                                    label={`${c.container.container_number} - ${c.assign_total_box} boxes (${c.assign_weight} kg)`}
+                                                                    size="large"
+                                                                    color="secondary"
+                                                                    variant="outlined"
+                                                                    sx={{ marginBottom: 2 }}
+                                                                    spacing={1}
+
+                                                                />
+                                                                <StatusChip status={c.status} size="small" />
+
+
+
+                                                                {/* <Divider /> */}
+                                                            </div>
+                                                        ))}
+                                                    </Stack>
+                                                ) : (
+                                                    <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
+                                                        No containers assigned
+                                                    </Typography>
+                                                )}
+                                            </Box>
+                                        ))
+                                    ) : (
+                                        <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
+                                            No shipping details
+                                        </Typography>
+                                    )}
+
+                                    {/* Drop Off Details */}
+                                    {receiver.drop_off_details?.length > 0 && (
+                                        <Box sx={{ mt: 1, pl: 1 }}>
+                                            <Typography variant="body2" fontWeight="medium">
+                                                Drop Off Details:
+                                            </Typography>
+                                            {receiver.drop_off_details.map((dod, dIdx) => (
+                                                <Typography variant="caption" color="text.secondary" key={dIdx} display="block">
+                                                    {dod.drop_method} - {dod.dropoff_name} ({dod.drop_off_mobile}) on {dod.drop_date}
+                                                </Typography>
+                                            ))}
+                                        </Box>
+                                    )}
+                                </Card>
+                            ))
+                        ) : (
+                            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 3, color: 'text.secondary' }}>
+                                <EmojiEventsIcon sx={{ fontSize: 40, color: 'grey.300', mb: 1 }} />
+                                <Typography variant="body2" sx={{ fontStyle: 'italic' }}>
+                                    No receivers available
+                                </Typography>
+                            </Box>
+                        )}
+                    </Stack>
+                </Box>
+            </Card>
+        );
+    };
+
+    // Combine both receivers and container details into one tooltip content
+    const CombinedTooltip = ({ order }) => {
+        // You can merge both datasets or just pass receivers since shippingdetails contains containers
+        return <PrettyList receivers={order.receivers} title="Receivers & Containers" />;
+    };
 
     // Updated parse function to extract unique container numbers from the full order structure
     // Assumes 'order' is the full JSON object provided (e.g., { id: 77, receivers: [...] })
@@ -1394,8 +1396,8 @@ const CombinedTooltip = ({ order }) => {
                                     <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="loading">POL</StyledTableHeadCell>,
                                     <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="dest">POD</StyledTableHeadCell>,
                                     <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="sender">Sender</StyledTableHeadCell>,
-                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff',width:200 }} key="receivers">Receivers & Containers</StyledTableHeadCell>, // Multiple receivers with status
-                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff',width:100 }} key="containers"></StyledTableHeadCell>,
+                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff', width: 200 }} key="receivers">Receivers & Containers</StyledTableHeadCell>, // Multiple receivers with status
+                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff', width: 100 }} key="containers"></StyledTableHeadCell>,
                                     // New column for Products (weight, category, item products, total number)
                                     <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="products">Products</StyledTableHeadCell>,
                                     // <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="actions">Total Items</StyledTableHeadCell>,
@@ -1473,52 +1475,52 @@ const CombinedTooltip = ({ order }) => {
                                         <StyledTableCell>{getPlaceName(order?.place_of_loading)}</StyledTableCell>
                                         <StyledTableCell>{getPlaceName(order.place_of_delivery)}</StyledTableCell>
                                         <StyledTableCell>{order.sender_name}</StyledTableCell>
-                                       
-<TableCell colSpan={2}> {/* optional: merge visually */}
-  <StyledTooltip
-    title={<CombinedTooltip order={order} />}
-    arrow
-    placement="bottom-start"
-    PopperProps={{
-      sx: {
-        '& .MuiTooltip-tooltip': {
-          border: '1px solid #e0e0e0',
-          background:"transparent",
-          width: 600, // set your preferred width
-        //   maxHeight: 400,
-        //   overflow: 'auto',
-        },
-      },
-    }}
-  >
-    <Typography
-      variant="body2"
-      noWrap
-      sx={{ maxWidth: 200, cursor: 'help', fontWeight: 'medium' }}
-    >
-      {order.receivers.length > 0
-        ? <>
-            {order.receivers.length > 1 && (
-              <sup
-                style={{
-                  padding: 4,
-                  borderRadius: 50,
-                  float: 'left',
-                  background: '#00695c',
-                  color: '#fff',
-                }}
-              >
-                ({order.receivers.length})
-              </sup>
-            )}
-            <span style={{ padding: 0 }}>
-              {order.receivers.map(r => r.receiver_name || '').join(', ').substring(0, 25)}...
-            </span>
-          </>
-        : '-'}
-    </Typography>
-  </StyledTooltip>
-</TableCell>
+
+                                        <TableCell colSpan={2}> {/* optional: merge visually */}
+                                            <StyledTooltip
+                                                title={<CombinedTooltip order={order} />}
+                                                arrow
+                                                placement="bottom-start"
+                                                PopperProps={{
+                                                    sx: {
+                                                        '& .MuiTooltip-tooltip': {
+                                                            border: '1px solid #e0e0e0',
+                                                            background: "transparent",
+                                                            width: 600, // set your preferred width
+                                                            //   maxHeight: 400,
+                                                            //   overflow: 'auto',
+                                                        },
+                                                    },
+                                                }}
+                                            >
+                                                <Typography
+                                                    variant="body2"
+                                                    noWrap
+                                                    sx={{ maxWidth: 150, cursor: 'help', fontWeight: 'medium' }}
+                                                >
+                                                    {order.receivers.length > 0
+                                                        ? <>
+                                                            {order.receivers.length > 1 && (
+                                                                <sup
+                                                                    style={{
+                                                                        padding: 4,
+                                                                        borderRadius: 50,
+                                                                        float: 'left',
+                                                                        background: '#00695c',
+                                                                        color: '#fff',
+                                                                    }}
+                                                                >
+                                                                    ({order.receivers.length})
+                                                                </sup>
+                                                            )}
+                                                            <span style={{ padding: 0 }}>
+                                                                {order.receivers.map(r => r.receivername || '')}
+                                                            </span>
+                                                        </>
+                                                        : '-'}
+                                                </Typography>
+                                            </StyledTooltip>
+                                        </TableCell>
 
                                         {/* Updated Products column using actual shippingDetails data (corrected field names) */}
                                         <StyledTableCell>
@@ -1593,7 +1595,7 @@ const CombinedTooltip = ({ order }) => {
                 </TableContainer>
                 {/* Pagination (unchanged, but uses fixed total) */}
                 <TablePagination
-                    rowsPerPageOptions={[5, 10, 25, 50]}
+                    rowsPerPageOptions={[5, 10, 25, 50, 75, 100, 125]}
                     component="div"
                     count={total}                     // ← must be correct number!
                     rowsPerPage={rowsPerPage}
