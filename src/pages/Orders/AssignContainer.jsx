@@ -708,10 +708,12 @@ const AssignmentForm = React.memo(function AssignmentForm({
           }
         >
           {getAvailableContainersForKey(keyDetail).map((c) => (
+            console.log('containwebbrkwer',c),
             <MenuItem key={c.cid} value={c.cid}>
-              {c.container_number} ({c.location}){' '}
-              {c.container_type ? `- ${c.container_type}` : `- ${c.container_size}`}{' '}
-              {c.owner_type ? `- ${c.owner_type}` : ''}
+              {c.container_number} ({c.container_size}){' '}
+              {c.container_type}  {c.owner_type} {'   '}
+              {c.derived_status ? <StatusChip status={c.derived_status} size="small" /> : ''}
+
             </MenuItem>
           ))}
         </Select>

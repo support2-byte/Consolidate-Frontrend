@@ -48,6 +48,7 @@ import ContainerModule from '../Containers/Containers';
 import { Navigate, useLocation } from 'react-router-dom';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import autoTable from 'jspdf-autotable';
 import { applyPlugin } from 'jspdf-autotable';
 import logoPic from "../../../public/logo.png"
@@ -134,6 +135,10 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
   const { consignmentId: urlConsignmentId } = useParams();
   const location = useLocation();
   
+    const [total, setTotal] = useState(0);
+    const [page, setPage] = useState(0);
+    const [rowsPerPage, setRowsPerPage] = useState(10);
+    const [error, setError] = useState(null);
   const effectiveConsignmentId = urlConsignmentId || location.state?.consignmentId || propConsignmentId;
   const [mode, setMode] = useState(effectiveConsignmentId ? 'edit' : 'add');
   const [snackbar, setSnackbar] = useState({
@@ -258,6 +263,11 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     return statusColors[status] || '#9E9E9E';
   };
 
+  const getPlaceName = (placeId) => {
+    if (!placeId) return '-';
+    const place = options.destinationOptions.find(p => p.value === placeId.toString());
+    return place ? place.label : placeId;
+  };
   // === Updated ETA Suggestion Handler ===
   const handleStatusChange = (newStatusOrEvent) => {
     const newStatus = typeof newStatusOrEvent === 'string'
@@ -608,33 +618,8 @@ const loadConsignment = async (id) => {
     }
     return false;
   }, [values, initialValues]);
-  const isDirtyRef = useRef(false);
-  // useEffect(() => {
-  //   isDirtyRef.current = isDirty;
-  // }, [isDirty]);
-  // // Fixed: Single useBlocker call with memoized blocker to avoid hook count issues
-  // const blocker = useCallback(
-  //   ({ currentLocation, nextLocation }) =>
-  //     isDirtyRef.current && (nextLocation.pathname !== currentLocation.pathname),
-  //   []
-  // );
-  // useBlocker(blocker);
-  // // Add this useEffect for browser close/refresh/tab close
-  // useEffect(() => {
-  //   if (!isDirty) {
-  //     window.onbeforeunload = null;
-  //     return;
-  //   }
-  //   const handleBeforeUnload = (e) => {
-  //     e.preventDefault();
-  //     e.returnValue = 'Are you sure you want to leave? Changes you made may not be saved.';
-  //     return 'Are you sure you want to leave? Changes you made may not be saved.';
-  //   };
-  //   window.onbeforeunload = handleBeforeUnload;
-  //   return () => {
-  //     window.onbeforeunload = null;
-  //   };
-  // }, [isDirty]);
+  
+
   // Optional: Add a manual confirmation for back button or custom nav (e.g., in resetForm or navigate calls)
   // But useBlocker handles most cases. For example, update resetForm:
   const resetForm = () => {
@@ -682,7 +667,116 @@ const loadConsignment = async (id) => {
     setInitialValues(null); // Reset initial snapshot to avoid false dirty state after reset
   };
   
-  // Sync missing options for vessel, paymentType, status
+
+  // Added deps if needed
+  const isSelected = (id) => (selectedOrders || []).indexOf(id) !== -1;
+  const handleOrderToggle = (orderId) => () => {
+    // console.log('toggle order', orderId);
+    const currentIndex = (selectedOrders || []).indexOf(orderId);
+    const newSelected = [...(selectedOrders || [])];
+    if (currentIndex === -1) {
+      newSelected.push(orderId);
+    } else {
+      newSelected.splice(currentIndex, 1);
+    }
+    setSelectedOrders(newSelected);
+  };
+  const handleClick = (id) => handleOrderToggle(id)();
+  
+  const includedOrders = useMemo(() =>
+    (selectedOrders || []).map(id => (orders || []).find(o => o.id === id)).filter(Boolean),
+    [selectedOrders, orders]
+  );
+
+  const allReceivers = useMemo(() => orders.flatMap(order => order.receivers || []), [orders]);
+// In your component
+const calculatedTotals = useMemo(() => {
+  let totalAssignedWeight = 0;
+
+  // Option A: from original nested structure
+  const ordersToSum = includedOrders.length > 0 ? includedOrders : orders;
+
+  ordersToSum.forEach(order => {
+    (order.receivers || []).forEach(receiver => {
+      (receiver.shippingdetails || []).forEach(detail => {
+        (detail.containerDetails || []).forEach(cd => {
+          totalAssignedWeight += parseFloat(cd.assign_weight || 0);
+        });
+      });
+    });
+  });
+
+  // Round to 3 decimals (common for tons), or 2 for kg
+  const assignedWt = parseFloat(totalAssignedWeight.toFixed(3));
+
+  return {
+    totalAssignedWeight: assignedWt,
+    netWeight: assignedWt,
+    grossWeight: parseFloat((assignedWt * 1.15).toFixed(3)), // 15% packaging/pallet
+  };
+}, [includedOrders, orders]);
+
+// Sync to form values
+useEffect(() => {
+  setValues(prev => ({
+    ...prev,
+    netWeight: calculatedTotals.netWeight,
+    gross_weight: calculatedTotals.grossWeight,
+    // optional: also store the raw assigned weight if needed
+    totalAssignedWeight: calculatedTotals.totalAssignedWeight,
+  }));
+}, [calculatedTotals]);
+
+  useEffect(() => {
+    setValues(prev => ({ ...prev, orders: (selectedOrders || []).map(id => ({ id })) }));
+  }, [selectedOrders]);
+  const themeColors = {
+    primary: '#f58220',
+    secondary: '#1a9c8f',
+    background: '#f8f9fa',
+    surface: '#ffffff',
+    border: '#e0e0e0',
+    textPrimary: '#212121',
+    textSecondary: '#757575',
+    success: '#4caf50',
+    warning: '#ff9800',
+    error: '#f44336'
+  };
+  const handleChangeOrderPage = (event, newPage) => {
+    setOrderPage(newPage);
+  };
+  const handleChangeOrderRowsPerPage = (event) => {
+    setOrderRowsPerPage(parseInt(event.target.value, 10));
+    setOrderPage(0);
+  };
+  const numSelected = (orders || []).filter((o) => isSelected(o.id)).length;
+  // const rowCount = (orders || []).length;
+ const getStatusColors = (status) => {
+  console.log('stautssssss',status)
+        // Extend your existing getStatusColors function to handle new statuses
+        const colorMap = {
+            'Ready for Loading': { bg: '#f3e5f5', text: '#7b1fa2' },
+            'Loaded Into Container': { bg: '#e0f2f1', text: '#00695c' },
+            'Shipment Processing': { bg: '#fff3e0', text: '#ef6c00' },
+            'In Transit': { bg: '#e1f5fe', text: '#0277bd' },
+            'Under Processing': { bg: '#fff3e0', text: '#f57c00' },
+            'Arrived at Sort Facility': { bg: '#f1f8e9', text: '#689f38' },
+            'Ready for Delivery': { bg: '#fce4ec', text: '#c2185b' },
+            'Shipment Delivered': { bg: '#e8f5e8', text: '#2e7d32' },
+            'Loaded': { bg: '#e8f5e8', text: '#2e7d32' },
+            // 'Shipment Processing': { bg: '#fff3e0', text: '#ef6c00' },
+            'Shipment In Transit': { bg: '#e1f5fe', text: '#0277bd' },
+            'Assigned to Job': { bg: '#fff3e0', text: '#f57c00' },
+            // 'Arrived at Sort Facility': { bg: '#f1f8e9', text: '#689f38' },
+            // 'Ready for Delivery': { bg: '#fce4ec', text: '#c2185b' },
+            // 'Shipment Delivered': { bg: '#e8f5e8', text: '#2e7d32' },
+            // Fallback for unknown
+            default: { bg: '#f5f5f5', text: '#666' }
+        };
+        return colorMap[status] || colorMap.default;
+    };
+
+    // Sync missing options for vessel, paymentType, status
   useEffect(() => {
     const syncMissingOptions = () => {
       let updatedOptions = { ...options };
@@ -749,132 +843,8 @@ const loadConsignment = async (id) => {
     const ids = (values.containers || []).map(c => c.id || c.cid).filter(id => id);
     setAddedContainerIds(ids);
   }, [values.containers]);
-  // Fetch orders
-useEffect(() => {
-  const filterOrdersByContainers = (orders, selectedContainerIds) => {
-    if (!Array.isArray(orders)) {
-      // console.warn('filterOrdersByContainers: Input "orders" is not an array:', orders);
-      return [];
-    }
-    if (!selectedContainerIds || selectedContainerIds.length === 0) {
-      // If no container IDs, still attach order to each receiver
-      return orders.map(order => ({
-        ...order,
-        receivers: (order.receivers || []).map(receiver => ({
-          ...receiver,
-          order: order // Attach full order to each receiver
-        }))
-      }));
-    }
-    // FIXED: Parse to numbers for CID matching (assuming addedContainerIds are CIDs)
-    const selectedCids = selectedContainerIds.map(id => parseInt(id)).filter(id => !isNaN(id));
-    if (selectedCids.length === 0) {
-      console.warn('No valid CIDs for filtering');
-      return [];
-    }
-    console.log('Filtering with CIDs:', selectedCids);
-    return orders
-      .map((order) => {
-        console.log('Processing order:', order);
-        const filteredReceivers = (order.receivers || [])
-          .filter(receiver => receiver !== null)
-          .map((receiver) => {
-            console.log('Receiver:', receiver.id, 'containers:', receiver.containers);
-            const filteredShippingDetails = (receiver.shippingdetails || []).filter((shippingDetail) => {
-              const hasMatch = (shippingDetail.containerDetails || []).some((containerDetail) => {
-                const cid = containerDetail.container?.cid;
-                const matches = selectedCids.includes(cid);
-                console.log(`Check: CID ${cid} in [${selectedCids.join(', ')}]? ${matches}`);
-                return matches;
-              });
-              return hasMatch;
-            });
-            console.log(`Filtered shipping for receiver ${receiver.id}: ${filteredShippingDetails.length} items`);
-            if (filteredShippingDetails.length === 0) return null;
-            return {
-              ...receiver,
-              order: order, // Attach full order to each receiver
-              shippingdetails: filteredShippingDetails,
-            };
-          })
-          .filter(Boolean);
-        console.log('Final filtered receivers:', filteredReceivers.length);
-        if (filteredReceivers.length === 0) return null;
-        const totalQty = filteredReceivers.reduce((sum, r) => sum + (r.total_number || 0), 0);
-        return {
-          ...order,
-          receivers: filteredReceivers,
-          total_assigned_qty: totalQty,
-        };
-      })
-      .filter(Boolean);
-  };
-  // FIXED: Define fetchOrders outside the filter logic
-  const fetchOrders = async () => {
-    if ((addedContainerIds || []).length === 0) {
-      setOrders([]);
-      setOrderTotal(0);
-      setOrdersLoading(false);
-      return;
-    }
-    setOrdersLoading(true);
-    try {
-      const params = {
-        page: orderPage + 1,
-        limit: orderRowsPerPage,
-        includeContainer: true,
-        includeReceivers: true, // New: Explicitly include receivers
-        includeShippingDetails: true, // New: Include shippingdetails within receivers
-        container_id: addedContainerIds.join(','),
-        ...(filters.booking_ref && { booking_ref: filters.booking_ref }),
-        ...(filters.status && { status: filters.status }),
-      };
-      console.log('Fetching orders with params:', params); // Debug: Log sent params
-      const response = await api.get(`/api/orders/consignmentsOrders`, { params });
-      console.log('Fetched orders response:', response.data); // Debug: Full response
-      const fetchedOrders = response.data?.data || [];
-      const fetchedTotal = response.data?.total || 0;
-      // FIXED: Apply client-side filtering for shipping details *after* fetching data
-      const filteredOrders = filterOrdersByContainers(fetchedOrders, addedContainerIds);
-      setOrders(filteredOrders);
-      setOrderTotal(fetchedTotal);
-      handleSelectAllClick({target: {checked:true}})
-      if (filteredOrders.length >= 0) {
-        handleSelectAllClick({ target: { checked: true } }); // Guard: Only if data exists
-      }
-      console.log('filteration last', filteredOrders);
-    } catch (err) {
-      console.error("Error fetching orders:", err);
-      setSnackbar({ open: true, message: 'Failed to fetch orders. Please try again.', severity: 'error' }); // Fixed: Use setSnackbar
-      setOrders([]); // Reset on error
-      setOrderTotal(0);
-    } finally {
-      setOrdersLoading(false);
-    }
-  };
-  // FIXED: Actually call the fetch function
-  fetchOrders();
-}, [addedContainerIds, filters, orderPage, orderRowsPerPage]);
-  const getPlaceName = (placeId) => {
-    if (!placeId) return '-';
-    const place = options.destinationOptions.find(p => p.value === placeId.toString());
-    return place ? place.label : placeId;
-  };
-  // Added deps if needed
-  const isSelected = (id) => (selectedOrders || []).indexOf(id) !== -1;
-  const handleOrderToggle = (orderId) => () => {
-    // console.log('toggle order', orderId);
-    const currentIndex = (selectedOrders || []).indexOf(orderId);
-    const newSelected = [...(selectedOrders || [])];
-    if (currentIndex === -1) {
-      newSelected.push(orderId);
-    } else {
-      newSelected.splice(currentIndex, 1);
-    }
-    setSelectedOrders(newSelected);
-  };
-  const handleClick = (id) => handleOrderToggle(id)();
-  const handleSelectAllClick = (event) => {
+ // Fetch orders + filtering + flattening logic
+const handleSelectAllClick = (event) => {
     if (event.target.checked) {
       const newSelecteds = (orders || []).map((n) => n.id);
       setSelectedOrders(newSelecteds);
@@ -882,90 +852,366 @@ useEffect(() => {
     }
     setSelectedOrders([]);
   };
-  const includedOrders = useMemo(() =>
-    (selectedOrders || []).map(id => (orders || []).find(o => o.id === id)).filter(Boolean),
-    [selectedOrders, orders]
-  );
 
-  const allReceivers = useMemo(() => orders.flatMap(order => order.receivers || []), [orders]);
-// === AUTO CALCULATE NET & GROSS WEIGHT FROM SELECTED ORDERS ===
-  const calculatedTotals = useMemo(() => {
-    let totalNetWeight = 0;
+  // ────────────────────────────────────────────────────────────────
+  // Main fetch function
+  useEffect(() => {
+  // ────────────────────────────────────────────────────────────────
+  // Helper: Check if a shipping detail uses at least one selected container
+  const itemUsesSelectedContainers = (shippingDetail, selectedCidsSet) => {
+    if (!shippingDetail?.containerDetails?.length) return false;
 
-    const ordersToSum = includedOrders.length > 0 ? includedOrders : orders;
-
-    ordersToSum.forEach(order => {
-      (order.receivers || []).forEach(receiver => {
-        (receiver.shippingdetails || []).forEach(detail => {
-          const weight = parseFloat(detail.weight || 0);
-          const quantity = parseInt(detail.totalNumber || 1);
-          totalNetWeight += weight * quantity;
-        });
-      });
+    return shippingDetail.containerDetails.some(detail => {
+      const cid = detail?.container?.cid;
+      return cid && selectedCidsSet.has(Number(cid));
     });
-
-    const net = parseFloat(totalNetWeight.toFixed(2));
-    const gross = parseFloat((net * 1.15).toFixed(2)); // 15% extra for packaging
-
-    return { netWeight: net, grossWeight: gross };
-  }, [includedOrders, orders]);
-
-  // Sync calculated weights into form values
-  useEffect(() => {
-    setValues(prev => ({
-      ...prev,
-      netWeight: calculatedTotals.netWeight,
-      gross_weight: calculatedTotals.grossWeight,
-    }));
-  }, [calculatedTotals.netWeight, calculatedTotals.grossWeight]);
-
-  useEffect(() => {
-    setValues(prev => ({ ...prev, orders: (selectedOrders || []).map(id => ({ id })) }));
-  }, [selectedOrders]);
-  const themeColors = {
-    primary: '#f58220',
-    secondary: '#1a9c8f',
-    background: '#f8f9fa',
-    surface: '#ffffff',
-    border: '#e0e0e0',
-    textPrimary: '#212121',
-    textSecondary: '#757575',
-    success: '#4caf50',
-    warning: '#ff9800',
-    error: '#f44336'
   };
-  const handleChangeOrderPage = (event, newPage) => {
-    setOrderPage(newPage);
+
+  // Helper: Filter containerDetails array to keep only selected containers
+  const filterContainerDetails = (containerDetails, selectedCidsSet) => {
+    if (!Array.isArray(containerDetails)) return [];
+
+    return containerDetails.filter(detail => {
+      const cid = detail?.container?.cid;
+      return cid && selectedCidsSet.has(Number(cid));
+    });
   };
-  const handleChangeOrderRowsPerPage = (event) => {
-    setOrderRowsPerPage(parseInt(event.target.value, 10));
-    setOrderPage(0);
+
+  // Client-side filter: keep only matching shipping details + filter their containers
+  const filterOrdersByContainers = (orders, selectedContainerIds) => {
+    if (!Array.isArray(orders)) {
+      console.warn('filterOrdersByContainers: orders is not an array', orders);
+      return [];
+    }
+
+    // No containers selected → return original orders
+    if (!selectedContainerIds?.length) {
+      return orders.map(order => ({
+        ...order,
+        receivers: (order.receivers || []).map(receiver => ({
+          ...receiver,
+          order, // optional: attach full order if needed downstream
+        })),
+      }));
+    }
+
+    // Normalize selected container IDs to numbers + use Set for fast lookup
+    const selectedCidsSet = new Set(
+      selectedContainerIds
+        .map(id => parseInt(id, 10))
+        .filter(id => !isNaN(id))
+    );
+
+    if (selectedCidsSet.size === 0) {
+      console.warn('No valid numeric container IDs for filtering');
+      return [];
+    }
+
+    console.log('Filtering orders for container CIDs:', [...selectedCidsSet]);
+
+    return orders.map(order => {
+      const filteredReceivers = (order.receivers || [])
+        .map(receiver => {
+          const filteredShippingDetails = (receiver.shippingdetails || [])
+            .filter(detail => itemUsesSelectedContainers(detail, selectedCidsSet))
+            .map(detail => ({
+              ...detail,
+              // Also filter the containerDetails inside each kept shipping detail
+              containerDetails: filterContainerDetails(detail.containerDetails, selectedCidsSet),
+            }));
+
+          // Skip this receiver if no matching shipping details remain
+          if (filteredShippingDetails.length === 0) return null;
+
+          return {
+            ...receiver,
+            shippingdetails: filteredShippingDetails,
+            order, // optional attachment
+          };
+        })
+        .filter(Boolean); // remove null receivers
+
+      // Skip this order if no receivers remain after filtering
+      if (filteredReceivers.length === 0) return null;
+
+      return {
+        ...order,
+        receivers: filteredReceivers,
+      };
+    }).filter(Boolean); // remove null orders
   };
-  const numSelected = (orders || []).filter((o) => isSelected(o.id)).length;
-  // const rowCount = (orders || []).length;
-  const getStatusColors = (status) => {
-    const colorMap = {
-      'Created': { bg: '#00695c', text: '#f1f8e9' },
-      'Received for Shipment': { bg: '#e3f2fd', text: '#1976d2' },
-      'Waiting for Authentication': { bg: '#fff3e0', text: '#ef6c00' },
-      'Shipper Authentication Confirmed': { bg: '#e8f5e8', text: '#388e3c' },
-      'Under Shipment Processing': { bg: '#fff3e0', text: '#ef6c00' },
-      'Waiting for Shipper Authentication (if applicable)': { bg: '#fff3e0', text: '#ef6c00' },
-      'Customs Cleared': { bg: '#e8f5e8', text: '#388e3c' },
-      'In Transit': { bg: '#fff3e0', text: '#ef6c00' },
-      'Ready for Loading': { bg: '#f3e5f5', text: '#7b1fa2' },
-      'Loaded Into Container': { bg: '#fff3e0', text: '#00695c' },
-      'Departed for Port': { bg: '#e1f5fe', text: '#0277bd' },
-      'Offloaded at Port': { bg: '#f1f8e9', text: '#689f38' },
-      'Clearance Completed': { bg: '#fce4ec', text: '#c2185b' },
-      'Containers Returned (Internal only)': { bg: '#ffebee', text: '#c62828' },
-      'Hold': { bg: '#fff3e0', text: '#f57c00' },
-      'Cancelled': { bg: '#ffebee', text: '#d32f2f' },
-      'Delivered': { bg: '#e8f5e8', text: '#2e7d32' },
-      default: { bg: '#f5f5f5', text: '#666' }
+  
+
+  // ────────────────────────────────────────────────────────────────
+  // Main fetch function
+  const fetchOrders = async () => {
+    // Early exit if no containers selected
+    if (!addedContainerIds?.length) {
+      setOrders([]);
+      setOrderTotal(0);
+      setOrdersLoading(false);
+      return;
+    }
+
+    setOrdersLoading(true);
+
+    try {
+      const params = {
+        page: orderPage + 1,
+        limit: orderRowsPerPage,
+        container_id: addedContainerIds.join(','), // backend pre-filters orders
+        ...(filters?.booking_ref && { booking_ref: filters.booking_ref }),
+        ...(filters?.status && { status: filters.status }),
+        includeContainer: true,
+        includeReceivers: true,
+        includeShippingDetails: true,
+      };
+
+      console.log('Fetching orders with params:', params);
+
+      const response = await api.get('/api/orders/consignmentsOrders', { params });
+
+      console.log('Fetched orders response:', response.data);
+
+      const fetchedOrders = response.data?.data || [];
+      const fetchedTotal = response.data?.pagination?.total || 0;
+
+      // Apply client-side filtering (keeps only matching details + containers)
+      const filteredOrders = filterOrdersByContainers(fetchedOrders, addedContainerIds);
+
+      console.log('After client-side container filtering:', filteredOrders);
+
+      setOrders(filteredOrders);
+      setOrderTotal(fetchedTotal);
+
+      // Auto-select all visible rows
+      if (filteredOrders.length > 0) {
+        handleSelectAllClick({ target: { checked: true } });
+      }
+    } catch (err) {
+      console.error("Error fetching orders:", err);
+      setSnackbar({
+        open: true,
+        message: 'Failed to fetch orders. Please try again.',
+        severity: 'error',
+      });
+      setOrders([]);
+      setOrderTotal(0);
+    } finally {
+      setOrdersLoading(false);
+    }
+  };
+
+  fetchOrders();
+}, [
+  addedContainerIds,
+  filters?.booking_ref,
+  filters?.status,
+  orderPage,
+  orderRowsPerPage,
+  api,
+  // setSnackbar,
+  // setOrders,
+  // setOrderTotal,
+  // setOrdersLoading,
+]);
+
+// ────────────────────────────────────────────────────────────────
+// Flatten shipments: one row = one container assignment
+// Recalculate whenever orders change
+// ────────────────────────────────────────────────────────────────
+const flatShipments = React.useMemo(() => {
+  return orders.flatMap((order) =>
+    (order.receivers || []).flatMap((receiver) =>
+      (receiver.shippingdetails || []).flatMap((detail) =>
+        (detail.containerDetails || []).map((containerDetail) => ({
+          // Order level
+          orderId: order.id,
+          bookingRef: order.booking_ref || '-',
+          formNo: order.rgl_booking_number || '-',
+          pol: getPlaceName?.(order.place_of_loading) || '-',
+          pod: getPlaceName?.(order.place_of_delivery) || '-',
+          sender: order.sender_name || '-',
+          // Receiver level
+          receiverName: receiver.receiver_name || '-',
+          // Shipping detail / product level
+          category: detail.category || 'Unknown',
+          subcategory: detail.subcategory || '',
+          type: detail.type || 'Package',
+          totalItems: Number(detail.totalNumber || detail.total_number || 0),
+          weight: Number(detail.weight || 0),
+          itemRef: detail.itemRef || '',
+          remainingItems: Number(detail.remainingItems || 0),
+          // Single container
+          containerNumber: containerDetail.container?.container_number?.trim() || '-',
+          containerCid: containerDetail.container?.cid,
+          containerStatus: containerDetail.status || '-',
+          assignWeight: containerDetail.assign_weight || '-',
+          assignBoxes: containerDetail.assign_total_box || '-',
+        }))
+      )
+    )
+  );
+}, [orders]);
+
+    const PrettyList = ({ receivers, title }) => {
+        console.log('receiversss', receivers)
+        return (
+            <Card
+                variant="outlined"
+                sx={{
+                    p: 2,
+                    borderRadius: 2,
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    backgroundColor: '#fafafa',
+                    width: 600,
+                    boxShadow: 'none',
+                    // '&:hover': { boxShadow: '0 2px 8px rgba(0,0,0,0.08)' },
+                }}
+            >
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                    {/* Title */}
+                    <Box
+                        sx={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            pb: 1,
+                            borderBottom: '1px solid',
+                            borderColor: 'divider',
+                        }}
+                    >
+                        <Typography variant="subtitle2" sx={{ fontWeight: 'bold', color: '#f58220' }}>
+                            {title}
+                        </Typography>
+                        <Chip
+                            label={`(${receivers?.length || 0})`}
+                            size="small"
+                            color="primary"
+                            variant="outlined"
+                            sx={{ fontSize: '0.7rem', height: 20, '& .MuiChip-label': { px: 0.5 } }}
+                        />
+                    </Box>
+
+                    {/* Receivers List */}
+                    <Stack spacing={1} sx={{ maxHeight: 'auto', overflow: 'auto' }}>
+                        {receivers?.length > 0 ? (
+                            receivers.map((receiver, rIdx) => (
+                                <Card
+                                    key={rIdx}
+                                    variant="outlined"
+                                    sx={{
+                                        p: 1.5,
+                                        borderRadius: 1.5,
+                                        border: '1px solid',
+                                        borderColor: 'grey.200',
+                                        backgroundColor: '#fff',
+                                        boxShadow: 'none',
+                                        //   transition: 'all 0.2s ease',
+                                        //   '&:hover': { boxShadow: '0 1px 4px rgba(0,0,0,0.1)', borderColor: 'primary.light' },
+                                    }}
+                                >
+                                    {/* Receiver Info */}
+                                    <Stack direction="row" alignItems="center" spacing={1.5}>
+                                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                                            <Typography variant="body2" fontWeight="medium" noWrap>
+                                                {receiver.receiver_name || 'Unnamed Receiver'}
+                                            </Typography>
+
+                                        </Box>
+                                        <StatusChip status={receiver.status} size="small" />
+                                    </Stack>
+
+                                    <Divider sx={{ mt: 1 }} />
+
+                                    {/* Shipping Details */}
+                                    {receiver.shippingdetails?.length > 0 ? (
+                                        receiver.shippingdetails.map((item, sIdx) => (
+                                            <Box key={sIdx} sx={{ mt: 1, pl: 1 }}>
+                                                <Box sx={{ flexDirection: "column", }}>
+
+
+                                                    <Typography variant="body2" fontWeight="bold">
+                                                        {item.category || 'Unknown Category'} - {item.subcategory || 'Unknown Subcategory'} ({item.type || 'Unknown Type'})  Total: {item.totalNumber ?? 0}, Weight: {item.weight ?? 0}
+                                                    </Typography>
+                                                    <Typography variant="caption" color="text.secondary">
+                                                        Qty Total Assigned: {Math.max(0, parseInt(item.totalNumber || 0) - parseInt(item.remainingItems || 0)).toLocaleString()} /
+                                                        Remaining Items: {parseInt(item.remainingItems || 0).toLocaleString()}
+                                                    </Typography>
+                                                </Box>
+                                                {/* Container Details */}
+                                                {item.containerDetails?.length > 0 ? (
+                                                    <Stack direction="row" justifyContent={"space-between"} alignItems={"center"} display={'flex'} spacing={1} sx={{ justifyContent: 'space-between', flexWrap: 'wrap', }}>
+                                                        {item.containerDetails.map((c, cIdx) => (
+                                                            <div style={{ marginTop: 5, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', alignSelf: 'center', flex: 1, display: 'flex' }}>
+                                                                <Chip
+                                                                    key={cIdx}
+                                                                    label={`${c.container.container_number} - ${c.assign_total_box} boxes (${c.assign_weight} kg)`}
+                                                                    size="large"
+                                                                    color="secondary"
+                                                                    variant="outlined"
+                                                                    sx={{ marginBottom: 2 }}
+                                                                    spacing={1}
+
+                                                                />
+                                                                <StatusChip status={c.status} size="small" />
+
+
+
+                                                                {/* <Divider /> */}
+                                                            </div>
+                                                        ))}
+                                                    </Stack>
+                                                ) : (
+                                                    <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
+                                                        No containers assigned
+                                                    </Typography>
+                                                )}
+                                            </Box>
+                                        ))
+                                    ) : (
+                                        <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
+                                            No shipping details
+                                        </Typography>
+                                    )}
+
+                                    {/* Drop Off Details */}
+                                    {receiver.drop_off_details?.length > 0 && (
+                                        <Box sx={{ mt: 1, pl: 1 }}>
+                                            <Typography variant="body2" fontWeight="medium">
+                                                Drop Off Details:
+                                            </Typography>
+                                            {receiver.drop_off_details.map((dod, dIdx) => (
+                                                <Typography variant="caption" color="text.secondary" key={dIdx} display="block">
+                                                    {dod.drop_method} - {dod.dropoff_name} ({dod.drop_off_mobile}) on {dod.drop_date}
+                                                </Typography>
+                                            ))}
+                                        </Box>
+                                    )}
+                                </Card>
+                            ))
+                        ) : (
+                            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 3, color: 'text.secondary' }}>
+                                <EmojiEventsIcon sx={{ fontSize: 40, color: 'grey.300', mb: 1 }} />
+                                <Typography variant="body2" sx={{ fontStyle: 'italic' }}>
+                                    No receivers available
+                                </Typography>
+                            </Box>
+                        )}
+                    </Stack>
+                </Box>
+            </Card>
+        );
     };
-    return colorMap[status] || colorMap.default;
-  };
+
+    // Combine both receivers and container details into one tooltip content
+    const CombinedTooltip = ({ order }) => {
+        // You can merge both datasets or just pass receivers since shippingdetails contains containers
+        return <PrettyList receivers={order.receivers} title="Receivers & Containers" />;
+    };
+
+    
 
   const handleContainerToggle = (containerId) => () => {
     const currentIndex = (selectedContainers || []).indexOf(containerId);
@@ -995,7 +1241,7 @@ useEffect(() => {
       size: container.container_size || '',
       containerType: container.container_type || '',
       ownership: container.owner_type === 'soc' ? 'Own' : (container.owner_type === 'coc' ? 'Hired' : container.owner_type),
-      status: container.derived_status || 'Pending',
+      status: container.status || container.derived_status || 'Available',
       id: container.cid,
     }));
     setValues(prev => ({
@@ -1011,35 +1257,51 @@ useEffect(() => {
       severity: 'success',
     });
   };
-  const validationSchema = Yup.object({
-    consignment_number: Yup.string().required('Consignment # is required'),
-    shipper: Yup.string().required('Shipper is required'),
-    consignee: Yup.string().required('Consignee is required'),
-    origin: Yup.string().required('Origin is required'),
-    destination: Yup.string().required('Destination is required'),
-    eform: Yup.string().matches(/^[A-Z]{3}-\d{6}$/, 'Invalid format (e.g., ABC-123456)').required('Eform # is required'),
-    eform_date: Yup.date().required('Eform Date is required'),
-    bank: Yup.string().required('Bank is required'),
-    paymentType: Yup.string().required('Payment Type is required'),
-    voyage: Yup.string().min(3, 'Voyage must be at least 3 characters').required('Voyage is required'),
-    consignment_value: Yup.number().min(0).required('Consignment Value is required'),
-    vessel: Yup.string().required('Vessel is required'),
-    netWeight: Yup.number().min(0).required('Net Weight is required'),
-    gross_weight: Yup.number().min(0).required('Gross Weight is required'),
-    // containers: Yup.array().of(
-    // Yup.object({
-    // containerNo: Yup.string().required('Container No. is required'),
-    // size: Yup.string().oneOf(['20ft', '40ft']).required('Size is required'),
-    // })
-    // ).min(1, 'At least one container required'),
-    orders: Yup.array()
-      .of(
-        Yup.object({
-          id: Yup.number().required()
-        })
-      )
-      .min(1, 'At least one order is required'),
-  });
+const validationSchema = Yup.object({
+  consignment_number: Yup.string().required('Consignment # is required'),
+  shipper: Yup.string().required('Shipper is required'),
+  consignee: Yup.string().required('Consignee is required'),
+  origin: Yup.string().required('Origin is required'),
+  destination: Yup.string().required('Destination is required'),
+  eform: Yup.string()
+    .matches(/^[A-Z]{3}-\d{6}$/, 'Invalid format (e.g., ABC-123456)')
+    .required('Eform # is required'),
+  eform_date: Yup.date().required('Eform Date is required'),
+  bank: Yup.string().required('Bank is required'),
+  paymentType: Yup.string().required('Payment Type is required'),
+  voyage: Yup.string().min(3, 'Voyage must be at least 3 characters').required('Voyage is required'),
+  consignment_value: Yup.number().min(0).required('Consignment Value is required'),
+  vessel: Yup.string().required('Vessel is required'),
+  netWeight: Yup.number().min(0).required('Net Weight is required'),
+  gross_weight: Yup.number().min(0).required('Gross Weight is required'),
+
+  // Updated: We now expect containers array from UI
+  containers: Yup.array()
+    .of(
+      Yup.object({
+        containerNo: Yup.string().required('Container No. is required'),
+        // size: Yup.string().oneOf(['20ft', '40ft', 'Other']).required('Size is required'),
+        // // optional fields depending on your backend
+        // ownership: Yup.string().optional(),
+        // status: Yup.string().optional(),
+      })
+    )
+    .min(1, 'At least one container is required'),
+
+  // Still keep orders (or order IDs) if backend requires them
+  orders: Yup.array(),
+   
+  // Optional: if backend wants explicit assignment mapping
+  assignments: Yup.array()
+    .of(
+      Yup.object({
+        orderId: Yup.number().required(),
+        shippingDetailId: Yup.number().required(),
+        containerNo: Yup.string().required(),
+      })
+    )
+    .optional(),
+});
   const handleChange = (e) => {
     console.log('handleee', e);
     const { name, value } = e.target;
@@ -1139,7 +1401,9 @@ useEffect(() => {
     }
   };
   const updateArrayField = (arrayName, index, fieldName, value) => {
+
     const newArray = [...(values[arrayName] || [])];
+    console.log('yyye',newArray)
     newArray[index][fieldName] = value;
     setValues(prev => ({ ...prev, [arrayName]: newArray }));
     if (touched[arrayName]) validateArray(arrayName);
@@ -1204,7 +1468,7 @@ useEffect(() => {
         const allOrderIds = orders.map((order) => order.id);
         setSelectedOrders(allOrderIds);
       }
-    }, [orders]);
+    }, []);
 
   const validateForm = async () => {
     try {
@@ -1224,147 +1488,217 @@ useEffect(() => {
       return false;
     }
   };
-  const validateAndPrepare = async () => {
-    const isValid = await validateForm();
-    if (!isValid) return null;
-    const allFields = Object.keys(validationSchema.fields);
-    // console.log('Marking all fields as touched for validation:', allFields);
-    setTouched(prev => ({ ...prev, ...allFields.reduce((acc, f) => ({ ...acc, [f]: true }), {}) }));
-    const validContainers = (values.containers || []).filter(c =>
-      c.containerNo && c.size && c.containerNo.trim() !== ''
-    );
-    if (validContainers.length === 0) {
-      setSnackbar({ open: true, message: 'At least one valid container is required.', severity: 'error' });
-      setSaving(false);
-      return null;
-    }
-    const orderIds = (selectedOrders || values.orders || []).map(o => typeof o === 'object' ? o.id : o).filter(id => id);
-    if (orderIds.length === 0) {
-      setSnackbar({ open: true, message: 'At least one order is required.', severity: 'error' });
-      setSaving(false);
-      return null;
-    }
-    if (!values.consignment_number?.trim()) {
-      setSnackbar({ open: true, message: 'Consignment Number is required.', severity: 'error' });
-      setSaving(false);
-      return null;
-    }
-    if (!values.shipperName?.trim() || !values.consigneeName?.trim()) {
-      setSnackbar({ open: true, message: 'Shipper and Consignee names required.', severity: 'error' });
-      setSaving(false);
-      return null;
-    }
-    if (!values.bankName?.trim() && values.bank) {
-      console.warn('Bank name empty; proceeding but populate for DB.');
-    }
-    const submitData = {
-      consignment_value: parseFloat(values.consignment_value) || 0.00,
-      net_weight: parseFloat(values.netWeight) || 0.00,
-      gross_weight: parseFloat(values.gross_weight) || 0.00,
-      payment_type: values.paymentType,
-      status: values.status,
-      consignment_number: values.consignment_number.trim(),
-      remarks: values.remarks || null,
-      shipper_id: parseInt(values.shipper, 10) || null,
-      shipper_address: values.shipperAddress || null,
-      shipper: values.shipperName || '',
-      consignee_id: parseInt(values.consignee, 10) || null,
-      consignee_address: values.consigneeAddress || null,
-      consignee: values.consigneeName || '',
-      origin: values.originName || values.origin || null,
-      destination: values.destinationName || values.destination || null,
-      eform: values.eform || null,
-      eform_date: values.eform_date ? dayjs(values.eform_date).format('YYYY-MM-DD'): '',
-      bank_id: parseInt(values.bank, 10) || null,
-      bank: values.bankName || '',
-      currency_code: values.currency_code || 'GBP',
-      vessel: parseInt(values.vessel, 10) || null,
-      eta: eta ? dayjs(values.eta).format('YYYY-MM-DD'): '',
-      voyage: values.voyage || null,
-      shipping_line: values.shippingLine || null,
-      delivered: parseInt(values.delivered, 10) || 0,
-      pending: parseInt(values.pending, 10) || 0,
-      seal_no: values.seal_no || null,
-      containers: validContainers,
-      orders: orderIds,
-    };
-    console.log('Full submitData before API:', JSON.stringify(submitData, null, 3));
-    return submitData;
-  };
 
-  const navigate = useNavigate();
-  const handleCreate = async (e) => {
 
-    if (e) e.preventDefault();
-    const submitData = await validateAndPrepare();
+  // Helper: Validate form + prepare payload using flatShipments as source of truth
 
-    if (!submitData) return;
 
-    setSaving(true);
-    try {
 
-      const res = await api.post('/api/consignments', submitData);
-setSaving(true);
-      // console.log('[handleCreate] Success response:', res.data);
-      const { data: responseData, message } = res.data || {};
+const validateAndPrepare = async () => {
+  try {
+    // 1. Run Yup validation on the form values (core fields)
+    await validationSchema.validate(values, { abortEarly: false });
+
+    // 2. Use flatShipments as the real source for containers & orders
+    if (!flatShipments?.length) {
       setSnackbar({
         open: true,
-        message: 'Consignment created successfully!',
-        severity: 'success',
+        message: 'No shipments/containers selected. Please select at least one container assignment.',
+        severity: 'error',
       });
-      console.log('New ID:', responseData?.id);
-      const mappedResponse = {
-        id: responseData?.id,
-        ...responseData,
-        shipper: responseData?.shipper_id?.toString() || '',
-        consignee: responseData?.consignee_id?.toString() || '',
-        bank: responseData?.bank_id?.toString() || '',
-        vessel: responseData?.vessel?.toString() || '',
-        shippingLine: responseData?.shipping_line?.toString() || '',
-        netWeight: responseData?.net_weight,
-        eform_date: responseData?.eform_date ? dayjs(responseData.eform_date): '',
-        eta: responseData?.eta ? dayjs(responseData.eta): '',
-        containers: responseData?.containers ? responseData.containers.map(c => ({
-          containerNo: c?.containerNo,
-          size: c?.size,
-          ownership: c?.ownership,
-          status: c?.status,
-          id: c?.id || c?.cid
-        })) : [],
-      };
-      setValues(mappedResponse);
-      if (responseData?.orders) {
-        setSelectedOrders(responseData.orders.map(o => o.id));
-      }
-      navigate(`/consignments`);
-    } catch (err) {
-      console.error("[handleCreate] Full error:", {
-        status: err.response?.status,
-        data: err.response?.data,
-        message: err.message
-      });
-      if (err.response) {
-        const { error: apiError, details, message: backendMessage } = err.response.data || {};
-        let backendValidationErrors = {};
-        // Simplified error handling - expand as needed
-        setErrors(prev => ({ ...prev, ...backendValidationErrors }));
-        const backendMsg = apiError || backendMessage || err.message || 'Failed to create consignment';
-        setSnackbar({
-          open: true,
-          message: backendMsg,
-          severity: 'error',
-        });
-      } else {
-        setSnackbar({
-          open: true,
-          message: 'An unexpected error occurred. Please try again.',
-          severity: 'error',
-        });
-      }
-    } finally {
-      setSaving(false);
+      return null;
     }
-  };
+
+    // 3. Extract unique containers
+    const uniqueContainers = Array.from(
+      new Map(
+        flatShipments.map(s => [
+          s.containerNumber,
+          {
+            containerNo: s.containerNumber,
+            // size: s.containerNumber.includes('40') ? '40ft' : '20ft', // improve this logic if you have real size data
+            // cid: s.containerCid || null,
+            // status: s.containerStatus || 'Assigned',
+            // // Add more fields if needed (seal, type, ownership, etc.)
+          },
+        ])
+      ).values()
+    );
+
+    if (uniqueContainers.length === 0) {
+      setSnackbar({
+        open: true,
+        message: 'No valid containers found in selected shipments.',
+        severity: 'error',
+      });
+      return null;
+    }
+
+    // 4. Extract unique order IDs
+    const uniqueOrderIds = [...new Set(flatShipments.map(s => s.orderId))];
+
+    if (uniqueOrderIds.length === 0) {
+      setSnackbar({
+        open: true,
+        message: 'No orders associated with selected shipments.',
+        severity: 'error',
+      });
+      return null;
+    }
+
+    // 5. Optional: Build explicit assignment mapping (very useful for backend)
+    const assignments = flatShipments.map(s => ({
+      orderId: s.orderId,
+      receiverName: s.receiverName || null,
+      category: s.category || null,
+      containerNo: s.containerNumber,
+      assignedWeight: parseFloat(s.assignWeight || 0),
+      assignedBoxes: parseInt(s.assignBoxes || 0) || null,
+      remainingItems: parseInt(s.remainingItems || 0) || null,
+      // Add more if needed (e.g. shippingDetailId if you have it)
+    }));
+
+    // 6. Build the final payload
+    const submitData = {
+      // Core consignment fields from form
+      consignment_number: values.consignment_number?.trim() || null,
+      consignment_value: parseFloat(values.consignment_value) || 0,
+      net_weight: parseFloat(values.netWeight) || 0,
+      gross_weight: parseFloat(values.gross_weight) || 0,
+      payment_type: values.paymentType || null,
+      status: values.status || 'Draft',
+      remarks: values.remarks || null,
+
+      shipper_id: parseInt(values.shipper, 10) || null,
+      shipper: values.shipperName?.trim() || '',
+      shipper_address: values.shipperAddress || null,
+
+      consignee_id: parseInt(values.consignee, 10) || null,
+      consignee: values.consigneeName?.trim() || '',
+      consignee_address: values.consigneeAddress || null,
+
+      origin: values.originName || values.origin || null,
+      destination: values.destinationName || values.destination || null,
+
+      eform: values.eform?.trim() || null,
+      eform_date: values.eform_date ? dayjs(values.eform_date).format('YYYY-MM-DD') : null,
+
+      bank_id: parseInt(values.bank, 10) || null,
+      bank: values.bankName?.trim() || '',
+
+      currency_code: values.currency_code || 'GBP',
+      vessel: parseInt(values.vessel, 10) || null,
+      voyage: values.voyage?.trim() || null,
+      shipping_line: values.shippingLine?.trim() || null,
+
+      eta: values.eta ? dayjs(values.eta).format('YYYY-MM-DD') : null,
+
+      // ───────────────────────────────────────
+      // NEW: Data from UI / flatShipments
+      // ───────────────────────────────────────
+      containers: uniqueContainers,
+  orders: uniqueOrderIds,
+      assignments: assignments,      // ← very useful if backend supports it
+      total_assigned_weight: calculatedTotals.totalAssignedWeight || 0,
+    };
+
+    console.log('Prepared submitData:', JSON.stringify(submitData, null, 2));
+
+    return submitData;
+
+  } catch (err) {
+    // Handle Yup validation errors
+    if (err.name === 'ValidationError') {
+      const fieldErrors = {};
+      err.inner.forEach(e => {
+        fieldErrors[e.path] = e.message;
+      });
+      setErrors(fieldErrors);
+console.log('error fieldsss',fieldErrors)
+      setSnackbar({
+        open: true,
+        message: 'Please fix the highlighted fields.',
+        severity: 'error',
+      });
+    } else {
+      console.error('Validation/Preparation failed:', err);
+      setSnackbar({
+        open: true,
+        message: 'Error preparing consignment data. Please check inputs.',
+        severity: 'error',
+      });
+    }
+
+    return null;
+  }
+};
+
+  const navigate = useNavigate();
+ const handleCreate = async (e) => {
+  if (e) e.preventDefault();
+
+  setSaving(true);
+
+  const submitData = await validateAndPrepare();
+
+  if (!submitData) {
+    setSaving(false);
+    return;
+  }
+
+  try {
+    const res = await api.post('/api/consignments', submitData);
+console.log('responsee',res)
+    const { data: responseData, message } = res.data || {};
+
+    setSnackbar({
+      open: true,
+      message: message || 'Consignment created successfully!',
+      severity: 'success',
+    });
+
+    console.log('New Consignment ID:', responseData);
+
+    // Reset or redirect
+    navigate('/consignments');
+
+  } catch (err) {
+    console.error('[handleCreate] Error:', err);
+
+    if (err.name === 'ValidationError') {
+      // Yup validation errors
+      const formattedErrors = {};
+      err.inner.forEach(error => {
+        formattedErrors[error.path] = error.message;
+      });
+      setErrors(formattedErrors);
+      setSnackbar({
+        open: true,
+        message: 'Please fix the validation errors',
+        severity: 'error',
+      });
+    } else if (err.response) {
+      // Backend errors
+      const backendMsg =
+        err.response.data?.message ||
+        err.response.data?.error ||
+        'Failed to create consignment';
+      setSnackbar({
+        open: true,
+        message: backendMsg,
+        severity: 'error',
+      });
+    } else {
+      setSnackbar({
+        open: true,
+        message: 'An unexpected error occurred',
+        severity: 'error',
+      });
+    }
+  } finally {
+    setSaving(false);
+  }
+};
   const handleEditCon = async (e) => {
     console.log('Editing consignment', e);
     if (e) e.preventDefault();
@@ -1470,7 +1804,7 @@ setSaving(true);
       color: theme.palette.common.white,
     },
   }));
-   const StatusChip = ({ status }) => {
+    const StatusChip = ({ status }) => {
         const colors = getStatusColors(status);
         return (
             <Chip
@@ -1478,8 +1812,9 @@ setSaving(true);
                 size="small"
                 sx={{
                     height: 18,
-                    fontSize: '0.65rem',
+                    fontSize: '0.85rem',
                     marginLeft: 2,
+                    padding:2,
                     backgroundColor: colors.bg,
                     color: colors.text,
                 }}
@@ -1493,142 +1828,6 @@ setSaving(true);
       status: rec.status
     }));
   };
-  const PrettyList = ({ items, title }) => (
-    <MuiCard
-      variant="outlined"
-      sx={{
-        p: 2,
-        borderRadius: 2,
-        border: '1px solid',
-        borderColor: 'divider',
-        backgroundColor: '#fafafa',
-        boxShadow: 'none',
-        '&:hover': {
-          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)'
-        }
-      }}
-    >
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-        <Box sx={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          pb: 1,
-          borderBottom: '1px solid',
-          borderColor: 'divider'
-        }}>
-          <Typography variant="subtitle2" sx={{ fontWeight: 'bold', color: '#f58220' }}>
-            {title}
-          </Typography>
-          <Chip
-            label={`(${items?.length || 0})`}
-            size="small"
-            color="primary"
-            variant="outlined"
-            sx={{
-              fontSize: '0.7rem',
-              height: 20,
-              '& .MuiChip-label': { px: 0.5 }
-            }}
-          />
-        </Box>
-        <Stack spacing={1} sx={{ maxHeight: 200, overflow: 'auto' }}>
-          {(items || []).length > 0 ? (
-            (items || []).map((item, index) => (
-              <MuiCard
-                key={index}
-                variant="outlined"
-                sx={{
-                  p: 1.5,
-                  borderRadius: 1.5,
-                  border: '1px solid',
-                  borderColor: 'grey.200',
-                  backgroundColor: '#fff',
-                  boxShadow: 'none',
-                  transition: 'all 0.2s ease',
-                  '&:hover': {
-                    boxShadow: '0 1px 4px rgba(0, 0, 0, 0.1)',
-                    transform: 'translateY(-1px)',
-                    borderColor: 'primary.light'
-                  },
-                  cursor: 'pointer'
-                }}
-                onClick={() => { }}
-              >
-                <Stack direction="row" alignItems="center" spacing={1.5} sx={{ width: '100%' }}>
-                  <Avatar
-                    sx={{
-                      width: 32,
-                      height: 32,
-                      bgcolor: 'primary.main',
-                      fontSize: '1rem',
-                      flexShrink: 0
-                    }}
-                  >
-                    {item.primary ? item.primary.charAt(0).toUpperCase() : '?'}
-                  </Avatar>
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography
-                      variant="body2"
-                      fontWeight="medium"
-                      noWrap
-                      sx={{
-                        color: 'text.primary',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap'
-                      }}
-                    >
-                      {item.primary || 'Unnamed Item'}
-                    </Typography>
-                    {item.secondary && (
-                      <Typography
-                        variant="caption"
-                        sx={{
-                          color: 'text.secondary',
-                          display: 'block',
-                          mt: 0.25
-                        }}
-                      >
-                        {item.secondary}
-                      </Typography>
-                    )}
-                  </Box>
-                  {item.status && (
-                    <StatusChip
-                      status={item.status}
-                      size="small"
-                      sx={{
-                        fontSize: '0.7rem',
-                        height: 20,
-                        minWidth: 60,
-                        flexShrink: 0,
-                        '& .MuiChip-label': { px: 0.5 }
-                      }}
-                    />
-                  )}
-                </Stack>
-              </MuiCard>
-            ))
-          ) : (
-            <Box sx={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              py: 3,
-              color: 'text.secondary'
-            }}>
-              <EmojiEventsIcon sx={{ fontSize: 40, color: 'grey.300', mb: 1 }} />
-              <Typography variant="body2" sx={{ fontStyle: 'italic' }}>
-                No items available
-              </Typography>
-            </Box>
-          )}
-        </Stack>
-      </Box>
-    </MuiCard>
-  );
   const parseContainersToList = (containersStr) => {
     if (!containersStr) return [];
     return containersStr.split(', ').map(cont => ({ primary: cont.trim() }));
@@ -1684,6 +1883,22 @@ const getPlaceNamePdf = (id) => {
   return places[id] || 'N/A';
 };
 
+    const handleFilterText = (e) => {
+        const { name, value } = e.target;
+        console.log("Filter change:", name, value);
+
+        setFilters((prev) => ({ ...prev, [name]: value }));
+
+        // Very important: reset to first page on every filter change
+        setPage(0);
+    };
+
+    // 3. Handler for status dropdown (also reset page)
+    const handleFilterChange = (e) => {
+        const { name, value } = e.target;
+        setFilters((prev) => ({ ...prev, [name]: value }));
+        setPage(0);
+    };
 
 
 const generateManifestPDFWithCanvas = async (data, allReceivers, selectedOrderObjects = includedOrders) => {
@@ -3455,6 +3670,7 @@ const generateContainersAndOrdersPDFWithCanvas = async (data, allReceivers, sele
                       ) : (
                         (values.containers || []).map((container, index) => {
                           // Get error for this specific row
+                          console.log('derived_status',container)
                           const rowErrors = getContainerError(index);
                           return (
                             <Fade in key={`${container.containerNo || 'new'}-${index}`} timeout={300 * index}>
@@ -3523,7 +3739,7 @@ const generateContainersAndOrdersPDFWithCanvas = async (data, allReceivers, sele
                                   <TextField
                                     size="small"
                                     fullWidth
-                                    value={container.status || ''}
+                                    value={container.drevies || 'Available'}
                                     onChange={(e) => updateArrayField('containers', index, 'status', e.target.value)}
                                   />
                                 </TableCell>
@@ -3592,195 +3808,143 @@ const generateContainersAndOrdersPDFWithCanvas = async (data, allReceivers, sele
                   </Button>
                 </DialogActions>
               </Dialog>
-              <Accordion sx={{ mt: 2, boxShadow: 2, borderRadius: 2, '&:before': { display: 'none' } }}>
-                <AccordionSummary
-                  expandIcon={<ExpandMoreIconMui sx={{ color: '#fff', backgroundColor: '#f58220', borderRadius: '50%', p: 0.5 }} />}
-                  sx={{ backgroundColor: '#f58220', color: 'white', borderRadius: 2 }}
-                >
-                  <Typography variant="h6" sx={{ fontWeight: 'bold' }}>🛒 Orders ({numSelected} selected)</Typography>
-                </AccordionSummary>
-                <AccordionDetails sx={{ p: 3 }}>
+{/* <Accordion sx={{ mt: 2, boxShadow: 2, borderRadius: 2, '&:before': { display: 'none' } }}> */}
 
-                  <Box sx={{ display: 'flex', gap: 2, mb: 2, alignItems: 'center' }}>
-                    <TextField
-                      label="Booking Ref"
-                      value={filters.booking_ref || ''}
-                      onChange={(e) => {
-                        setFilters(prev => ({ ...prev, booking_ref: e.target.value }));
-                        setOrderPage(0);
-                      }}
-                      size="small"
-                      sx={{ minWidth: 200 }}
-                    />
-                    <FormControl size="small" sx={{ minWidth: 150 }}>
-                      <InputLabel>Status</InputLabel>
-                      <Select
-                        value={filters.status || ''}
-                        label="Status"
-                        onChange={(e) => {
-                          setFilters(prev => ({ ...prev, status: e.target.value }));
-                          setOrderPage(0);
-                        }}
-                      >
-                        <MenuItem value="">All</MenuItem>
-                        {(statuses || []).map(status => (
-                          <MenuItem key={status} value={status}>{status}</MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </Box>
+    
+    <Accordion sx={{ mt: 2, boxShadow: 2, borderRadius: 2, '&:before': { display: 'none' } }}>
+      <AccordionSummary
+        expandIcon={<ExpandMoreIcon sx={{ color: '#fff', backgroundColor: '#f58220', borderRadius: '50%', p: 0.5 }} />}
+        sx={{ backgroundColor: '#f58220', color: 'white', borderRadius: 2 }}
+      >
+        <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+          🛒 Shipments by Container ({flatShipments.length} lines)
+        </Typography>
+      </AccordionSummary>
 
-                  <TableContainer sx={{ borderRadius: 2, overflow: 'hidden', boxShadow: 2 }}>
-                    <Table stickyHeader aria-label="Orders table">
-                      <TableHead>
-                        <TableRow sx={{ bgcolor: '#0d6c6a' }}>
-                          <TableCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} padding="checkbox">
-                            <Checkbox
-                              indeterminate={numSelected > 0 && numSelected < (orders || []).length}
-                              checked={(orders || []).length > 0 && numSelected === (orders || []).length}
-                              onChange={handleSelectAllClick}
-                            />
-                          </TableCell>
-                          <TableCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="ref">Booking Ref</TableCell>
-                          <TableCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="loading">POL</TableCell>
-                          <TableCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="dest">POD</TableCell>
-                          <TableCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="sender">Sender</TableCell>
-                          <TableCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="receivers">Receiver</TableCell>
-                          <TableCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="containers">Containers</TableCell>
-                          <TableCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="productsdetail">Items Details</TableCell>
-                          <TableCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="created">Created At</TableCell>
-                          <TableCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="status">Status</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {allReceivers.length === 0 ? (
-                          <TableRow>
-                            <TableCell colSpan={10} align="center" sx={{ py: 4 }}>
-                              <Typography variant="body2" color="text.secondary">No receivers found.</Typography>
-                            </TableCell>
-                          </TableRow>
-                        ) :
-                          allReceivers.map((receiver) => {
-                            const order = receiver.order || {}; // Fixed: Ensure order exists
-                            const isItemSelected = isSelected(order.id);
-                            console.log('receiver', allReceivers);
-                            // Products summary from this receiver's shippingdetails
-                            const productsSummary = (receiver.shippingdetails || []).map(detail => ({
-                              category: detail.category || 'Unknown',
-                              subcategory: detail.subcategory || '',
-                              type: detail.type || 'Package',
-                              weight: parseFloat(detail.weight || 0),
-                              total_number: parseInt(detail.totalNumber || 0),
-                              itemRef: detail.itemRef || '',
-                              shippingDetailStatus: detail.consignmentStatus || '',
-                            }));
-                            console.log('productsSummary', order);
-                            const totalItems = productsSummary.reduce((sum, p) => sum + p.total_number, 0);
-                            const totalWeight = productsSummary.reduce((sum, p) => sum + p.weight, 0);
-                            const categoryList = [...new Set(productsSummary.map(p => p.category))].join(', ');
-                            const shipmentStatus = order.receivers?.find(r => r.id === receiver.id)?.status || 'In Process';
-                            // Status from receiver
-                            const status = receiver.status || order.status || 'Created';
-                            // Containers from this receiver
-                            const filteredContainers = (receiver.containers || []).filter(Boolean);
-                            const containersList = filteredContainers.length > 0
-                              ? filteredContainers.map(cont => ({ primary: cont.container_number || cont })) // Fixed: Access correct prop
-                              : [];
-                            const filteredReceivers = [receiver];
-                            return (
-                              <StyledTableRow key={receiver.id} selected={isItemSelected}>
-                                <TableCell padding="checkbox">
-                                  <Checkbox
-                                    checked={isItemSelected}
-                                    onChange={handleOrderToggle(order.id)}
-                                  />
-                                </TableCell>
-                                <TableCell>{order.booking_ref || ''}</TableCell>
-                                <TableCell>{getPlaceName(order?.place_of_loading || '')}</TableCell>
-                                <TableCell>{getPlaceName(order.final_destination || order.place_of_delivery || order.place_of_loading || '')}</TableCell>
-                                <TableCell>{order.sender_name || ''}</TableCell>
-                                <TableCell>
-                                  <Tooltip
-                                    title={<PrettyList items={parseSummaryToList(filteredReceivers)} title="Receiver Details" />}
-                                    arrow
-                                    placement="top"
-                                    PopperProps={{
-                                      sx: { '& .MuiTooltip-tooltip': { border: '1px solid #e0e0e0' } }
-                                    }}
-                                  >
-                                    <Typography variant="body2" noWrap sx={{ maxWidth: 120, cursor: 'help', fontWeight: 'medium' }}>
-                                      {receiver.receiver_name || '-'}
-                                    </Typography>
-                                  </Tooltip>
-                                </TableCell>
-                                <TableCell>
-                                  <Tooltip
-                                    title={<PrettyList items={parseContainersToList(filteredContainers.map(c => c.container_number || c).join(', ') || '')} title="Containers" />}
-                                    arrow
-                                    placement="top"
-                                  >
-                                    <Typography variant="body2" noWrap sx={{ maxWidth: 120, cursor: 'help', fontWeight: 'medium' }}>
-                                      {containersList.length > 0
-                                        ? <>{containersList.length > 1 && <sup style={{ padding: 4, borderRadius: 50, float: 'left', background: '#00695c', color: '#fff' }}>({containersList.length})</sup>}
-                                          <span style={{ padding: 0 }}>{containersList.map(c => c.primary || '').join(', ').substring(0, 25)}...</span></>
-                                        : '-'
-                                      }
-                                    </Typography>
-                                  </Tooltip>
-                                </TableCell>
-                                <StyledTableCell>
-                                  <Tooltip
-                                    title={
-                                      <Box sx={{ minWidth: 250 }}>
-                                        <Typography variant="subtitle2" gutterBottom>Product Details</Typography>
-                                        {productsSummary.length > 0 ? (
-                                          productsSummary.map((product, idx) => (
-                                            <Box key={idx} sx={{ mb: 1, p: 1, border: '1px solid #e0e0e0', borderRadius: 1 }}>
-                                              <Typography variant="body2"><strong>Category:</strong> {product.category}</Typography>
-                                              <Typography variant="body2"><strong>Subcategory:</strong> {product.subcategory || '-'}</Typography>
-                                              <Typography variant="body2"><strong>Item Type:</strong> {product.type}</Typography>
-                                              <Typography variant="body2"><strong>Weight:</strong> {product.weight} kg</Typography>
-                                              <Typography variant="body2"><strong>Total Number:</strong> {product.total_number}</Typography>
-                                              {product.itemRef && <Typography variant="body2"><strong>Item Ref:</strong> {product.itemRef}</Typography>}
-                                            </Box>
-                                          ))
-                                        ) : (
-                                          <Typography variant="body2">-</Typography>
-                                        )}
-                                        {productsSummary.length > 0 && (
-                                          <Box sx={{ mt: 1, pt: 1, borderTop: '1px solid #e0e0e0' }}>
-                                            <Typography variant="body2"><strong>Total Weight:</strong> {totalWeight.toFixed(1)} kg</Typography>
-                                            <Typography variant="body2"><strong>Total Items:</strong> {totalItems}</Typography>
-                                          </Box>
-                                        )}
-                                      </Box>
-                                    }
-                                    arrow
-                                    placement="top"
-                                  >
-                                    <Typography variant="body2" noWrap sx={{ maxWidth: 120, cursor: 'help', fontWeight: 'medium' }}>
-                                      {productsSummary.length > 0 ? (
-                                        <>
-                                          {productsSummary.length > 1 && <sup style={{ padding: 2, borderRadius: 50, float: 'left', background: '#00695c', color: '#fff', fontSize: '0.75rem' }}>({productsSummary.length})</sup>}
-                                          <span style={{ paddingLeft: productsSummary.length > 1 ? 20 : 0 }}>
-                                            Cat: {categoryList.substring(0, 10)}... | Wt: {totalWeight.toFixed(0)}kg | Items: {totalItems}
-                                          </span>
-                                        </>
-                                      ) : '-'}
-                                    </Typography>
-                                  </Tooltip>
-                                </StyledTableCell>
-                                <TableCell>{new Date(order.created_at || Date.now()).toLocaleDateString()}</TableCell>
-                                <TableCell>
-                                  <StatusChip status={shipmentStatus} />
-                                </TableCell>
-                              </StyledTableRow>
-                            );
-                          })}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-                  <TablePagination
+      <AccordionDetails sx={{ p: 3 }}>
+        <TableContainer
+          component={Paper}
+          sx={{
+            borderRadius: 2,
+            overflow: 'auto',
+            boxShadow: 2,
+            maxHeight: 580,
+            width: '100%',
+            '&::-webkit-scrollbar': { height: 8, width: 8 },
+            '&::-webkit-scrollbar-thumb': { background: '#0d6c6a', borderRadius: 4 },
+          }}
+        >
+          <Table stickyHeader size="small"  aria-label="shipments-by-container-table">
+            <TableHead sx={{ bgcolor: '#0d6c6a' }}>
+              <TableRow sx={{ bgcolor: '#0d6c6a' }}>
+                <TableCell sx={{ bgcolor: '#0d6c6a' , color: '#fff', fontWeight: 'Bold' }}>Item Ref No</TableCell>
+                <TableCell sx={{ bgcolor: '#0d6c6a' , color: '#fff', fontWeight: 'Bold' }}>Booking Ref</TableCell>
+                <TableCell sx={{ bgcolor: '#0d6c6a' , color: '#fff', fontWeight: 'Bold' }}>Form No</TableCell>
+                <TableCell sx={{ bgcolor: '#0d6c6a' , color: '#fff', fontWeight: 'Bold' }}>Product</TableCell>
+                <TableCell sx={{ bgcolor: '#0d6c6a' , color: '#fff', fontWeight: 'Bold' }}>POL</TableCell>
+                <TableCell sx={{ bgcolor: '#0d6c6a' , color: '#fff', fontWeight: 'Bold' }}>POD</TableCell>
+                <TableCell sx={{ bgcolor: '#0d6c6a' , color: '#fff', fontWeight: 'Bold' }}>Sender</TableCell>
+                <TableCell sx={{ bgcolor: '#0d6c6a' , color: '#fff', fontWeight: 'Bold' }}>Receiver</TableCell>
+                {/* <TableCell sx={{ bgcolor: '#0d6c6a' , color: '#fff', fontWeight: 'Bold' }}>Product</TableCell> */}
+              
+                <TableCell sx={{ bgcolor: '#0d6c6a' , color: '#fff', fontWeight: 'Bold' }}>Container</TableCell>
+                <TableCell sx={{ bgcolor: '#0d6c6a' , color: '#fff', fontWeight: 'Bold',width:200 }}>
+                Assign Weight & Items
+                </TableCell>
+                <TableCell sx={{ bgcolor: '#0d6c6a' , color: '#fff', fontWeight: 'Bold' }}>Status</TableCell>
+             
+                {/* <TableCell align="right"sx={{ bgcolor: '#0d6c6a' , color: '#fff', fontWeight: 'Bold' }}>
+                  Actions
+                </TableCell> */}
+              </TableRow>
+            </TableHead>
+
+            <TableBody>
+              {flatShipments.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={12} align="center" sx={{ py: 6 }}>
+                    <Typography variant="body1" color="text.secondary">
+                      No shipments with container assignments found
+                    </Typography>
+                  </TableCell>
+                </TableRow>
+              ) : (
+flatShipments.map((shipment, index) => (
+  console.log('shipments',shipment),
+  <TableRow key={`${shipment.orderId}-${shipment.containerNumber}-${index}`}>
+    <TableCell>{shipment.itemRef}</TableCell>
+    <TableCell>{shipment.bookingRef}</TableCell>
+    <TableCell>{shipment.formNo}</TableCell>
+     <TableCell>
+                      <Box>
+                        <Typography variant="body2" fontWeight="medium">
+                          {shipment.category}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {shipment.subcategory && `${shipment.subcategory} • `}
+                          {/* {shipment.type} */}
+                        </Typography>
+                      </Box>
+                    </TableCell>
+
+
+                    <TableCell>{shipment.pol}</TableCell>
+                    <TableCell>{shipment.pod}</TableCell>
+                    <TableCell>{shipment.sender}</TableCell>
+                    <TableCell>{shipment.receiverName}</TableCell>
+
+
+                    <TableCell>
+                      <Chip
+                        label={shipment.containerNumber}
+                        size="small"
+                        color="primary"
+                        variant="outlined"
+                      />
+                    </TableCell>
+                    <TableCell align="center">
+                      {/* {shipment.remainingItems > 0 ? shipment.remainingItems.toLocaleString() : '-'} */}
+                      {shipment.assignWeight > 0 ? `${shipment.assignWeight.toLocaleString()} kg` : '-'}
+                    {' '} 
+                      {shipment.assignBoxes > 0 ? `${shipment.assignBoxes.toLocaleString()} ${shipment.type}` : '-'}
+                  
+                  
+                    </TableCell>
+
+                    <TableCell>
+                     <StatusChip status={shipment.containerStatus} size='small' />
+
+                    </TableCell>
+
+
+                    {/* <TableCell align="right">
+                      <Stack direction="row" spacing={1} justifyContent="flex-end">
+                        <Tooltip title="View order">
+                          <IconButton
+                            size="small"
+                            onClick={() => handleView?.(shipment.orderId)}
+                          >
+                            <VisibilityIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Edit order">
+                          <IconButton
+                            size="small"
+                            onClick={() => handleEdit?.(shipment.orderId)}
+                          >
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </Stack>
+                    </TableCell> */}
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </AccordionDetails>
+   {/* <TablePagination
                     rowsPerPageOptions={[10, 25, 50, 100]}
                     component="div"
                     count={orderTotal || 0}
@@ -3798,8 +3962,8 @@ const generateContainersAndOrdersPDFWithCanvas = async (data, allReceivers, sele
                         color: '#0d6c6a',
                       }
                     }}
-                  />
-                 <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, mb: 2, }}>
+                  /> */}
+                 <Box sx={{ display: 'flex', justifyContent: 'space-around', gap: 2, mb: 2, }}>
                   <Button
                     variant="outlined"
                     onClick={resetForm}
@@ -3816,8 +3980,7 @@ const generateContainersAndOrdersPDFWithCanvas = async (data, allReceivers, sele
                     {saving ? 'Saving...' : (mode === 'edit' ? 'Update Consignment' : 'Add Consignment')}
                   </Button>
                 </Box>
-              </AccordionDetails>
-            </Accordion>
+</Accordion>
           </CardContent>
               </form>
 
