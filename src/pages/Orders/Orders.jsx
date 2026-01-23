@@ -416,124 +416,126 @@ const OrdersList = () => {
     };
     const isSelected = (id) => selectedOrders.indexOf(id) !== -1;
     const handleAssign = async (assignments) => {
-        console.log('handleAssign called with assignments:', assignments);
+  console.log('handleAssign called with assignments:', assignments);
 
-        if (!assignments || Object.keys(assignments).length === 0) {
-            setSnackbar({
-                open: true,
-                message: 'No valid assignments provided.',
-                severity: 'warning',
-            });
-            return;
+  if (!assignments || Object.keys(assignments).length === 0) {
+    setSnackbar({
+      open: true,
+      message: 'No valid assignments provided.',
+      severity: 'warning',
+    });
+    return;
+  }
+
+  // Validation — only require qty > 0, weight > 0, containers
+  let hasValid = false;
+  Object.values(assignments).forEach(orderAssign => {
+    Object.values(orderAssign).forEach(recAssign => {
+      Object.values(recAssign).forEach(detail => {
+        const qty = parseInt(detail.qty, 10);
+        const assignedWeight = parseFloat(detail.totalAssignedWeight ?? detail.weight ?? 0);
+
+        if (
+          qty > 0 &&
+          assignedWeight > 0 &&
+          Array.isArray(detail.containers) &&
+          detail.containers.length > 0 &&
+          detail.orderItemId
+        ) {
+          hasValid = true;
+        }
+      });
+    });
+  });
+
+  if (!hasValid) {
+    setSnackbar({
+      open: true,
+      message: 'Please assign qty > 0, weight > 0, containers, and orderItemId to at least one detail.',
+      severity: 'warning',
+    });
+    return;
+  }
+
+  // Clean & normalize — trust user input for weight
+  const cleanAssignments = {};
+  Object.entries(assignments).forEach(([orderIdStr, orderAssign]) => {
+    const cleanOrder = {};
+    Object.entries(orderAssign).forEach(([recIdStr, recAssign]) => {
+      const cleanRec = {};
+      Object.entries(recAssign).forEach(([idxStr, detail]) => {
+        if (!detail.orderItemId) {
+          console.warn(`Skipping detail ${idxStr}: missing orderItemId`);
+          return;
         }
 
-        // Validation — only require qty > 0, weight > 0, containers
-        let hasValid = false;
-        Object.values(assignments).forEach(orderAssign => {
-            Object.values(orderAssign).forEach(recAssign => {
-                Object.values(recAssign).forEach(detail => {
-                    const qty = parseInt(detail.qty, 10);
-                    const assignedWeight = parseFloat(detail.totalAssignedWeight ?? detail.weight ?? 0);
+        const containers = (detail.containers || [])
+          .map(cid => parseInt(cid, 10))
+          .filter(cid => !isNaN(cid));
 
-                    if (
-                        qty > 0 &&
-                        assignedWeight > 0 &&
-                        Array.isArray(detail.containers) &&
-                        detail.containers.length > 0 &&
-                        detail.orderItemId
-                    ) {
-                        hasValid = true;
-                    }
-                });
-            });
-        });
+        const qty = parseInt(detail.qty, 10);
+        const weightKg = parseFloat(detail.totalAssignedWeight ?? detail.weight ?? 0);
 
-        if (!hasValid) {
-            setSnackbar({
-                open: true,
-                message: 'Please assign qty > 0, weight > 0, containers, and orderItemId to at least one detail.',
-                severity: 'warning',
-            });
-            return;
+        if (qty > 0 && weightKg > 0 && containers.length > 0) {
+          cleanRec[idxStr] = {
+            orderItemId: parseInt(detail.orderItemId),
+            qty,
+            totalAssignedWeight: weightKg,   // trust user input
+            containers,
+          };
         }
+      });
 
-        // Clean & normalize — use exactly what user entered for weight
-        const cleanAssignments = {};
-        Object.entries(assignments).forEach(([orderIdStr, orderAssign]) => {
-            const cleanOrder = {};
-            Object.entries(orderAssign).forEach(([recIdStr, recAssign]) => {
-                const cleanRec = {};
-                Object.entries(recAssign).forEach(([idxStr, detail]) => {
-                    if (!detail.orderItemId) {
-                        console.warn(`Skipping detail ${idxStr}: missing orderItemId`);
-                        return;
-                    }
+      if (Object.keys(cleanRec).length > 0) {
+        cleanOrder[recIdStr] = cleanRec;
+      }
+    });
 
-                    const containers = (detail.containers || [])
-                        .map(cid => parseInt(cid, 10))
-                        .filter(cid => !isNaN(cid));
+    if (Object.keys(cleanOrder).length > 0) {
+      cleanAssignments[orderIdStr] = cleanOrder;
+    }
+  });
 
-                    const qty = parseInt(detail.qty, 10);
-                    const weightKg = parseFloat(detail.totalAssignedWeight ?? detail.weight ?? 0);
+  if (Object.keys(cleanAssignments).length === 0) {
+    setSnackbar({
+      open: true,
+      message: 'No valid assignments after cleaning.',
+      severity: 'warning',
+    });
+    return;
+  }
 
-                    // No auto-calculation — trust user input
-                    if (qty > 0 && weightKg > 0 && containers.length > 0) {
-                        cleanRec[idxStr] = {
-                            orderItemId: parseInt(detail.orderItemId),
-                            qty,
-                            totalAssignedWeight: weightKg,   // ← exactly what user entered
-                            containers,
-                        };
-                    }
-                });
+  console.log('Sending payload (user-provided weights):', JSON.stringify(cleanAssignments, null, 2));
 
-                if (Object.keys(cleanRec).length > 0) {
-                    cleanOrder[recIdStr] = cleanRec;
-                }
-            });
+  try {
+    // FIXED: Add { assignments: ... } wrapper
+    const res = await api.post('/api/orders/assign-container', {
+      assignments: cleanAssignments
+    });
 
-            if (Object.keys(cleanOrder).length > 0) {
-                cleanAssignments[orderIdStr] = cleanOrder;
-            }
-        });
+    const { success, message, updatedOrders, tracking } = res.data;
 
-        if (Object.keys(cleanAssignments).length === 0) {
-            setSnackbar({
-                open: true,
-                message: 'No valid assignments after cleaning.',
-                severity: 'warning',
-            });
-            return;
-        }
+    if (success) {
+      setSnackbar({
+        open: true,
+        message: message || `Assigned successfully (${tracking?.length || 0} receivers)`,
+        severity: 'success',
+      });
 
-        console.log('Sending payload (user-provided weights):', JSON.stringify(cleanAssignments, null, 2));
+      fetchContainers();
+      fetchOrders();
 
-        try {
-            const res = await api.post('/api/orders/assign-container', cleanAssignments);
-
-            const { success, message, updatedOrders, tracking } = res.data;
-
-            if (success) {
-                setSnackbar({
-                    open: true,
-                    message: message || `Assigned successfully (${tracking?.length || 0} receivers)`,
-                    severity: 'success',
-                });
-
-                fetchContainers();
-                fetchOrders();
-
-                setSelectedOrders([]);
-                setSelectedContainer('');
-            } else {
-                throw new Error(message || 'Assignment failed');
-            }
-        } catch (err) {
-            console.error('Assignment error:', err);
-            const msg = err.response?.data?.error || err.response?.data?.details || err.message || 'Failed to assign containers';
-            setSnackbar({ open: true, message: msg, severity: 'error' });
-        }
-    };
+      setSelectedOrders([]);
+      setSelectedContainer('');
+    } else {
+      throw new Error(message || 'Assignment failed');
+    }
+  } catch (err) {
+    console.error('Assignment error:', err);
+    const msg = err.response?.data?.error || err.response?.data?.details || err.message || 'Failed to assign containers';
+    setSnackbar({ open: true, message: msg, severity: 'error' });
+  }
+};
     // Updated handleDirectAssign to build batch assignments and use the main endpoint for multiple orders/receivers
     const handleDirectAssign = async () => {
         if (!directSelectedContainers.length || !selectedOrders.length) {
@@ -1661,6 +1663,7 @@ const OrdersList = () => {
                     handleAssign={handleAssign}
                     handleReceiverAction={handleReceiverAction}
                     onUpdateReceiver={handleUpdateReceiver}
+                    fetchOrders={fetchOrders}
 
                 />
                 {/* New Direct Assign Dialog */}
