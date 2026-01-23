@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useMemo,useRef,useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   Box, Card, CardContent, Typography, Button, FormControl, Select, MenuItem, TextField, InputLabel,
-  Table, TableBody, TableCell, TableHead, TableRow, IconButton, Divider, Tooltip as TooltipMui,FormHelperText, Slide, Fade, Accordion, AccordionSummary, AccordionDetails, Alert, Snackbar, Alert as SnackbarAlert
+  Table, TableBody, TableCell, TableHead, TableRow, IconButton, Divider, Tooltip as TooltipMui, FormHelperText, Slide, Fade, Accordion, AccordionSummary, AccordionDetails, Alert, Snackbar, Alert as SnackbarAlert
   , Dialog,
   DialogTitle,
   DialogContent,
@@ -25,7 +25,7 @@ import * as Yup from 'yup';
 // import CircularProgress 
 import { styled } from '@mui/material/styles';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-import ExpandMoreIconMui  from '@mui/icons-material/ExpandMore';
+import ExpandMoreIconMui from '@mui/icons-material/ExpandMore';
 import { useParams } from 'react-router-dom';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIconMui from '@mui/icons-material/Delete';
@@ -51,8 +51,8 @@ import jsPDF from 'jspdf';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import autoTable from 'jspdf-autotable';
 import { applyPlugin } from 'jspdf-autotable';
-import logoPic from "../../../public/logo.png"
-applyPlugin(jsPDF); 
+import logoPic from "../../../public/logo-2.png"
+applyPlugin(jsPDF);
 const CustomTextField = ({ name, value, onChange, onBlur, label, type = 'text', startAdornment, endAdornment, multiline, rows, readOnly, tooltip, required = false, error, helperText, ...props }) => (
   <TooltipMui title={tooltip || ''}>
     <TextField
@@ -134,11 +134,11 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
   const [saving, setSaving] = useState(false);
   const { consignmentId: urlConsignmentId } = useParams();
   const location = useLocation();
-  
-    const [total, setTotal] = useState(0);
-    const [page, setPage] = useState(0);
-    const [rowsPerPage, setRowsPerPage] = useState(10);
-    const [error, setError] = useState(null);
+
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [error, setError] = useState(null);
   const effectiveConsignmentId = urlConsignmentId || location.state?.consignmentId || propConsignmentId;
   const [mode, setMode] = useState(effectiveConsignmentId ? 'edit' : 'add');
   const [snackbar, setSnackbar] = useState({
@@ -223,7 +223,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
   };
 
   const CONSIGNMENT_TO_ETA_STATUS = {
- 'Drafts Cleared': 'Ready for Loading',              // → 12 days
+    'Drafts Cleared': 'Ready for Loading',              // → 12 days
     'Submitted On Vessel': 'Shipment Processing',       // → 7 days
     'Customs Cleared': 'Shipment Processing',           // → 7 days
     'Submitted': 'Shipment Processing',                 // → 7 days
@@ -237,9 +237,9 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     'HOLD': 'Shipment Delivered',
     'HOLD for Delivery': 'Ready for Delivery',
     'Cancelled': 'Shipment Delivered',
-};
+  };
 
-  
+
 
   // === Status Colors (Client-side only) ===
   const getStatusColor = (status) => {
@@ -429,69 +429,69 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     initData();
   }, [mode, effectiveConsignmentId]);
 
-const loadConsignment = async (id) => {
-  try {
-    // setMode('edit');
-   const res = await api.get(`/api/consignments/${id}?autoUpdate=false`);
-    const { data } = res.data || {};
-    console.log('Loaded consignment data:', res);
-    const mappedData = {
-      ...data,
-      shipper: data?.shipper_id?.toString() || '',
-      shipperName: data?.shipper || '',
-      shipperAddress: data?.shipper_address || '',
-      consignee: data?.consignee_id?.toString() || '',
-      consigneeName: data?.consignee || '',
-      consigneeAddress: data?.consignee_address || '',
-      origin: data?.origin_id?.toString() || '',
-      originName: data?.origin || '',
-      destination: data?.destination_id?.toString() || '',
-      destinationName: data?.destination || '',
-      bank: data?.bank_id?.toString() || '',
-      bankName: data?.bank || '',
-      paymentType: data?.payment_type?.toString() || '',
-      status: data?.status || '',
-      vessel: data?.vessel ? data.vessel.toString() : '',
-      shippingLine: data?.shipping_line_name || '',
-      netWeight: data?.net_weight || 0,
-      gross_weight: data?.gross_weight || 0,
-      consignment_value: data?.consignment_value || 0,
-      currency_code: data?.currency_code || '',
-      eform_date: data?.eform_date ? dayjs(data.eform_date): '',
-      eta: data?.eta ? dayjs(data.eta): '',
-      containers: (data?.containers || []).map(c => ({
-        location: c?.location || '',
-        containerNo: c?.containerNo || '',
-        size: c?.size || '',
-        ownership: c?.ownership || '',
-        containerType: c?.containerType || '',
-        status: c?.status || 'Pending',
-        id: c?.id || c?.cid
-      })),
-    };
-    console.log('Mapped data (focus: vessel/payment/status):', {
-      vessel: mappedData.vessel,
-      paymentType: mappedData.paymentType,
-      status: mappedData.status
-    });
-    setValues(mappedData);
-    if (data?.orders && data.orders.length > 0) {
-      setSelectedOrders(data.orders.map(o => o.id));
+  const loadConsignment = async (id) => {
+    try {
+      // setMode('edit');
+      const res = await api.get(`/api/consignments/${id}?autoUpdate=false`);
+      const { data } = res.data || {};
+      console.log('Loaded consignment data:', res);
+      const mappedData = {
+        ...data,
+        shipper: data?.shipper_id?.toString() || '',
+        shipperName: data?.shipper || '',
+        shipperAddress: data?.shipper_address || '',
+        consignee: data?.consignee_id?.toString() || '',
+        consigneeName: data?.consignee || '',
+        consigneeAddress: data?.consignee_address || '',
+        origin: data?.origin_id?.toString() || '',
+        originName: data?.origin || '',
+        destination: data?.destination_id?.toString() || '',
+        destinationName: data?.destination || '',
+        bank: data?.bank_id?.toString() || '',
+        bankName: data?.bank || '',
+        paymentType: data?.payment_type?.toString() || '',
+        status: data?.status || '',
+        vessel: data?.vessel ? data.vessel.toString() : '',
+        shippingLine: data?.shipping_line_name || '',
+        netWeight: data?.net_weight || 0,
+        gross_weight: data?.gross_weight || 0,
+        consignment_value: data?.consignment_value || 0,
+        currency_code: data?.currency_code || '',
+        eform_date: data?.eform_date ? dayjs(data.eform_date) : '',
+        eta: data?.eta ? dayjs(data.eta) : '',
+        containers: (data?.containers || []).map(c => ({
+          location: c?.location || '',
+          containerNo: c?.containerNo || '',
+          size: c?.size || '',
+          ownership: c?.ownership || '',
+          containerType: c?.containerType || '',
+          status: c?.status || 'Pending',
+          id: c?.id || c?.cid
+        })),
+      };
+      console.log('Mapped data (focus: vessel/payment/status):', {
+        vessel: mappedData.vessel,
+        paymentType: mappedData.paymentType,
+        status: mappedData.status
+      });
+      setValues(mappedData);
+      if (data?.orders && data.orders.length > 0) {
+        setSelectedOrders(data.orders.map(o => o.id));
+      }
+    } catch (err) {
+      console.error('Error loading consignment:', err);
     }
-  } catch (err) {
-    console.error('Error loading consignment:', err);
-  }
-};
+  };
   // Lookup after values and options are set
   useEffect(() => {
     if (mode === 'edit' && effectiveConsignmentId && options.third_parties?.length > 0 && options.banks?.length > 0 &&
-        options.originOptions?.length > 0 && options.destinationOptions?.length > 0 &&
-        (values.shipperName || values.consigneeName || values.bankName || values.originName || values.destinationName)) {
+      options.originOptions?.length > 0 && options.destinationOptions?.length > 0 &&
+      (values.shipperName || values.consigneeName || values.bankName || values.originName || values.destinationName)) {
       lookupMissingIds();
     }
     setEta(values.eta)
   }, [mode, effectiveConsignmentId, options.third_parties, options.banks, options.originOptions, options.destinationOptions,
-      values.shipperName, values.consigneeName, values.bankName, values.originName, values.destinationName]);
+    values.shipperName, values.consigneeName, values.bankName, values.originName, values.destinationName]);
   const lookupMissingIds = () => {
     const updates = {};
     let hasUpdate = false;
@@ -618,7 +618,7 @@ const loadConsignment = async (id) => {
     }
     return false;
   }, [values, initialValues]);
-  
+
 
   // Optional: Add a manual confirmation for back button or custom nav (e.g., in resetForm or navigate calls)
   // But useBlocker handles most cases. For example, update resetForm:
@@ -666,7 +666,7 @@ const loadConsignment = async (id) => {
     setSelectedOrders([]);
     setInitialValues(null); // Reset initial snapshot to avoid false dirty state after reset
   };
-  
+
 
   // Added deps if needed
   const isSelected = (id) => (selectedOrders || []).indexOf(id) !== -1;
@@ -682,50 +682,57 @@ const loadConsignment = async (id) => {
     setSelectedOrders(newSelected);
   };
   const handleClick = (id) => handleOrderToggle(id)();
-  
+
   const includedOrders = useMemo(() =>
     (selectedOrders || []).map(id => (orders || []).find(o => o.id === id)).filter(Boolean),
     [selectedOrders, orders]
   );
 
   const allReceivers = useMemo(() => orders.flatMap(order => order.receivers || []), [orders]);
-// In your component
-const calculatedTotals = useMemo(() => {
-  let totalAssignedWeight = 0;
+  useEffect(() => {
+    if (orders && orders.length > 0) {
+      const allOrderIds = orders.map((order) => order.id);
+      setSelectedOrders(allOrderIds);
+    }
+  }, [orders]);
+  // ✨ YAHAN TAK ✨
+  // In your component
+  const calculatedTotals = useMemo(() => {
+    let totalAssignedWeight = 0;
 
-  // Option A: from original nested structure
-  const ordersToSum = includedOrders.length > 0 ? includedOrders : orders;
+    // Option A: from original nested structure
+    const ordersToSum = includedOrders.length > 0 ? includedOrders : orders;
 
-  ordersToSum.forEach(order => {
-    (order.receivers || []).forEach(receiver => {
-      (receiver.shippingdetails || []).forEach(detail => {
-        (detail.containerDetails || []).forEach(cd => {
-          totalAssignedWeight += parseFloat(cd.assign_weight || 0);
+    ordersToSum.forEach(order => {
+      (order.receivers || []).forEach(receiver => {
+        (receiver.shippingdetails || []).forEach(detail => {
+          (detail.containerDetails || []).forEach(cd => {
+            totalAssignedWeight += parseFloat(cd.assign_weight || 0);
+          });
         });
       });
     });
-  });
 
-  // Round to 3 decimals (common for tons), or 2 for kg
-  const assignedWt = parseFloat(totalAssignedWeight.toFixed(3));
+    // Round to 3 decimals (common for tons), or 2 for kg
+    const assignedWt = parseFloat(totalAssignedWeight.toFixed(3));
 
-  return {
-    totalAssignedWeight: assignedWt,
-    netWeight: assignedWt,
-    grossWeight: parseFloat((assignedWt * 1.15).toFixed(3)), // 15% packaging/pallet
-  };
-}, [includedOrders, orders]);
+    return {
+      totalAssignedWeight: assignedWt,
+      netWeight: assignedWt,
+      grossWeight: parseFloat((assignedWt * 1.15).toFixed(3)), // 15% packaging/pallet
+    };
+  }, [includedOrders, orders]);
 
-// Sync to form values
-useEffect(() => {
-  setValues(prev => ({
-    ...prev,
-    netWeight: calculatedTotals.netWeight,
-    gross_weight: calculatedTotals.grossWeight,
-    // optional: also store the raw assigned weight if needed
-    totalAssignedWeight: calculatedTotals.totalAssignedWeight,
-  }));
-}, [calculatedTotals]);
+  // Sync to form values
+  useEffect(() => {
+    setValues(prev => ({
+      ...prev,
+      netWeight: calculatedTotals.netWeight,
+      gross_weight: calculatedTotals.grossWeight,
+      // optional: also store the raw assigned weight if needed
+      totalAssignedWeight: calculatedTotals.totalAssignedWeight,
+    }));
+  }, [calculatedTotals]);
 
   useEffect(() => {
     setValues(prev => ({ ...prev, orders: (selectedOrders || []).map(id => ({ id })) }));
@@ -751,32 +758,32 @@ useEffect(() => {
   };
   const numSelected = (orders || []).filter((o) => isSelected(o.id)).length;
   // const rowCount = (orders || []).length;
- const getStatusColors = (status) => {
-  console.log('stautssssss',status)
-        // Extend your existing getStatusColors function to handle new statuses
-        const colorMap = {
-            'Ready for Loading': { bg: '#f3e5f5', text: '#7b1fa2' },
-            'Loaded Into Container': { bg: '#e0f2f1', text: '#00695c' },
-            'Shipment Processing': { bg: '#fff3e0', text: '#ef6c00' },
-            'In Transit': { bg: '#e1f5fe', text: '#0277bd' },
-            'Under Processing': { bg: '#fff3e0', text: '#f57c00' },
-            'Arrived at Sort Facility': { bg: '#f1f8e9', text: '#689f38' },
-            'Ready for Delivery': { bg: '#fce4ec', text: '#c2185b' },
-            'Shipment Delivered': { bg: '#e8f5e8', text: '#2e7d32' },
-            'Loaded': { bg: '#e8f5e8', text: '#2e7d32' },
-            // 'Shipment Processing': { bg: '#fff3e0', text: '#ef6c00' },
-            'Shipment In Transit': { bg: '#e1f5fe', text: '#0277bd' },
-            'Assigned to Job': { bg: '#fff3e0', text: '#f57c00' },
-            // 'Arrived at Sort Facility': { bg: '#f1f8e9', text: '#689f38' },
-            // 'Ready for Delivery': { bg: '#fce4ec', text: '#c2185b' },
-            // 'Shipment Delivered': { bg: '#e8f5e8', text: '#2e7d32' },
-            // Fallback for unknown
-            default: { bg: '#f5f5f5', text: '#666' }
-        };
-        return colorMap[status] || colorMap.default;
+  const getStatusColors = (status) => {
+    console.log('stautssssss', status)
+    // Extend your existing getStatusColors function to handle new statuses
+    const colorMap = {
+      'Ready for Loading': { bg: '#f3e5f5', text: '#7b1fa2' },
+      'Loaded Into Container': { bg: '#e0f2f1', text: '#00695c' },
+      'Shipment Processing': { bg: '#fff3e0', text: '#ef6c00' },
+      'In Transit': { bg: '#e1f5fe', text: '#0277bd' },
+      'Under Processing': { bg: '#fff3e0', text: '#f57c00' },
+      'Arrived at Sort Facility': { bg: '#f1f8e9', text: '#689f38' },
+      'Ready for Delivery': { bg: '#fce4ec', text: '#c2185b' },
+      'Shipment Delivered': { bg: '#e8f5e8', text: '#2e7d32' },
+      'Loaded': { bg: '#e8f5e8', text: '#2e7d32' },
+      // 'Shipment Processing': { bg: '#fff3e0', text: '#ef6c00' },
+      'Shipment In Transit': { bg: '#e1f5fe', text: '#0277bd' },
+      'Assigned to Job': { bg: '#fff3e0', text: '#f57c00' },
+      // 'Arrived at Sort Facility': { bg: '#f1f8e9', text: '#689f38' },
+      // 'Ready for Delivery': { bg: '#fce4ec', text: '#c2185b' },
+      // 'Shipment Delivered': { bg: '#e8f5e8', text: '#2e7d32' },
+      // Fallback for unknown
+      default: { bg: '#f5f5f5', text: '#666' }
     };
+    return colorMap[status] || colorMap.default;
+  };
 
-    // Sync missing options for vessel, paymentType, status
+  // Sync missing options for vessel, paymentType, status
   useEffect(() => {
     const syncMissingOptions = () => {
       let updatedOptions = { ...options };
@@ -798,8 +805,8 @@ useEffect(() => {
       }
     };
     if (mode === 'edit' && effectiveConsignmentId &&
-        (values.vessel || values.paymentType || values.status) &&
-        options.vesselOptions?.length > 0) {
+      (values.vessel || values.paymentType || values.status) &&
+      options.vesselOptions?.length > 0) {
       syncMissingOptions();
     }
   }, [mode, effectiveConsignmentId, values.vessel, values.paymentType, values.status, options.vesselOptions?.length]);
@@ -843,8 +850,8 @@ useEffect(() => {
     const ids = (values.containers || []).map(c => c.id || c.cid).filter(id => id);
     setAddedContainerIds(ids);
   }, [values.containers]);
- // Fetch orders + filtering + flattening logic
-const handleSelectAllClick = (event) => {
+  // Fetch orders + filtering + flattening logic
+  const handleSelectAllClick = (event) => {
     if (event.target.checked) {
       const newSelecteds = (orders || []).map((n) => n.id);
       setSelectedOrders(newSelecteds);
@@ -856,362 +863,366 @@ const handleSelectAllClick = (event) => {
   // ────────────────────────────────────────────────────────────────
   // Main fetch function
   useEffect(() => {
-  // ────────────────────────────────────────────────────────────────
-  // Helper: Check if a shipping detail uses at least one selected container
-  const itemUsesSelectedContainers = (shippingDetail, selectedCidsSet) => {
-    if (!shippingDetail?.containerDetails?.length) return false;
+    // ────────────────────────────────────────────────────────────────
+    // Helper: Check if a shipping detail uses at least one selected container
+    const itemUsesSelectedContainers = (shippingDetail, selectedCidsSet) => {
+      if (!shippingDetail?.containerDetails?.length) return false;
 
-    return shippingDetail.containerDetails.some(detail => {
-      const cid = detail?.container?.cid;
-      return cid && selectedCidsSet.has(Number(cid));
-    });
-  };
-
-  // Helper: Filter containerDetails array to keep only selected containers
-  const filterContainerDetails = (containerDetails, selectedCidsSet) => {
-    if (!Array.isArray(containerDetails)) return [];
-
-    return containerDetails.filter(detail => {
-      const cid = detail?.container?.cid;
-      return cid && selectedCidsSet.has(Number(cid));
-    });
-  };
-
-  // Client-side filter: keep only matching shipping details + filter their containers
-  const filterOrdersByContainers = (orders, selectedContainerIds) => {
-    if (!Array.isArray(orders)) {
-      console.warn('filterOrdersByContainers: orders is not an array', orders);
-      return [];
-    }
-
-    // No containers selected → return original orders
-    if (!selectedContainerIds?.length) {
-      return orders.map(order => ({
-        ...order,
-        receivers: (order.receivers || []).map(receiver => ({
-          ...receiver,
-          order, // optional: attach full order if needed downstream
-        })),
-      }));
-    }
-
-    // Normalize selected container IDs to numbers + use Set for fast lookup
-    const selectedCidsSet = new Set(
-      selectedContainerIds
-        .map(id => parseInt(id, 10))
-        .filter(id => !isNaN(id))
-    );
-
-    if (selectedCidsSet.size === 0) {
-      console.warn('No valid numeric container IDs for filtering');
-      return [];
-    }
-
-    console.log('Filtering orders for container CIDs:', [...selectedCidsSet]);
-
-    return orders.map(order => {
-      const filteredReceivers = (order.receivers || [])
-        .map(receiver => {
-          const filteredShippingDetails = (receiver.shippingdetails || [])
-            .filter(detail => itemUsesSelectedContainers(detail, selectedCidsSet))
-            .map(detail => ({
-              ...detail,
-              // Also filter the containerDetails inside each kept shipping detail
-              containerDetails: filterContainerDetails(detail.containerDetails, selectedCidsSet),
-            }));
-
-          // Skip this receiver if no matching shipping details remain
-          if (filteredShippingDetails.length === 0) return null;
-
-          return {
-            ...receiver,
-            shippingdetails: filteredShippingDetails,
-            order, // optional attachment
-          };
-        })
-        .filter(Boolean); // remove null receivers
-
-      // Skip this order if no receivers remain after filtering
-      if (filteredReceivers.length === 0) return null;
-
-      return {
-        ...order,
-        receivers: filteredReceivers,
-      };
-    }).filter(Boolean); // remove null orders
-  };
-  
-
-  // ────────────────────────────────────────────────────────────────
-  // Main fetch function
-  const fetchOrders = async () => {
-    // Early exit if no containers selected
-    if (!addedContainerIds?.length) {
-      setOrders([]);
-      setOrderTotal(0);
-      setOrdersLoading(false);
-      return;
-    }
-
-    setOrdersLoading(true);
-
-    try {
-      const params = {
-        page: orderPage + 1,
-        limit: orderRowsPerPage,
-        container_id: addedContainerIds.join(','), // backend pre-filters orders
-        ...(filters?.booking_ref && { booking_ref: filters.booking_ref }),
-        ...(filters?.status && { status: filters.status }),
-        includeContainer: true,
-        includeReceivers: true,
-        includeShippingDetails: true,
-      };
-
-      console.log('Fetching orders with params:', params);
-
-      const response = await api.get('/api/orders/consignmentsOrders', { params });
-
-      console.log('Fetched orders response:', response.data);
-
-      const fetchedOrders = response.data?.data || [];
-      const fetchedTotal = response.data?.pagination?.total || 0;
-
-      // Apply client-side filtering (keeps only matching details + containers)
-      const filteredOrders = filterOrdersByContainers(fetchedOrders, addedContainerIds);
-
-      console.log('After client-side container filtering:', filteredOrders);
-
-      setOrders(filteredOrders);
-      setOrderTotal(fetchedTotal);
-
-      // Auto-select all visible rows
-      if (filteredOrders.length > 0) {
-        handleSelectAllClick({ target: { checked: true } });
-      }
-    } catch (err) {
-      console.error("Error fetching orders:", err);
-      setSnackbar({
-        open: true,
-        message: 'Failed to fetch orders. Please try again.',
-        severity: 'error',
+      return shippingDetail.containerDetails.some(detail => {
+        const cid = detail?.container?.cid;
+        return cid && selectedCidsSet.has(Number(cid));
       });
-      setOrders([]);
-      setOrderTotal(0);
-    } finally {
-      setOrdersLoading(false);
-    }
+    };
+
+    // Helper: Filter containerDetails array to keep only selected containers
+    const filterContainerDetails = (containerDetails, selectedCidsSet) => {
+      if (!Array.isArray(containerDetails)) return [];
+
+      return containerDetails.filter(detail => {
+        const cid = detail?.container?.cid;
+        return cid && selectedCidsSet.has(Number(cid));
+      });
+    };
+
+    // Client-side filter: keep only matching shipping details + filter their containers
+    const filterOrdersByContainers = (orders, selectedContainerIds) => {
+      if (!Array.isArray(orders)) {
+        console.warn('filterOrdersByContainers: orders is not an array', orders);
+        return [];
+      }
+
+      // No containers selected → return original orders
+      if (!selectedContainerIds?.length) {
+        return orders.map(order => ({
+          ...order,
+          receivers: (order.receivers || []).map(receiver => ({
+            ...receiver,
+            order, // optional: attach full order if needed downstream
+          })),
+        }));
+      }
+
+      // Normalize selected container IDs to numbers + use Set for fast lookup
+      const selectedCidsSet = new Set(
+        selectedContainerIds
+          .map(id => parseInt(id, 10))
+          .filter(id => !isNaN(id))
+      );
+
+      if (selectedCidsSet.size === 0) {
+        console.warn('No valid numeric container IDs for filtering');
+        return [];
+      }
+
+      console.log('Filtering orders for container CIDs:', [...selectedCidsSet]);
+
+      return orders.map(order => {
+        const filteredReceivers = (order.receivers || [])
+          .map(receiver => {
+            const filteredShippingDetails = (receiver.shippingdetails || [])
+              .filter(detail => itemUsesSelectedContainers(detail, selectedCidsSet))
+              .map(detail => ({
+                ...detail,
+                // Also filter the containerDetails inside each kept shipping detail
+                containerDetails: filterContainerDetails(detail.containerDetails, selectedCidsSet),
+              }));
+
+            // Skip this receiver if no matching shipping details remain
+            if (filteredShippingDetails.length === 0) return null;
+
+            return {
+              ...receiver,
+              shippingdetails: filteredShippingDetails,
+              order, // optional attachment
+            };
+          })
+          .filter(Boolean); // remove null receivers
+
+        // Skip this order if no receivers remain after filtering
+        if (filteredReceivers.length === 0) return null;
+
+        return {
+          ...order,
+          receivers: filteredReceivers,
+        };
+      }).filter(Boolean); // remove null orders
+    };
+
+
+    // ────────────────────────────────────────────────────────────────
+    // Main fetch function
+    const fetchOrders = async () => {
+      // Early exit if no containers selected
+      if (!addedContainerIds?.length) {
+        setOrders([]);
+        setOrderTotal(0);
+        setOrdersLoading(false);
+        return;
+      }
+
+      setOrdersLoading(true);
+
+      try {
+        const params = {
+          page: orderPage + 1,
+          limit: orderRowsPerPage,
+          container_id: addedContainerIds.join(','), // backend pre-filters orders
+          ...(filters?.booking_ref && { booking_ref: filters.booking_ref }),
+          ...(filters?.status && { status: filters.status }),
+          includeContainer: true,
+          includeReceivers: true,
+          includeShippingDetails: true,
+        };
+
+        console.log('Fetching orders with params:', params);
+
+        const response = await api.get('/api/orders/consignmentsOrders', { params });
+
+        console.log('Fetched orders response:', response.data);
+
+        const fetchedOrders = response.data?.data || [];
+        const fetchedTotal = response.data?.pagination?.total || 0;
+
+        // Apply client-side filtering (keeps only matching details + containers)
+        const filteredOrders = filterOrdersByContainers(fetchedOrders, addedContainerIds);
+
+        console.log('After client-side container filtering:', filteredOrders);
+
+        setOrders(filteredOrders);
+        setOrderTotal(fetchedTotal);
+
+        // Auto-select all visible rows
+        if (filteredOrders.length > 0) {
+          handleSelectAllClick({ target: { checked: true } });
+        }
+      } catch (err) {
+        console.error("Error fetching orders:", err);
+        setSnackbar({
+          open: true,
+          message: 'Failed to fetch orders. Please try again.',
+          severity: 'error',
+        });
+        setOrders([]);
+        setOrderTotal(0);
+      } finally {
+        setOrdersLoading(false);
+      }
+    };
+
+    fetchOrders();
+  }, [
+    addedContainerIds,
+    filters?.booking_ref,
+    filters?.status,
+    orderPage,
+    orderRowsPerPage,
+    api,
+    // setSnackbar,
+    // setOrders,
+    // setOrderTotal,
+    // setOrdersLoading,
+  ]);
+
+  // ────────────────────────────────────────────────────────────────
+  // Flatten shipments: one row = one container assignment
+  // Recalculate whenever orders change
+  // ────────────────────────────────────────────────────────────────
+  const flatShipments = React.useMemo(() => {
+    return orders.flatMap((order) =>
+      (order.receivers || []).flatMap((receiver) =>
+        (receiver.shippingdetails || []).flatMap((detail) =>
+          (detail.containerDetails || []).map((containerDetail) => (
+              console.log('details',detail),
+            {
+          
+            // Order level
+            orderId: order.id,
+            bookingRef: order.booking_ref || '-',
+            formNo: order.rgl_booking_number || '-',
+            pol: getPlaceName?.(order.place_of_loading) || '-',
+            pod: getPlaceName?.(order.place_of_delivery) || '-',
+            sender: order.sender_name || '-',
+            // Receiver level
+            receiverName: receiver.receivername || '-',
+            // Shipping detail / product level
+            category: detail.category || 'Unknown',
+            subcategory: detail.subcategory || '',
+            type: detail.type || 'Package',
+            totalItems: Number(detail.totalNumber || detail.total_number || 0),
+            weight: Number(detail.weight || 0),
+            itemRef: detail.itemRef || '',
+            remainingItems: Number(detail.remainingItems || 0),
+            receiverStatus:receiver.status,
+            // Single container
+            containerNumber: containerDetail.container?.container_number?.trim() || '-',
+            containerCid: containerDetail.container?.cid,
+            containerStatus: containerDetail.status || '-',
+            assignWeight: containerDetail.assign_weight || '-',
+            assignBoxes: containerDetail.assign_total_box || '-',
+          }))
+        )
+      )
+    );
+  }, [orders]);
+
+  const PrettyList = ({ receivers, title }) => {
+    console.log('receiversss', receivers)
+    return (
+      <Card
+        variant="outlined"
+        sx={{
+          p: 2,
+          borderRadius: 2,
+          border: '1px solid',
+          borderColor: 'divider',
+          backgroundColor: '#fafafa',
+          width: 600,
+          boxShadow: 'none',
+          // '&:hover': { boxShadow: '0 2px 8px rgba(0,0,0,0.08)' },
+        }}
+      >
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+          {/* Title */}
+          <Box
+            sx={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              pb: 1,
+              borderBottom: '1px solid',
+              borderColor: 'divider',
+            }}
+          >
+            <Typography variant="subtitle2" sx={{ fontWeight: 'bold', color: '#f58220' }}>
+              {title}
+            </Typography>
+            <Chip
+              label={`(${receivers?.length || 0})`}
+              size="small"
+              color="primary"
+              variant="outlined"
+              sx={{ fontSize: '0.7rem', height: 20, '& .MuiChip-label': { px: 0.5 } }}
+            />
+          </Box>
+
+          {/* Receivers List */}
+          <Stack spacing={1} sx={{ maxHeight: 'auto', overflow: 'auto' }}>
+            {receivers?.length > 0 ? (
+              receivers.map((receiver, rIdx) => (
+                <Card
+                  key={rIdx}
+                  variant="outlined"
+                  sx={{
+                    p: 1.5,
+                    borderRadius: 1.5,
+                    border: '1px solid',
+                    borderColor: 'grey.200',
+                    backgroundColor: '#fff',
+                    boxShadow: 'none',
+                    //   transition: 'all 0.2s ease',
+                    //   '&:hover': { boxShadow: '0 1px 4px rgba(0,0,0,0.1)', borderColor: 'primary.light' },
+                  }}
+                >
+                  {/* Receiver Info */}
+                  <Stack direction="row" alignItems="center" spacing={1.5}>
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography variant="body2" fontWeight="medium" noWrap>
+                        {receiver.receiver_name || 'Unnamed Receiver'}
+                      </Typography>
+
+                    </Box>
+                    <StatusChip status={receiver.status} size="small" />
+                  </Stack>
+
+                  <Divider sx={{ mt: 1 }} />
+
+                  {/* Shipping Details */}
+                  {receiver.shippingdetails?.length > 0 ? (
+                    receiver.shippingdetails.map((item, sIdx) => (
+                      <Box key={sIdx} sx={{ mt: 1, pl: 1 }}>
+                        <Box sx={{ flexDirection: "column", }}>
+
+
+                          <Typography variant="body2" fontWeight="bold">
+                            {item.category || 'Unknown Category'} - {item.subcategory || 'Unknown Subcategory'} ({item.type || 'Unknown Type'})  Total: {item.totalNumber ?? 0}, Weight: {item.weight ?? 0}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            Qty Total Assigned: {Math.max(0, parseInt(item.totalNumber || 0) - parseInt(item.remainingItems || 0)).toLocaleString()} /
+                            Remaining Items: {parseInt(item.remainingItems || 0).toLocaleString()}
+                          </Typography>
+                        </Box>
+                        {/* Container Details */}
+                        {item.containerDetails?.length > 0 ? (
+                          <Stack direction="row" justifyContent={"space-between"} alignItems={"center"} display={'flex'} spacing={1} sx={{ justifyContent: 'space-between', flexWrap: 'wrap', }}>
+                            {item.containerDetails.map((c, cIdx) => (
+                              <div style={{ marginTop: 5, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', alignSelf: 'center', flex: 1, display: 'flex' }}>
+                                <Chip
+                                  key={cIdx}
+                                  label={`${c.container.container_number} - ${c.assign_total_box} boxes (${c.assign_weight} kg)`}
+                                  size="large"
+                                  color="secondary"
+                                  variant="outlined"
+                                  sx={{ marginBottom: 2 }}
+                                  spacing={1}
+
+                                />
+                                <StatusChip status={c.status} size="small" />
+
+
+
+                                {/* <Divider /> */}
+                              </div>
+                            ))}
+                          </Stack>
+                        ) : (
+                          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
+                            No containers assigned
+                          </Typography>
+                        )}
+                      </Box>
+                    ))
+                  ) : (
+                    <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
+                      No shipping details
+                    </Typography>
+                  )}
+
+                  {/* Drop Off Details */}
+                  {receiver.drop_off_details?.length > 0 && (
+                    <Box sx={{ mt: 1, pl: 1 }}>
+                      <Typography variant="body2" fontWeight="medium">
+                        Drop Off Details:
+                      </Typography>
+                      {receiver.drop_off_details.map((dod, dIdx) => (
+                        <Typography variant="caption" color="text.secondary" key={dIdx} display="block">
+                          {dod.drop_method} - {dod.dropoff_name} ({dod.drop_off_mobile}) on {dod.drop_date}
+                        </Typography>
+                      ))}
+                    </Box>
+                  )}
+                </Card>
+              ))
+            ) : (
+              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 3, color: 'text.secondary' }}>
+                <EmojiEventsIcon sx={{ fontSize: 40, color: 'grey.300', mb: 1 }} />
+                <Typography variant="body2" sx={{ fontStyle: 'italic' }}>
+                  No receivers available
+                </Typography>
+              </Box>
+            )}
+          </Stack>
+        </Box>
+      </Card>
+    );
   };
 
-  fetchOrders();
-}, [
-  addedContainerIds,
-  filters?.booking_ref,
-  filters?.status,
-  orderPage,
-  orderRowsPerPage,
-  api,
-  // setSnackbar,
-  // setOrders,
-  // setOrderTotal,
-  // setOrdersLoading,
-]);
-
-// ────────────────────────────────────────────────────────────────
-// Flatten shipments: one row = one container assignment
-// Recalculate whenever orders change
-// ────────────────────────────────────────────────────────────────
-const flatShipments = React.useMemo(() => {
-  return orders.flatMap((order) =>
-    (order.receivers || []).flatMap((receiver) =>
-      (receiver.shippingdetails || []).flatMap((detail) =>
-        (detail.containerDetails || []).map((containerDetail) => ({
-          // Order level
-          orderId: order.id,
-          bookingRef: order.booking_ref || '-',
-          formNo: order.rgl_booking_number || '-',
-          pol: getPlaceName?.(order.place_of_loading) || '-',
-          pod: getPlaceName?.(order.place_of_delivery) || '-',
-          sender: order.sender_name || '-',
-          // Receiver level
-          receiverName: receiver.receiver_name || '-',
-          // Shipping detail / product level
-          category: detail.category || 'Unknown',
-          subcategory: detail.subcategory || '',
-          type: detail.type || 'Package',
-          totalItems: Number(detail.totalNumber || detail.total_number || 0),
-          weight: Number(detail.weight || 0),
-          itemRef: detail.itemRef || '',
-          remainingItems: Number(detail.remainingItems || 0),
-          // Single container
-          containerNumber: containerDetail.container?.container_number?.trim() || '-',
-          containerCid: containerDetail.container?.cid,
-          containerStatus: containerDetail.status || '-',
-          assignWeight: containerDetail.assign_weight || '-',
-          assignBoxes: containerDetail.assign_total_box || '-',
-        }))
-      )
-    )
-  );
-}, [orders]);
-
-    const PrettyList = ({ receivers, title }) => {
-        console.log('receiversss', receivers)
-        return (
-            <Card
-                variant="outlined"
-                sx={{
-                    p: 2,
-                    borderRadius: 2,
-                    border: '1px solid',
-                    borderColor: 'divider',
-                    backgroundColor: '#fafafa',
-                    width: 600,
-                    boxShadow: 'none',
-                    // '&:hover': { boxShadow: '0 2px 8px rgba(0,0,0,0.08)' },
-                }}
-            >
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-                    {/* Title */}
-                    <Box
-                        sx={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            pb: 1,
-                            borderBottom: '1px solid',
-                            borderColor: 'divider',
-                        }}
-                    >
-                        <Typography variant="subtitle2" sx={{ fontWeight: 'bold', color: '#f58220' }}>
-                            {title}
-                        </Typography>
-                        <Chip
-                            label={`(${receivers?.length || 0})`}
-                            size="small"
-                            color="primary"
-                            variant="outlined"
-                            sx={{ fontSize: '0.7rem', height: 20, '& .MuiChip-label': { px: 0.5 } }}
-                        />
-                    </Box>
-
-                    {/* Receivers List */}
-                    <Stack spacing={1} sx={{ maxHeight: 'auto', overflow: 'auto' }}>
-                        {receivers?.length > 0 ? (
-                            receivers.map((receiver, rIdx) => (
-                                <Card
-                                    key={rIdx}
-                                    variant="outlined"
-                                    sx={{
-                                        p: 1.5,
-                                        borderRadius: 1.5,
-                                        border: '1px solid',
-                                        borderColor: 'grey.200',
-                                        backgroundColor: '#fff',
-                                        boxShadow: 'none',
-                                        //   transition: 'all 0.2s ease',
-                                        //   '&:hover': { boxShadow: '0 1px 4px rgba(0,0,0,0.1)', borderColor: 'primary.light' },
-                                    }}
-                                >
-                                    {/* Receiver Info */}
-                                    <Stack direction="row" alignItems="center" spacing={1.5}>
-                                        <Box sx={{ flex: 1, minWidth: 0 }}>
-                                            <Typography variant="body2" fontWeight="medium" noWrap>
-                                                {receiver.receiver_name || 'Unnamed Receiver'}
-                                            </Typography>
-
-                                        </Box>
-                                        <StatusChip status={receiver.status} size="small" />
-                                    </Stack>
-
-                                    <Divider sx={{ mt: 1 }} />
-
-                                    {/* Shipping Details */}
-                                    {receiver.shippingdetails?.length > 0 ? (
-                                        receiver.shippingdetails.map((item, sIdx) => (
-                                            <Box key={sIdx} sx={{ mt: 1, pl: 1 }}>
-                                                <Box sx={{ flexDirection: "column", }}>
+  // Combine both receivers and container details into one tooltip content
+  const CombinedTooltip = ({ order }) => {
+    // You can merge both datasets or just pass receivers since shippingdetails contains containers
+    return <PrettyList receivers={order.receivers} title="Receivers & Containers" />;
+  };
 
 
-                                                    <Typography variant="body2" fontWeight="bold">
-                                                        {item.category || 'Unknown Category'} - {item.subcategory || 'Unknown Subcategory'} ({item.type || 'Unknown Type'})  Total: {item.totalNumber ?? 0}, Weight: {item.weight ?? 0}
-                                                    </Typography>
-                                                    <Typography variant="caption" color="text.secondary">
-                                                        Qty Total Assigned: {Math.max(0, parseInt(item.totalNumber || 0) - parseInt(item.remainingItems || 0)).toLocaleString()} /
-                                                        Remaining Items: {parseInt(item.remainingItems || 0).toLocaleString()}
-                                                    </Typography>
-                                                </Box>
-                                                {/* Container Details */}
-                                                {item.containerDetails?.length > 0 ? (
-                                                    <Stack direction="row" justifyContent={"space-between"} alignItems={"center"} display={'flex'} spacing={1} sx={{ justifyContent: 'space-between', flexWrap: 'wrap', }}>
-                                                        {item.containerDetails.map((c, cIdx) => (
-                                                            <div style={{ marginTop: 5, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', alignSelf: 'center', flex: 1, display: 'flex' }}>
-                                                                <Chip
-                                                                    key={cIdx}
-                                                                    label={`${c.container.container_number} - ${c.assign_total_box} boxes (${c.assign_weight} kg)`}
-                                                                    size="large"
-                                                                    color="secondary"
-                                                                    variant="outlined"
-                                                                    sx={{ marginBottom: 2 }}
-                                                                    spacing={1}
-
-                                                                />
-                                                                <StatusChip status={c.status} size="small" />
-
-
-
-                                                                {/* <Divider /> */}
-                                                            </div>
-                                                        ))}
-                                                    </Stack>
-                                                ) : (
-                                                    <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
-                                                        No containers assigned
-                                                    </Typography>
-                                                )}
-                                            </Box>
-                                        ))
-                                    ) : (
-                                        <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
-                                            No shipping details
-                                        </Typography>
-                                    )}
-
-                                    {/* Drop Off Details */}
-                                    {receiver.drop_off_details?.length > 0 && (
-                                        <Box sx={{ mt: 1, pl: 1 }}>
-                                            <Typography variant="body2" fontWeight="medium">
-                                                Drop Off Details:
-                                            </Typography>
-                                            {receiver.drop_off_details.map((dod, dIdx) => (
-                                                <Typography variant="caption" color="text.secondary" key={dIdx} display="block">
-                                                    {dod.drop_method} - {dod.dropoff_name} ({dod.drop_off_mobile}) on {dod.drop_date}
-                                                </Typography>
-                                            ))}
-                                        </Box>
-                                    )}
-                                </Card>
-                            ))
-                        ) : (
-                            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 3, color: 'text.secondary' }}>
-                                <EmojiEventsIcon sx={{ fontSize: 40, color: 'grey.300', mb: 1 }} />
-                                <Typography variant="body2" sx={{ fontStyle: 'italic' }}>
-                                    No receivers available
-                                </Typography>
-                            </Box>
-                        )}
-                    </Stack>
-                </Box>
-            </Card>
-        );
-    };
-
-    // Combine both receivers and container details into one tooltip content
-    const CombinedTooltip = ({ order }) => {
-        // You can merge both datasets or just pass receivers since shippingdetails contains containers
-        return <PrettyList receivers={order.receivers} title="Receivers & Containers" />;
-    };
-
-    
 
   const handleContainerToggle = (containerId) => () => {
     const currentIndex = (selectedContainers || []).indexOf(containerId);
@@ -1257,51 +1268,51 @@ const flatShipments = React.useMemo(() => {
       severity: 'success',
     });
   };
-const validationSchema = Yup.object({
-  consignment_number: Yup.string().required('Consignment # is required'),
-  shipper: Yup.string().required('Shipper is required'),
-  consignee: Yup.string().required('Consignee is required'),
-  origin: Yup.string().required('Origin is required'),
-  destination: Yup.string().required('Destination is required'),
-  eform: Yup.string()
-    .matches(/^[A-Z]{3}-\d{6}$/, 'Invalid format (e.g., ABC-123456)')
-    .required('Eform # is required'),
-  eform_date: Yup.date().required('Eform Date is required'),
-  bank: Yup.string().required('Bank is required'),
-  paymentType: Yup.string().required('Payment Type is required'),
-  voyage: Yup.string().min(3, 'Voyage must be at least 3 characters').required('Voyage is required'),
-  consignment_value: Yup.number().min(0).required('Consignment Value is required'),
-  vessel: Yup.string().required('Vessel is required'),
-  netWeight: Yup.number().min(0).required('Net Weight is required'),
-  gross_weight: Yup.number().min(0).required('Gross Weight is required'),
+  const validationSchema = Yup.object({
+    consignment_number: Yup.string().required('Consignment # is required'),
+    shipper: Yup.string().required('Shipper is required'),
+    consignee: Yup.string().required('Consignee is required'),
+    origin: Yup.string().required('Origin is required'),
+    destination: Yup.string().required('Destination is required'),
+    eform: Yup.string()
+      .matches(/^[A-Z]{3}-\d{6}$/, 'Invalid format (e.g., ABC-123456)')
+      .required('Eform # is required'),
+    eform_date: Yup.date().required('Eform Date is required'),
+    bank: Yup.string().required('Bank is required'),
+    paymentType: Yup.string().required('Payment Type is required'),
+    voyage: Yup.string().min(3, 'Voyage must be at least 3 characters').required('Voyage is required'),
+    consignment_value: Yup.number().min(0).required('Consignment Value is required'),
+    vessel: Yup.string().required('Vessel is required'),
+    netWeight: Yup.number().min(0).required('Net Weight is required'),
+    gross_weight: Yup.number().min(0).required('Gross Weight is required'),
 
-  // Updated: We now expect containers array from UI
-  containers: Yup.array()
-    .of(
-      Yup.object({
-        containerNo: Yup.string().required('Container No. is required'),
-        // size: Yup.string().oneOf(['20ft', '40ft', 'Other']).required('Size is required'),
-        // // optional fields depending on your backend
-        // ownership: Yup.string().optional(),
-        // status: Yup.string().optional(),
-      })
-    )
-    .min(1, 'At least one container is required'),
+    // Updated: We now expect containers array from UI
+    containers: Yup.array()
+      .of(
+        Yup.object({
+          containerNo: Yup.string().required('Container No. is required'),
+          // size: Yup.string().oneOf(['20ft', '40ft', 'Other']).required('Size is required'),
+          // // optional fields depending on your backend
+          // ownership: Yup.string().optional(),
+          // status: Yup.string().optional(),
+        })
+      )
+      .min(1, 'At least one container is required'),
 
-  // Still keep orders (or order IDs) if backend requires them
-  orders: Yup.array(),
-   
-  // Optional: if backend wants explicit assignment mapping
-  assignments: Yup.array()
-    .of(
-      Yup.object({
-        orderId: Yup.number().required(),
-        shippingDetailId: Yup.number().required(),
-        containerNo: Yup.string().required(),
-      })
-    )
-    .optional(),
-});
+    // Still keep orders (or order IDs) if backend requires them
+    orders: Yup.array(),
+
+    // Optional: if backend wants explicit assignment mapping
+    assignments: Yup.array()
+      .of(
+        Yup.object({
+          orderId: Yup.number().required(),
+          shippingDetailId: Yup.number().required(),
+          containerNo: Yup.string().required(),
+        })
+      )
+      .optional(),
+  });
   const handleChange = (e) => {
     console.log('handleee', e);
     const { name, value } = e.target;
@@ -1403,7 +1414,7 @@ const validationSchema = Yup.object({
   const updateArrayField = (arrayName, index, fieldName, value) => {
 
     const newArray = [...(values[arrayName] || [])];
-    console.log('yyye',newArray)
+    console.log('yyye', newArray)
     newArray[index][fieldName] = value;
     setValues(prev => ({ ...prev, [arrayName]: newArray }));
     if (touched[arrayName]) validateArray(arrayName);
@@ -1441,7 +1452,7 @@ const validationSchema = Yup.object({
       const res = await api.put(`/api/consignments/${effectiveConsignmentId}/next`);
       const { message } = res.data || {};
       console.log('Status advanced:', res);
-       loadConsignment(effectiveConsignmentId);
+      loadConsignment(effectiveConsignmentId);
       setLoading(false)
 
       setSnackbar({
@@ -1463,12 +1474,12 @@ const validationSchema = Yup.object({
 
 
   useEffect(() => {
-    
-      if (orders && orders.length > 0) {
-        const allOrderIds = orders.map((order) => order.id);
-        setSelectedOrders(allOrderIds);
-      }
-    }, []);
+
+    if (orders && orders.length > 0) {
+      const allOrderIds = orders.map((order) => order.id);
+      setSelectedOrders(allOrderIds);
+    }
+  }, []);
 
   const validateForm = async () => {
     try {
@@ -1494,211 +1505,211 @@ const validationSchema = Yup.object({
 
 
 
-const validateAndPrepare = async () => {
-  try {
-    // 1. Run Yup validation on the form values (core fields)
-    await validationSchema.validate(values, { abortEarly: false });
+  const validateAndPrepare = async () => {
+    try {
+      // 1. Run Yup validation on the form values (core fields)
+      await validationSchema.validate(values, { abortEarly: false });
 
-    // 2. Use flatShipments as the real source for containers & orders
-    if (!flatShipments?.length) {
-      setSnackbar({
-        open: true,
-        message: 'No shipments/containers selected. Please select at least one container assignment.',
-        severity: 'error',
-      });
+      // 2. Use flatShipments as the real source for containers & orders
+      if (!flatShipments?.length) {
+        setSnackbar({
+          open: true,
+          message: 'No shipments/containers selected. Please select at least one container assignment.',
+          severity: 'error',
+        });
+        return null;
+      }
+
+      // 3. Extract unique containers
+      const uniqueContainers = Array.from(
+        new Map(
+          flatShipments.map(s => [
+            s.containerNumber,
+            {
+              containerNo: s.containerNumber,
+              // size: s.containerNumber.includes('40') ? '40ft' : '20ft', // improve this logic if you have real size data
+              // cid: s.containerCid || null,
+              // status: s.containerStatus || 'Assigned',
+              // // Add more fields if needed (seal, type, ownership, etc.)
+            },
+          ])
+        ).values()
+      );
+
+      if (uniqueContainers.length === 0) {
+        setSnackbar({
+          open: true,
+          message: 'No valid containers found in selected shipments.',
+          severity: 'error',
+        });
+        return null;
+      }
+
+      // 4. Extract unique order IDs
+      const uniqueOrderIds = [...new Set(flatShipments.map(s => s.orderId))];
+
+      if (uniqueOrderIds.length === 0) {
+        setSnackbar({
+          open: true,
+          message: 'No orders associated with selected shipments.',
+          severity: 'error',
+        });
+        return null;
+      }
+
+      // 5. Optional: Build explicit assignment mapping (very useful for backend)
+      const assignments = flatShipments.map(s => ({
+        orderId: s.orderId,
+        receiverName: s.receivername || null,
+        category: s.category || null,
+        containerNo: s.containerNumber,
+        assignedWeight: parseFloat(s.assignWeight || 0),
+        assignedBoxes: parseInt(s.assignBoxes || 0) || null,
+        remainingItems: parseInt(s.remainingItems || 0) || null,
+        // Add more if needed (e.g. shippingDetailId if you have it)
+      }));
+
+      // 6. Build the final payload
+      const submitData = {
+        // Core consignment fields from form
+        consignment_number: values.consignment_number?.trim() || null,
+        consignment_value: parseFloat(values.consignment_value) || 0,
+        net_weight: parseFloat(values.netWeight) || 0,
+        gross_weight: parseFloat(values.gross_weight) || 0,
+        payment_type: values.paymentType || null,
+        status: values.status || 'Draft',
+        remarks: values.remarks || null,
+
+        shipper_id: parseInt(values.shipper, 10) || null,
+        shipper: values.shipperName?.trim() || '',
+        shipper_address: values.shipperAddress || null,
+
+        consignee_id: parseInt(values.consignee, 10) || null,
+        consignee: values.consigneeName?.trim() || '',
+        consignee_address: values.consigneeAddress || null,
+
+        origin: values.originName || values.origin || null,
+        destination: values.destinationName || values.destination || null,
+
+        eform: values.eform?.trim() || null,
+        eform_date: values.eform_date ? dayjs(values.eform_date).format('YYYY-MM-DD') : null,
+
+        bank_id: parseInt(values.bank, 10) || null,
+        bank: values.bankName?.trim() || '',
+
+        currency_code: values.currency_code || 'GBP',
+        vessel: parseInt(values.vessel, 10) || null,
+        voyage: values.voyage?.trim() || null,
+        shipping_line: values.shippingLine?.trim() || null,
+
+        eta: values.eta ? dayjs(values.eta).format('YYYY-MM-DD') : null,
+
+        // ───────────────────────────────────────
+        // NEW: Data from UI / flatShipments
+        // ───────────────────────────────────────
+        containers: uniqueContainers,
+        orders: uniqueOrderIds,
+        assignments: assignments,      // ← very useful if backend supports it
+        total_assigned_weight: calculatedTotals.totalAssignedWeight || 0,
+      };
+
+      console.log('Prepared submitData:', JSON.stringify(submitData, null, 2));
+
+      return submitData;
+
+    } catch (err) {
+      // Handle Yup validation errors
+      if (err.name === 'ValidationError') {
+        const fieldErrors = {};
+        err.inner.forEach(e => {
+          fieldErrors[e.path] = e.message;
+        });
+        setErrors(fieldErrors);
+        console.log('error fieldsss', fieldErrors)
+        setSnackbar({
+          open: true,
+          message: 'Please fix the highlighted fields.',
+          severity: 'error',
+        });
+      } else {
+        console.error('Validation/Preparation failed:', err);
+        setSnackbar({
+          open: true,
+          message: 'Error preparing consignment data. Please check inputs.',
+          severity: 'error',
+        });
+      }
+
       return null;
     }
-
-    // 3. Extract unique containers
-    const uniqueContainers = Array.from(
-      new Map(
-        flatShipments.map(s => [
-          s.containerNumber,
-          {
-            containerNo: s.containerNumber,
-            // size: s.containerNumber.includes('40') ? '40ft' : '20ft', // improve this logic if you have real size data
-            // cid: s.containerCid || null,
-            // status: s.containerStatus || 'Assigned',
-            // // Add more fields if needed (seal, type, ownership, etc.)
-          },
-        ])
-      ).values()
-    );
-
-    if (uniqueContainers.length === 0) {
-      setSnackbar({
-        open: true,
-        message: 'No valid containers found in selected shipments.',
-        severity: 'error',
-      });
-      return null;
-    }
-
-    // 4. Extract unique order IDs
-    const uniqueOrderIds = [...new Set(flatShipments.map(s => s.orderId))];
-
-    if (uniqueOrderIds.length === 0) {
-      setSnackbar({
-        open: true,
-        message: 'No orders associated with selected shipments.',
-        severity: 'error',
-      });
-      return null;
-    }
-
-    // 5. Optional: Build explicit assignment mapping (very useful for backend)
-    const assignments = flatShipments.map(s => ({
-      orderId: s.orderId,
-      receiverName: s.receiverName || null,
-      category: s.category || null,
-      containerNo: s.containerNumber,
-      assignedWeight: parseFloat(s.assignWeight || 0),
-      assignedBoxes: parseInt(s.assignBoxes || 0) || null,
-      remainingItems: parseInt(s.remainingItems || 0) || null,
-      // Add more if needed (e.g. shippingDetailId if you have it)
-    }));
-
-    // 6. Build the final payload
-    const submitData = {
-      // Core consignment fields from form
-      consignment_number: values.consignment_number?.trim() || null,
-      consignment_value: parseFloat(values.consignment_value) || 0,
-      net_weight: parseFloat(values.netWeight) || 0,
-      gross_weight: parseFloat(values.gross_weight) || 0,
-      payment_type: values.paymentType || null,
-      status: values.status || 'Draft',
-      remarks: values.remarks || null,
-
-      shipper_id: parseInt(values.shipper, 10) || null,
-      shipper: values.shipperName?.trim() || '',
-      shipper_address: values.shipperAddress || null,
-
-      consignee_id: parseInt(values.consignee, 10) || null,
-      consignee: values.consigneeName?.trim() || '',
-      consignee_address: values.consigneeAddress || null,
-
-      origin: values.originName || values.origin || null,
-      destination: values.destinationName || values.destination || null,
-
-      eform: values.eform?.trim() || null,
-      eform_date: values.eform_date ? dayjs(values.eform_date).format('YYYY-MM-DD') : null,
-
-      bank_id: parseInt(values.bank, 10) || null,
-      bank: values.bankName?.trim() || '',
-
-      currency_code: values.currency_code || 'GBP',
-      vessel: parseInt(values.vessel, 10) || null,
-      voyage: values.voyage?.trim() || null,
-      shipping_line: values.shippingLine?.trim() || null,
-
-      eta: values.eta ? dayjs(values.eta).format('YYYY-MM-DD') : null,
-
-      // ───────────────────────────────────────
-      // NEW: Data from UI / flatShipments
-      // ───────────────────────────────────────
-      containers: uniqueContainers,
-  orders: uniqueOrderIds,
-      assignments: assignments,      // ← very useful if backend supports it
-      total_assigned_weight: calculatedTotals.totalAssignedWeight || 0,
-    };
-
-    console.log('Prepared submitData:', JSON.stringify(submitData, null, 2));
-
-    return submitData;
-
-  } catch (err) {
-    // Handle Yup validation errors
-    if (err.name === 'ValidationError') {
-      const fieldErrors = {};
-      err.inner.forEach(e => {
-        fieldErrors[e.path] = e.message;
-      });
-      setErrors(fieldErrors);
-console.log('error fieldsss',fieldErrors)
-      setSnackbar({
-        open: true,
-        message: 'Please fix the highlighted fields.',
-        severity: 'error',
-      });
-    } else {
-      console.error('Validation/Preparation failed:', err);
-      setSnackbar({
-        open: true,
-        message: 'Error preparing consignment data. Please check inputs.',
-        severity: 'error',
-      });
-    }
-
-    return null;
-  }
-};
+  };
 
   const navigate = useNavigate();
- const handleCreate = async (e) => {
-  if (e) e.preventDefault();
+  const handleCreate = async (e) => {
+    if (e) e.preventDefault();
 
-  setSaving(true);
+    setSaving(true);
 
-  const submitData = await validateAndPrepare();
+    const submitData = await validateAndPrepare();
 
-  if (!submitData) {
-    setSaving(false);
-    return;
-  }
-
-  try {
-    const res = await api.post('/api/consignments', submitData);
-console.log('responsee',res)
-    const { data: responseData, message } = res.data || {};
-
-    setSnackbar({
-      open: true,
-      message: message || 'Consignment created successfully!',
-      severity: 'success',
-    });
-
-    console.log('New Consignment ID:', responseData);
-
-    // Reset or redirect
-    navigate('/consignments');
-
-  } catch (err) {
-    console.error('[handleCreate] Error:', err);
-
-    if (err.name === 'ValidationError') {
-      // Yup validation errors
-      const formattedErrors = {};
-      err.inner.forEach(error => {
-        formattedErrors[error.path] = error.message;
-      });
-      setErrors(formattedErrors);
-      setSnackbar({
-        open: true,
-        message: 'Please fix the validation errors',
-        severity: 'error',
-      });
-    } else if (err.response) {
-      // Backend errors
-      const backendMsg =
-        err.response.data?.message ||
-        err.response.data?.error ||
-        'Failed to create consignment';
-      setSnackbar({
-        open: true,
-        message: backendMsg,
-        severity: 'error',
-      });
-    } else {
-      setSnackbar({
-        open: true,
-        message: 'An unexpected error occurred',
-        severity: 'error',
-      });
+    if (!submitData) {
+      setSaving(false);
+      return;
     }
-  } finally {
-    setSaving(false);
-  }
-};
+
+    try {
+      const res = await api.post('/api/consignments', submitData);
+      console.log('responsee', res)
+      const { data: responseData, message } = res.data || {};
+
+      setSnackbar({
+        open: true,
+        message: message || 'Consignment created successfully!',
+        severity: 'success',
+      });
+
+      console.log('New Consignment ID:', responseData);
+
+      // Reset or redirect
+      navigate('/consignments');
+
+    } catch (err) {
+      console.error('[handleCreate] Error:', err);
+
+      if (err.name === 'ValidationError') {
+        // Yup validation errors
+        const formattedErrors = {};
+        err.inner.forEach(error => {
+          formattedErrors[error.path] = error.message;
+        });
+        setErrors(formattedErrors);
+        setSnackbar({
+          open: true,
+          message: 'Please fix the validation errors',
+          severity: 'error',
+        });
+      } else if (err.response) {
+        // Backend errors
+        const backendMsg =
+          err.response.data?.message ||
+          err.response.data?.error ||
+          'Failed to create consignment';
+        setSnackbar({
+          open: true,
+          message: backendMsg,
+          severity: 'error',
+        });
+      } else {
+        setSnackbar({
+          open: true,
+          message: 'An unexpected error occurred',
+          severity: 'error',
+        });
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
   const handleEditCon = async (e) => {
     console.log('Editing consignment', e);
     if (e) e.preventDefault();
@@ -1804,23 +1815,23 @@ console.log('responsee',res)
       color: theme.palette.common.white,
     },
   }));
-    const StatusChip = ({ status }) => {
-        const colors = getStatusColors(status);
-        return (
-            <Chip
-                label={status}
-                size="small"
-                sx={{
-                    height: 18,
-                    fontSize: '0.85rem',
-                    marginLeft: 2,
-                    padding:2,
-                    backgroundColor: colors.bg,
-                    color: colors.text,
-                }}
-            />
-        );
-    };
+  const StatusChip = ({ status }) => {
+    const colors = getStatusColors(status);
+    return (
+      <Chip
+        label={status}
+        size="small"
+        sx={{
+          height: 18,
+          fontSize: '0.85rem',
+          marginLeft: 2,
+          padding: 2,
+          backgroundColor: colors.bg,
+          color: colors.text,
+        }}
+      />
+    );
+  };
   const parseSummaryToList = (receivers) => {
     if (!receivers || !Array.isArray(receivers)) return [];
     return receivers.map(rec => ({
@@ -1859,50 +1870,51 @@ console.log('responsee',res)
   }));
 
 
-// Helper to load images as Base64 (ensure this is defined/imported if not already)
-const loadImageAsBase64 = (url) =>
-  new Promise((resolve) => {
-    const img = new Image();
-    img.crossOrigin = "Anonymous";
-    img.src = url;
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext("2d");
-      ctx.drawImage(img, 0, 0);
-      resolve(canvas.toDataURL("image/png"));
-    };
-    img.onerror = () => resolve(null);
-  });
+  // Helper to load images as Base64 (ensure this is defined/imported if not already)
+  const loadImageAsBase64 = (url) =>
+    new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = "Anonymous";
+      img.src = url;
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL("image/png"));
+      };
+      img.onerror = () => resolve(null);
+    });
 
-// Assuming getPlaceName is defined elsewhere; if not, define it (e.g., a function mapping IDs to names)
-const getPlaceNamePdf = (id) => {
-  // Example mapping; replace with actual logic
-  const places = { 2: 'Karachi', 5: 'Dubai' }; // Add more as needed
-  return places[id] || 'N/A';
-};
+  // Assuming getPlaceName is defined elsewhere; if not, define it (e.g., a function mapping IDs to names)
+  const getPlaceNamePdf = (id) => {
+    // Example mapping; replace with actual logic
+    const places = { 2: 'Karachi', 5: 'Dubai' }; // Add more as needed
+    return places[id] || 'N/A';
+  };
 
-    const handleFilterText = (e) => {
-        const { name, value } = e.target;
-        console.log("Filter change:", name, value);
+  const handleFilterText = (e) => {
+    const { name, value } = e.target;
+    console.log("Filter change:", name, value);
 
-        setFilters((prev) => ({ ...prev, [name]: value }));
+    setFilters((prev) => ({ ...prev, [name]: value }));
 
-        // Very important: reset to first page on every filter change
-        setPage(0);
-    };
+    // Very important: reset to first page on every filter change
+    setPage(0);
+  };
 
-    // 3. Handler for status dropdown (also reset page)
-    const handleFilterChange = (e) => {
-        const { name, value } = e.target;
-        setFilters((prev) => ({ ...prev, [name]: value }));
-        setPage(0);
-    };
+  // 3. Handler for status dropdown (also reset page)
+  const handleFilterChange = (e) => {
+    const { name, value } = e.target;
+    setFilters((prev) => ({ ...prev, [name]: value }));
+    setPage(0);
+  };
 
+  const generateConsignmentNotePDFWithCanvas = async (data, allReceivers, selectedOrderObjects = includedOrders) => {
+    console.log('Consignment Data:', data);
+    console.log('All Receivers:', allReceivers);
 
-const generateManifestPDFWithCanvas = async (data, allReceivers, selectedOrderObjects = includedOrders) => {
-    console.log('data for canvas data', data)
     if (!data.consignment_number) {
       setSnackbar({
         open: true,
@@ -1911,15 +1923,10 @@ const generateManifestPDFWithCanvas = async (data, allReceivers, selectedOrderOb
       });
       return;
     }
-    const groupedShipping = allReceivers.reduce((acc, order) => {
-      acc[order.id] = order.receivers.reduce((recAcc, receiver) => {
-        recAcc[receiver.id] = receiver.shippingdetails || [];
-        return recAcc;
-      }, {});
-      return acc;
-    }, {});
 
-
+    // ==============================================
+    // CALCULATE TOTAL BOXES FROM ALL ORDERS
+    // ==============================================
     let total_assign_boxes_all = 0;
 
     allReceivers.forEach(order => {
@@ -1938,76 +1945,978 @@ const generateManifestPDFWithCanvas = async (data, allReceivers, selectedOrderOb
 
     console.log(`Total Assign Boxes (All Orders): ${total_assign_boxes_all}`);
 
+    // ==============================================
+    // GET UNIQUE COMMODITIES (CATEGORIES) WITH ACCUMULATED DATA
+    // ==============================================
+    const uniqueCommoditiesMap = new Map();
 
-    // Helper function to normalize/format dates
-    const formatDate = (dateStr) => {
-      if (!dateStr) return 'N/A';
-      return new Date(dateStr).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
+    allReceivers.forEach(order => {
+      order.receivers.forEach(receiver => {
+        receiver.shippingdetails?.forEach(detail => {
+          const category = detail.category || 'Unknown';
+          const subcategory = detail.subcategory || '';
+          const commodityKey = `${category}${subcategory ? ` - ${subcategory}` : ''}`;
+
+          if (!uniqueCommoditiesMap.has(commodityKey)) {
+            uniqueCommoditiesMap.set(commodityKey, {
+              commodity: commodityKey,
+              totalBoxes: 0,
+              totalWeight: 0,
+              orders: new Set() // To track unique order IDs
+            });
+          }
+
+          const commodityData = uniqueCommoditiesMap.get(commodityKey);
+
+          // Add boxes
+          let assignBoxes = 0;
+          detail.containerDetails?.forEach(container => {
+            assignBoxes += Number(container.assign_total_box) || 0;
+          });
+          commodityData.totalBoxes += assignBoxes;
+
+          // Add weight
+          commodityData.totalWeight += detail.weight || 0;
+
+          // Add order ID
+          commodityData.orders.add(order.id);
+        });
       });
+    });
+
+    // Convert Map to Array and calculate total orders per commodity
+    const uniqueCommodities = Array.from(uniqueCommoditiesMap.values()).map(item => ({
+      commodity: item.commodity,
+      totalOrders: item.orders.size,
+      totalPkgs: item.totalBoxes,
+      totalWeight: item.totalWeight
+    }));
+
+    console.log('Unique Commodities:', uniqueCommodities);
+
+    // ==============================================
+    // PREPARE MANIFEST DATA WITH UNIQUE ENTRIES
+    // ==============================================
+    let manifestData = [];
+    let serialNo = 1;
+    const processedOrders = new Set(); // To avoid duplicate entries
+
+    allReceivers.forEach(order => {
+      // Check if order already processed
+      if (processedOrders.has(order.id)) return;
+      processedOrders.add(order.id);
+
+      // Get booking ID from order - booking_ref se
+      const bookingNumber = order.booking_ref || 'N/A';
+
+      order.receivers.forEach(receiver => {
+        receiver.shippingdetails?.forEach(detail => {
+          // Get container number
+          let containerNo = '';
+          if (detail.containerDetails && detail.containerDetails.length > 0) {
+            containerNo = detail.containerDetails[0]?.container?.container_number || 'N/A';
+          } else if (order.receiver_containers_json) {
+            containerNo = order.receiver_containers_json;
+          } else {
+            containerNo = 'N/A';
+          }
+
+          // Marks & Nos
+          const marksNos = detail.itemRef || 'N/A';
+
+          // Calculate packages
+          let pkgs = 0;
+          detail.containerDetails?.forEach(container => {
+            pkgs += Number(container.assign_total_box) || 0;
+          });
+
+          if (pkgs === 0) {
+            pkgs = detail.totalNumber || 0;
+          }
+
+          // Commodity
+          const category = detail.category || 'Unknown';
+          const subcategory = detail.subcategory || '';
+          const commodity = subcategory ? `${category} - ${subcategory}` : category;
+
+          manifestData.push({
+            sno: serialNo++,
+            bookingNo: bookingNumber, // booking_ref se aaya hua
+            containerNo: containerNo,
+            sender: order.sender_name || 'N/A',
+            receiver: receiver.receiver_name || 'N/A',
+            marksNos: marksNos,
+            pkgs: pkgs,
+            weight: detail.weight || 0,
+            commodity: commodity
+          });
+        });
+      });
+    });
+
+    // Calculate manifest totals
+    const manifestTotals = manifestData.reduce((total, item) => {
+      total.totalPkgs += item.pkgs;
+      total.totalWeight += item.weight;
+      return total;
+    }, { totalPkgs: 0, totalWeight: 0 });
+
+    console.log('Manifest Data:', manifestData);
+    console.log('Manifest Totals:', manifestTotals);
+
+    // ==============================================
+    // VESSEL AND CONTAINER INFO
+    // ==============================================
+    const getVesselName = (vesselId) => {
+      if (!vesselId) return 'N/A';
+      const vesselOption = options.vesselOptions?.find(v => v.value === vesselId.toString());
+      return vesselOption?.label || `Vessel ${vesselId}`;
     };
 
-    // Helper function to get place name (assuming getPlaceName is defined; fallback here)
-    const getPlaceName = (id) => {
-      const places = { 2: 'Karachi', 5: 'Dubai' }; // Example; replace with actual
-      return places[id] || id || 'N/A';
+    const vesselName = getVesselName(data.vessel);
+
+    // Get container info
+    const containerNo = data.containers && data.containers.length > 0
+      ? data.containers[0].containerNo
+      : 'N/A';
+
+    const containerSize = data.containers && data.containers.length > 0
+      ? data.containers[0].size
+      : 'N/A';
+
+    const containerType = data.containers && data.containers.length > 0
+      ? data.containers[0].containerType
+      : 'N/A';
+
+    console.log('Container Info:', { containerNo, containerSize, containerType });
+    console.log('Booking IDs from orders:', allReceivers.map(order => order.booking_ref));
+
+    // Load logo as base64
+    const logoBase64 = await loadImageAsBase64(logoPic);
+
+    // Create a temporary div element
+    const tempElement = document.createElement('div');
+    tempElement.style.width = '210mm';
+    tempElement.style.padding = '4mm';
+    tempElement.style.backgroundColor = 'white';
+    tempElement.style.fontFamily = '"Helvetica Neue", Helvetica, Arial, sans-serif';
+    tempElement.style.boxSizing = 'border-box';
+
+    // ==============================================
+    // CREATE HTML CONTENT
+    // ==============================================
+    tempElement.innerHTML = `<style>
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 13px;
+            color: #000;
+            line-height: 1.4;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 850px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .date-row {
+            text-align: right;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .title {
+            font-weight: bold;
+            text-decoration: underline;
+            font-size: 16px;
+        }
+
+        /* Top Boxes */
+        .top-boxes {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .box {
+            flex: 1;
+            border: 1px solid #000;
+        }
+
+        .box-label {
+            padding: 2px 5px;
+            border-bottom: 1px solid #000;
+            min-height: 35px;
+        }
+
+        .box-content {
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .highlighted {
+            font-weight: bold;
+        }
+
+        /* Details Grid */
+        .details-grid {
+            display: grid;
+            grid-template-columns: 1.2fr 1.2fr 1fr;
+            gap: 15px 10px;
+            margin-bottom: 40px;
+        }
+
+        .underline {
+            border-bottom: 1px solid #000;
+            display: inline-block;
+            min-width: 80px;
+        }
+
+        /* Summary Section */
+        .summary-bar {
+            display: flex;
+            align-items: center;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        .summary-box {
+            border: 1px solid #000;
+            padding: 10px 40px;
+            font-weight: bold;
+        }
+
+        .summary-text {
+            font-weight: bold;
+        }
+
+        /* Certification */
+        .certification-box {
+            border: 1px solid #000;
+            padding: 15px;
+            margin-bottom: 100px;
+            width: 90%;
+        }
+
+        /* Footer */
+        .footer {
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .sign-block {
+            width: 300px;
+        }
+
+        .sign-line {
+            border-top: 1px solid #000;
+            margin-bottom: 5px;
+        }
+
+        .text-right {
+            text-align: left;
+        }
+        
+        /* New style for container info */
+        .container-info {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="date-row">DATED: ${new Date().toLocaleString()}</div>
+            <div class="title">CONSIGNMENT NOTE: ${data.consignment_number}</div>
+        </div>
+
+        <div class="top-boxes">
+            <div class="box">
+                <div class="box-label">Custom CRN or Customs Machine number</div>
+                <div class="box-content"></div>
+            </div>
+            <div class="box">
+                <div class="box-label">
+                    <div class="container-info">
+                        <span>Container No:</span>
+                    </div>
+                </div>
+                <div class="box-content highlighted">${containerNo} ${containerSize}${containerType}</div>
+            </div>
+            <div class="box">
+                <div class="box-label">Seal No</div>
+                <div class="box-content">${data.seal_no || 'N/A'}</div>
+            </div>
+        </div>
+
+        <div class="details-grid">
+            <div><strong>VESSEL:</strong> ${vesselName}</div>
+            <div><strong>Voyage:</strong> ${data.voyage || 'N/A'}</div>
+            <div><strong>SHIPPING LINE:</strong> ${data.shipping_line_name || 'N/A'}</div>
+
+            <div><strong>Dest:</strong> ${data.destinationName || 'N/A'}</div>
+            <div><strong>Shipper:</strong> ${data.shipperName || 'N/A'}</div>
+            <div><strong>BOOKING NO:</strong> ${allReceivers.length > 0 ? allReceivers.map(order => order.booking_ref).filter(Boolean).join(', ') : 'N/A'}</div>
+
+            <div><strong>Comm:</strong> ${uniqueCommodities.length > 0 ? uniqueCommodities.map(c => c.commodity).join(', ') : 'N/A'}</div>
+            <div><strong>Origin:</strong> ${data.originName || 'N/A'}</div>
+            <div>
+                <strong>GROSS Wt:</strong> <span class="underline">${data.gross_weight || '0'} KGS</span><br>
+                <strong>NET Wt:</strong> <span class="underline">${data.net_weight || '0'} KGS</span>
+            </div>
+
+            <div><strong>Status:</strong> ${data.status || 'N/A'}</div>
+            <div><strong class="underline">TRUCK NO</strong> ${allReceivers.length > 0 ? allReceivers.map(order => order.plate_no).filter(Boolean).join(', ') : 'N/A'}</div>
+            <div><strong>TOTAL CTNS:</strong> <span class="underline">${Number(total_assign_boxes_all).toLocaleString()}</span></div>
+        </div>
+
+        <div class="summary-bar">
+            <div class="summary-box">${containerNo} ${containerSize}${containerType}</div>
+            <div class="summary-text">
+                PKGS: ${Number(total_assign_boxes_all).toLocaleString()} &nbsp; GROSS WT: ${data.gross_weight || '0'} KGS &nbsp; NET WT: ${data.net_weight || '0'} KGS
+            </div>
+        </div>
+
+        <div class="certification-box">
+            I / We hereby certify that goods mentioned in the accompanied packing list have been placed inside the
+            container and the container has been sealed by me / us the particulars are true.
+        </div>
+
+        <div class="footer">
+            <div class="sign-block">
+                <div class="sign-line"></div>
+                PICT/KICT/QICT Representative<br>Gate Clerk / Dmg Inspector
+            </div>
+            <div class="sign-block text-right">
+                <div class="sign-line"></div>
+                Name and Signature of Agent<br>Shipper / Consolidator with stamp
+            </div>
+        </div>
+    </div>`;
+
+    document.body.appendChild(tempElement);
+
+    const scale = 1.5;
+    const canvas = await html2canvas(tempElement, {
+      scale: scale,
+      useCORS: true,
+      allowTaint: true,
+      logging: false,
+      width: tempElement.scrollWidth,
+      height: tempElement.scrollHeight,
+      windowWidth: tempElement.scrollWidth,
+      windowHeight: tempElement.scrollHeight,
+      backgroundColor: '#ffffff',
+      imageTimeout: 0,
+      removeContainer: true,
+      onclone: function (clonedDoc) {
+        clonedDoc.querySelectorAll('img').forEach(img => {
+          img.style.maxWidth = '100%';
+          img.style.height = 'auto';
+        });
+      }
+    });
+
+    document.body.removeChild(tempElement);
+
+    // Save as PNG
+    const canvasDataURL = canvas.toDataURL('image/png', 0.85);
+    const canvasLink = document.createElement('a');
+    canvasLink.download = `Consignment_Note_${data.consignment_number}_Canvas_${Date.now()}.png`;
+    canvasLink.href = canvasDataURL;
+    canvasLink.click();
+
+    // Create PDF
+    const innerWidthMm = 210 - 2 * 14;
+    const pxPerMm = canvas.width / innerWidthMm;
+    const extraBottomSpaceMm = 8;
+    const contentHeightPerPageMm = (297 - 2 * 14) - extraBottomSpaceMm;
+    const contentHeightPerPagePx = contentHeightPerPageMm * pxPerMm;
+
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const marginMm = 14;
+    const contentWidthMm = innerWidthMm;
+
+    let startY = 0;
+    while (startY < canvas.height) {
+      const sliceHeightPx = Math.min(contentHeightPerPagePx, canvas.height - startY);
+
+      const croppedCanvas = document.createElement('canvas');
+      croppedCanvas.width = canvas.width;
+      croppedCanvas.height = sliceHeightPx;
+      const ctx = croppedCanvas.getContext('2d');
+      ctx.drawImage(canvas, 0, startY, canvas.width, sliceHeightPx, 0, 0, canvas.width, sliceHeightPx);
+
+      const croppedDataURL = croppedCanvas.toDataURL('image/jpeg', 0.85);
+      const drawHeightMm = sliceHeightPx / pxPerMm;
+
+      if (startY > 0) {
+        pdf.addPage();
+      }
+      pdf.addImage(croppedDataURL, 'JPEG', marginMm, marginMm, contentWidthMm, drawHeightMm, undefined, 'FAST');
+      croppedCanvas.remove();
+
+      startY += sliceHeightPx;
+    }
+
+    pdf.save(`Manifest_${data.consignment_number}_Detailed_${Date.now()}.pdf`);
+
+    console.log('PDF generation completed successfully!');
+    console.log('Final Summary:', {
+      consignmentNumber: data.consignment_number,
+      totalOrders: allReceivers.length,
+      totalBoxes: total_assign_boxes_all,
+      container: containerNo,
+      vessel: vesselName,
+      uniqueCommodities: uniqueCommodities.length,
+      bookingNumbers: allReceivers.map(order => order.booking_ref)
+    });
+  };
+const generateshipmentsAndOrdersPDFWithCanvas = async (data, allReceivers, selectedOrderObjects = includedOrders) => {
+    console.log('data for canvas data', data);
+    if (!data.consignment_number) {
+      setSnackbar({
+        open: true,
+        severity: 'warning',
+        message: 'Please enter a consignment number to generate the manifest.',
+      });
+      return;
+    }
+
+    // DEBUG: Check what data we have
+    console.log('All Receivers:', allReceivers);
+
+    // 1. GROUP BY RECEIVER (NOT CONTAINER)
+    const receiverGroups = [];
+
+    // Sab receivers ko collect karo
+    if (allReceivers && allReceivers.length > 0) {
+      allReceivers.forEach(order => {
+        if (order.receivers && order.receivers.length > 0) {
+          order.receivers.forEach(receiver => {
+            receiverGroups.push({
+              orderId: order.id,
+              orderNumber: order.booking_ref || `ORD-${order.id}`,
+              sender: order.sender_name || 'N/A',
+              receiver: receiver.receiver_name || 'N/A',
+              receiverData: receiver,
+              orderData: order,
+              shippingDetails: receiver.shippingdetails || []
+            });
+          });
+        }
+      });
+    }
+
+    console.log(`Total Receivers/Drop-offs: ${receiverGroups.length}`);
+
+    // Helper functions
+    const formatDateForPDF = (dateStr) => {
+      if (!dateStr) return 'N/A';
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) return 'N/A';
+      return date.toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+      }).toUpperCase();
     };
 
-    // Helper to format weight
-    const formatWeight = (weight) => weight ? `${weight} KGS` : 'N/A';
+    // Vessel name get karne ka function
+    const getVesselName = (vesselId) => {
+      if (!vesselId) return 'N/A';
+      const vesselOption = options.vesselOptions?.find(v => v.value === vesselId.toString());
+      return vesselOption?.label || `Vessel ${vesselId}`;
+    };
+
+    const vesselName = getVesselName(data.vessel);
+
+    // Load logo as base64
+    const logoBase64 = await loadImageAsBase64(logoPic);
+
+    // Common data for all HBLs
+    const commonData = {
+      consignment_number: data.consignment_number || 'N/A',
+      originName: data.originName || 'N/A',
+      destinationName: data.destinationName || 'N/A',
+      shipperName: data.shipperName || 'N/A',
+      shipperAddress: data.shipperAddress || 'N/A',
+      consigneeName: data.consigneeName || 'N/A',
+      consigneeAddress: data.consigneeAddress || 'N/A',
+      bankName: data.bankName || 'N/A',
+      created_at: data.created_at || 'N/A',
+      generated_date: new Date().toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+      }).toUpperCase(),
+      generated_time: new Date().toLocaleTimeString('en-GB', {
+        hour: '2-digit',
+        minute: '2-digit'
+      }),
+      voyage: data.voyage || 'N/A'
+    };
+
+    // PDF create karo
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const marginMm = 14;
+    const contentWidthMm = 210 - 2 * marginMm;
+
+    // Har receiver ke liye alag page banao
+    for (let i = 0; i < receiverGroups.length; i++) {
+      const receiverGroup = receiverGroups[i];
+      const receiver = receiverGroup.receiverData;
+      const shippingDetails = receiverGroup.shippingDetails;
+
+      // Calculate receiver-specific stats
+      let receiverPackages = 0;
+      let receiverWeight = 0;
+      let itemRef = "";
+
+      shippingDetails.forEach(item => {
+        // Use assign_total_box and assign_weight instead of totalNumber and weight
+        let packagesForItem = 0;
+        let weightForItem = 0;
+
+        if (item.containerDetails && item.containerDetails.length > 0) {
+          item.containerDetails.forEach(containerDetail => {
+            packagesForItem += Number(containerDetail.assign_total_box) || 0;
+            weightForItem += Number(containerDetail.assign_weight) || 0;
+          });
+        } else {
+          packagesForItem = parseInt(item.totalNumber) || 0;
+          weightForItem = parseFloat(item.weight) || 0;
+        }
+
+        receiverPackages += packagesForItem;
+        receiverWeight += weightForItem;
+
+        if (item.itemRef && !itemRef.includes(item.itemRef)) {
+          itemRef += (itemRef ? ", " : "") + item.itemRef;
+        }
+      });
+
+      // Container info
+      const containerInfo = data.containers && data.containers.length > 0
+        ? data.containers[0]
+        : { containerNo: 'N/A', seal_no: 'N/A' };
+
+      // Create HTML for this receiver ONLY
+      const tempElement = document.createElement('div');
+      tempElement.style.width = '780px';
+      tempElement.style.padding = '25px';
+      tempElement.style.backgroundColor = 'white';
+      tempElement.style.fontFamily = 'Arial, sans-serif';
+      tempElement.style.boxSizing = 'border-box';
+      tempElement.style.borderTop = '8px solid #f37021';
+      tempElement.style.margin = '0 auto';
+      tempElement.style.fontSize = '10px';
+      tempElement.style.color = '#333';
+
+      // Single receiver HTML
+      tempElement.innerHTML = `
+      <style>
+      .terms {
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.terms ol {
+  margin: 6px 0;
+  padding-left: 0;
+  list-style-position: inside; /* 🔥 MAIN FIX */
+}
+
+.terms li {
+  margin-bottom: 4px;
+}
+
+.terms .footer {
+  font-size: 7px;
+  margin-top: 10px;
+}
+
+</style>
+      <div style="width: 780px; margin: 0 auto; background: white;">
+        <!-- HBL Design Header -->
+        <div class="header" style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+          <div class="logo-area">
+            <img src="${logoBase64 || ''}" alt="RoyalGulf Logo" style="width: 150px; height: auto;">
+          </div>
+          <div class="company-info" style="text-align: left; flex-grow: 1; margin-left: 20px;">
+            <p class="company-name" style="color: #f37021; font-size: 16px; font-weight: bold; margin: 0;">ROYAL GULF SHIPPING & LOGISTICS LLC</p>
+            <p class="locations" style="color: #008a45; font-weight: bold; margin: 2px 0;">DUBAI • LONDON • KARACHI • SHENZHEN</p>
+            <p style="font-size: 8px;">Ph: +971-4-3331785 | www.royalgulfshipping.com</p>
+          </div>
+          <div class="title-area" style="text-align: right;">
+            <p class="hbl-title" style="color: #f37021; font-size: 20px; font-weight: bold; margin: 0;">HOUSE BILL OF LADING</p>
+            <p style="font-size: 8px;">Non-negotiable copy</p>
+            <p style="font-size: 8px;">Consignment: ${commonData.consignment_number}</p>
+          </div>
+        </div>
+        
+        <!-- First Row - Basic Info -->
+        <div class="grid-row" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 8px;">
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">HBL NO.</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">--</span>
+          </div>
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">ORDER REFERENCE</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${receiverGroup.orderNumber}</span>
+          </div>
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">Item REFERENCE</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${itemRef}</span>
+          </div>
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">ISSUE DATE</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${new Date(commonData.created_at).toLocaleString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true })}</span>
+          </div>
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">PLACE OF ISSUE</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${commonData.originName}</span>
+          </div>
+          
+        </div>
+        
+        <!-- Shipment Parties Section -->
+        <div class="section-header" style="color: #008a45; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid #008a45; margin-bottom: 5px; grid-column: span 4;">SHIPMENT PARTIES</div>
+        
+        <div class="parties-row" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 70px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">SHIPPER</span>
+            <div class="placeholder" style="font-weight: bold; font-size: 9px;">${commonData.shipperName}</div>
+            <div class="placeholder" style="font-size: 8px; color: #666;">${commonData.shipperAddress}</div>
+          </div>
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 70px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">CONSIGNEE</span>
+            <div class="placeholder" style="font-weight: bold; font-size: 9px;">${receiverGroup.receiver}</div>
+            <div class="placeholder" style="font-size: 8px; color: #666;">${receiver.receiver_address || 'N/A'}</div>
+          </div>
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 70px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">NOTIFY PARTY</span>
+            <div class="placeholder" style="font-weight: bold; font-size: 9px;">SAME AS CONSIGNEE</div>
+          </div>
+        </div>
+        
+        <!-- Voyage & Routing Section -->
+        <div class="section-header" style="color: #008a45; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid #008a45; margin-bottom: 5px; grid-column: span 4;">VOYAGE & ROUTING DETAILS</div>
+        
+        <div class="grid-row" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">PORT OF LOADING (POL)</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${commonData.originName}</span>
+          </div>
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">PORT OF DISCHARGE (POD)</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${commonData.destinationName}</span>
+          </div>
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">FINAL DESTINATION</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${commonData.destinationName}</span>
+          </div>
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">VESSEL NAME</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${vesselName}</span>
+          </div>
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">VOYAGE / SAILING</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${commonData.voyage}</span>
+          </div>
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">INCOTERMS</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">SEAFREIGHT</span>
+          </div>
+        </div>
+        
+        <!-- Container Info -->
+        <div class="section-header" style="color: #008a45; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid #008a45; margin-bottom: 5px; grid-column: span 4;">CONTAINER & PACKAGE INFO</div>
+        
+        <div class="grid-row" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 8px;">
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">CONTAINER NO.</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${containerInfo.containerNo} | ${containerInfo.size}ft</span>
+          </div>
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">SEAL NO.</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${containerInfo.seal_no || 'N/A'}</span>
+          </div>
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">TOTAL PACKAGES</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${receiverPackages}</span>
+          </div>
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">TOTAL WEIGHT (KGS)</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${receiverWeight.toFixed(2)}</span>
+          </div>
+        </div>
+        
+        <!-- Cargo Description Table -->
+        <div class="section-header" style="color: #008a45; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid #008a45; margin-bottom: 5px; grid-column: span 4;">CARGO DESCRIPTION</div>
+        
+        ${shippingDetails.length > 0 ? `
+        <table class="cargo-table" style="width: 100%; border-collapse: collapse; margin-top: 5px;">
+          <thead>
+            <tr>
+              <th style="border: 1px solid #ccc; background-color: #f9f9f9; padding: 4px; font-size: 8px; width: 20%;">MARKS & NUMBERS</th>
+              <th style="border: 1px solid #ccc; background-color: #f9f9f9; padding: 4px; font-size: 8px; width: 40%;">DESCRIPTION OF GOODS</th>
+              <th style="border: 1px solid #ccc; background-color: #f9f9f9; padding: 4px; font-size: 8px; width: 10%;">PKGS</th>
+              <th style="border: 1px solid #ccc; background-color: #f9f9f9; padding: 4px; font-size: 8px; width: 15%;">WEIGHT (KGS)</th>
+              <th style="border: 1px solid #ccc; background-color: #f9f9f9; padding: 4px; font-size: 8px; width: 15%;">VOLUME (CBM)</th>
+            </tr>
+          </thead>
+          <tbody>
+  ${shippingDetails.map((item, idx) => {
+        // Calculate packages and weight from containerDetails
+        let packagesForItem = 0;
+        let weightForItem = 0;
+
+        if (item.containerDetails && item.containerDetails.length > 0) {
+          item.containerDetails.forEach(containerDetail => {
+            packagesForItem += Number(containerDetail.assign_total_box) || 0;
+            weightForItem += Number(containerDetail.assign_weight) || 0;
+          });
+        } else {
+          packagesForItem = parseInt(item.totalNumber) || 0;
+          weightForItem = parseFloat(item.weight) || 0;
+        }
+
+        const category = item.category || 'N/A';
+        const subcategory = item.subcategory || '';
+        const description = subcategory ? `${category} - ${subcategory}` : category;
+
+        return `
+            <tr>
+              <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">${item.type || 'N/A'}</td>
+              <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">${description}</td>
+              <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">${packagesForItem}</td>
+              <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">${weightForItem.toFixed(2)}</td>
+              <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">0.00</td>
+            </tr>
+            `;
+      }).join('')}
+          <tr style="font-weight: bold; background-color: #e8f5e8;">
+            <td colspan="2" style="border: 1px solid #ccc; padding: 8px 4px; text-align: right;">TOTAL:</td>
+            <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">${receiverPackages}</td>
+            <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">${receiverWeight.toFixed(2)}</td>
+            <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">0.00</td>
+          </tr>
+        </tbody>
+        </table>
+        ` : `
+        <div style="text-align: center; padding: 30px; background: #f9f9f9; border: 1px dashed #ccc; margin-bottom: 20px;">
+          <h4 style="color: #666; font-style: italic;">NO CARGO DETAILS FOUND</h4>
+          <p style="color: #999;">No shipping details available for this receiver.</p>
+        </div>
+        `}
+        
+        <!-- Terms and Footer -->
+        <div class="bottom-section" style="display: grid; grid-template-columns: 2fr 1fr; gap: 15px; margin-top: 10px; border-top: 1px solid #000; padding-top: 8px;">
+          <div class="terms">
+  <strong>
+    By confirming this order for shipment, the Shipper/Consignee agrees to the following terms:
+  </strong>
+
+  <ol style="margin-left: 4px;">
+    <li>Carriage is performed under Royal Gulf Shipping & Logistics LLC’s standard terms and applicable international conventions. All cargo details supplied must be true and complete.</li>
+
+    <li>Transit times are estimates only. Delays may occur due to weather, customs, port congestion, operational issues or carrier schedules.</li>
+
+    <li>Customs scanning, inspections, dog checks, or port delays may incur extra charges payable by the Merchant.</li>
+
+    <li>In case of loss/damage, liability shall not exceed the freight value or USD 50 per package unless a higher value is declared and agreed in writing beforehand.</li>
+
+    <li>The Merchant confirms lawful ownership of goods and accepts full responsibility for any illegal, prohibited or undeclared items shipped.</li>
+
+    <li>Royal Gulf is not liable for any damage during customs/port inspections at origin, transit or destination.</li>
+
+    <li>Cargo is carried at Merchant’s risk unless the Merchant arranges separate insurance. Royal Gulf is not liable for indirect or consequential losses.</li>
+
+    <li>Claims must be notified immediately in writing and within legal time limits. Late claims may be void.</li>
+
+    <li>Royal Gulf may use third-party carriers or subcontractors; all their protections and liability limits apply equally to Royal Gulf.</li>
+
+    <li>This HBL applies only to order ref ${receiverGroup.orderNumber}.</li>
+
+    <li>Governed by UAE law; disputes fall under Dubai courts unless agreed otherwise.</li>
+  </ol>
+
+  <p class="footer">
+    Receiver: ${receiverGroup.receiver} |
+    Order: ${receiverGroup.orderNumber} |
+    Container: ${containerInfo.containerNo} |
+    Page ${i + 1} of ${receiverGroups.length}
+  </p>
+</div>
+
+          <div class="signature-box" style="border-left: 1px solid #ccc; padding-left: 10px;">
+          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #000;">For and on behalf of</span>
+            <p style="color: #f37021; font-weight: bold; margin: 0; font-size:12px;">Royal Gulf Shipping & Logistics LLC</p>
+          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #000;">Generated: ${commonData.generated_date} ${commonData.generated_time}</span>
+
+            <div style="margin-top: 35px; border-top: 1px solid #000;">
+              <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">Authorised Signature</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+      // Add to DOM
+      document.body.appendChild(tempElement);
+
+      // Generate canvas for this receiver
+      const canvas = await html2canvas(tempElement, {
+        scale: 2.0,
+        useCORS: true,
+        allowTaint: true,
+        logging: false,
+        width: tempElement.scrollWidth,
+        height: tempElement.scrollHeight,
+        windowWidth: tempElement.scrollWidth,
+        windowHeight: tempElement.scrollHeight,
+        backgroundColor: '#ffffff',
+        imageTimeout: 0,
+        removeContainer: true
+      });
+
+      // Remove from DOM
+      document.body.removeChild(tempElement);
+
+      // Calculate dimensions
+      const pxPerMm = canvas.width / contentWidthMm;
+      const canvasHeightMm = canvas.height / pxPerMm;
+
+      // Add new page for each receiver (except first)
+      if (i > 0) {
+        pdf.addPage();
+      }
+
+      // Add image to PDF
+      const imgData = canvas.toDataURL('image/png', 1);
+      pdf.addImage(imgData, 'PNG', marginMm, marginMm, contentWidthMm, canvasHeightMm);
+    }
+    pdf.save(`HBL_${data.consignment_number}_${Date.now()}.pdf`);
+  };
+
+  const generateManifestPDFWithCanvas = async (data, allReceivers, selectedOrderObjects = includedOrders) => {
+    console.log('data for canvas data', data)
+    console.log('data for Receiver', allReceivers)
+    console.log('All Data', includedOrders)
+
+
+    if (!data.consignment_number) {
+      setSnackbar({
+        open: true,
+        severity: 'warning',
+        message: 'Please enter a consignment number to generate the manifest.',
+      });
+      return;
+    }
+
+    const groupedShipping = allReceivers.reduce((acc, order) => {
+      acc[order.id] = order.receivers.reduce((recAcc, receiver) => {
+        recAcc[receiver.id] = receiver.shippingdetails || [];
+        return recAcc;
+      }, {});
+      return acc;
+    }, {});
+
+    let total_assign_boxes_all = 0;
+    let total_assign_weight_all = 0;
+
+    allReceivers.forEach(order => {
+      order.receivers.forEach(receiver => {
+        const shippingDetails = receiver.shippingdetails || [];
+        shippingDetails.forEach(detail => {
+          const containerDetails = detail.containerDetails || [];
+          containerDetails.forEach(container => {
+            total_assign_boxes_all += Number(container.assign_total_box) || 0;
+            total_assign_weight_all += Number(container.assign_weight) || 0;
+
+          });
+        });
+      });
+    });
+
+    console.log(`Total Assign Boxes (All Orders): ${total_assign_boxes_all}`);
+    console.log(`Total Assign Weight (All Orders): ${total_assign_weight_all}`);
 
     // Load logo as base64
     const logoBase64 = await loadImageAsBase64(logoPic);
 
     // Create a temporary div element to render content
     const tempElement = document.createElement('div');
-    tempElement.style.width = '210mm'; // A4 width
-    tempElement.style.padding = '4mm'; // Match margin
+    tempElement.style.width = '210mm';
+    tempElement.style.padding = '4mm';
     tempElement.style.backgroundColor = 'white';
     tempElement.style.fontFamily = '"Helvetica Neue", Helvetica, Arial, sans-serif';
     tempElement.style.boxSizing = 'border-box';
 
-
-    // Commodity-wise data group karein with assign_total_box
+    // Commodity-wise data group karein with assign_total_box AND assign_weight
     const commoditySummary = allReceivers.reduce((summary, order) => {
       order.receivers.forEach(receiver => {
         receiver.shippingdetails?.forEach(detail => {
           const commodity = detail.category || 'Unknown';
           const subcategory = detail.subcategory || '';
-          const commodityKey = subcategory ? `${commodity} - ${subcategory}` : commodity;
+          const commodityType = detail.type || '';
+
+          // Commodity key without type for grouping
+          const commodityKey = `${commodity}|${subcategory}`;
+          const displayKey = subcategory ? `${commodity} - ${subcategory}` : commodity;
 
           if (!summary[commodityKey]) {
             summary[commodityKey] = {
-              commodity: commodityKey,
-              totalOrders: 0,
+              commodity: displayKey,
+              commodityType: commodityType,
+              totalOrders: new Set(), // Use Set for unique order IDs
               totalPkgs: 0,
               totalWeight: 0
             };
           }
 
-          // Har shipping detail ko ek order consider karein
-          summary[commodityKey].totalOrders += 1;
+          // Add order ID to Set (unique orders count)
+          summary[commodityKey].totalOrders.add(order.id);
 
-          // Assign total box calculate karein (containerDetails se)
-          let assignBoxes = 0;
-          detail.containerDetails?.forEach(container => {
-            assignBoxes += Number(container.assign_total_box) || 0;
-          });
+          // Calculate assign boxes and weight for THIS detail only
+          let assignBoxesForThisDetail = 0;
+          let assignWeightForThisDetail = 0;
 
-          summary[commodityKey].totalPkgs += assignBoxes;
-          summary[commodityKey].totalWeight += detail.weight || 0;
+          if (detail.containerDetails && detail.containerDetails.length > 0) {
+            detail.containerDetails.forEach(container => {
+              assignBoxesForThisDetail += Number(container.assign_total_box) || 0;
+              assignWeightForThisDetail += Number(container.assign_weight) || 0;
+            });
+          }
+
+          summary[commodityKey].totalPkgs += assignBoxesForThisDetail;
+          summary[commodityKey].totalWeight += assignWeightForThisDetail;
         });
       });
 
       return summary;
     }, {});
 
-    // Array mein convert karein aur totals calculate karein
+    // Convert Set sizes to numbers
+    Object.values(commoditySummary).forEach(item => {
+      item.totalOrders = item.totalOrders.size;
+    });
+
     const commodityArray = Object.values(commoditySummary);
 
-    // Grand totals calculate karein
     const grandTotal = commodityArray.reduce((total, item) => {
       total.totalOrders += item.totalOrders;
       total.totalPkgs += item.totalPkgs;
@@ -2015,18 +2924,34 @@ const generateManifestPDFWithCanvas = async (data, allReceivers, selectedOrderOb
       return total;
     }, { totalOrders: 0, totalPkgs: 0, totalWeight: 0 });
 
-    let manifestData = [];
+    // Group data by container
+    const containerGroups = {};
     let serialNo = 1;
+
+    // Get containers from data response
+    const containersData = data.containers || [];
 
     allReceivers.forEach(order => {
       order.receivers.forEach(receiver => {
         receiver.shippingdetails?.forEach(detail => {
-          // Container number nikalne ke liye
           let containerNo = '';
+          let containerSize = 'N/A';
+          let containerType = 'N/A';
+
           if (detail.containerDetails && detail.containerDetails.length > 0) {
             containerNo = detail.containerDetails[0]?.container?.container_number ||
               order.receiver_containers_json ||
               order.container_number ||
+              'N/A';
+
+            // Get container size from container details
+            containerSize = detail.containerDetails[0]?.container?.size ||
+              detail.containerDetails[0]?.size ||
+              'N/A';
+
+            // Get container type from container details
+            containerType = detail.containerDetails[0]?.container?.containerType ||
+              detail.containerDetails[0]?.containerType ||
               'N/A';
           } else {
             containerNo = order.receiver_containers_json ||
@@ -2034,48 +2959,90 @@ const generateManifestPDFWithCanvas = async (data, allReceivers, selectedOrderOb
               'N/A';
           }
 
-          // Marks & Nos (itemRef se)
-          const marksNos = detail.itemRef || 'N/A';
+          // Try to get size and type from main data containers array
+          if (containerNo !== 'N/A' && containersData.length > 0) {
+            const matchedContainer = containersData.find(c => c.containerNo === containerNo);
+            if (matchedContainer) {
+              containerSize = matchedContainer.size || containerSize;
+              containerType = matchedContainer.containerType || containerType;
+            }
+          }
 
-          // PKGS (assign_total_box se)
+          // Try to get size from order data if not found
+          if (containerSize === 'N/A') {
+            containerSize = order.container_size || 'N/A';
+          }
+
+          const trackingId = detail.itemRef || 'N/A';
           let pkgs = 0;
+          let assignWeight = 0;
+
           detail.containerDetails?.forEach(container => {
             pkgs += Number(container.assign_total_box) || 0;
+            assignWeight += Number(container.assign_weight) || 0;
           });
 
-          // Agar assign_total_box nahi hai to totalNumber use karo
           if (pkgs === 0) {
             pkgs = detail.totalNumber || 0;
           }
 
-          // Commodity
           const commodity = detail.category || 'Unknown';
           const subcategory = detail.subcategory ? ` - ${detail.subcategory}` : '';
           const fullCommodity = `${commodity}${subcategory}`;
 
-          manifestData.push({
+          if (!containerGroups[containerNo]) {
+            containerGroups[containerNo] = {
+              containerNumber: containerNo,
+              containerSize: containerSize,
+              containerType: containerType, // Added container type
+              data: []
+            };
+          }
+
+          containerGroups[containerNo].data.push({
             sno: serialNo++,
             orderNo: order.booking_ref || order.rgl_booking_number || 'N/A',
             containerNo: containerNo,
             sender: order.sender_name || 'N/A',
             receiver: receiver.receiver_name || 'N/A',
-            marksNos: marksNos,
+            trackingId: trackingId,
             pkgs: pkgs,
-            weight: detail.weight || 0,
+            weight: assignWeight,
             commodity: fullCommodity
           });
         });
       });
     });
 
-    // Totals calculate karein
-    const manifestTotals = manifestData.reduce((total, item) => {
-      total.totalPkgs += item.pkgs;
-      total.totalWeight += item.weight;
+    // Calculate totals for each container
+    Object.keys(containerGroups).forEach(containerNo => {
+      const containerData = containerGroups[containerNo].data;
+      const containerTotal = containerData.reduce((total, item) => {
+        total.totalPkgs += item.pkgs;
+        total.totalWeight += item.weight;
+        return total;
+      }, { totalPkgs: 0, totalWeight: 0 });
+
+      containerGroups[containerNo].containerTotal = containerTotal;
+    });
+
+    // Calculate overall manifest totals
+    const manifestTotals = Object.values(containerGroups).reduce((total, container) => {
+      total.totalPkgs += container.containerTotal.totalPkgs;
+      total.totalWeight += container.containerTotal.totalWeight;
       return total;
     }, { totalPkgs: 0, totalWeight: 0 });
 
-    // Create the content for the PDF with enhanced, user-friendly styling
+    // Vessel name get karne ka function
+    const getVesselName = (vesselId) => {
+      if (!vesselId) return 'N/A';
+      const vesselOption = options.vesselOptions?.find(v => v.value === vesselId.toString());
+      return vesselOption?.label || `Vessel ${vesselId}`;
+    };
+
+    const vesselName = getVesselName(data.vessel);
+
+    // Create the content for the PDF with original styling
     tempElement.innerHTML = `
     <style>
       * { box-sizing: border-box; }
@@ -2260,14 +3227,14 @@ const generateManifestPDFWithCanvas = async (data, allReceivers, selectedOrderOb
       .page-break { page-break-before: always; }
     </style>
     
-    <div class="header">
+   <div class="header">
       <div class="header-left">
         <img src="${logoBase64}" alt="Company Logo" class="header-logo" onerror="this.style.display='none';">
         <div>
             <h2>ROYAL GULF SHIPPING & LOGISTICS LLC</h2>
             <h5 style="color: gray;">Dubai • London • Karachi • Shenzhen</h5>
         </div>
-        <h2>CONSOLIDATION MANIFEST – CONSIGNMENT LEVEL</h2>
+        <h2>CONSOLIDATION MANIFEST - CONSIGNMENT LEVEL</h2>
 
       </div>
       <div class="header-right">
@@ -2275,14 +3242,13 @@ const generateManifestPDFWithCanvas = async (data, allReceivers, selectedOrderOb
     <p class="header-consignment">Consignment ID: ${data.consignment_number || 'N/A'}</p>
     <p>POL: ${data.originName || 'N/A'}</p>
     <p>POD: ${data.destinationName || 'N/A'}</p>
-    <p>ETD / ETA: ${data.eta}, ${data.etd}</p>
-    <p>Vessel / Voyage: ${data.vessel}, ${data.voyage}</p>
+    <p>ETD: ${data.eta}</p>
+    <p>Vessel / Voyage: ${vesselName}, ${data.voyage}</p>
     <p>Generated: ${new Date().toLocaleString()}</p>
   </div>
     </div>
 
-    
- <div class="section">
+    <div class="section">
  <div class="section">
         <h2 class="section-header">PARTIES</h2>
         <div style="display: flex; flex-direction: column; margin-left: 10px;">
@@ -2297,8 +3263,7 @@ const generateManifestPDFWithCanvas = async (data, allReceivers, selectedOrderOb
         </div>
     </div>
 
-
-<div class="section" >
+    <div class="section" >
     <h2 class="section-header">CONSIGNMENT SUMMARY</h2>
     <table>
         <thead>
@@ -2314,14 +3279,13 @@ const generateManifestPDFWithCanvas = async (data, allReceivers, selectedOrderOb
                 <td style="border: 1px solid #ddd;">${data.containers?.length || 0}</td>
                 <td style="border: 1px solid #ddd;">${selectedOrderObjects?.length || allReceivers?.length || 0}</td>
                 <td style="border: 1px solid #ddd;">${Number(total_assign_boxes_all).toLocaleString()} Packages</td>
-                <td style="border: 1px solid #ddd;">${Number(manifestTotals.totalWeight).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <td style="border: 1px solid #ddd;">${Number(total_assign_weight_all).toFixed(2)}</td>
             </tr>
         </tbody>
     </table>
 </div>
 
-
-   ${data.containers && data.containers.length > 0 ? `
+    ${data.containers && data.containers.length > 0 ? `
     <div class="section">
         <h2 class="section-header">COMMODITY SUMMARY (ALL CONTAINERS)</h2>
         <small>System clubs all orders with the same commodity and shows combined packages & weight.</small>
@@ -2337,15 +3301,10 @@ const generateManifestPDFWithCanvas = async (data, allReceivers, selectedOrderOb
             <tbody>
                 ${commodityArray.map(item => `
                 <tr>
-                    <td style="text-align:left; border: 1px solid #ddd;font-weight: normal;">${item.commodity}</td>
+                    <td style="text-align:left; border: 1px solid #ddd;font-weight: normal;">${item.commodity} (${item.commodityType})</td>
                     <td style="border: 1px solid #ddd;font-weight: normal;">${item.totalOrders}</td>
                     <td style="border: 1px solid #ddd;font-weight: normal;">${item.totalPkgs.toLocaleString()}</td>
-                    <td style="border: 1px solid #ddd;font-weight: normal;">
-                        ${Number(item.totalWeight).toLocaleString(undefined, {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    })}
-                </tr>
+                    <td style="border: 1px solid #ddd;font-weight: normal;">${Number(item.totalWeight).toFixed(2)}</td>
                 `).join('')}
 
                 <!-- Grand Total Row -->
@@ -2354,70 +3313,90 @@ const generateManifestPDFWithCanvas = async (data, allReceivers, selectedOrderOb
                     <td style="padding: 12px; border: 1px solid #ddd;">${grandTotal.totalOrders}</td>
                     <td style="padding: 12px; border: 1px solid #ddd;">${grandTotal.totalPkgs.toLocaleString()}</td>
                     <td style="padding: 12px; border: 1px solid #ddd;">
-                        ${Number(grandTotal.totalWeight).toLocaleString(undefined, {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    })}</td>
+                        ${grandTotal.totalWeight}</td>
                 </tr>
             </tbody>
         </table>
     </div>` : ''}
 
-  <div class="section" style="page-break-before: always;">
-    <h2 class="section-header">DETAILED MANIFEST – ALL CONTAINERS</h2>
-    <table style="width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 12px;">
-      <thead>
-        <tr>
-          <th style="text-align: center; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 5%;">S.NO</th>
-          <th style="text-align: center; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 10%;">ORDER NO</th>
-          <th style="text-align: center; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 12%;">CONTAINER NO</th>
-          <th style="text-align: center; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 10%;">Tracking ID</th>
-          <th style="text-align: center; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 18%;">SENDER</th>
-          <th style="text-align: center; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 18%;">RECEIVER</th>
-          <th style="text-align: center; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 10%;">MARKS & NOS</th>
-          <th style="text-align: right; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 7%;">PKGS</th>
-          <th style="text-align: right; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 8%;">WEIGHT (KGS)</th>
-          <th style="text-align: center; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 12%;">COMMODITY</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${manifestData.map(item => `
-          <tr>
-            <td style="text-align: center; padding: 8px; border: 1px solid #ddd;">${item.sno}</td>
-            <td style="font-weight: normal; padding: 8px; border: 1px solid #ddd;">${item.orderNo}</td>
-            <td style="font-weight: normal; padding: 8px; border: 1px solid #ddd;">${item.containerNo}</td>
-            <td style="font-weight: normal; padding: 8px; border: 1px solid #ddd;">${item.marksNos}</td>
-            <td style="font-weight: normal; padding: 8px; border: 1px solid #ddd;">${item.sender}</td>
-            <td style="font-weight: normal; padding: 8px; border: 1px solid #ddd;">${item.receiver}</td>
-            <td style="font-weight: normal; padding: 8px; border: 1px solid #ddd;">Marks and Nos</td>
-            <td style="font-weight: normal; text-align: right; padding: 8px; border: 1px solid #ddd;">${item.pkgs.toLocaleString()}</td>
-            <td style="font-weight: normal; text-align: right; padding: 8px; border: 1px solid #ddd;">${Number(item.weight).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-            <td style="font-weight: normal;padding: 8px; border: 1px solid #ddd;">${item.commodity}</td>
-          </tr>
+    <div class="section" style="page-break-before: always;">
+        <h2 class="section-header">DETAILED MANIFEST - CONTAINER WISE</h2>
+        
+        ${Object.values(containerGroups).map((container, containerIndex) => `
+            <div style="margin-bottom: 6mm;">
+                <div class="container-header">
+                    <h2><span>Container: ${container.containerNumber}</span>
+                    <span>Size: ${container.containerSize}${container.containerType}</span></h2>
+                </div>
+                
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="text-align: center; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 5%;">S.NO</th>
+                            <th style="text-align: center; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 10%;">ORDER NO</th>
+                            <th style="text-align: center; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 10%;">Tracking ID</th>
+                            <th style="text-align: center; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 18%;">SENDER</th>
+                            <th style="text-align: center; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 18%;">RECEIVER</th>
+                            <th style="text-align: right; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 7%;"; text-align: right;">PKGS</th>
+                            <th style="text-align: right; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 8%;"; text-align: right;">WEIGHT (KGS)</th>
+                            <th style="text-align: center; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 12%;">COMMODITY</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${container.data.map(item => `
+                            <tr>
+                                <td style="text-align: center; padding: 8px; border: 1px solid #ddd;">${item.sno}</td>
+                                <td style="font-weight: normal; padding: 8px; border: 1px solid #ddd;">${item.orderNo}</td>
+                                <td style="font-weight: normal; padding: 8px; border: 1px solid #ddd;">${item.trackingId}</td>
+                                <td style="font-weight: normal; padding: 8px; border: 1px solid #ddd;">${item.sender}</td>
+                                <td style="font-weight: normal; padding: 8px; border: 1px solid #ddd;">${item.receiver}</td>
+                                <td style="font-weight: normal; text-align: right; padding: 8px; border: 1px solid #ddd;">${item.pkgs.toLocaleString()}</td>
+                                <td style="font-weight: normal; text-align: right; padding: 8px; border: 1px solid #ddd;">${Number(item.weight).toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    })}</td>
+                                <td style="font-weight: normal;padding: 8px; border: 1px solid #ddd;">${item.commodity}</td>
+                            </tr>
+                        `).join('')}
+                        <tr style="background-color: #f5f5f5; font-weight: bold;">
+                            <td colspan="5" style="text-align: right; padding: 10px; border: 1px solid #ddd;">Container Total:</td>
+                            <td style="text-align: right; padding: 10px; border: 1px solid #ddd;">${container.containerTotal.totalPkgs.toLocaleString()}</td>
+                            <td style="text-align: right; padding: 10px; border: 1px solid #ddd;">${Number(container.containerTotal.totalWeight).toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    })}</td>
+                            <td style="padding: 10px; border: 1px solid #ddd;"></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
         `).join('')}
         
-        <!-- Total Row -->
-        <tr style="background-color: #f5f5f5; font-weight: bold;">
-          <td colspan="7" style="text-align: right; padding: 10px; border: 1px solid #ddd;">TOTAL:</td>
-          <td style="text-align: right; padding: 10px; border: 1px solid #ddd;">${manifestTotals.totalPkgs.toLocaleString()}</td>
-          <td style="text-align: right; padding: 10px; border: 1px solid #ddd;">${Number(manifestTotals.totalWeight).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-          <td style="padding: 10px; border: 1px solid #ddd;"></td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
+        <!-- Grand Total Row -->
+        <table style="margin-top: 4mm;">
+            <tbody>
+                <tr class="grand-total">
+                    <td colspan="5" style="text-align: right; padding: 8px; font-size: 10px;">GRAND TOTAL (All Containers):</td>
+                    <td style="text-align: right; padding: 8px; font-size: 10px;">${manifestTotals.totalPkgs.toLocaleString()}</td>
+                    <td style="text-align: right; padding: 8px; font-size: 10px;">${Number(manifestTotals.totalWeight).toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    })}</td>
+                    <td style="padding: 8px;"></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
 
     <div class="footer">
-      <p><strong>Generated:</strong> ${new Date().toLocaleString()} | <strong>Page:</strong> 1 of ${Math.ceil(allReceivers?.length / 5 || 1)} </p>
-      <p style="margin-top: 2mm; font-size: 9px; opacity: 0.7;">© 2025 Royal Gulf Shipping Management System | This manifest is computer-generated and legally binding.</p>
+        <p><strong>Generated:</strong> ${new Date().toLocaleString()} | <strong>Total Containers:</strong> ${Object.keys(containerGroups).length}</p>
+        <p style="margin-top: 2mm; font-size: 9px; opacity: 0.7;">© ${new Date().getFullYear()} Royal Gulf Shipping Management System | This manifest is computer-generated and legally binding.</p>
     </div>
-</div>
-
-  `;
+</div>`;
 
     document.body.appendChild(tempElement);
 
-    // Convert the element to canvas with higher quality and proper dimensions
+    // Improved PDF generation with better page break handling
     const scale = 1.5;
     const canvas = await html2canvas(tempElement, {
       scale: scale,
@@ -2429,10 +3408,23 @@ const generateManifestPDFWithCanvas = async (data, allReceivers, selectedOrderOb
       windowWidth: tempElement.scrollWidth,
       windowHeight: tempElement.scrollHeight,
       backgroundColor: '#ffffff',
-      // Optimization settings
       imageTimeout: 0,
       removeContainer: true,
       onclone: function (clonedDoc) {
+        // Add page break logic for better PDF rendering
+        const tables = clonedDoc.querySelectorAll('table');
+        tables.forEach((table, index) => {
+          if (index > 0) {
+            // Add page break before each container table except first
+            const parentDiv = table.closest('div');
+            if (parentDiv && parentDiv.previousElementSibling &&
+              parentDiv.previousElementSibling.className === 'container-header') {
+              const containerDiv = parentDiv.parentElement;
+              containerDiv.style.breakInside = 'avoid';
+            }
+          }
+        });
+
         clonedDoc.querySelectorAll('img').forEach(img => {
           img.style.maxWidth = '100%';
           img.style.height = 'auto';
@@ -2440,57 +3432,92 @@ const generateManifestPDFWithCanvas = async (data, allReceivers, selectedOrderOb
       }
     });
 
-    // Remove the temporary element
     document.body.removeChild(tempElement);
 
-    // Save the canvas as an image file (PNG) - High quality
-    const canvasDataURL = canvas.toDataURL('image/png', 0.85); // Full quality PNG
+    // Save as PNG
+    const canvasDataURL = canvas.toDataURL('image/png', 0.85);
     const canvasLink = document.createElement('a');
     canvasLink.download = `Manifest_${data.consignment_number}_Canvas_${Date.now()}.png`;
     canvasLink.href = canvasDataURL;
-    canvasLink.click(); // Trigger download
+    canvasLink.click();
 
-    // Create PDF from canvas with better quality and margins, with bottom space
-    const innerWidthMm = 210 - 2 * 14; // 182mm
-    const pxPerMm = canvas.width / innerWidthMm;
-    const extraBottomSpaceMm = 8; // Approx 70px at 96dpi ~18.5mm, rounded to 20mm
-    const contentHeightPerPageMm = (297 - 2 * 14) - extraBottomSpaceMm; // 269 - 20 = 249mm
-    const contentHeightPerPagePx = contentHeightPerPageMm * pxPerMm;
-
+    // Create PDF with improved page break handling
     const pdf = new jsPDF('p', 'mm', 'a4');
     const marginMm = 14;
-    const contentWidthMm = innerWidthMm;
+    const contentWidthMm = 210 - 2 * marginMm;
 
-    let startY = 0;
-    while (startY < canvas.height) {
-      const sliceHeightPx = Math.min(contentHeightPerPagePx, canvas.height - startY);
+    // Calculate dimensions
+    const pxPerMm = canvas.width / contentWidthMm;
+    const maxPageHeightMm = 297 - 2 * marginMm;
+    const maxPageHeightPx = maxPageHeightMm * pxPerMm;
 
-      // Create cropped canvas for this page slice
+    let currentY = 0;
+    let pageNum = 1;
+
+    // Function to check if we need to break before a container
+    const needsContainerBreak = (containerStartY, containerHeightPx, currentPageY) => {
+      const remainingSpace = maxPageHeightPx - currentPageY;
+      // If container height is more than remaining space, start on new page
+      return containerHeightPx > remainingSpace;
+    };
+
+    while (currentY < canvas.height) {
+      let sliceHeightPx = maxPageHeightPx;
+      let shouldBreak = false;
+
+      // Check if we need to break for containers
+      const containerDivs = tempElement.querySelectorAll('.container-header');
+      containerDivs.forEach(containerDiv => {
+        const rect = containerDiv.getBoundingClientRect();
+        const containerStartY = rect.top * scale;
+        const containerEndY = containerStartY + (rect.height * scale);
+
+        // If container starts on current page but might not fit
+        if (containerStartY >= currentY && containerStartY < currentY + maxPageHeightPx) {
+          // Calculate container height including its table
+          const containerSection = containerDiv.parentElement;
+          const containerRect = containerSection.getBoundingClientRect();
+          const containerHeightPx = containerRect.height * scale;
+
+          if (needsContainerBreak(containerStartY - currentY, containerHeightPx, currentY)) {
+            sliceHeightPx = containerStartY - currentY - 10; // Leave small gap
+            shouldBreak = true;
+          }
+        }
+      });
+
+      // Ensure we don't exceed canvas height
+      sliceHeightPx = Math.min(sliceHeightPx, canvas.height - currentY);
+
       const croppedCanvas = document.createElement('canvas');
       croppedCanvas.width = canvas.width;
       croppedCanvas.height = sliceHeightPx;
       const ctx = croppedCanvas.getContext('2d');
-      ctx.drawImage(canvas, 0, startY, canvas.width, sliceHeightPx, 0, 0, canvas.width, sliceHeightPx);
+      ctx.drawImage(canvas, 0, currentY, canvas.width, sliceHeightPx, 0, 0, canvas.width, sliceHeightPx);
 
-      // const croppedDataURL = croppedCanvas.toDataURL('image/png', 1.0);
       const croppedDataURL = croppedCanvas.toDataURL('image/jpeg', 0.85);
       const drawHeightMm = sliceHeightPx / pxPerMm;
 
-      // Add to PDF (first page without addPage)
-      if (startY > 0) {
+      if (currentY > 0) {
         pdf.addPage();
+        pageNum++;
       }
-      pdf.addImage(croppedDataURL, 'JPEG', marginMm, marginMm, contentWidthMm, drawHeightMm, undefined, 'FAST');
-      croppedCanvas.remove();
 
-      startY += sliceHeightPx;
+      pdf.addImage(croppedDataURL, 'JPEG', marginMm, marginMm, contentWidthMm, drawHeightMm, undefined, 'FAST');
+
+      // Add page number
+      pdf.setFontSize(9);
+      pdf.setTextColor(128, 128, 128);
+      pdf.text(`Page ${pageNum}`, 210 / 2, 297 - 10, { align: 'center' });
+
+      croppedCanvas.remove();
+      currentY += sliceHeightPx;
     }
 
-    // Save the PDF
-    pdf.save(`Manifest_${data.consignment_number}_Detailed_${Date.now()}.pdf`);
+    pdf.save(`Manifest_${data.consignment_number}_ContainerWise_${Date.now()}.pdf`);
   };
 
-const generateContainersAndOrdersPDFWithCanvas = async (data, allReceivers, selectedOrderObjects = includedOrders) => {
+  const generateContainersAndOrdersPDFWithCanvas = async (data, allReceivers, selectedOrderObjects = includedOrders) => {
     console.log('data for canvas data', data)
     if (!data.consignment_number) {
       setSnackbar({
@@ -2553,6 +3580,8 @@ const generateContainersAndOrdersPDFWithCanvas = async (data, allReceivers, sele
           assignedContainerNo = order.receiver_containers_json;
         }
 
+        let containerInfo = { containerNo: 'N/A', seal_no: 'N/A', size: 'N/A' };
+
         // Method 3: Check containers array in receiver
         if (!assignedContainerNo && order.receivers && order.receivers.length > 0) {
           const receiver = order.receivers[0];
@@ -2596,6 +3625,7 @@ const generateContainersAndOrdersPDFWithCanvas = async (data, allReceivers, sele
     };
 
     // 3. FUNCTION TO CALCULATE STATISTICS FOR A SINGLE CONTAINER
+    // 3. FUNCTION TO CALCULATE STATISTICS FOR A SINGLE CONTAINER
     const calculateContainerStats = (orders) => {
       if (!orders || orders.length === 0) {
         return {
@@ -2617,15 +3647,29 @@ const generateContainersAndOrdersPDFWithCanvas = async (data, allReceivers, sele
           order.receivers.forEach(receiver => {
             if (receiver.shippingdetails && receiver.shippingdetails.length > 0) {
               receiver.shippingdetails.forEach(item => {
-                totalPackages += parseInt(item.totalNumber) || 0;
-                totalWeight += parseFloat(item.weight) || 0;
+                // Use assign_total_box and assign_weight instead of totalNumber and weight
+                let packagesForItem = 0;
+                let weightForItem = 0;
+
+                if (item.containerDetails && item.containerDetails.length > 0) {
+                  item.containerDetails.forEach(containerDetail => {
+                    packagesForItem += Number(containerDetail.assign_total_box) || 0;
+                    weightForItem += Number(containerDetail.assign_weight) || 0;
+                  });
+                } else {
+                  packagesForItem = parseInt(item.totalNumber) || 0;
+                  weightForItem = parseFloat(item.weight) || 0;
+                }
+
+                totalPackages += packagesForItem;
+                totalWeight += weightForItem;
               });
             }
           });
         }
       });
 
-      // Gross weight distribution based on weight ratio
+      // Gross weight calculation
       const totalAllContainersWeight = Object.keys(containerOrdersMap).reduce((sum, key) => {
         const ordersInContainer = containerOrdersMap[key].orders;
         const containerWeight = ordersInContainer.reduce((wSum, order) => {
@@ -2634,7 +3678,13 @@ const generateContainersAndOrdersPDFWithCanvas = async (data, allReceivers, sele
             order.receivers.forEach(receiver => {
               if (receiver.shippingdetails && receiver.shippingdetails.length > 0) {
                 receiver.shippingdetails.forEach(item => {
-                  weight += parseFloat(item.weight) || 0;
+                  if (item.containerDetails && item.containerDetails.length > 0) {
+                    item.containerDetails.forEach(containerDetail => {
+                      weight += Number(containerDetail.assign_weight) || 0;
+                    });
+                  } else {
+                    weight += parseFloat(item.weight) || 0;
+                  }
                 });
               }
             });
@@ -2656,6 +3706,7 @@ const generateContainersAndOrdersPDFWithCanvas = async (data, allReceivers, sele
     };
 
     // 4. FUNCTION TO CALCULATE COMMODITY SUMMARY FOR A SINGLE CONTAINER
+    // 4. FUNCTION TO CALCULATE COMMODITY SUMMARY FOR A SINGLE CONTAINER
     const calculateCommoditySummary = (orders) => {
       const commodityMap = {};
 
@@ -2666,18 +3717,41 @@ const generateContainersAndOrdersPDFWithCanvas = async (data, allReceivers, sele
               if (receiver.shippingdetails && receiver.shippingdetails.length > 0) {
                 receiver.shippingdetails.forEach(item => {
                   const commodity = item.category || 'General';
-                  if (!commodityMap[commodity]) {
-                    commodityMap[commodity] = {
-                      commodity: commodity,
+                  const subcategory = item.subcategory || '';
+                  const commodityType = item.type || 'N/A';
+
+                  // Use commodity + subcategory as key for proper grouping
+                  const commodityKey = subcategory ? `${commodity}|${subcategory}` : commodity;
+                  const displayName = subcategory ? `${commodity} - ${subcategory} (${commodityType})` : commodity;
+
+
+                  if (!commodityMap[commodityKey]) {
+                    commodityMap[commodityKey] = {
+                      commodity: displayName,
                       totalOrders: new Set(),
                       totalPackages: 0,
                       totalWeight: 0
                     };
                   }
 
-                  commodityMap[commodity].totalOrders.add(order.id);
-                  commodityMap[commodity].totalPackages += parseInt(item.totalNumber) || 0;
-                  commodityMap[commodity].totalWeight += parseFloat(item.weight) || 0;
+                  commodityMap[commodityKey].totalOrders.add(order.id);
+
+                  // Use assign_total_box and assign_weight
+                  let packagesForItem = 0;
+                  let weightForItem = 0;
+
+                  if (item.containerDetails && item.containerDetails.length > 0) {
+                    item.containerDetails.forEach(containerDetail => {
+                      packagesForItem += Number(containerDetail.assign_total_box) || 0;
+                      weightForItem += Number(containerDetail.assign_weight) || 0;
+                    });
+                  } else {
+                    packagesForItem = parseInt(item.totalNumber) || 0;
+                    weightForItem = parseFloat(item.weight) || 0;
+                  }
+
+                  commodityMap[commodityKey].totalPackages += packagesForItem;
+                  commodityMap[commodityKey].totalWeight += weightForItem;
                 });
               }
             });
@@ -2704,15 +3778,33 @@ const generateContainersAndOrdersPDFWithCanvas = async (data, allReceivers, sele
             order.receivers.forEach(receiver => {
               if (receiver.shippingdetails && receiver.shippingdetails.length > 0) {
                 receiver.shippingdetails.forEach(item => {
+                  // Calculate packages and weight from containerDetails
+                  let packages = 0;
+                  let weight = 0;
+
+                  if (item.containerDetails && item.containerDetails.length > 0) {
+                    item.containerDetails.forEach(containerDetail => {
+                      packages += Number(containerDetail.assign_total_box) || 0;
+                      weight += Number(containerDetail.assign_weight) || 0;
+                    });
+                  } else {
+                    packages = parseInt(item.totalNumber) || 0;
+                    weight = parseFloat(item.weight) || 0;
+                  }
+
+                  const commodity = item.category || 'N/A';
+                  const subcategory = item.subcategory || '';
+                  const fullCommodity = subcategory ? `${commodity} - ${subcategory}` : commodity;
+
                   detailedData.push({
                     sno: serialNumber++,
                     orderNumber: order.booking_ref || `ORD-${order.id}`,
                     sender: order.sender_name || 'N/A',
                     receiver: receiver.receiver_name || 'N/A',
                     marksNos: item.type || 'N/A',
-                    packages: parseInt(item.totalNumber) || 0,
-                    weight: parseFloat(item.weight) || 0,
-                    commodity: item.category || 'N/A'
+                    packages: packages,
+                    weight: weight,
+                    commodity: fullCommodity
                   });
                 });
               }
@@ -2723,6 +3815,15 @@ const generateContainersAndOrdersPDFWithCanvas = async (data, allReceivers, sele
 
       return detailedData;
     };
+
+    // Vessel name get karne ka function
+    const getVesselName = (vesselId) => {
+      if (!vesselId) return 'N/A';
+      const vesselOption = options.vesselOptions?.find(v => v.value === vesselId.toString());
+      return vesselOption?.label || `Vessel ${vesselId}`;
+    };
+
+    const vesselName = getVesselName(data.vessel);
 
     // Load logo as base64
     const logoBase64 = await loadImageAsBase64(logoPic);
@@ -2758,11 +3859,11 @@ const generateContainersAndOrdersPDFWithCanvas = async (data, allReceivers, sele
         <div class="${pageBreakClass}" style="margin-top: ${containerCounter > 1 ? '30px' : '0'}">
           <!-- Container Header -->
           <div class="container-title">
-            CONTAINER ${containerCounter}: ${containerNo}
+            CONTAINER ${containerCounter}: ${containerNo} | SIZE: ${containerData.container.size || 'N/A'}${containerData.container.containerType || 'N/A'}
           </div>
           
           <!-- TABLE 1: Container Summary -->
-          <div class="section-title">CONTAINER SUMMARY - ${containerNo}</div>
+          <div class="section-title">CONTAINER SUMMARY - ${containerNo} (${containerData.container.size || 'N/A'}${containerData.container.containerType || 'N/A'})</div>
           ${orders.length > 0 ? `
           <table class="data-table">
             <thead>
@@ -2791,7 +3892,8 @@ const generateContainersAndOrdersPDFWithCanvas = async (data, allReceivers, sele
           
           <!-- TABLE 2: Container Commodity Summary -->
           ${orders.length > 0 ? `
-          <div class="section-title">CONTAINER COMMODITY SUMMARY - ${containerNo}</div>
+          <div class="section-title">CONTAINER COMMODITY SUMMARY - ${containerNo} (${containerData.container.size || 'N/A'}${containerData.container.containerType || 'N/A'})</div>
+
           <div class="note">Commodity-wise breakdown for this container</div>
           ${commoditySummary.length > 0 ? `
           <table class="data-table">
@@ -2807,6 +3909,7 @@ const generateContainersAndOrdersPDFWithCanvas = async (data, allReceivers, sele
               ${commoditySummary.map(item => `
               <tr>
                 <td style="text-align:left;border-right: #7e7e7e 1px solid;">${item.commodity}</td>
+
                 <td style="border-right: #7e7e7e 1px solid;">${item.totalOrders}</td>
                 <td style="border-right: #7e7e7e 1px solid;">${item.totalPackages}</td>
                 <td>${(item.totalWeight).toFixed(2)}</td>
@@ -2825,7 +3928,7 @@ const generateContainersAndOrdersPDFWithCanvas = async (data, allReceivers, sele
           
           <!-- TABLE 3: Detailed Manifest -->
           ${orders.length > 0 ? `
-          <div class="section-title">DETAILED MANIFEST - ${containerNo}</div>
+<div class="section-title">DETAILED MANIFEST - ${containerNo} (${containerData.container.size || 'N/A'}${containerData.container.containerType || 'N/A'})</div>
           ${detailedData.length > 0 ? `
           <table class="data-table">
             <thead>
@@ -3138,8 +4241,7 @@ const generateContainersAndOrdersPDFWithCanvas = async (data, allReceivers, sele
 
     pdf.save(`Manifest_${data.consignment_number}_Containers_${Date.now()}.pdf`);
   };
-
-// console.log('Rendering Add/Edit Consignment form in', eta,etaSuggestion);
+  // console.log('Rendering Add/Edit Consignment form in', eta,etaSuggestion);
   return (
     <LocalizationProvider dateAdapter={AdapterDayjs}>
       <Snackbar open={snackbar.open} autoHideDuration={6000} onClose={() => setSnackbar({ ...snackbar, open: false })}>
@@ -3150,12 +4252,31 @@ const generateContainersAndOrdersPDFWithCanvas = async (data, allReceivers, sele
       <Box sx={{ p: 3, backgroundColor: '#f5f7fa', minHeight: '100vh' }}>
         <Slide in timeout={1000}>
           <Card sx={{ boxShadow: 4, borderRadius: 3, overflow: 'hidden' }}>
-              <form onSubmit={mode === 'edit' ? handleEditCon : handleCreate}>
+            <form onSubmit={mode === 'edit' ? handleEditCon : handleCreate}>
 
-            <CardContent sx={{ p: 4 }}>
-              <Typography variant="h4" gutterBottom sx={{ color: '#0d6c6a', fontWeight: 'bold', mb: 3 }}>
-                {mode === 'add' ? 'Add' : 'Edit'} Consignment Details
-              </Typography>
+              <CardContent sx={{ p: 4 }}>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    mb: 3,
+                  }}
+                >
+                  <Typography variant="h4" gutterBottom sx={{ color: '#0d6c6a', fontWeight: 'bold', mb: 3 }}>
+                    {mode === 'add' ? 'Add' : 'Edit'} Consignment Details
+                  </Typography>
+
+                  <Button
+                    variant="outlined"
+                    startIcon={<DescriptionIcon />}
+                    onClick={() => generateConsignmentNotePDFWithCanvas(values, includedOrders)} // Fixed: Pass includedOrders
+                    disabled={saving || !values.consignment_number}
+                    sx={{ borderColor: '#f58220', color: '#f58220', '&:hover': { borderColor: '#e65100', backgroundColor: '#fff3e0' } }}
+                  >
+                    Consignment Note PDF
+                  </Button>
+                </Box>
                 {/* Main Data Section */}
                 <Accordion defaultExpanded sx={{ boxShadow: 2, borderRadius: 2, mb: 3, '&:before': { display: 'none' } }}>
                   <AccordionSummary
@@ -3166,9 +4287,9 @@ const generateContainersAndOrdersPDFWithCanvas = async (data, allReceivers, sele
                   </AccordionSummary>
                   <AccordionDetails sx={{ p: 3 }}>
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                        <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}> 
+                      <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
                         <Box sx={{ flex: 1, minWidth: 250 }}>
-                          
+
                           <CustomTextField
                             name="consignment_number"
                             value={values.consignment_number}
@@ -3182,73 +4303,73 @@ const generateContainersAndOrdersPDFWithCanvas = async (data, allReceivers, sele
                             helperText={
                               touched.consignment_number && errors.consignment_number
                                 ? errors.consignment_number
-                               : 'Enter unique consignment number'
+                                : 'Enter unique consignment number'
                             }
                           />
                         </Box>
-    <Box sx={{ flex: 1, minWidth: 350  }}>
-      <CustomSelect
-        name="status"
-        value={values.status}
-        onChange={handleStatusChange}  // Now client-side
-        label="Status"
-        options={options.statusOptions || []}
-        // disabled={mode === 'edit'}
-        error={touched.status && Boolean(errors.status)}
-        helperText={touched.status && errors.status ? errors.status : ''}
-        loading={etaLoading}  // Brief spinner (optional, since instant)
-      />
-      {mode === 'edit' && (
-        <Button
-          variant="outlined"
-          size="small"
-          onClick={advanceStatus}
-          sx={{ borderColor: '#f58220', color: '#f58220', minHeight: '56px',marginTop:1 }}
-        >
-          Change
-        </Button>
-      )}
-    </Box>
+                        <Box sx={{ flex: 1, minWidth: 350 }}>
+                          <CustomSelect
+                            name="status"
+                            value={values.status}
+                            onChange={handleStatusChange}  // Now client-side
+                            label="Status"
+                            options={options.statusOptions || []}
+                            // disabled={mode === 'edit'}
+                            error={touched.status && Boolean(errors.status)}
+                            helperText={touched.status && errors.status ? errors.status : ''}
+                            loading={etaLoading}  // Brief spinner (optional, since instant)
+                          />
+                          {mode === 'edit' && (
+                            <Button
+                              variant="outlined"
+                              size="small"
+                              onClick={advanceStatus}
+                              sx={{ borderColor: '#f58220', color: '#f58220', minHeight: '56px', marginTop: 1 }}
+                            >
+                              Change
+                            </Button>
+                          )}
+                        </Box>
 
-{mode === 'edit' && (
-    <Box sx={{ flex: 1, minWidth: 250 }}>
+                        {mode === 'edit' && (
+                          <Box sx={{ flex: 1, minWidth: 250 }}>
 
-                        <LocalizationProvider dateAdapter={AdapterDayjs}>
+                            <LocalizationProvider dateAdapter={AdapterDayjs}>
 
-      <DatePicker
-        label="ETA"
-        value={eta ? dayjs(eta) : dayjs(etaSuggestion)}  // Ensure Day.js or null; handle invalid
-        onChange={(value) => {
-          if (value && value?.isValid()) {  // Guard: Check isValid before format
-            const formatted = value.format('YYYY-MM-DD');
-            setEta(formatted);
-            setValues(prev => ({ ...prev, eta: formatted }));  // Sync to form
-          } else {
-            setEta(null);
-            // setValues(prev => ({ ...prev, eta: null }));  // Clear invalid
-          }
-        }}
-        inputFormat="YYYY-MM-DD"
-        readOnly={true}
-        slotProps={{ 
-          textField: { 
-            helperText: etaLoading 
-              ? 'Calculating ETA...' 
-              : etaSuggestion && eta !== etaSuggestion
-                ? `Suggested: ${dayjs(etaSuggestion).isValid() ? dayjs(etaSuggestion).format('MMM DD, YYYY') : 'Invalid date'} based on status (edited)`
-                : etaSuggestion 
-                  ? `Suggested: ${dayjs(etaSuggestion).isValid() ? dayjs(etaSuggestion).format('MMM DD, YYYY') : 'Invalid date'} based on status`
-                  : 'Set ETA based on status' ,
-          } 
-        }}
-        disabled={['Delivered', 'Cancelled'].includes(values.status)}  // Disable for terminals
-        name="eta"
-      />
-</LocalizationProvider>                        
+                              <DatePicker
+                                label="ETA"
+                                value={eta ? dayjs(eta) : dayjs(etaSuggestion)}  // Ensure Day.js or null; handle invalid
+                                onChange={(value) => {
+                                  if (value && value?.isValid()) {  // Guard: Check isValid before format
+                                    const formatted = value.format('YYYY-MM-DD');
+                                    setEta(formatted);
+                                    setValues(prev => ({ ...prev, eta: formatted }));  // Sync to form
+                                  } else {
+                                    setEta(null);
+                                    // setValues(prev => ({ ...prev, eta: null }));  // Clear invalid
+                                  }
+                                }}
+                                inputFormat="YYYY-MM-DD"
+                                readOnly={true}
+                                slotProps={{
+                                  textField: {
+                                    helperText: etaLoading
+                                      ? 'Calculating ETA...'
+                                      : etaSuggestion && eta !== etaSuggestion
+                                        ? `Suggested: ${dayjs(etaSuggestion).isValid() ? dayjs(etaSuggestion).format('MMM DD, YYYY') : 'Invalid date'} based on status (edited)`
+                                        : etaSuggestion
+                                          ? `Suggested: ${dayjs(etaSuggestion).isValid() ? dayjs(etaSuggestion).format('MMM DD, YYYY') : 'Invalid date'} based on status`
+                                          : 'Set ETA based on status',
+                                  }
+                                }}
+                                disabled={['Delivered', 'Cancelled'].includes(values.status)}  // Disable for terminals
+                                name="eta"
+                              />
+                            </LocalizationProvider>
 
-    </Box>
-  )}
-  </Box>
+                          </Box>
+                        )}
+                      </Box>
                       {/* Eform Row */}
                       <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
                         <Box sx={{ flex: 1, minWidth: 250 }}>
@@ -3264,7 +4385,7 @@ const generateContainersAndOrdersPDFWithCanvas = async (data, allReceivers, sele
                             helperText={
                               touched.eform && errors.eform
                                 ? errors.eform
-                               : ''
+                                : ''
                             }
                             tooltip="Format: ABC-123456"
                           />
@@ -3282,7 +4403,7 @@ const generateContainersAndOrdersPDFWithCanvas = async (data, allReceivers, sele
                             helperText={
                               touched.eform_date && errors.eform_date
                                 ? errors.eform_date
-                               : ''
+                                : ''
                             }
                             slotProps={{ textField: { InputProps: { startAdornment: <DateRangeIcon sx={{ mr: 1, color: '#f58220' }} /> } } }}
                           />
@@ -3303,7 +4424,7 @@ const generateContainersAndOrdersPDFWithCanvas = async (data, allReceivers, sele
                             helperText={
                               touched.shipper && errors.shipper
                                 ? errors.shipper
-                               : ''
+                                : ''
                             }
                             tooltip="Select shipper"
                           />
@@ -3329,7 +4450,7 @@ const generateContainersAndOrdersPDFWithCanvas = async (data, allReceivers, sele
                             helperText={
                               touched.consignee && errors.consignee
                                 ? errors.consignee
-                               : ''
+                                : ''
                             }
                             tooltip="Select consignee"
                           />
@@ -3342,7 +4463,7 @@ const generateContainersAndOrdersPDFWithCanvas = async (data, allReceivers, sele
                             sx={{ mt: 2 }}
                           />
                         </Box>
-                        
+
                         <Box sx={{ flex: 1, minWidth: 250 }}>
                           <CustomTextField
                             name="remarks"
@@ -3370,7 +4491,7 @@ const generateContainersAndOrdersPDFWithCanvas = async (data, allReceivers, sele
                             helperText={
                               touched.origin && errors.origin
                                 ? errors.origin
-                               : ''
+                                : ''
                             }
                             tooltip="Select origin port"
                           />
@@ -3388,24 +4509,24 @@ const generateContainersAndOrdersPDFWithCanvas = async (data, allReceivers, sele
                             helperText={
                               touched.destination && errors.destination
                                 ? errors.destination
-                               : ''
+                                : ''
                             }
                             tooltip="Select destination port"
                           />
                         </Box>
                         <Box sx={{ flex: 1, minWidth: 250 }}>
-                     <CustomTextField
-  name="shippingLine"
-  value={values.shippingLine || ''}  // Ensure controlled value (add fallback for undefined)
-  onChange={handleChange}
-  onBlur={handleBlur}              // Optional: recommended if using Formik for validation on blur
-  label="Shipping Line"
-  type="text"
-  placeholder="e.g., Maersk, MSC, COSCO"  // Helpful placeholder
-  fullWidth
-  variant="outlined"               // Common props for Material-UI style fields
-  // Remove the 'options' prop completely since it's now a free text input
-/>
+                          <CustomTextField
+                            name="shippingLine"
+                            value={values.shippingLine || ''}  // Ensure controlled value (add fallback for undefined)
+                            onChange={handleChange}
+                            onBlur={handleBlur}              // Optional: recommended if using Formik for validation on blur
+                            label="Shipping Line"
+                            type="text"
+                            placeholder="e.g., Maersk, MSC, COSCO"  // Helpful placeholder
+                            fullWidth
+                            variant="outlined"               // Common props for Material-UI style fields
+                          // Remove the 'options' prop completely since it's now a free text input
+                          />
                         </Box>
                       </Box>
                       {/* Payment & Value Row */}
@@ -3428,7 +4549,7 @@ const generateContainersAndOrdersPDFWithCanvas = async (data, allReceivers, sele
                                 setTouched(prev => ({ ...prev, paymentType: true })); // Mark as touched
                               }}
                               displayEmpty // Shows placeholder when empty
-                              // Optional: For searchable, wrap in Autocomplete if needed (see below)
+                            // Optional: For searchable, wrap in Autocomplete if needed (see below)
                             >
                               <MenuItem value="" disabled>
                                 <em>Select Payment Type</em>
@@ -3470,7 +4591,7 @@ const generateContainersAndOrdersPDFWithCanvas = async (data, allReceivers, sele
                             helperText={
                               touched.consignment_value && errors.consignment_value
                                 ? errors.consignment_value
-                               : ''
+                                : ''
                             }
                           />
                         </Box>
@@ -3487,7 +4608,7 @@ const generateContainersAndOrdersPDFWithCanvas = async (data, allReceivers, sele
                             helperText={
                               touched.bank && errors.bank
                                 ? errors.bank
-                               : ''
+                                : ''
                             }
                             tooltip="Select associated bank"
                           />
@@ -3508,13 +4629,13 @@ const generateContainersAndOrdersPDFWithCanvas = async (data, allReceivers, sele
                             helperText={
                               touched.vessel && errors.vessel
                                 ? errors.vessel
-                               : ''
+                                : ''
                             }
                             tooltip="Select vessel"
                           />
                         </Box>
                         <Box sx={{ flex: 1, minWidth: 250 }}>
-                         
+
                         </Box>
                         <Box sx={{ flex: 1, minWidth: 250 }}>
                           <CustomTextField
@@ -3529,14 +4650,14 @@ const generateContainersAndOrdersPDFWithCanvas = async (data, allReceivers, sele
                             helperText={
                               touched.voyage && errors.voyage
                                 ? errors.voyage
-                               : ''
+                                : ''
                             }
                             tooltip="Enter voyage number (min 3 chars)"
                           />
                         </Box>
                       </Box>
                       {/* Counts & Seal Row */}
-                     {/* Counts & Seal Row - UPDATED WITH AUTO WEIGHTS */}
+                      {/* Counts & Seal Row - UPDATED WITH AUTO WEIGHTS */}
                       <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
                         <Box sx={{ flex: 1, minWidth: 250 }}>
                           <CustomTextField
@@ -3609,11 +4730,35 @@ const generateContainersAndOrdersPDFWithCanvas = async (data, allReceivers, sele
                     {/* Print Buttons */}
                     <Fade in={true} timeout={800}>
                       <Box sx={{ mt: 3, display: 'flex', gap: 2, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                        <Tooltip title="Download simple Shipment note as PDF">
+                          <Button
+                            variant="outlined"
+                            startIcon={<DescriptionIcon />}
+                            onClick={() => generateshipmentsAndOrdersPDFWithCanvas(values, orders)} // Fixed: Pass includedOrders
+                            disabled={saving || !values.consignment_number}
+                            sx={{ borderColor: '#f58220', color: '#f58220', '&:hover': { borderColor: '#e65100', backgroundColor: '#fff3e0' } }}
+                          >
+                            Shipment & Orders PDF
+                          </Button>
+                        </Tooltip>
+                        <Tooltip title="Download simple consignment note as PDF">
+                          <Button
+                            variant="outlined"
+                            startIcon={<DescriptionIcon />}
+                            onClick={() => generateContainersAndOrdersPDFWithCanvas(values, orders)}
+                            disabled={saving || !values.consignment_number}
+                            sx={{ borderColor: '#f58220', color: '#f58220', '&:hover': { borderColor: '#e65100', backgroundColor: '#fff3e0' } }}
+                          >
+                            Containers & Orders PDF
+                          </Button>
+                        </Tooltip>
+
+
                         <Tooltip title="Download PDF manifest with details, containers, and orders">
                           <Button
                             variant="outlined"
                             startIcon={<LocalPrintshopIcon />}
-                            onClick={() => generateManifestPDFWithCanvas(values, includedOrders)}
+                            onClick={() => generateManifestPDFWithCanvas(values, orders)}
                             disabled={saving || !values.consignment_number}
                             sx={{ borderColor: '#f58220', color: '#f58220', '&:hover': { borderColor: '#e65100', backgroundColor: '#fff3e0' } }}
                           >
@@ -3625,299 +4770,322 @@ const generateContainersAndOrdersPDFWithCanvas = async (data, allReceivers, sele
                   </AccordionDetails>
                 </Accordion>
                 <Divider sx={{ my: 3 }} />
-               
-              {/* Containers Section */}
-              <Accordion sx={{ boxShadow: 2, borderRadius: 2, mt: 3, '&:before': { display: 'none' } }}>
-                <AccordionSummary
-                  expandIcon={<ExpandMoreIconMui sx={{ color: '#fff', backgroundColor: '#0d6c6a', borderRadius: '50%', p: 0.5 }} />}
-                  sx={{ backgroundColor: '#0d6c6a', color: 'white', borderRadius: 2 }}
-                >
-                  <Typography variant="h6" sx={{ fontWeight: 'bold' }}>🚚 Containers</Typography>
-                </AccordionSummary>
-                <AccordionDetails sx={{ p: 3 }}>
+
+                {/* Containers Section */}
+                <Accordion sx={{ boxShadow: 2, borderRadius: 2, mt: 3, '&:before': { display: 'none' } }}>
+                  <AccordionSummary
+                    expandIcon={<ExpandMoreIconMui sx={{ color: '#fff', backgroundColor: '#0d6c6a', borderRadius: '50%', p: 0.5 }} />}
+                    sx={{ backgroundColor: '#0d6c6a', color: 'white', borderRadius: 2 }}
+                  >
+                    <Typography variant="h6" sx={{ fontWeight: 'bold' }}>🚚 Containers</Typography>
+                  </AccordionSummary>
+                  <AccordionDetails sx={{ p: 3 }}>
                     <Tooltip title="Download simple consignment note as PDF">
-                          <Button
-                            variant="outlined"
-                            startIcon={<DescriptionIcon />}
-                            onClick={() => generateContainersAndOrdersPDFWithCanvas(values, includedOrders)} // Fixed: Pass includedOrders
-                            disabled={saving || !values.consignment_number}
-                            sx={{ borderColor: '#f58220', color: '#f58220', mb: 2, float: "right", flexDirection: 'row', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', alignSelf: 'flex-end', '&:hover': { borderColor: '#e65100', backgroundColor: '#fff3e0' } }}
-                          >
-                            Containers & Orders PDF
-                          </Button>
-                        </Tooltip>
-                  <Table sx={{ minWidth: '100%', boxShadow: 1, borderRadius: 1, mb: 2, overflow: 'hidden' }} aria-label="Containers table">
-                    <TableHead>
-                      <TableRow sx={{ backgroundColor: '#e3f2fd' }}>
-                        <TableCell sx={{ fontWeight: 'bold' }}>Container No.</TableCell>
-                        <TableCell sx={{ fontWeight: 'bold' }}>Location</TableCell>
-                        <TableCell sx={{ fontWeight: 'bold' }}>Size</TableCell>
-                        <TableCell sx={{ fontWeight: 'bold' }}>Type</TableCell>
-                        <TableCell sx={{ fontWeight: 'bold' }}>Ownership</TableCell>
-                        <TableCell sx={{ fontWeight: 'bold' }}>Status</TableCell>
-                        <TableCell sx={{ fontWeight: 'bold' }}>Actions</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {(values.containers || []).length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
-                            <Typography variant="body2" color="text.secondary">
-                              No containers added. Click "Add New" or "Select from List" to get started.
-                            </Typography>
-                          </TableCell>
+                      <Button
+                        variant="outlined"
+                        startIcon={<DescriptionIcon />}
+                        onClick={() => generateContainersAndOrdersPDFWithCanvas(values, includedOrders)} // Fixed: Pass includedOrders
+                        disabled={saving || !values.consignment_number}
+                        sx={{ borderColor: '#f58220', color: '#f58220', mb: 2, float: "right", flexDirection: 'row', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', alignSelf: 'flex-end', '&:hover': { borderColor: '#e65100', backgroundColor: '#fff3e0' } }}
+                      >
+                        Containers & Orders PDF
+                      </Button>
+                    </Tooltip>
+                    <Table sx={{ minWidth: '100%', boxShadow: 1, borderRadius: 1, mb: 2, overflow: 'hidden' }} aria-label="Containers table">
+                      <TableHead>
+                        <TableRow sx={{ backgroundColor: '#e3f2fd' }}>
+                          <TableCell sx={{ fontWeight: 'bold' }}>Container No.</TableCell>
+                          <TableCell sx={{ fontWeight: 'bold' }}>Location</TableCell>
+                          <TableCell sx={{ fontWeight: 'bold' }}>Size</TableCell>
+                          <TableCell sx={{ fontWeight: 'bold' }}>Type</TableCell>
+                          <TableCell sx={{ fontWeight: 'bold' }}>Ownership</TableCell>
+                          <TableCell sx={{ fontWeight: 'bold' }}>Status</TableCell>
+                          <TableCell sx={{ fontWeight: 'bold' }}>Actions</TableCell>
                         </TableRow>
-                      ) : (
-                        (values.containers || []).map((container, index) => {
-                          // Get error for this specific row
-                          console.log('derived_status',container)
-                          const rowErrors = getContainerError(index);
-                          return (
-                            <Fade in key={`${container.containerNo || 'new'}-${index}`} timeout={300 * index}>
-                              <TableRow hover sx={{ transition: 'all 0.2s ease' }}>
-                                <TableCell>
-                                  <TextField
-                                    size="small"
-                                    fullWidth
-                                    value={container.containerNo || ''}
-                                    onChange={(e) => {
-                                      const newValue = e.target.value;
-                                      updateArrayField('containers', index, 'containerNo', newValue);
-                                      // Validate duplicate on change
-                                      if (newValue && rowErrors.containerNo?.includes('already exists')) {
-                                        setContainerError(`containers[${index}].containerNo`, rowErrors.containerNo);
-                                      } else {
-                                        setContainerError(`containers[${index}].containerNo`, '');
-                                      }
-                                    }}
-                                    onBlur={() => {
-                                      markArrayTouched('containers');
-                                      // Re-validate on blur
-                                      const updatedErrors = getContainerError(index);
-                                      setContainerError(`containers[${index}].containerNo`, updatedErrors.containerNo || '');
-                                    }}
-                                    error={Boolean(rowErrors.containerNo)}
-                                    helperText={rowErrors.containerNo }
-                                  />
-                                </TableCell>
-                                <TableCell>
-                                  <TextField
-                                    size="small"
-                                    fullWidth
-                                    value={container.location || ''}
-                                    onChange={(e) => updateArrayField('containers', index, 'location', e.target.value)}
-                                  />
-                                </TableCell>
-                                <TableCell>
-                                  <TextField
-                                    size="small"
-                                    fullWidth
-                                    value={container.size || ''}
-                                    onChange={(e) => updateArrayField('containers', index, 'size', e.target.value)}
-                                    onBlur={() => markArrayTouched('containers')}
-                                    error={Boolean(rowErrors.size)}
-                                    helperText={rowErrors.size}
-                                  />
-                                </TableCell>
-                                <TableCell>
-                                  <TextField
-                                    size="small"
-                                    fullWidth
-                                    value={container.containerType || ''}
-                                    onChange={(e) => updateArrayField('containers', index, 'containerType', e.target.value)}
-                                  />
-                                </TableCell>
-                                <TableCell>
-                                  <TextField
-                                    size="small"
-                                    fullWidth
-                                    value={container.ownership || ''}
-                                    onChange={(e) => updateArrayField('containers', index, 'ownership', e.target.value)}
-                                  />
-                                </TableCell>
-                                <TableCell>
-                                  <TextField
-                                    size="small"
-                                    fullWidth
-                                    value={container.drevies || 'Available'}
-                                    onChange={(e) => updateArrayField('containers', index, 'status', e.target.value)}
-                                  />
-                                </TableCell>
-                                <TableCell>
-                                  <IconButton onClick={() => removeContainer(index)} color="error" size="small">
-                                    <DeleteIconMui fontSize="small" />
-                                  </IconButton>
-                                </TableCell>
-                              </TableRow>
-                            </Fade>
-                          );
-                        })
-                      )}
-                    </TableBody>
-                  </Table>
-                  <div style={{ display: 'flex', gap: 8, mt: 2 }}>
-                    <Button
-                      startIcon={<AddIcon />}
-                      onClick={() => {
-                        // Pre-validate before adding empty row (optional: prompt for containerNo first)
-                        const newContainer = { containerNo: '', location: '', size: '', containerType: '', ownership: '', status: '' };
-                        if ((values.containers || []).some(c => c.containerNo?.trim() === '')) {
-                          // Prevent adding if empty row exists
-                          alert('Complete or remove the empty container row first.');
-                          return;
-                        }
-                        addContainer(newContainer); // Assuming addContainer pushes the new object
-                      }}
-                      variant="outlined"
-                      sx={{ flex: 1, color: '#0d6c6a' }}
-                    >
-                      Add New
+                      </TableHead>
+                      <TableBody>
+                        {(values.containers || []).length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
+                              <Typography variant="body2" color="text.secondary">
+                                No containers added. Click "Add New" or "Select from List" to get started.
+                              </Typography>
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          (values.containers || []).map((container, index) => {
+                            // Get error for this specific row
+                            console.log('derived_status', container)
+                            const rowErrors = getContainerError(index);
+                            return (
+                              <Fade in key={`${container.containerNo || 'new'}-${index}`} timeout={300 * index}>
+                                <TableRow hover sx={{ transition: 'all 0.2s ease' }}>
+                                  <TableCell>
+                                    <TextField
+                                      size="small"
+                                      fullWidth
+                                      value={container.containerNo || ''}
+                                      onChange={(e) => {
+                                        const newValue = e.target.value;
+                                        updateArrayField('containers', index, 'containerNo', newValue);
+                                        // Validate duplicate on change
+                                        if (newValue && rowErrors.containerNo?.includes('already exists')) {
+                                          setContainerError(`containers[${index}].containerNo`, rowErrors.containerNo);
+                                        } else {
+                                          setContainerError(`containers[${index}].containerNo`, '');
+                                        }
+                                      }}
+                                      onBlur={() => {
+                                        markArrayTouched('containers');
+                                        // Re-validate on blur
+                                        const updatedErrors = getContainerError(index);
+                                        setContainerError(`containers[${index}].containerNo`, updatedErrors.containerNo || '');
+                                      }}
+                                      error={Boolean(rowErrors.containerNo)}
+                                      helperText={rowErrors.containerNo}
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <TextField
+                                      size="small"
+                                      fullWidth
+                                      value={container.location || ''}
+                                      onChange={(e) => updateArrayField('containers', index, 'location', e.target.value)}
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <TextField
+                                      size="small"
+                                      fullWidth
+                                      value={container.size || ''}
+                                      onChange={(e) => updateArrayField('containers', index, 'size', e.target.value)}
+                                      onBlur={() => markArrayTouched('containers')}
+                                      error={Boolean(rowErrors.size)}
+                                      helperText={rowErrors.size}
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <TextField
+                                      size="small"
+                                      fullWidth
+                                      value={container.containerType || ''}
+                                      onChange={(e) => updateArrayField('containers', index, 'containerType', e.target.value)}
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <TextField
+                                      size="small"
+                                      fullWidth
+                                      value={container.ownership || ''}
+                                      onChange={(e) => updateArrayField('containers', index, 'ownership', e.target.value)}
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <TextField
+                                      size="small"
+                                      fullWidth
+                                      value={container.status || 'Available'}
+                                      onChange={(e) => updateArrayField('containers', index, 'status', e.target.value)}
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <IconButton onClick={() => removeContainer(index)} color="error" size="small">
+                                      <DeleteIconMui fontSize="small" />
+                                    </IconButton>
+                                  </TableCell>
+                                </TableRow>
+                              </Fade>
+                            );
+                          })
+                        )}
+                      </TableBody>
+                    </Table>
+                    <div style={{ display: 'flex', gap: 8, mt: 2 }}>
+                      <Button
+                        startIcon={<AddIcon />}
+                        onClick={() => {
+                          // Pre-validate before adding empty row (optional: prompt for containerNo first)
+                          const newContainer = { containerNo: '', location: '', size: '', containerType: '', ownership: '', status: '' };
+                          if ((values.containers || []).some(c => c.containerNo?.trim() === '')) {
+                            // Prevent adding if empty row exists
+                            alert('Complete or remove the empty container row first.');
+                            return;
+                          }
+                          addContainer(newContainer); // Assuming addContainer pushes the new object
+                        }}
+                        variant="outlined"
+                        sx={{ flex: 1, color: '#0d6c6a' }}
+                      >
+                        Add New
+                      </Button>
+                      <Button
+                        startIcon={<AddIcon />}
+                        onClick={() => {
+                          // For modal: Ensure no duplicates when selecting
+                          setContainerModalOpen(true);
+                        }}
+                        variant="contained"
+                        disabled={containersLoading}
+                        sx={{ flex: 1, backgroundColor: '#0d6c6a', color: 'white', '&:hover': { backgroundColor: '#0a5553' } }}
+                      >
+                        {containersLoading ? 'Loading...' : 'Select from List'}
+                      </Button>
+                    </div>
+                    {touched.containers && errors.containers && <Alert severity="error" sx={{ mt: 1 }}>{errors.containers}</Alert>}
+                  </AccordionDetails>
+                </Accordion>
+                {/* Container Selection Modal */}
+                <Dialog open={containerModalOpen} onClose={() => setContainerModalOpen(false)} maxWidth="xl" fullWidth>
+                  {/* <DialogTitle>Select Containers</DialogTitle> */}
+                  <DialogContent>
+                    {containersLoading ? (
+                      <Typography>Loading containers...</Typography>
+                    ) : (
+                      <ContainerModule containers={containers || []}
+                        selectedContainers={selectedContainers || []}
+                        onToggle={handleContainerToggle} />
+                    )}
+                  </DialogContent>
+                  <DialogActions>
+                    <Button onClick={() => setContainerModalOpen(false)}>Cancel</Button>
+                    <Button onClick={addSelectedContainers} disabled={(selectedContainers || []).length === 0} variant="contained">
+                      Add Selected ({(selectedContainers || []).length})
                     </Button>
-                    <Button
-                      startIcon={<AddIcon />}
-                      onClick={() => {
-                        // For modal: Ensure no duplicates when selecting
-                        setContainerModalOpen(true);
+                  </DialogActions>
+                </Dialog>
+                {/* <Accordion sx={{ mt: 2, boxShadow: 2, borderRadius: 2, '&:before': { display: 'none' } }}> */}
+
+
+                <Accordion sx={{ mt: 2, boxShadow: 2, borderRadius: 2, '&:before': { display: 'none' } }}>
+                  <AccordionSummary
+                    expandIcon={<ExpandMoreIcon sx={{ color: '#fff', backgroundColor: '#f58220', borderRadius: '50%', p: 0.5 }} />}
+                    sx={{ backgroundColor: '#f58220', color: 'white', borderRadius: 2 }}
+                  >
+                    <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+                      🛒 Shipments by Container ({flatShipments.length} lines)
+                    </Typography>
+                  </AccordionSummary>
+
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                    {/* Right side - Button */}
+                    <Tooltip title="Download simple Shipment note as PDF">
+                      <Button
+                        variant="outlined"
+                        startIcon={<DescriptionIcon />}
+                        onClick={() => generateshipmentsAndOrdersPDFWithCanvas(values, includedOrders)}
+                        disabled={saving || !values.consignment_number}
+                        sx={{
+                          borderColor: '#f58220',
+                          color: '#f58220',
+                          '&:hover': {
+                            borderColor: '#e65100',
+                            backgroundColor: '#fff3e0'
+                          }
+                        }}
+                      >
+                        Shipment & Orders PDF
+                      </Button>
+                    </Tooltip>
+                  </Box>
+
+
+                  <AccordionDetails sx={{ p: 3 }}>
+                    <TableContainer
+                      component={Paper}
+                      sx={{
+                        borderRadius: 2,
+                        overflow: 'auto',
+                        boxShadow: 2,
+                        maxHeight: 580,
+                        width: '100%',
+                        '&::-webkit-scrollbar': { height: 8, width: 8 },
+                        '&::-webkit-scrollbar-thumb': { background: '#0d6c6a', borderRadius: 4 },
                       }}
-                      variant="contained"
-                      disabled={containersLoading}
-                      sx={{ flex: 1, backgroundColor: '#0d6c6a', color: 'white', '&:hover': { backgroundColor: '#0a5553' } }}
                     >
-                      {containersLoading ? 'Loading...' : 'Select from List'}
-                    </Button>
-                  </div>
-                  {touched.containers && errors.containers && <Alert severity="error" sx={{ mt: 1 }}>{errors.containers}</Alert>}
-                </AccordionDetails>
-              </Accordion>
-              {/* Container Selection Modal */}
-              <Dialog open={containerModalOpen} onClose={() => setContainerModalOpen(false)} maxWidth="xl" fullWidth>
-                {/* <DialogTitle>Select Containers</DialogTitle> */}
-                <DialogContent>
-                  {containersLoading ? (
-                    <Typography>Loading containers...</Typography>
-                  ) : (
-                    <ContainerModule containers={containers || []}
-                      selectedContainers={selectedContainers || []}
-                      onToggle={handleContainerToggle} />
-                  )}
-                </DialogContent>
-                <DialogActions>
-                  <Button onClick={() => setContainerModalOpen(false)}>Cancel</Button>
-                  <Button onClick={addSelectedContainers} disabled={(selectedContainers || []).length === 0} variant="contained">
-                    Add Selected ({(selectedContainers || []).length})
-                  </Button>
-                </DialogActions>
-              </Dialog>
-{/* <Accordion sx={{ mt: 2, boxShadow: 2, borderRadius: 2, '&:before': { display: 'none' } }}> */}
+                      <Table stickyHeader size="small" aria-label="shipments-by-container-table">
+                        <TableHead sx={{ bgcolor: '#0d6c6a' }}>
+                          <TableRow sx={{ bgcolor: '#0d6c6a' }}>
+                            <TableCell sx={{ bgcolor: '#0d6c6a', color: '#fff', fontWeight: 'Bold' }}>Item Ref No</TableCell>
+                            <TableCell sx={{ bgcolor: '#0d6c6a', color: '#fff', fontWeight: 'Bold' }}>Booking Ref</TableCell>
+                            <TableCell sx={{ bgcolor: '#0d6c6a', color: '#fff', fontWeight: 'Bold' }}>Form No</TableCell>
+                            <TableCell sx={{ bgcolor: '#0d6c6a', color: '#fff', fontWeight: 'Bold' }}>Product</TableCell>
+                            <TableCell sx={{ bgcolor: '#0d6c6a', color: '#fff', fontWeight: 'Bold' }}>POL</TableCell>
+                            <TableCell sx={{ bgcolor: '#0d6c6a', color: '#fff', fontWeight: 'Bold' }}>POD</TableCell>
+                            <TableCell sx={{ bgcolor: '#0d6c6a', color: '#fff', fontWeight: 'Bold' }}>Sender</TableCell>
+                            <TableCell sx={{ bgcolor: '#0d6c6a', color: '#fff', fontWeight: 'Bold' }}>Receiver</TableCell>
+                            {/* <TableCell sx={{ bgcolor: '#0d6c6a' , color: '#fff', fontWeight: 'Bold' }}>Product</TableCell> */}
 
-    
-    <Accordion sx={{ mt: 2, boxShadow: 2, borderRadius: 2, '&:before': { display: 'none' } }}>
-      <AccordionSummary
-        expandIcon={<ExpandMoreIcon sx={{ color: '#fff', backgroundColor: '#f58220', borderRadius: '50%', p: 0.5 }} />}
-        sx={{ backgroundColor: '#f58220', color: 'white', borderRadius: 2 }}
-      >
-        <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
-          🛒 Shipments by Container ({flatShipments.length} lines)
-        </Typography>
-      </AccordionSummary>
+                            <TableCell sx={{ bgcolor: '#0d6c6a', color: '#fff', fontWeight: 'Bold' }}>Container</TableCell>
+                            <TableCell sx={{ bgcolor: '#0d6c6a', color: '#fff', fontWeight: 'Bold', width: 200 }}>
+                              Assign Weight & Items
+                            </TableCell>
+                            <TableCell sx={{ bgcolor: '#0d6c6a', color: '#fff', fontWeight: 'Bold' }}>Status</TableCell>
 
-      <AccordionDetails sx={{ p: 3 }}>
-        <TableContainer
-          component={Paper}
-          sx={{
-            borderRadius: 2,
-            overflow: 'auto',
-            boxShadow: 2,
-            maxHeight: 580,
-            width: '100%',
-            '&::-webkit-scrollbar': { height: 8, width: 8 },
-            '&::-webkit-scrollbar-thumb': { background: '#0d6c6a', borderRadius: 4 },
-          }}
-        >
-          <Table stickyHeader size="small"  aria-label="shipments-by-container-table">
-            <TableHead sx={{ bgcolor: '#0d6c6a' }}>
-              <TableRow sx={{ bgcolor: '#0d6c6a' }}>
-                <TableCell sx={{ bgcolor: '#0d6c6a' , color: '#fff', fontWeight: 'Bold' }}>Item Ref No</TableCell>
-                <TableCell sx={{ bgcolor: '#0d6c6a' , color: '#fff', fontWeight: 'Bold' }}>Booking Ref</TableCell>
-                <TableCell sx={{ bgcolor: '#0d6c6a' , color: '#fff', fontWeight: 'Bold' }}>Form No</TableCell>
-                <TableCell sx={{ bgcolor: '#0d6c6a' , color: '#fff', fontWeight: 'Bold' }}>Product</TableCell>
-                <TableCell sx={{ bgcolor: '#0d6c6a' , color: '#fff', fontWeight: 'Bold' }}>POL</TableCell>
-                <TableCell sx={{ bgcolor: '#0d6c6a' , color: '#fff', fontWeight: 'Bold' }}>POD</TableCell>
-                <TableCell sx={{ bgcolor: '#0d6c6a' , color: '#fff', fontWeight: 'Bold' }}>Sender</TableCell>
-                <TableCell sx={{ bgcolor: '#0d6c6a' , color: '#fff', fontWeight: 'Bold' }}>Receiver</TableCell>
-                {/* <TableCell sx={{ bgcolor: '#0d6c6a' , color: '#fff', fontWeight: 'Bold' }}>Product</TableCell> */}
-              
-                <TableCell sx={{ bgcolor: '#0d6c6a' , color: '#fff', fontWeight: 'Bold' }}>Container</TableCell>
-                <TableCell sx={{ bgcolor: '#0d6c6a' , color: '#fff', fontWeight: 'Bold',width:200 }}>
-                Assign Weight & Items
-                </TableCell>
-                <TableCell sx={{ bgcolor: '#0d6c6a' , color: '#fff', fontWeight: 'Bold' }}>Status</TableCell>
-             
-                {/* <TableCell align="right"sx={{ bgcolor: '#0d6c6a' , color: '#fff', fontWeight: 'Bold' }}>
+                            {/* <TableCell align="right"sx={{ bgcolor: '#0d6c6a' , color: '#fff', fontWeight: 'Bold' }}>
                   Actions
                 </TableCell> */}
-              </TableRow>
-            </TableHead>
+                          </TableRow>
+                        </TableHead>
 
-            <TableBody>
-              {flatShipments.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={12} align="center" sx={{ py: 6 }}>
-                    <Typography variant="body1" color="text.secondary">
-                      No shipments with container assignments found
-                    </Typography>
-                  </TableCell>
-                </TableRow>
-              ) : (
-flatShipments.map((shipment, index) => (
-  console.log('shipments',shipment),
-  <TableRow key={`${shipment.orderId}-${shipment.containerNumber}-${index}`}>
-    <TableCell>{shipment.itemRef}</TableCell>
-    <TableCell>{shipment.bookingRef}</TableCell>
-    <TableCell>{shipment.formNo}</TableCell>
-     <TableCell>
-                      <Box>
-                        <Typography variant="body2" fontWeight="medium">
-                          {shipment.category}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {shipment.subcategory && `${shipment.subcategory} • `}
-                          {/* {shipment.type} */}
-                        </Typography>
-                      </Box>
-                    </TableCell>
-
-
-                    <TableCell>{shipment.pol}</TableCell>
-                    <TableCell>{shipment.pod}</TableCell>
-                    <TableCell>{shipment.sender}</TableCell>
-                    <TableCell>{shipment.receiverName}</TableCell>
+                        <TableBody>
+                          {flatShipments.length === 0 ? (
+                            <TableRow>
+                              <TableCell colSpan={12} align="center" sx={{ py: 6 }}>
+                                <Typography variant="body1" color="text.secondary">
+                                  No shipments with container assignments found
+                                </Typography>
+                              </TableCell>
+                            </TableRow>
+                          ) : (
+                            flatShipments.map((shipment, index) => (
+                              console.log('shipments', shipment),
+                              <TableRow key={`${shipment.orderId}-${shipment.containerNumber}-${index}`}>
+                                <TableCell>{shipment.itemRef}</TableCell>
+                                <TableCell>{shipment.bookingRef}</TableCell>
+                                <TableCell>{shipment.formNo}</TableCell>
+                                <TableCell>
+                                  <Box>
+                                    <Typography variant="body2" fontWeight="medium">
+                                      {shipment.category}
+                                    </Typography>
+                                    <Typography variant="caption" color="text.secondary">
+                                      {shipment.subcategory && `${shipment.subcategory} • `}
+                                      {/* {shipment.type} */}
+                                    </Typography>
+                                  </Box>
+                                </TableCell>
 
 
-                    <TableCell>
-                      <Chip
-                        label={shipment.containerNumber}
-                        size="small"
-                        color="primary"
-                        variant="outlined"
-                      />
-                    </TableCell>
-                    <TableCell align="center">
-                      {/* {shipment.remainingItems > 0 ? shipment.remainingItems.toLocaleString() : '-'} */}
-                      {shipment.assignWeight > 0 ? `${shipment.assignWeight.toLocaleString()} kg` : '-'}
-                    {' '} 
-                      {shipment.assignBoxes > 0 ? `${shipment.assignBoxes.toLocaleString()} ${shipment.type}` : '-'}
-                  
-                  
-                    </TableCell>
-
-                    <TableCell>
-                     <StatusChip status={shipment.containerStatus} size='small' />
-
-                    </TableCell>
+                                <TableCell>{shipment.pol}</TableCell>
+                                <TableCell>{shipment.pod}</TableCell>
+                                <TableCell>{shipment.sender}</TableCell>
+                                <TableCell>{shipment.receiverName}</TableCell>
 
 
-                    {/* <TableCell align="right">
+                                <TableCell>
+                                  <Chip
+                                    label={shipment.containerNumber}
+                                    size="small"
+                                    color="primary"
+                                    variant="outlined"
+                                  />
+                                </TableCell>
+                                <TableCell align="center">
+                                  {/* {shipment.remainingItems > 0 ? shipment.remainingItems.toLocaleString() : '-'} */}
+                                  {shipment.assignWeight > 0 ? `${shipment.assignWeight.toLocaleString()} kg` : '-'}
+                                  {' '}
+                                  {shipment.assignBoxes > 0 ? `${shipment.assignBoxes.toLocaleString()} ${shipment.type}` : '-'}
+
+
+                                </TableCell>
+
+                                <TableCell>
+                                  <StatusChip status={shipment.receiverStatus} size='small' />
+
+                                </TableCell>
+
+
+                                {/* <TableCell align="right">
                       <Stack direction="row" spacing={1} justifyContent="flex-end">
                         <Tooltip title="View order">
                           <IconButton
@@ -3937,14 +5105,14 @@ flatShipments.map((shipment, index) => (
                         </Tooltip>
                       </Stack>
                     </TableCell> */}
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      </AccordionDetails>
-   {/* <TablePagination
+                              </TableRow>
+                            ))
+                          )}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  </AccordionDetails>
+                  {/* <TablePagination
                     rowsPerPageOptions={[10, 25, 50, 100]}
                     component="div"
                     count={orderTotal || 0}
@@ -3963,34 +5131,34 @@ flatShipments.map((shipment, index) => (
                       }
                     }}
                   /> */}
-                 <Box sx={{ display: 'flex', justifyContent: 'space-around', gap: 2, mb: 2, }}>
-                  <Button
-                    variant="outlined"
-                    onClick={resetForm}
-                    sx={{ borderColor: '#9e9e9e', color: '#9e9e9e', '&:hover': { borderColor: '#757575' } }}
-                  >
-                    Reset
-                  </Button>
-                  <Button
-                    type="submit"
-                    variant="contained"
-                    disabled={saving}
-                    sx={{ backgroundColor: '#f58220', color: 'white', px: 4, '&:hover': { backgroundColor: '#e65100' } }}
-                  >
-                    {saving ? 'Saving...' : (mode === 'edit' ? 'Update Consignment' : 'Add Consignment')}
-                  </Button>
-                </Box>
-</Accordion>
-          </CardContent>
-              </form>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-around', gap: 2, mb: 2, }}>
+                    <Button
+                      variant="outlined"
+                      onClick={resetForm}
+                      sx={{ borderColor: '#9e9e9e', color: '#9e9e9e', '&:hover': { borderColor: '#757575' } }}
+                    >
+                      Reset
+                    </Button>
+                    <Button
+                      type="submit"
+                      variant="contained"
+                      disabled={saving}
+                      sx={{ backgroundColor: '#f58220', color: 'white', px: 4, '&:hover': { backgroundColor: '#e65100' } }}
+                    >
+                      {saving ? 'Saving...' : (mode === 'edit' ? 'Update Consignment' : 'Add Consignment')}
+                    </Button>
+                  </Box>
+                </Accordion>
+              </CardContent>
+            </form>
 
-        </Card>
-      </Slide>
-    </Box>
-  </LocalizationProvider>
-);
+          </Card>
+        </Slide>
+      </Box>
+    </LocalizationProvider>
+  );
 };
 export default ConsignmentPage
 
 
-                  
+
