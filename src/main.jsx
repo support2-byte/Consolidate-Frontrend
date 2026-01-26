@@ -31,16 +31,22 @@ import EtaSetupPage from "./pages/SystemData/EtaSetup";
 
 function ThemedApp({ children }) {
   const { mode } = useThemeContext();
-  const theme = createTheme({
+ const theme = createTheme({
     palette: {
       mode,
       primary: { main: "#f58220" },
       secondary: { main: "#06b6d4" },
     },
+    // Optional: you can influence density here too
+    typography: {
+      fontSize: 11,          // helps a lot with the "too big" feeling
+    },
+    spacing: 3,
   });
+
   return (
     <MuiThemeProvider theme={theme}>
-      <CssBaseline />
+           <CssBaseline />
       {children}
     </MuiThemeProvider>
   );

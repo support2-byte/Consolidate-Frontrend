@@ -47,59 +47,104 @@ const TrackingPage = () => {
   const [trackingData, setTrackingData] = useState(null);
   const [trackType, setTrackType] = useState('item_ref');
 
-  const handleSearch = async (e) => {
-    e.preventDefault();
-    if (!value.trim()) return;
+const handleSearch = async (e) => {
+  e.preventDefault();
+  if (!value.trim()) return;
 
-    setLoading(true);
-    setError('');
-    setTrackingData(null);
+  setLoading(true);
+  setError('');
+  setTrackingData(null);
 
-    const reference = value.trim().toUpperCase();
+  const reference = value.trim().toUpperCase();
 
-    const typeToEndpoint = {
-      item_ref:       'item',
-      order_id:       'order',
-      booking_ref:    'item',           // change later if you add /track/booking/:ref
-      consignment_no: 'consignment',
-    };
+  const typeToEndpoint = {
+    item_ref:       'item',
+    order_id:       'order',
+    booking_ref:    'item',           // adjust later if needed
+    consignment_no: 'consignment_no',
+  };
 
-    const endpoint = typeToEndpoint[trackType];
-    if (!endpoint) {
-      setError('Invalid tracking type');
-      setLoading(false);
-      return;
-    }
+  const endpoint = typeToEndpoint[trackType];
+  if (!endpoint) {
+    setError('Invalid tracking type');
+    setLoading(false);
+    return;
+  }
 
-    const url = `/api/orders/track/${endpoint}/${encodeURIComponent(reference)}`;
+  const url = `/api/orders/track/${endpoint}/${encodeURIComponent(reference)}`;
 
-    try {
-      const res = await api.get(url);
-      const data = res.data?.data ?? res.data;
+  try {
+    const res = await api.get(url);
+    let rawData = res.data?.data ?? res.data;
 
-      if (!data || !data.receivers?.length) {
-        setError('No tracking information found for this reference');
+    // ────────────────────────────────────────────────
+    // Normalize for consignment_no responses
+    // ────────────────────────────────────────────────
+    let trackingDataToSet;
+
+    if (trackType === 'consignment_no') {
+      if (!rawData?.orders?.length) {
+        setError('No orders found for this consignment');
+        setLoading(false);
         return;
       }
 
-      setTrackingData(data);
-    } catch (err) {
-      let msg = 'Failed to load tracking details';
-      if (err.response) {
-        switch (err.response.status) {
-          case 404: msg = 'No shipment found for this reference'; break;
-          case 400: msg = err.response.data?.message || 'Invalid reference format'; break;
-          case 500: msg = 'Server error – please try again later'; break;
-          default:  msg = err.response.data?.message || msg;
-        }
-      }
-      setError(msg);
-      console.error('Tracking error:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
+      // Most common case: 1 order per consignment
+      // If multiple orders become common → you may want to show a list or tabs
+      const mainOrder = rawData.orders[0];
 
+      trackingDataToSet = {
+        // Copy fields the UI already expects/uses
+        order_id: mainOrder.order_id,
+        booking_ref: mainOrder.booking_ref,
+        created_at: mainOrder.created_at,
+        status: mainOrder.status,
+        overall_status: mainOrder.overall_status,
+        eta: mainOrder.eta || rawData.consignment?.eta,
+        sender: mainOrder.sender,
+        receivers: mainOrder.receivers,
+        total_assigned_qty: mainOrder.total_assigned_qty,
+
+        // Optional: expose consignment-level info if you want to display it
+        consignment: {
+          number: rawData.consignment?.number,
+          status: rawData.consignment?.status,
+          eta: rawData.consignment?.eta,
+          origin: rawData.consignment?.origin,
+          destination: rawData.consignment?.destination,
+          vessel: rawData.consignment?.vessel,
+          voyage: rawData.consignment?.voyage,
+          containers: rawData.consignment?.containers,
+        },
+      };
+    } else {
+      // item_ref, order_id, booking_ref → assume flat structure already
+      trackingDataToSet = rawData;
+    }
+
+    if (!trackingDataToSet || !trackingDataToSet.receivers?.length) {
+      setError('No tracking information found for this reference');
+      return;
+    }
+
+    setTrackingData(trackingDataToSet);
+
+  } catch (err) {
+    let msg = 'Failed to load tracking details';
+    if (err.response) {
+      switch (err.response.status) {
+        case 404: msg = 'No shipment found for this reference'; break;
+        case 400: msg = err.response.data?.message || 'Invalid reference format'; break;
+        case 500: msg = 'Server error – please try again later'; break;
+        default:  msg = err.response.data?.message || msg;
+      }
+    }
+    setError(msg);
+    console.error('Tracking error:', err);
+  } finally {
+    setLoading(false);
+  }
+};
   // Helpers
   const receiver = trackingData?.receivers?.[0];
   const item     = receiver?.items?.[0];
@@ -174,7 +219,7 @@ const TrackingPage = () => {
                   placeholder={
                     trackType === 'item_ref'       ? "e.g. ORDER-ITEM-REF-12345" :
                     trackType === 'order_id'       ? "e.g. 106 or ORD-987654" :
-                    trackType === 'booking_ref'    ? "e.g. RGSL-17676-327" :
+                    trackType === 'consignment_no'    ? "e.g. RGSL-17676-327" :
                                                      "e.g. CN-4567890123"
                   }
                   value={value}
@@ -210,7 +255,7 @@ const TrackingPage = () => {
         ─────────────────────────────────────────────── */}
         
       {useDetailedLayout && trackingData && (
-  <Box sx={{ maxWidth: 1400, mx: 'auto', px: { xs: 2, md: 0 } }}>
+  <Box sx={{ maxWidth: 1600, mx: 'auto', px: { xs: 2, md: 0 } }}>
     {/* Order Summary Card */}
     <Paper 
       elevation={3} 
@@ -223,6 +268,18 @@ const TrackingPage = () => {
       }}
     >
       <Box sx={{ textAlign: 'center' }}>
+      
+
+        <Box 
+          sx={{ 
+            mt: 3, 
+            display: 'flex', 
+            flexWrap: 'wrap', 
+            justifyContent: 'center', 
+            gap: 2 
+          }}
+        >
+      
         <Typography 
           variant="h4" 
           component="h1" 
@@ -236,16 +293,7 @@ const TrackingPage = () => {
         <Typography variant="subtitle1" color="text.secondary" gutterBottom>
           Booking Reference: <strong>{trackingData.booking_ref || '—'}</strong>
         </Typography>
-
-        <Box 
-          sx={{ 
-            mt: 3, 
-            display: 'flex', 
-            flexWrap: 'wrap', 
-            justifyContent: 'center', 
-            gap: 2 
-          }}
-        >
+      
           <Chip 
             label={`Created: ${new Date(trackingData.created_at).toLocaleDateString()}`} 
             variant="outlined" 
@@ -253,7 +301,7 @@ const TrackingPage = () => {
             size="medium"
           />
           <Chip 
-            label={`Status: ${trackingData.overall_status || trackingData.status || 'In Process'}`} 
+            label={`Status: ${trackingData.sta || trackingData.status || 'In Process'}`} 
             color="primary" 
             variant="filled" 
             size="medium"
@@ -277,10 +325,10 @@ const TrackingPage = () => {
     </Paper>
 
     {/* Sender & Receiver Sections */}
-    <Grid container spacing={4}>
+    <Box display={"flex"} justifyContent={'space-between'} >
       {/* Sender Info */}
       {trackingData.sender && (
-        <Grid item xs={12} md={4}>
+        <Box  xs={12} spacing={3} md={8}>
           <Paper 
             elevation={2} 
             sx={{ 
@@ -306,12 +354,12 @@ const TrackingPage = () => {
               </Typography>
             </Box>
           </Paper>
-        </Grid>
+        </Box>
       )}
 
       {/* Receivers - take remaining space */}
-      <Grid item xs={12} md={trackingData.sender ? 12 : 12}>
-        <Stack spacing={4}>
+      <Box  xs={24} md={trackingData.sender ? 24 : 12}>
+        <Stack spacing={3}>
           {trackingData.receivers?.map((receiver, idx) => {
             const items = receiver.items || [];
             const totalPackages = items.reduce((sum, it) => sum + (Number(it.total_number) || 0), 0);
@@ -570,8 +618,8 @@ const TrackingPage = () => {
             );
           })}
         </Stack>
-      </Grid>
-    </Grid>
+      </Box>
+    </Box>
 {/* Timeline */}
               <Paper elevation={3} sx={{ p: 4, borderRadius: 3, mt: 5, position: 'relative' }}>
                 <Box sx={{ position: 'relative', mb: 5 }}>

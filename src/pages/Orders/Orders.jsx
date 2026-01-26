@@ -1227,9 +1227,9 @@ const OrdersList = () => {
             backgroundColor: theme.palette.action.selected,
         },
     }));
-    const StyledTableCell = styled(TableCell)(({ theme }) => ({
+ const StyledTableCell = styled(TableCell)(({ theme }) => ({
         borderBottom: `1px solid ${theme.palette.divider}`,
-        fontSize: '0.875rem',
+        fontSize: '12px',
         padding: theme.spacing(1.5, 2),
     }));
 
@@ -1399,7 +1399,7 @@ const OrdersList = () => {
                                     <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="dest">POD</StyledTableHeadCell>,
                                     <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="sender">Sender</StyledTableHeadCell>,
                                     <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff', width: 200 }} key="receivers">Receivers & Containers</StyledTableHeadCell>, // Multiple receivers with status
-                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff', width: 100 }} key="containers"></StyledTableHeadCell>,
+                                    // <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff', width: 100 }} key="containers"></StyledTableHeadCell>,
                                     // New column for Products (weight, category, item products, total number)
                                     <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="products">Products</StyledTableHeadCell>,
                                     // <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="actions">Total Items</StyledTableHeadCell>,
@@ -1476,9 +1476,9 @@ const OrdersList = () => {
                                         <StyledTableCell>{order?.rgl_booking_number}</StyledTableCell>
                                         <StyledTableCell>{getPlaceName(order?.place_of_loading)}</StyledTableCell>
                                         <StyledTableCell>{getPlaceName(order.place_of_delivery)}</StyledTableCell>
-                                        <StyledTableCell>{order.sender_name}</StyledTableCell>
+                                        <StyledTableCell colSpan={1.5}>{order.sender_name?.substring(0, 20)}</StyledTableCell>
 
-                                        <TableCell colSpan={2}> {/* optional: merge visually */}
+                                        <TableCell colSpan={1.5}> { /* optional: merge visually */}
                                             <StyledTooltip
                                                 title={<CombinedTooltip order={order} />}
                                                 arrow
@@ -1559,8 +1559,8 @@ const OrdersList = () => {
                                                 <Typography variant="body2" noWrap sx={{ maxWidth: 120, cursor: 'help', fontWeight: 'medium' }}>
                                                     {productsSummary.length > 0 ? (
                                                         <>
-                                                            {productsSummary.length > 1 && <sup style={{ padding: 2, borderRadius: 50, float: 'left', background: '#00695c', color: '#fff', fontSize: '0.75rem' }}>({productsSummary.length})</sup>}
-                                                            <span style={{ paddingLeft: productsSummary.length > 1 ? 20 : 0 }}>
+                                                            {productsSummary.length > 1 && <sup style={{ padding: 2, borderRadius: 50, float: 'right', background: '#00695c', color: '#fff', fontSize: '0.75rem' }}>({productsSummary.length})</sup>}
+                                                            <span style={{ paddingLeft: productsSummary.length > 1 ? 10 : 10 }}>
                                                                 Cat: {categoryList.substring(0, 10)}... | Wt: {totalWeight.toFixed(0)}kg | Items: {totalItems}
                                                             </span>
                                                         </>

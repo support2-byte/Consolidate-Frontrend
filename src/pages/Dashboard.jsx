@@ -290,7 +290,26 @@ export default function DashboardLayout() {
   };
 
   return (
-    <Box sx={{ display: "flex", minHeight: "100vh" }}>
+  <Box
+  sx={{
+    display: 'flex',
+    minHeight: '100vh',
+
+    // ─── This block creates the 80% constrained + centered look ───
+    width: '100%',
+    maxWidth: '1440px',               // very popular sweet spot
+    // maxWidth: '80vw',              // alternative – more fluid
+    // maxWidth: { lg: '84%', xl: '78%' }, // breakpoint version
+    marginLeft: 'auto',
+    marginRight: 'auto',
+
+    background: mode === 'dark'
+      ? 'linear-gradient(135deg, #1e293b 0%, #334155 100%)'
+      : 'linear-gradient(135deg, #f8fafc 0%, #e5e7eb 100%)',
+
+    boxShadow: '0 0 40px rgba(0,0,0,0.07)', // optional – gives floating panel feel
+  }}
+>
       <CssBaseline />
 
       {/* Top AppBar */}
@@ -407,7 +426,7 @@ export default function DashboardLayout() {
         }}
       >
         <Toolbar sx={{ minHeight: 72 }} /> {/* Offset for AppBar */}
-        <Container maxWidth="xl" sx={{ py: 4, px: { xs: 2, sm: 3 } }}>
+           <Container maxWidth="xl" sx={{ py: 2, px: { xs: 1, sm: 1 } }}>
           <div> {/* Wrapper for stable ref */}
             <Slide in direction="up" timeout={1000} mountOnEnter unmountOnExit>
               <div>

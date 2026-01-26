@@ -245,18 +245,7 @@ setStatusList(data.statusOptions)
   sortable: true,
   render: (item) => <Typography variant="body1" sx={{ fontSize: '0.875rem',maxWidth: 80, }}>{safeParseOrders(item.orders).length}</Typography>
 },
-    { 
-      key: "delivered", 
-      label: "Delivered", 
-      sortable: true,
-      render: (item) => <Typography variant="body1" sx={{ fontWeight: 'bold',  color: 'success.main',maxWidth: 80 }}>{item.delivered || 0}</Typography>
-    },
-    { 
-      key: "pending", 
-      label: "Pending", 
-      sortable: true,
-      render: (item) => <Typography variant="body1" sx={{fontSize: '0.875rem', fontWeight: 'bold', color: 'warning.main' }}>{item.pending || 0}</Typography>
-    },{ 
+{ 
     key: "status", 
     label: "Status",
     sortable: true,
@@ -1132,7 +1121,7 @@ const totalWeight = useMemo(() =>
 // Helper for formatting total weight to 4 decimal places (use in render, e.g., {formatWeight(totalWeight)} kg)
 const formatWeight = useCallback((weight) => {
   if (isNaN(weight) || weight === null || weight === undefined) return '0.0000';
-  return Number(weight).toFixed(4); // Format to 4 decimal places, e.g., "1234.5678"
+  return Number(weight).toFixed(2); // Format to 4 decimal places, e.g., "1234.5678"
 }, []);
 
 const totalOrders = useMemo(() => 
@@ -1153,15 +1142,15 @@ const totalOrders = useMemo(() =>
   }));
   const StyledTableCell = styled(TableCell)(({ theme }) => ({
     borderBottom: `1px solid ${theme.palette.divider}`,
-    fontSize: '0.875rem',
+    // fontSize: '0.875rem',
     padding: theme.spacing(1.5, 2),
   }));
 
   const StyledTableHeadCell = styled(TableCell)(({ theme }) => ({
     backgroundColor: theme.palette.primary.main,
     color: theme.palette.primary.contrastText,
-    fontWeight: 'bold',
-    fontSize: '0.875rem',
+    fontWeight: 200,
+    // fontSize: '0.875rem',
     padding: theme.spacing(1.5, 2),
     borderBottom: `2px solid ${theme.palette.primary.dark}`,
   }));
