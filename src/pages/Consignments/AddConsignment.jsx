@@ -3004,7 +3004,7 @@ const generateshipmentsAndOrdersPDFWithCanvas = async (data, allReceivers, selec
             orderNo: order.booking_ref || order.rgl_booking_number || 'N/A',
             containerNo: containerNo,
             sender: order.sender_name || 'N/A',
-            receiver: receiver.receiver_name || 'N/A',
+            receiver: receiver.receivername || 'N/A',
             trackingId: trackingId,
             pkgs: pkgs,
             weight: assignWeight,

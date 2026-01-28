@@ -53,6 +53,8 @@ export default function DashboardLayout() {
     { label: "Containers", path: "/containers", icon: <LocalShippingIcon /> },
     { label: "Orders", path: "/orders", icon: <ShoppingCartIcon /> },
     { label: "Consignments", path: "/consignments", icon: <LocalShippingIcon /> },
+    { label: "Tracking", path: "/tracking", icon: <TrackChangesIcon /> },
+
   ];
 
   const adminSubItems = [
