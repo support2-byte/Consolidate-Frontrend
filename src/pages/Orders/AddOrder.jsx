@@ -2950,6 +2950,8 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { api } from "../../api";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import html2canvas from 'html2canvas';
+import logoPic from "../../../public/logo-2.png"
 // Custom TextField with error support
 const CustomTextField = ({ disabled, ...props }) => (
     <TextField
@@ -3425,74 +3427,6 @@ const OrderForm = () => {
     const items = isSenderMode ? formData.senders : formData.receivers;
     const itemsKey = isSenderMode ? 'senders' : 'receivers';
     const itemPrefix = isSenderMode ? 'Sender' : 'Receiver';
-
-    // if (items.length === 0) {
-    //     newErrors[itemsKey] = `At least one ${itemPrefix.toLowerCase()} is required`;
-    // } else {
-    //     items.forEach((item, i) => {
-    //         const nameField = isSenderMode ? 'senderName' : 'receiverName';
-    //         const contactField = isSenderMode ? 'senderContact' : 'receiverContact';
-    //         const addressField = isSenderMode ? 'senderAddress' : 'receiverAddress';
-    //         const emailField = isSenderMode ? 'senderEmail' : 'receiverEmail';
-    //         if (!item[nameField]?.trim()) {
-    //             newErrors[`${itemsKey}[${i}].${nameField}`] = `${itemPrefix} ${i + 1} name is required`;
-    //         }
-    //         if (!item[contactField]?.trim()) {
-    //             newErrors[`${itemsKey}[${i}].${contactField}`] = `${itemPrefix} ${i + 1} contact is required`;
-    //         }
-    //         if (!item[addressField]?.trim()) {
-    //             newErrors[`${itemsKey}[${i}].${addressField}`] = `${itemPrefix} ${i + 1} address is required`;
-    //         }
-    //         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    //         if (item[emailField] && !emailRegex.test(item[emailField])) {
-    //             newErrors[`${itemsKey}[${i}].${emailField}`] = `Invalid ${itemPrefix.toLowerCase()} ${i + 1} email format`;
-    //         }
-    //         // if (!item.eta?.trim()) {
-    //         //     newErrors[`${itemsKey}[${i}].eta`] = `ETA is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
-    //         // }
-    //         // if (!item.etd?.trim()) {
-    //         //     newErrors[`${itemsKey}[${i}].etd`] = `ETD is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
-    //         // }
-    //         // if (!item.shippingLine?.trim()) {
-    //         // newErrors[`${itemsKey}[${i}].shippingLine`] = `Shipping Line is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
-    //         // }
-    //         // Validate each shippingDetail
-    //         const shippingDetails = item.shippingDetails || [];
-    //         if (shippingDetails.length === 0) {
-    //             newErrors[`${itemsKey}[${i}].shippingDetails`] = `At least one shipping detail is required for ${itemPrefix.toLowerCase()} ${i + 1}`;
-    //         } else {
-    //             shippingDetails.forEach((sd, j) => {
-    //                 const shippingRequiredFields = ['pickupLocation', 'category', 'subcategory', 'type', 'deliveryAddress', 'totalNumber', 'weight'];
-    //                 shippingRequiredFields.forEach(field => {
-    //                     if (!sd[field]?.trim()) {
-    //                         newErrors[`${itemsKey}[${i}].shippingDetails[${j}].${field}`] = `${field.replace(/([A-Z])/g, ' $1').trim()} is required for shipping detail ${j + 1}`;
-    //                     }
-    //                 });
-    //                 const totalNum = parseInt(sd.totalNumber);
-    //                 if (isNaN(totalNum) || totalNum <= 0) {
-    //                     newErrors[`${itemsKey}[${i}].shippingDetails[${j}].totalNumber`] = `Total Number must be a positive number`;
-    //                 }
-    //                 if (sd.weight && (isNaN(parseFloat(sd.weight)) || parseFloat(sd.weight) <= 0)) {
-    //                     newErrors[`${itemsKey}[${i}].shippingDetails[${j}].weight`] = `Weight must be a positive number`;
-    //                 }
-    //             });
-    //         }
-    //         // Validate full/partial
-    //         if (item.fullPartial === 'Partial') {
-    //             if (!item.qtyDelivered?.trim()) {
-    //                 newErrors[`${itemsKey}[${i}].qtyDelivered`] = `Qty Delivered is required for partial ${itemPrefix.toLowerCase()} ${i + 1}`;
-    //             } else {
-    //                 const del = parseInt(item.qtyDelivered);
-    //                 const recTotal = (item.shippingDetails || []).reduce((sum, sd) => sum + (parseInt(sd.totalNumber || 0) || 0), 0);
-    //                 if (isNaN(del) || del <= 0) {
-    //                     newErrors[`${itemsKey}[${i}].qtyDelivered`] = `Qty Delivered must be a positive number`;
-    //                 } else if (del > recTotal) {
-    //                     newErrors[`${itemsKey}[${i}].qtyDelivered`] = `Qty Delivered (${del}) cannot exceed total number (${recTotal})`;
-    //                 }
-    //             }
-    //         }
-    //     });
-    // }
     // Transport validations
     if (!formData.transportType) {
         newErrors.transportType = 'Transport Type is required';
@@ -4200,7 +4134,480 @@ const handleChange = (e) => {
         doc.save(`Order_${order.booking_ref || "Unknown"}.pdf`);
     };
 
+const getPlaceName = (placeId) => {
+        if (!placeId) return 'N/A';
+        const idStr = placeId.toString();
+        const place = places.find(p => p.value === idStr || p.id === placeId);
+        return place ? place.label : `ID: ${placeId}`;
+    };
+    const generateReceiptPDF = async (order) => {
+        console.log('orders pdf ',order)
+        if (!order) return;
+        console.log('Generating PDF for order:', order);
 
+        try {
+            // Check libraries
+            if (typeof jsPDF === 'undefined' || typeof html2canvas === 'undefined') {
+                console.error('Required libraries not loaded');
+                return;
+            }
+
+            // Create HTML template (ab yeh async function hai)
+            const htmlContent = await createReceiptHTML(order);
+
+            // Create temporary div
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = htmlContent;
+            tempDiv.style.position = 'fixed';
+            tempDiv.style.left = '-10000px';
+            tempDiv.style.top = '0';
+            tempDiv.style.width = '210mm';
+            tempDiv.style.backgroundColor = '#ffffff';
+            document.body.appendChild(tempDiv);
+
+            // Convert to canvas
+            const canvas = await html2canvas(tempDiv, {
+                scale: 2,
+                useCORS: true,
+                logging: false,
+                backgroundColor: '#ffffff'
+            });
+
+            // Clean up
+            document.body.removeChild(tempDiv);
+
+            // Create PDF
+            const pdf = new jsPDF({
+                orientation: 'portrait',
+                unit: 'mm',
+                format: 'a4'
+            });
+
+            const imgWidth = 210;
+            const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+            pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, imgWidth, imgHeight);
+
+            // Save PDF
+            const fileName = `Receipt_${order.booking_ref || order.id || 'order'}_${new Date().toLocaleDateString('en-GB').replace(/\//g, '-')}.pdf`;
+            pdf.save(fileName);
+
+            console.log('Receipt PDF generated successfully');
+
+        } catch (error) {
+            console.error('Error generating PDF:', error);
+            throw error;
+        }
+    };
+    // Function to create dynamic HTML content
+    const createReceiptHTML = async (order) => {
+        const logoBase64 = await loadImageAsBase64(logoPic);
+
+        // Helper function to format date
+        const formatDate = (dateString) => {
+            if (!dateString) return '';
+            try {
+                const date = new Date(dateString);
+                return date.toLocaleDateString('en-GB', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric'
+                }) + ' ' + date.toLocaleTimeString('en-GB', {
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+            } catch (e) {
+                return dateString || '';
+            }
+        };
+
+        // Format current date and time
+        const currentDate = new Date().toLocaleDateString('en-GB', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric'
+        });
+        const currentTime = new Date().toLocaleTimeString('en-GB', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
+
+        // Extract data from order object based on your response structure
+        const senderName = order.sender_name || 'N/A';
+        const senderContact = order.sender_contact || 'N/A';
+        const senderEmail = order.sender_email || 'N/A';
+        const senderRef = order.sender_ref || 'N/A';
+
+        // Get first receiver data
+        const receiver = order.receivers && order.receivers[0] ? order.receivers[0] : {};
+        const receiverName = receiver.receiver_name || 'N/A';
+        const receiverContact = receiver.receiver_contact || 'N/A';
+        const receiverAddress = receiver.receiver_address || 'N/A';
+        const receiverEmail = receiver.receiver_email || 'N/A';
+
+        // Get shipping details
+        const shippingDetails = receiver.shippingDetails || receiver.shippingdetails || [];
+
+        // Calculate totals
+        let totalQty = 0;
+        let totalWeight = 0;
+
+        shippingDetails.forEach(item => {
+            totalQty += parseInt(item.totalNumber || 0);
+            totalWeight += parseFloat(item.weight || 0);
+        });
+
+        // If no shipping details, use receiver totals
+        if (shippingDetails.length === 0) {
+            totalQty = parseInt(receiver.total_number || 0);
+            totalWeight = parseFloat(receiver.total_weight || 0);
+        }
+
+        // Get container info
+        const containers = receiver.containers || [];
+        const containerInfo = containers.length > 0 ? containers[0] : 'N/A';
+
+        return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                color: #333;
+                line-height: 1.3;
+                margin: 0;
+                padding: 20px;
+                background-color: #f4f4f4;
+                width: 210mm;
+                min-height: 297mm;
+            }
+
+            .document-container {
+                background: #fff;
+                max-width: 800px;
+                margin: 0 auto;
+                padding: 20px;
+                border: 1px solid #ccc;
+                box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+                min-height: 257mm;
+            }
+
+            /* Top Banner */
+            .top-banner {
+                background-color: #1a4731;
+                color: white;
+                text-align: center;
+                padding: 10px;
+                font-size: 32px;
+                font-weight: bold;
+                letter-spacing: 2px;
+                margin-bottom: 20px;
+            }
+
+            /* Header Section */
+            .header-section {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 20px;
+            }
+
+            .logo-area {
+                display: flex;
+                align-items: center;
+            }
+
+            .logo-icon {
+                width: 80px;
+                margin-right: 15px;
+            }
+
+            .company-name img {
+                width: 250px;
+                height: auto;
+            }
+
+            .disclaimer-bubble {
+                border: 2px solid #ff4d4d;
+                border-radius: 50%;
+                padding: 15px;
+                width: 200px;
+                text-align: center;
+                color: #ff4d4d;
+                font-size: 11px;
+                font-weight: bold;
+                min-height: 100px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+            /* Titles */
+            .order-title {
+                text-align: center;
+                font-weight: bold;
+                font-size: 18px;
+                margin: 10px 0;
+                text-transform: uppercase;
+            }
+
+            .dated-text {
+                font-weight: bold;
+                font-size: 13px;
+                margin-bottom: 5px;
+            }
+
+            /* Tables */
+            table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-bottom: 15px;
+            }
+
+            th, td {
+                border: 1px solid #777;
+                padding: 8px;
+                text-align: left;
+                font-size: 12px;
+                vertical-align: top;
+            }
+
+            .table-header {
+                background-color: #f9f9f9;
+                text-align: center;
+                font-style: italic;
+                font-weight: bold;
+            }
+
+            /* Small Text Sections */
+            .small-red-text {
+                color: #d35400;
+                font-size: 10px;
+                margin: 10px 0;
+                line-height: 1.2;
+            }
+
+            .order-info-bar {
+                display: flex;
+                justify-content: space-between;
+                margin: 15px 0;
+                font-size: 13px;
+                font-weight: bold;
+            }
+
+            .bold-declaration {
+                font-size: 12px;
+                font-weight: bold;
+                font-style: italic;
+                margin: 15px 0;
+            }
+
+            /* Footer */
+            .terms-title {
+                color: #ff4d4d;
+                font-size: 14px;
+                margin-top: 20px;
+            }
+
+            .terms-list {
+                font-size: 10px;
+                color: #2c3e50;
+                padding-left: 0;
+                list-style: none;
+            }
+
+            .terms-list li {
+                margin-bottom: 3px;
+            }
+
+            .final-confirmation {
+                text-align: center;
+                font-weight: bold;
+                margin-top: 30px;
+                font-size: 14px;
+            }
+
+            /* Order Items Table */
+            .order-items-table {
+                margin: 20px 0;
+            }
+
+            .order-items-table .table-header {
+                background-color: #1a4731;
+                color: white;
+            }
+
+            .total-row {
+                background-color: #f2f2f2;
+                font-weight: bold;
+            }
+
+            /* Signature Section */
+            .signature-section {
+                margin-top: 40px;
+                display: flex;
+                justify-content: space-between;
+            }
+
+            .signature-box {
+                text-align: center;
+                border-top: 1px solid #333;
+                padding-top: 10px;
+                width: 45%;
+            }
+
+            /* Print-specific styles */
+            @media print {
+                body {
+                    background-color: white;
+                    padding: 0;
+                }
+                
+                .document-container {
+                    box-shadow: none;
+                    border: none;
+                    padding: 10px;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <div class="document-container">
+            <div class="top-banner">STORAGE & DISTRIBUTION</div>
+
+            <div class="header-section">
+                <div class="logo-area">
+                    <div class="company-name">
+                            <img src="${logoBase64 || ''}" alt="Company Logo">
+
+                    </div>
+                </div>
+                <div class="disclaimer-bubble">
+                    In case of any Lost or Damage for Non-Insured Cargo. US$ 15 PER PKG claim would be adjusted
+                </div>
+            </div>
+
+            <div class="order-title">ORDER ACKNOWLEDGEMENT</div>
+            <div class="dated-text">Dated: ${currentDate} ${currentTime}</div>
+
+            <table>
+                <tr>
+                    <td class="table-header" style="width: 50%;">Sender</td>
+                    <td class="table-header" style="width: 50%;">Receiver</td>
+                </tr>
+                <tr>
+                    <td>
+                        <strong>${senderName}</strong><br><br>
+                        Contact Person: ${senderName}<br>
+                        Passport No: <br>
+                        CNIC: <br>
+                        Tel: ${senderContact}<br>
+                        E-Mail: ${senderEmail}
+                    </td>
+                    <td>
+                        <strong>${receiverName}</strong><br><br>
+                        Contact Person: ${receiverName}<br>
+                        Passport No: <br>
+                        Emirates ID: <br>
+                        Tel: ${receiverContact}<br>
+                        E-Mail: ${receiverEmail}
+                    </td>
+                </tr>
+            </table>
+
+            <div class="small-red-text">
+                This paper serves as a legal responsibility of sender & receiver for the contents of the cargo being shipped
+                through the company Royal Gulf Shipping & Logistics LLC. The Sender and Receiver will be responsible for any
+                loss/ damage which results in case of any prohibited items attempted to be shipped through this order.
+            </div>
+
+            <div class="order-title">ACKNOWLEDGMENT AND ACCEPTANCE OF ORDER</div>
+
+            <div class="order-info-bar">
+                <div><u> Order Date:</u> <span>${formatDate(order.created_at)}</span></div>
+                <div><u> Order Number:</u> <span>${order.booking_ref}</span></div>
+                <div><u> Customer No:</u> <span>${order.rgl_booking_number}</span></div>
+            </div>
+
+            <p style="font-size: 12px;">We are in receipt of your Order as detailed below:</p>
+
+            <table class="order-items-table">
+                <tr class="table-header">
+                    <td>QTY</td>
+                    <td>DESCRIPTION</td>
+                    <td>Order No</td>
+                    <td>Form No</td>
+                    <td>Port of Loading</td>
+                    <td>Port of Destination</td>
+                </tr>
+                ${shippingDetails.length > 0 ? shippingDetails.map(item => `
+                <tr>
+                    <td style="text-align: center;">${item.totalNumber || 0}</td>
+                    <td>${item.category || 'N/A'}</td>
+                    <td style="text-align: center;">${order.booking_ref || 'N/A'}</td>
+                    <td>${item.rgl_booking_number || 'N/A'}</td>
+                    <td>${getPlaceName(order.place_of_loading) || 'N/A'}</td>
+                    <td>${getPlaceName(order.final_destination) || 'N/A'}</td>
+                </tr>
+                `).join('') : `
+                <tr>
+                    <td style="text-align: center;">${totalQty || 0}</td>
+                    <td>General Items</td>
+                    <td style="text-align: center;">${order.booking_ref || 'N/A'}</td>
+                    <td>${containerInfo}</td>
+                    <td>${order.place_of_loading || 'N/A'}</td>
+                    <td>${order.final_destination || 'N/A'}</td>
+                </tr>
+                `}
+                <tr class="total-row">
+                    <td style="text-align: center;">${totalQty}</td>
+                    <td colspan="5">TOTAL PACKAGES: ${totalQty} | TOTAL WEIGHT: ${totalWeight} kg</td>
+                </tr>
+            </table>
+
+            <div class="dated-text" style="text-decoration: underline;">Mode: ${order.transport_type || 'Drop Off'}</div>
+
+            <div class="bold-declaration">
+                I, the sender, whose name and address are given on the item, certify that the particulars given in this
+                declaration are correct and that this item does not contain any dangerous article or articles prohibited by
+                legislation or by <u>postal or customs regulations.</u>
+            </div>
+
+            <div class="terms-title">Terms & Conditions</div>
+            <ul class="terms-list">
+                <li>*All the information provided on order acknowledgement is as per the information provided by the sender.</li>
+                <li>*Customer (Sender/Receiver) acknowledges that the company will not be held liable for any loss or damage
+                    caused by customs inspections, fair wear & tear & Natural Disaster.</li>
+                <li>*All shipments will be inspected by Customs / ANF teams at terminals and there being if any extra cost
+                    incurred will be borne by the sender Or receiver.</li>
+                <li>*Transit time provided are tentative and could be change with / without prior notice upon vessels and
+                    customs clearance.</li>
+            </ul>
+
+            <div class="signature-section">
+                <div class="signature-box">
+                    <strong>Sender's Signature</strong><br>
+                    ${senderName}
+                </div>
+                <div class="signature-box">
+                    <strong>Receiver's Signature</strong><br>
+                    ${receiverName}
+                </div>
+            </div>
+
+            <div class="final-confirmation">
+                We confirm acceptance of said order, with terms as stated above.
+            </div>
+
+        </div>
+    </body>
+    </html>
+    `;
+    };
 
 
     const duplicateReceiver = (index) => {
@@ -4579,7 +4986,7 @@ const handleChange = (e) => {
 
 
 const handleSave = async () => {
-    console.log("Submitting form data:");
+    console.log("Submitting form data:",);
     // console.log('Saving owner name:', formDataToSend); // Debug
     // if (!validateForm()) {
     //     setSnackbar({
@@ -4620,6 +5027,7 @@ const handleSave = async () => {
     const panel2FieldPrefix = formData.senderType === 'sender' ? 'receiver' : 'sender';
     const panel2ArrayKey = `${panel2FieldPrefix}s`;
     // Append panel2 as JSON (basic info)
+
     const panel2ToSend = panel2Items.map((item) => {
         const snakeRec = {
             [`${panel2FieldPrefix}_name`]: formData.senderType === 'sender' ? (item.receiverName || '') : (item.senderName || ''),
@@ -4756,6 +5164,10 @@ const handleSave = async () => {
         }
         return !editableInEdit.includes(name);
     };
+
+ 
+
+
     if (loading) {
         return (
             <Paper sx={{ p: 3, borderRadius: 3, boxShadow: 3, bgcolor: "#fafafa" }}>
@@ -6240,6 +6652,15 @@ const handleSave = async () => {
                                     disabled={isFieldDisabled(`${recDisabledPrefix}.${isSenderMode ? 'senderEmail' : 'receiverEmail'}`)}
                                 />
                             </Box>
+                             <Box
+                                sx={{
+                                    display: 'flex',
+                                    py: 2,
+                                    flexDirection: { xs: 'column', sm: 'row' },
+                                    gap: 2,
+                                    alignItems: 'stretch',
+                                }}
+                            >
                             <CustomTextField
                                 label={`${typePrefix} Marks & Number`}
                                 value={isSenderMode ? rec.senderMarksNumber : rec.receiverMarksNumber}
@@ -6248,6 +6669,7 @@ const handleSave = async () => {
                                 helperText={errors[`${listKey}[${i}].${isSenderMode ? 'senderMarksNumber' : 'receiverMarksNumber'}`]}
                                 disabled={isFieldDisabled(`${recDisabledPrefix}.${isSenderMode ? 'senderMarksNumber' : 'receiverMarksNumber'}`)}
                                 fullWidth
+                                
                             />
                             <CustomTextField
                                 label="Remarks"
@@ -6258,6 +6680,7 @@ const handleSave = async () => {
                                 fullWidth
                                 disabled={isFieldDisabled(`${recDisabledPrefix}.remarks`)}
                             />
+                        </Box>
                             {renderShippingSection()}
                         </Box>
                     );
@@ -6892,13 +7315,12 @@ const handleSave = async () => {
                     </Stack>
                     {/* Bottom Buttons */}
                     <Stack direction="row" justifyContent="flex-end" gap={2} mt={4} pt={3} borderTop="1px solid #e0e0e0">
-                        <Button
-                            onClick={() => generateOrderPDF(selectedOrder)}
-                            variant="outlined"
-                            size="small"
-                            startIcon={<DownloadIcon />}
-                            sx={{ borderRadius: 2, borderColor: "#f58220", color: "#f58220" }}
-                        >
+                      <Button               
+                                   onClick={() => generateReceiptPDF(selectedOrder)}
+                                    variant="outlined"
+                                    size="small"
+                                  startIcon={<DownloadIcon />}
+                               sx={{ borderRadius: 2, borderColor: "#F58220", color: "#F58220" }}>
                             Print Consignment Manifest
                         </Button>
                     </Stack>
