@@ -648,6 +648,7 @@ const ItemRefLayout = ({ trackingData }) => {
             px: 8,
             py: 1.8,
             fontSize: '16px',
+            color:"#fff",
             borderRadius: 50,
             // alignItems:"center",
             margin: "0 auto",
@@ -689,7 +690,9 @@ const ItemRefLayout = ({ trackingData }) => {
 
           <Box sx={{ pl: { xs: 4, sm: 6 }, position: 'relative', zIndex: 1 }}>
             {history.map((entry, idx) => {
-              const isCurrent = idx === history.length - 1;
+
+              const isCurrent = idx - 0
+              console.log('history status',isCurrent)
               return (
                 <Box key={idx} sx={{ mb: 4, display: 'flex', alignItems: 'flex-start' }}>
                   <Box
@@ -697,7 +700,7 @@ const ItemRefLayout = ({ trackingData }) => {
                       width: 24,
                       height: 24,
                       borderRadius: '50%',
-                      bgcolor: isCurrent ? '#f58220' : '#16a34a',
+                      bgcolor: isCurrent ? '#16a34a' : '#f58220',
                       border: '4px solid white',
                       boxShadow: '0 0 0 3px rgba(22,163,74,0.3)',
                       flexShrink: 0,
@@ -707,12 +710,12 @@ const ItemRefLayout = ({ trackingData }) => {
                   />
 
                   <Box sx={{ ml: 3, flex: 1 }}>
-                    <Typography variant="subtitle1" fontWeight={600} color={isCurrent ? '#f58220' : '#0f172a'}>
+                    <Typography variant="subtitle1" fontWeight={600} color={isCurrent ? '#16a34a' : '#f58220'}>
                       {entry.status}
                     </Typography>
                     <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
                       {entry.time}
-                      {entry.notes && ` • ${entry.notes}`}
+                      {/* {entry.notes && ` • ${entry.notes}`} */}
                     </Typography>
                   </Box>
                 </Box>
@@ -1037,8 +1040,8 @@ const OrderDetailedLayout = ({ trackingData }) => {
                                         {cont.container_number}
                                         <br />
                                         <Typography variant="caption" color="text.secondary">
-                                          {status} • {Number(containerInfo.assign_total_box || 0).toLocaleString()} boxes
-                                          • {Number(containerInfo.assign_weight || 0).toLocaleString()} boxes
+                                          {status} • {Number(containerInfo.assign_total_box || 0).toLocaleString()}  {item.type && ` (${item.type})`}
+                                          • {Number(containerInfo.assign_weight || 0).toLocaleString()} Kg
 
                                         </Typography>
                                       </>

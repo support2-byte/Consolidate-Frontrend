@@ -3038,7 +3038,7 @@ const OrderForm = () => {
     const [categories, setCategories] = useState([]);
     const [categorySubMap, setCategorySubMap] = useState({});
     const [types, setTypes] = useState([]);
-    const [statuses, setStatuses] = useState([]);
+    // const [statuses, setStatuses] = useState([]);
     const [places, setPlaces] = useState([]);
     const [selectedOrder, setSelectedOrder] = useState(null);
     const [previewSd, setPreviewSd] = useState({ });
@@ -3046,7 +3046,7 @@ const OrderForm = () => {
     const orderId = location.state?.orderId;
     const [isEditMode, setIsEditMode] = useState(!!orderId);
     const containerOptions = location.state?.containers || [];
-    const getStatusColors = location.state?.getStatusColors || (() => ({}));
+    // const getStatusColors = location.state?.getStatusColors || (() => ({}));
     // const ownerName = location.state?.ownerName || '';
     // console.log('Order ID from state:', orderId);
     // Snackbar state for error/success messages
@@ -3484,7 +3484,7 @@ const OrderForm = () => {
             // If types are from another endpoint, replace with api.get('api/options/types/crud')
             // setTypes([]); // Or fetch properly
             // Statuses: use statusOptions or statuses
-            setStatuses(statusesRes?.data?.statusOptions || statusesRes?.data?.statuses || []);
+            // setStatuses(statusesRes?.data?.statusOptions || statusesRes?.data?.statuses || []);
         } catch (error) {
             console.error('Error fetching options:', error);
             setSnackbar({
@@ -3530,6 +3530,7 @@ const OrderForm = () => {
         }
     }, [orderId]);
     // Auto-expand accordions with errors
+
     useEffect(() => {
         if (Object.keys(errors).length > 0) {
             const panelsToExpand = new Set();
@@ -3571,6 +3572,7 @@ const fetchOrder = async (id) => {
         }
         console.log('Fetched order data:', response.data);
         setSelectedOrder(response.data);
+
         // Map snake_case to camelCase for core fields
         const camelData = {};
         Object.keys(response.data).forEach(apiKey => {
@@ -3589,8 +3591,10 @@ const fetchOrder = async (id) => {
             const camelKey = snakeToCamel(apiKey);
             camelData[camelKey] = value;
         });
+
         // Set senderType from API
         camelData.senderType = response.data.sender_type || 'sender';
+
         // Map owner fields
         const ownerPrefix = camelData.senderType === 'sender' ? 'sender' : 'receiver';
         const ownerFields = ['name', 'contact', 'address', 'email', 'ref', 'remarks'];
@@ -3606,32 +3610,30 @@ const fetchOrder = async (id) => {
         const ownerNameKey = `${ownerPrefix}Name`;
         if (camelData.selectedSenderOwner && !camelData[ownerNameKey]?.trim()) {
             try {
-                console.log(`Auto-populating owner from ID: ${camelData.selectedSenderOwner}`); // Debug log
+                console.log(`Auto-populating owner from ID: ${camelData.selectedSenderOwner}`);
                 const customerRes = await api.get(`/api/customers/${camelData.selectedSenderOwner}`);
                 if (customerRes?.data) {
                     const customer = customerRes.data;
-                    // Map customer fields to owner (adjust paths based on your API response structure)
                     camelData[ownerNameKey] = customer.contact_name || customer.contact_persons?.[0]?.name || '';
                     camelData[`${ownerPrefix}Contact`] = customer.primary_phone || customer.contact_persons?.[0]?.phone || '';
                     camelData[`${ownerPrefix}Address`] = customer.zoho_notes || customer.billing_address || '';
                     camelData[`${ownerPrefix}Email`] = customer.email || customer.contact_persons?.[0]?.email || '';
                     camelData[`${ownerPrefix}Ref`] = customer.zoho_id || customer.ref || '';
                     camelData[`${ownerPrefix}Remarks`] = customer.zoho_notes || customer.system_notes || '';
-                    console.log(`Auto-populated ${ownerNameKey}:`, camelData[ownerNameKey]); // Debug log
+                    console.log(`Auto-populated ${ownerNameKey}:`, camelData[ownerNameKey]);
                 }
             } catch (autoErr) {
                 console.error('Auto-populate owner failed:', autoErr);
-                // Fallback: Don't override with empty—keep whatever was there
             }
         }
 
         // Handle panel2 - dynamic based on senderType
-        // API always provides 'receivers' array, which maps to panel2 items
         const panel2ApiKey = 'receivers';
         const panel2Prefix = camelData.senderType === 'sender' ? 'receiver' : 'sender';
         const panel2ListKey = camelData.senderType === 'sender' ? 'receivers' : 'senders';
         const initialItem = panel2Prefix === 'receiver' ? initialReceiver : initialSenderObject;
         let mappedPanel2 = [];
+
         if (response.data[panel2ApiKey]) {
             mappedPanel2 = (response.data[panel2ApiKey] || []).map(rec => {
                 if (!rec) return null;
@@ -3641,17 +3643,22 @@ const fetchOrder = async (id) => {
                     isNew: false,
                     validationWarnings: null
                 };
+
                 Object.keys(rec).forEach(apiKey => {
                     let val = rec[apiKey];
                     if (val === null || val === undefined) val = '';
                     const camelKey = snakeToCamel(apiKey);
-                    if (['name', 'contact', 'address', 'email'].includes(camelKey)) {
-                        camelRec[`${panel2Prefix}${camelKey.charAt(0).toUpperCase() + camelKey.slice(1)}`] = val;
+
+                    if (['name', 'contact', 'address', 'email', 'marksAndNumber'].includes(camelKey)) {
+                        // NEW: Map marksAndNumber to UI state key
+                        const uiKey = camelKey === 'marksAndNumber' ? `${panel2Prefix}MarksNumber` : `${panel2Prefix}${camelKey.charAt(0).toUpperCase() + camelKey.slice(1)}`;
+                        camelRec[uiKey] = val;
                     } else {
                         camelRec[camelKey] = val;
                     }
                 });
-                // Handle shippingdetails array (plural, as per new API)
+
+                // Handle shippingdetails array
                 if (rec.shippingdetails) {
                     const mappedShippingDetails = (rec.shippingdetails || []).map(sd => {
                         const camelSd = { ...initialShippingDetail };
@@ -3661,6 +3668,7 @@ const fetchOrder = async (id) => {
                             const sdCamelKey = snakeToCamel(sdApiKey);
                             camelSd[sdCamelKey] = sdVal;
                         });
+
                         // Map nested containerDetails
                         if (sd.containerDetails) {
                             const mappedContainerDetails = (sd.containerDetails || []).map(cd => {
@@ -3671,7 +3679,6 @@ const fetchOrder = async (id) => {
                                     const cdCamelKey = snakeToCamel(cdApiKey);
                                     camelCd[cdCamelKey] = cdVal;
                                 });
-                                // Specific mapping for total_number -> totalNumber
                                 if ('total_number' in cd) {
                                     camelCd.totalNumber = cd.total_number || '';
                                 }
@@ -3685,7 +3692,8 @@ const fetchOrder = async (id) => {
                     });
                     camelRec.shippingDetails = mappedShippingDetails;
                 }
-                // If no shippingDetails, create default one from receiver-level totals
+
+                // Fallback if no shippingDetails
                 if (!camelRec.shippingDetails || camelRec.shippingDetails.length === 0) {
                     camelRec.shippingDetails = [{
                         ...initialShippingDetail,
@@ -3693,26 +3701,23 @@ const fetchOrder = async (id) => {
                         weight: rec.total_weight || ''
                     }];
                 }
+
                 camelRec.status = rec.status || "Created";
-                // New fields default
                 camelRec.fullPartial = camelRec.fullPartial || '';
                 camelRec.qtyDelivered = camelRec.qtyDelivered != null ? String(camelRec.qtyDelivered) : '0';
+
                 return camelRec;
             }).filter(Boolean);
         }
+
         // Fallback panel2 fields to order-level if empty
         mappedPanel2.forEach(rec => {
-            if (rec.eta === '' && camelData.eta) {
-                rec.eta = camelData.eta;
-            }
-            if (rec.etd === '' && camelData.etd) {
-                rec.etd = camelData.etd;
-            }
-            if (rec.shippingLine === '' && camelData.shippingLine) {
-                rec.shippingLine = camelData.shippingLine;
-            }
+            if (rec.eta === '' && camelData.eta) rec.eta = camelData.eta;
+            if (rec.etd === '' && camelData.etd) rec.etd = camelData.etd;
+            if (rec.shippingLine === '' && camelData.shippingLine) rec.shippingLine = camelData.shippingLine;
         });
-        // Compute remainingItems on load
+
+        // Compute remainingItems on load (unchanged)
         mappedPanel2 = mappedPanel2.map(rec => {
             const shippingDetails = rec.shippingDetails || [];
             const recTotal = shippingDetails.reduce((sum, sd) => {
@@ -3743,18 +3748,19 @@ const fetchOrder = async (id) => {
                 }));
             }
             rec.shippingDetails = updatedDetails;
-            // Validation warnings
+
+            // Validation warnings (unchanged)
             let warnings = null;
             const isInvalidTotal = recTotal <= 0;
             const isPartialInvalid = rec.fullPartial === 'Partial' && delivered > recTotal;
             if (isInvalidTotal || isPartialInvalid) {
                 warnings = {};
-                // if (isInvalidTotal) warnings.total_number = 'Must be positive';
                 if (isPartialInvalid) warnings.qty_delivered = 'Cannot exceed total_number';
             }
             rec.validationWarnings = warnings;
             return rec;
         });
+
         camelData[panel2ListKey] = mappedPanel2;
         if (!camelData[panel2ListKey] || camelData[panel2ListKey].length === 0) {
             camelData[panel2ListKey] = [{
@@ -3763,10 +3769,12 @@ const fetchOrder = async (id) => {
                 isNew: true
             }];
         }
+
         // Ensure the other list is empty
         const otherListKey = panel2ListKey === 'receivers' ? 'senders' : 'receivers';
         camelData[otherListKey] = [];
-        // Attachments/gatepass
+
+        // Attachments/gatepass cleanup (unchanged)
         const cleanAttachments = (paths) => (paths || []).map(path => {
             if (typeof path === 'string' && path.startsWith('function wrap()')) {
                 return path.substring(62);
@@ -3775,6 +3783,7 @@ const fetchOrder = async (id) => {
         });
         camelData.attachments = cleanAttachments(camelData.attachments || []);
         camelData.gatepass = cleanAttachments(camelData.gatepass || []);
+
         const apiBase = import.meta.env.VITE_API_URL;
         camelData.attachments = camelData.attachments.map(path =>
             path.startsWith('http') ? path : `${apiBase}${path}`
@@ -3782,13 +3791,14 @@ const fetchOrder = async (id) => {
         camelData.gatepass = camelData.gatepass.map(path =>
             path.startsWith('http') ? path : `${apiBase}${path}`
         );
+
         setFormData(camelData);
+
         // Set initial errors from validation warnings
         const initialErrors = {};
         mappedPanel2.forEach((rec, i) => {
             if (rec.validationWarnings) {
                 if (rec.validationWarnings.total_number) {
-                    // Map to nested container totalNumber errors if needed; for simplicity, set at shipping level
                     initialErrors[`${panel2ListKey}[${i}].shippingDetails[0].containerDetails[0].totalNumber`] = rec.validationWarnings.total_number;
                 }
                 if (rec.validationWarnings.qty_delivered) {
@@ -3797,14 +3807,10 @@ const fetchOrder = async (id) => {
             }
         });
         setErrors(initialErrors);
+
         const hasWarnings = mappedPanel2.some(r => r && r.validationWarnings);
-        // if (hasWarnings) {
-        //     setSnackbar({
-        //         open: true,
-        //         message: 'Some receiver data needs attention (check totals/deliveries)',
-        //         severity: 'warning',
-        //     });
-        // }
+        // if (hasWarnings) { setSnackbar warning... } // optional
+
     } catch (err) {
         console.error("Error fetching order:", err);
         setSnackbar({
@@ -3820,7 +3826,7 @@ const fetchOrder = async (id) => {
     }
 };
 
-
+formData.receivers.map((item) => {console.log('release',item.status)})
 
 const handleChange = (e) => {
     const { name, value } = e.target;
@@ -4549,7 +4555,7 @@ const getPlaceName = (placeId) => {
                     <td style="text-align: center;">${item.totalNumber || 0}</td>
                     <td>${item.category || 'N/A'}</td>
                     <td style="text-align: center;">${order.booking_ref || 'N/A'}</td>
-                    <td>${item.rgl_booking_number || 'N/A'}</td>
+                    <td>${order.rgl_booking_number || 'N/A'}</td>
                     <td>${getPlaceName(order.place_of_loading) || 'N/A'}</td>
                     <td>${getPlaceName(order.final_destination) || 'N/A'}</td>
                 </tr>
@@ -4860,6 +4866,42 @@ const getPlaceName = (placeId) => {
     }, [isEditMode]);
 
 
+
+const statuses = [
+        'Ready for Loading',
+        'Loaded Into container',
+        'Shipment Processing',
+        'Shipment In Transit',
+        'Under Processing',
+        'Arrived at Sort Facility',
+        'Ready for Delivery',
+        'Shipment Delivered'
+    ];
+    const getStatusColors = (status) => {
+        // Extend your existing getStatusColors function to handle new statuses
+        const colorMap = {
+            'Ready for Loading': { bg: '#f3e5f5', text: '#7b1fa2' },
+            'Loaded Into Container': { bg: '#e0f2f1', text: '#00695c' },
+            'Shipment Processing': { bg: '#fff3e0', text: '#ef6c00' },
+            'In Transit': { bg: '#e1f5fe', text: '#0277bd' },
+            'Under Processing': { bg: '#fff3e0', text: '#f57c00' },
+            'Arrived at Sort Facility': { bg: '#f1f8e9', text: '#689f38' },
+            'Ready for Delivery': { bg: '#fce4ec', text: '#c2185b' },
+            'Shipment Delivered': { bg: '#e8f5e8', text: '#2e7d32' },
+            'Loaded': { bg: '#e8f5e8', text: '#2e7d32' },
+            'Shipment Processing': { bg: '#fff3e0', text: '#ef6c00' },
+            'Shipment In Transit': { bg: '#e1f5fe', text: '#0277bd' },
+            'Assigned to Job': { bg: '#fff3e0', text: '#f57c00' },
+            'Arrived at Sort Facility': { bg: '#f1f8e9', text: '#689f38' },
+            'Ready for Delivery': { bg: '#fce4ec', text: '#c2185b' },
+            'Shipment Delivered': { bg: '#e8f5e8', text: '#2e7d32' },
+            // Fallback for unknown
+            default: { bg: '#f5f5f5', text: '#666' }
+        };
+        return colorMap[status] || colorMap.default;
+    };
+
+
     // Sender handlers (similar)
     const addSender = useCallback(() => {
         setFormData((prev) => ({
@@ -5027,25 +5069,25 @@ const handleSave = async () => {
     const panel2FieldPrefix = formData.senderType === 'sender' ? 'receiver' : 'sender';
     const panel2ArrayKey = `${panel2FieldPrefix}s`;
     // Append panel2 as JSON (basic info)
-
-    const panel2ToSend = panel2Items.map((item) => {
-        const snakeRec = {
-            [`${panel2FieldPrefix}_name`]: formData.senderType === 'sender' ? (item.receiverName || '') : (item.senderName || ''),
-            [`${panel2FieldPrefix}_contact`]: formData.senderType === 'sender' ? (item.receiverContact || '') : (item.senderContact || ''),
-            [`${panel2FieldPrefix}_address`]: formData.senderType === 'sender' ? (item.receiverAddress || '') : (item.senderAddress || ''),
-            [`${panel2FieldPrefix}_email`]: formData.senderType === 'sender' ? (item.receiverEmail || '') : (item.senderEmail || ''),
-            eta: item.eta || '',
-            etd: item.etd || '',
-            shipping_line: item.shippingLine || '',
-            full_partial: item.fullPartial || item.fullPartial || 'Full',
-            qty_delivered: item.qtyDelivered || item.qtyDelivered || '',
-            status: item.status || 'Order Created',   
-            remarks: item.remarks || '',
-            containers: Array.isArray(item.containers) ? item.containers.flat().flat() : [],
-        };
-        return snakeRec;
-    });
-    formDataToSend.append(panel2ArrayKey, JSON.stringify(panel2ToSend));
+const panel2ToSend = panel2Items.map((item) => {
+    const snakeRec = {
+        [`${panel2FieldPrefix}_name`]: formData.senderType === 'sender' ? (item.receiverName || '') : (item.senderName || ''),
+        [`${panel2FieldPrefix}_contact`]: formData.senderType === 'sender' ? (item.receiverContact || '') : (item.senderContact || ''),
+        [`${panel2FieldPrefix}_address`]: formData.senderType === 'sender' ? (item.receiverAddress || '') : (item.senderAddress || ''),
+        [`${panel2FieldPrefix}_email`]: formData.senderType === 'sender' ? (item.receiverEmail || '') : (item.senderEmail || ''),
+        [`${panel2FieldPrefix}_marks_and_number`]: item[`${panel2FieldPrefix}MarksNumber`] || '',   // ← Added
+        eta: item.eta || '',
+        etd: item.etd || '',
+        shipping_line: item.shippingLine || '',
+        full_partial: item.fullPartial || item.fullPartial || 'Full',
+        qty_delivered: item.qtyDelivered || item.qtyDelivered || '',
+        status: item.status || 'Order Created',   
+        remarks: item.remarks || '',
+        containers: Array.isArray(item.containers) ? item.containers.flat().flat() : [],
+    };
+    return snakeRec;
+});
+formDataToSend.append(panel2ArrayKey, JSON.stringify(panel2ToSend));
     // Append order_items from all shippingDetails flat, now with nested containers
     const orderItemsToSend = [];
     panel2Items.forEach((item, i) => {
@@ -6056,7 +6098,7 @@ const handleSave = async () => {
                                             renderValue={(selected) => selected || "Select Status"}
                                         >
                                             <MenuItem value="">Select Status</MenuItem>
-                                            {validShipmentStatuses.map((s) => (
+                                            {statuses.map((s) => (
                                                 <MenuItem key={s} value={s}>
                                                     {s}
                                                 </MenuItem>
@@ -6220,7 +6262,7 @@ const handleSave = async () => {
                                                 renderValue={(selected) => selected || "Select Status"}
                                             >
                                                 <MenuItem value="">Select Status</MenuItem>
-                                                {validShipmentStatuses.map((s) => (
+                                                {statuses.map((s) => (
                                                     <MenuItem key={s} value={s}>
                                                         {s}
                                                     </MenuItem>
@@ -6255,6 +6297,7 @@ const handleSave = async () => {
                                 </Box>
                             ) : (
                                 (rec.shippingDetails || []).map((sd, j) => {
+                                    console.log('statussssss',j)
                                     // FIXED: No per-SD available; compute per-CD below
                                     // NEW: Always render at least one empty container row if none exist
                                     const hasContainers = (sd.containerDetails || []).length > 0;
@@ -6364,14 +6407,14 @@ const handleSave = async () => {
                                                 <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
                                                     <CustomSelect
                                                         label="Shippment Status"
-                                                        value={sd.status || ""}
+                                                        value={rec.status || ""}
                                                         onChange={(e) => handleShippingChangeFn(i, j, 'status')(e)}
                                                         error={!!errors[`${listKey}[${i}].shippingDetails[${j}].status`]}
                                                         helperText={errors[`${listKey}[${i}].shippingDetails[${j}].status`]}
                                                         renderValue={(selected) => selected || "Select Status"}
                                                     >
                                                         <MenuItem value="">Select Status</MenuItem>
-                                                        {validShipmentStatuses.map((s) => (
+                                                        {statuses.map((s) => (
                                                             <MenuItem key={s} value={s}>
                                                                 {s}
                                                             </MenuItem>
@@ -6489,7 +6532,7 @@ const handleSave = async () => {
                                                                                     renderValue={(selected) => selected || "Select Status"}
                                                                                 >
                                                                                     <MenuItem value="">Select Status</MenuItem>
-                                                                                    {validShipmentStatuses.map((s) => (
+                                                                                    {statuses.map((s) => (
                                                                                         <MenuItem key={s} value={s}>
                                                                                             {s}
                                                                                         </MenuItem>
