@@ -17,6 +17,7 @@ import {
     TablePagination,
     Chip,
     IconButton,
+    InputAdornment,
     TextField,
     MenuItem,
     Select,
@@ -49,8 +50,9 @@ import { styled } from '@mui/material/styles';
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import AddIcon from "@mui/icons-material/Add";
 import DownloadIcon from "@mui/icons-material/Download";
-import CloseIcon from "@mui/icons-material/Close";
+import RefreshIcon from "@mui/icons-material/Close";
 import UpdateIcon from "@mui/icons-material/Update";
+import SearchIcon from '@mui/icons-material/Search';
 import { useNavigate } from "react-router-dom";
 import OrderModalView from './OrderModalView'
 import AssignModal from "./AssignContainer";
@@ -70,6 +72,7 @@ const OrdersList = () => {
     const [loadingContainers, setLoadingContainers] = useState(false);
     const [assignmentError, setAssignmentError] = useState(null);
     const [selectedContainers, setSelectedContainers] = useState([]);
+    const [assigning, setAssigning] = useState(false);
     const [places, setPlaces] = useState([]);
     const [filters, setFilters] = useState({
         status: "",
@@ -86,6 +89,7 @@ const OrdersList = () => {
     const [modalLoading, setModalLoading] = useState(false);
     const [modalError, setModalError] = useState(null);
     const [exporting, setExporting] = useState(false);
+    const [tempOrderId, setTempOrderId] = useState(null);
     // New states for selection and assignment
     const [selectedOrders, setSelectedOrders] = useState([]);
     const [openAssignModal, setOpenAssignModal] = useState(false);
@@ -159,15 +163,15 @@ const OrdersList = () => {
     };
 
 
-    const handleFilterText = (e) => {
-        const { name, value } = e.target;
-        console.log("Filter change:", name, value);
+    // const handleFilterText = (e) => {
+    //     const { name, value } = e.target;
+    //     console.log("Filter change:", name, value);
 
-        setFilters((prev) => ({ ...prev, [name]: value }));
+    //     setFilters((prev) => ({ ...prev, [name]: value }));
 
-        // Very important: reset to first page on every filter change
-        setPage(0);
-    };
+    //     // Very important: reset to first page on every filter change
+    //     setPage(0);
+    // };
 
     // 3. Handler for status dropdown (also reset page)
     const handleFilterChange = (e) => {
@@ -212,10 +216,10 @@ const OrdersList = () => {
             // ────────────────────────────────────────────────
             //  VERY IMPORTANT: Check what your backend actually returns
             // ────────────────────────────────────────────────
-            console.log("API RESPONSE STRUCTURE:", response.data);
+            console.log("API RESPONSE STRUCTURE:", response.data.pagination);
 
             const ordersData = response.data.data || response.data.orders || response.data || [];
-            const totalCount = response.data.total || response.data.count || response.data.totalCount || 0;
+            const totalCount = response.data.pagination.total || response.data.pagination.count || response.data.pagination.totalCount || 0;
             console.log('ordersssss dT ', ordersData)
             // Auto-populate logic (your existing code)
             const ordersWithAutoPopulate = await Promise.all(
@@ -249,7 +253,7 @@ const OrdersList = () => {
                     return order; // No change needed
                 })
             );
-
+            console.log('orders with auto populate', totalCount)
             setOrders(ordersWithAutoPopulate);
             setTotal(totalCount)
         } catch (err) {
@@ -267,7 +271,7 @@ const OrdersList = () => {
     useEffect(() => {
         fetchOptions();
         fetchOrders();
-    }, [page, rowsPerPage, filters.status, filters.search]);
+    }, [page, rowsPerPage, filters.status,]);
 
 
     // Fetch options on mount (replaces dummies)
@@ -416,250 +420,127 @@ const OrdersList = () => {
     };
     const isSelected = (id) => selectedOrders.indexOf(id) !== -1;
     const handleAssign = async (assignments) => {
-  console.log('handleAssign called with assignments:', assignments);
+        console.log('handleAssign called with assignments:', assignments);
 
-  if (!assignments || Object.keys(assignments).length === 0) {
-    setSnackbar({
-      open: true,
-      message: 'No valid assignments provided.',
-      severity: 'warning',
-    });
-    return;
-  }
-
-  // Validation — only require qty > 0, weight > 0, containers
-  let hasValid = false;
-  Object.values(assignments).forEach(orderAssign => {
-    Object.values(orderAssign).forEach(recAssign => {
-      Object.values(recAssign).forEach(detail => {
-        const qty = parseInt(detail.qty, 10);
-        const assignedWeight = parseFloat(detail.totalAssignedWeight ?? detail.weight ?? 0);
-
-        if (
-          qty > 0 &&
-          assignedWeight > 0 &&
-          Array.isArray(detail.containers) &&
-          detail.containers.length > 0 &&
-          detail.orderItemId
-        ) {
-          hasValid = true;
-        }
-      });
-    });
-  });
-
-  if (!hasValid) {
-    setSnackbar({
-      open: true,
-      message: 'Please assign qty > 0, weight > 0, containers, and orderItemId to at least one detail.',
-      severity: 'warning',
-    });
-    return;
-  }
-
-  // Clean & normalize — trust user input for weight
-  const cleanAssignments = {};
-  Object.entries(assignments).forEach(([orderIdStr, orderAssign]) => {
-    const cleanOrder = {};
-    Object.entries(orderAssign).forEach(([recIdStr, recAssign]) => {
-      const cleanRec = {};
-      Object.entries(recAssign).forEach(([idxStr, detail]) => {
-        if (!detail.orderItemId) {
-          console.warn(`Skipping detail ${idxStr}: missing orderItemId`);
-          return;
-        }
-
-        const containers = (detail.containers || [])
-          .map(cid => parseInt(cid, 10))
-          .filter(cid => !isNaN(cid));
-
-        const qty = parseInt(detail.qty, 10);
-        const weightKg = parseFloat(detail.totalAssignedWeight ?? detail.weight ?? 0);
-
-        if (qty > 0 && weightKg > 0 && containers.length > 0) {
-          cleanRec[idxStr] = {
-            orderItemId: parseInt(detail.orderItemId),
-            qty,
-            totalAssignedWeight: weightKg,   // trust user input
-            containers,
-          };
-        }
-      });
-
-      if (Object.keys(cleanRec).length > 0) {
-        cleanOrder[recIdStr] = cleanRec;
-      }
-    });
-
-    if (Object.keys(cleanOrder).length > 0) {
-      cleanAssignments[orderIdStr] = cleanOrder;
-    }
-  });
-
-  if (Object.keys(cleanAssignments).length === 0) {
-    setSnackbar({
-      open: true,
-      message: 'No valid assignments after cleaning.',
-      severity: 'warning',
-    });
-    return;
-  }
-
-  console.log('Sending payload (user-provided weights):', JSON.stringify(cleanAssignments, null, 2));
-
-  try {
-    // FIXED: Add { assignments: ... } wrapper
-    const res = await api.post('/api/orders/assign-container', {
-      assignments: cleanAssignments
-    });
-
-    const { success, message, updatedOrders, tracking } = res.data;
-
-    if (success) {
-      setSnackbar({
-        open: true,
-        message: message || `Assigned successfully (${tracking?.length || 0} receivers)`,
-        severity: 'success',
-      });
-
-      fetchContainers();
-      fetchOrders();
-
-      setSelectedOrders([]);
-      setSelectedContainer('');
-    } else {
-      throw new Error(message || 'Assignment failed');
-    }
-  } catch (err) {
-    console.error('Assignment error:', err);
-    const msg = err.response?.data?.error || err.response?.data?.details || err.message || 'Failed to assign containers';
-    setSnackbar({ open: true, message: msg, severity: 'error' });
-  }
-};
-    // Updated handleDirectAssign to build batch assignments and use the main endpoint for multiple orders/receivers
-    const handleDirectAssign = async () => {
-        if (!directSelectedContainers.length || !selectedOrders.length) {
+        if (!assignments || Object.keys(assignments).length === 0) {
             setSnackbar({
                 open: true,
-                message: 'Please select at least one container and one order.',
+                message: 'No valid assignments provided.',
                 severity: 'warning',
             });
             return;
         }
 
-        try {
-            // Log selected containers for debugging
-            // console.log('Selected containers before filtering:', directSelectedContainers.map(c => ({ cid: c.cid, container_number: c.container_number, derived_status: c.derived_status })));
+        // Validation — only require qty > 0, weight > 0, containers
+        let hasValid = false;
+        Object.values(assignments).forEach(orderAssign => {
+            Object.values(orderAssign).forEach(recAssign => {
+                Object.values(recAssign).forEach(detail => {
+                    const qty = parseInt(detail.qty, 10);
+                    const assignedWeight = parseFloat(detail.totalAssignedWeight ?? detail.weight ?? 0);
 
-            // Filter to only available containers based on derived_status
-            const availableContainers = directSelectedContainers.filter(c => c.derived_status === 'Available' || 'Assigned to job');
-            // console.log('Available containers after filtering:', availableContainers.map(c => ({ cid: c.cid, container_number: c.container_number })));
-
-            if (!availableContainers.length) {
-                // Provide more details on why filtered
-                const unavailable = directSelectedContainers.filter(c => c.derived_status !== 'Available' || 'Assigned to job');
-                const reasons = [...new Set(unavailable.map(c => c.derived_status))].join(', ');
-                throw new Error(`No available containers selected. Skipped due to statuses: ${reasons}. Please select containers with status "Available".`);
-            }
-
-            // Collect all eligible targets (receivers with positive remaining items in first detail)
-            const allTargets = [];
-            for (const orderId of selectedOrders) {
-                const order = orders.find(o => o.id === orderId);
-                if (!order || !order.receivers?.length) continue;
-
-                for (const receiver of order.receivers) {
-                    const receiverId = receiver.id;
-                    if (!receiverId) continue;
-
-                    // Handle possible casing issues in property name
-                    const orderItems = receiver.shippingdetails || receiver.shippingDetails || [];
-                    if (orderItems.length === 0) continue;
-
-                    const firstDetail = orderItems[0];
-                    const remaining = parseInt(firstDetail.remainingItems) || 0;
-                    if (remaining <= 0) continue;
-
-                    allTargets.push({
-                        orderId: orderId.toString(),
-                        receiverId: receiverId.toString(),
-                        detailIndex: '0',
-                        remaining
-                    });
-                }
-            }
-
-            if (allTargets.length === 0) {
-                throw new Error('No valid receivers with remaining items found');
-            }
-
-            // Build assignments by distributing containers round-robin to targets
-            const assignments = {};
-            const assignedReceivers = new Set();
-
-            for (let i = 0; i < availableContainers.length; i++) {
-                const cont = availableContainers[i];
-                const contId = cont.cid || cont.container_number;
-                if (!contId) continue;
-
-                const target = allTargets[i % allTargets.length];
-                assignedReceivers.add(target.receiverId);
-
-                if (!assignments[target.orderId]) {
-                    assignments[target.orderId] = {};
-                }
-                if (!assignments[target.orderId][target.receiverId]) {
-                    assignments[target.orderId][target.receiverId] = {};
-                }
-                const detailKey = target.detailIndex;
-                if (!assignments[target.orderId][target.receiverId][detailKey]) {
-                    assignments[target.orderId][target.receiverId][detailKey] = {
-                        qty: target.remaining,
-                        containers: []
-                    };
-                }
-                assignments[target.orderId][target.receiverId][detailKey].containers.push(contId);
-            }
-
-            if (Object.keys(assignments).length === 0) {
-                throw new Error('No valid assignments could be built');
-            }
-
-            console.log('Built assignments for direct batch:', assignments);
-
-            // Call the batch endpoint with assignments - adjusted route to avoid :id conflict
-            const response = await api.post('/api/orders/assign-containers-to-orders', {
-                assignments,
-                order_ids: selectedOrders // Optional, for fallback
-            });
-
-            if (response.data.success) {
-                setSnackbar({
-                    open: true,
-                    message: `Successfully assigned ${availableContainers.length} containers to ${assignedReceivers.size} receivers across ${selectedOrders.length} orders.`,
-                    severity: 'success',
+                    if (
+                        qty > 0 &&
+                        assignedWeight > 0 &&
+                        Array.isArray(detail.containers) &&
+                        detail.containers.length > 0 &&
+                        detail.orderItemId
+                    ) {
+                        hasValid = true;
+                    }
                 });
-                fetchContainers(); // Refresh available containers
-                fetchOrders(); // Refresh orders list
-            } else {
-                // Handle backend-specific errors like skipped containers
-                if (response.data.error && response.data.skipped) {
-                    throw new Error(`${response.data.error}. Skipped containers: ${response.data.skipped}`);
-                }
-                throw new Error(response.data.message || 'Assignment failed');
-            }
-        } catch (err) {
-            console.error('Error in direct assign:', err);
+            });
+        });
+
+        if (!hasValid) {
             setSnackbar({
                 open: true,
-                message: err.message || 'Failed to assign containers',
-                severity: 'error',
+                message: 'Please assign qty > 0, weight > 0, containers, and orderItemId to at least one detail.',
+                severity: 'warning',
             });
-        } finally {
-            setOpenDirectAssign(false);
-            setDirectSelectedContainers([]);
+            return;
+        }
+
+        // Clean & normalize — trust user input for weight
+        const cleanAssignments = {};
+        Object.entries(assignments).forEach(([orderIdStr, orderAssign]) => {
+            const cleanOrder = {};
+            Object.entries(orderAssign).forEach(([recIdStr, recAssign]) => {
+                const cleanRec = {};
+                Object.entries(recAssign).forEach(([idxStr, detail]) => {
+                    if (!detail.orderItemId) {
+                        console.warn(`Skipping detail ${idxStr}: missing orderItemId`);
+                        return;
+                    }
+
+                    const containers = (detail.containers || [])
+                        .map(cid => parseInt(cid, 10))
+                        .filter(cid => !isNaN(cid));
+
+                    const qty = parseInt(detail.qty, 10);
+                    const weightKg = parseFloat(detail.totalAssignedWeight ?? detail.weight ?? 0);
+
+                    if (qty > 0 && weightKg > 0 && containers.length > 0) {
+                        cleanRec[idxStr] = {
+                            orderItemId: parseInt(detail.orderItemId),
+                            qty,
+                            totalAssignedWeight: weightKg,   // trust user input
+                            containers,
+                        };
+                    }
+                });
+
+                if (Object.keys(cleanRec).length > 0) {
+                    cleanOrder[recIdStr] = cleanRec;
+                }
+            });
+
+            if (Object.keys(cleanOrder).length > 0) {
+                cleanAssignments[orderIdStr] = cleanOrder;
+            }
+        });
+
+        if (Object.keys(cleanAssignments).length === 0) {
+            setSnackbar({
+                open: true,
+                message: 'No valid assignments after cleaning.',
+                severity: 'warning',
+            });
+            return;
+        }
+
+        console.log('Sending payload (user-provided weights):', JSON.stringify(cleanAssignments, null, 2));
+
+        try {
+            // FIXED: Add { assignments: ... } wrapper
+            const res = await api.post('/api/orders/assign-container', {
+                assignments: cleanAssignments
+            });
+
+            const { success, message, updatedOrders, tracking } = res.data;
+
+            if (success) {
+                setSnackbar({
+                    open: true,
+                    message: message || `Assigned successfully (${tracking?.length || 0} receivers)`,
+                    severity: 'success',
+                });
+
+                fetchContainers();
+                fetchOrders();
+
+                setSelectedOrders([]);
+                setSelectedContainer('');
+            } else {
+                throw new Error(message || 'Assignment failed');
+            }
+        } catch (err) {
+            console.error('Assignment error:', err);
+            const msg = err.response?.data?.error || err.response?.data?.details || err.message || 'Failed to assign containers';
+            setSnackbar({ open: true, message: msg, severity: 'error' });
         }
     };
+
     const onUpdateAssignedQty = (receiverId, newQty) => {
         setOrders(prevOrders => prevOrders.map(order => ({
             ...order,
@@ -766,34 +647,7 @@ const OrdersList = () => {
     };
 
 
-    const handleOpenDirectAssign = async (tempData) => {
 
-        try {
-            const response = await api.get('/api/containers?container_number=&container_size=&container_type=&owner_type=&status=&location=&page=1&limit=50');
-            console.log('Fetched containers:', response);
-            // Filter for only available containers based on derived_status
-            // const availableContainers = (response.data.data || []).filter(container => 
-            //     container.derived_status === 'Available' || container.status === 1 // Adjust based on your API response structure
-            // );
-            setContainers(response.data.data || []);
-        } catch (err) {
-            console.error("Error fetching containers:", err);
-            setAssignmentError('Failed to fetch containers. Please check the backend query for table "cm".');
-            setSnackbar({ open: true, message: 'Failed to fetch containers', severity: 'error' });
-        } finally {
-            setLoadingContainers(false);
-        }
-
-        // if (!containers.length) {
-        // fetchContainers(payload);
-        // }
-        setOpenDirectAssign(true);
-    };
-
-    const handleCloseDirectAssign = () => {
-        setOpenDirectAssign(false);
-        setDirectSelectedContainers([]);
-    };
     // useEffect(() => {
     //     fetchOrders();
     // }, [page, rowsPerPage, filters]);
@@ -852,8 +706,8 @@ const OrdersList = () => {
             'Ready for Delivery': { bg: '#fce4ec', text: '#c2185b' },
             'Shipment Delivered': { bg: '#e8f5e8', text: '#2e7d32' },
             'Loaded': { bg: '#e8f5e8', text: '#2e7d32' },
-            'Shipment Processing': { bg: '#fff3e0', text: '#ef6c00' },
-            'Shipment In Transit': { bg: '#e1f5fe', text: '#0277bd' },
+            // 'Shipment Processing': { bg: '#fff3e0', text: '#ef6c00' },
+            // 'Shipment In Transit': { bg: '#e1f5fe', text: '#0277bd' },
             'Assigned to Job': { bg: '#fff3e0', text: '#f57c00' },
             'Arrived at Sort Facility': { bg: '#f1f8e9', text: '#689f38' },
             'Ready for Delivery': { bg: '#fce4ec', text: '#c2185b' },
@@ -897,19 +751,298 @@ const OrdersList = () => {
         }
         return [];
     };
-    // Handle assign container to receiver
-    const handleAssignContainer = async (receiverId, containerId) => {
-        // console.log('assign container', receiverId, containerId)
-        if (!containerId) return;
+
+    const handleDirectAssign = async () => {
+        if (!directSelectedContainers.length || !selectedOrders.length) {
+            setSnackbar({
+                open: true,
+                message: 'Please select at least one container and one order.',
+                severity: 'warning',
+            });
+            return;
+        }
+
+        setAssigning(true);
+
         try {
-            await api.post(`/api/orders/${selectedOrder.id}/receivers/${receiverId}/assign-container`, { container_id: containerId });
-            setSnackbar({ open: true, message: 'Container assigned successfully', severity: 'success' });
-            fetchContainers(); // Refresh open containers
-            // Refresh order details if needed (e.g., refetch selectedOrder in parent)
+            // Filter only truly available containers
+            const availableContainers = directSelectedContainers.filter(c => {
+                const status = (c.derived_status || c.status || '').trim();
+                return status === 'Available' || status === 'Assigned to Job';
+            });
+
+            if (availableContainers.length === 0) {
+                const unavailable = [...new Set(
+                    directSelectedContainers
+                        .filter(c => !['Available', 'Assigned to Job'].includes((c.derived_status || c.status || '').trim()))
+                        .map(c => c.derived_status || c.status || 'Unknown')
+                )].join(', ');
+
+                throw new Error(
+                    `No available containers selected. ` +
+                    `Only "Available" or "Assigned to Job" allowed. ` +
+                    `(Invalid statuses: ${unavailable || 'none'})`
+                );
+            }
+
+            // Build targets: receivers + their details with remaining quantity
+            const targets = [];
+            for (const orderId of selectedOrders) {
+                const order = orders.find(o => o.id === orderId);
+                if (!order?.receivers?.length) continue;
+
+                for (const receiver of order.receivers) {
+                    const receiverId = receiver.id;
+                    if (!receiverId) continue;
+
+                    const details = receiver.shippingdetails || receiver.shippingDetails || [];
+                    details.forEach((detail, idx) => {
+                        const remaining = parseInt(detail.remainingItems || detail.remaining || 0, 10);
+                        if (remaining <= 0) return;
+
+                        targets.push({
+                            orderId: String(orderId),
+                            receiverId: String(receiverId),
+                            detailIndex: String(idx),
+                            remainingQty: remaining,
+                        });
+                    });
+                }
+            }
+
+            if (targets.length === 0) {
+                throw new Error('No receivers with remaining quantity found in selected orders');
+            }
+
+            // Round-robin: assign containers to targets
+            const assignmentList = [];
+
+            availableContainers.forEach((cont, idx) => {
+                const target = targets[idx % targets.length];
+                const containerId = cont.cid || cont.container_number;
+
+                if (!containerId) return;
+
+                assignmentList.push({
+                    orderId: target.orderId,
+                    receiverId: target.receiverId,
+                    detailIndex: target.detailIndex,
+                    containerId: String(containerId),
+                    qty: target.remainingQty,           // send full remaining — backend can adjust if needed
+                });
+            });
+
+            if (assignmentList.length === 0) {
+                throw new Error('No valid assignments could be created');
+            }
+
+            const payload = {
+                assignments: assignmentList,
+                requestedOrderIds: selectedOrders.map(String),
+                totalContainers: availableContainers.length,
+            };
+
+            console.log('Sending batch assignment payload:', JSON.stringify(payload, null, 2));
+
+            // Adjust endpoint name/path to match your routes
+            const response = await api.post('/api/orders/assign-containers-batch', payload);
+
+            if (!response.data?.success) {
+                throw new Error(response.data?.message || 'Server rejected assignment');
+            }
+
+            const { updatedCount, updatedOrders = [], skipped = [] } = response.data;
+
+            const msg = `Assigned ${availableContainers.length} containers to ${updatedCount || 'multiple'} receivers across ${updatedOrders.length || selectedOrders.length} orders.`;
+
+            setSnackbar({ open: true, message: msg, severity: 'success' });
+
+            if (skipped?.length > 0) {
+                console.warn('Skipped assignments:', skipped);
+                setSnackbar({
+                    open: true,
+                    message: `${skipped.length} assignments skipped (already fulfilled / unavailable).`,
+                    severity: 'warning',
+                });
+            }
+
+            // Refresh data
+            fetchContainers();
+            fetchOrders();
+
         } catch (err) {
-            console.error('Error assigning container:', err);
-            setAssignmentError(err.response?.data?.error || 'Failed to assign container');
-            setSnackbar({ open: true, message: 'Failed to assign container', severity: 'error' });
+            console.error('Direct batch assign error:', err);
+
+            let msg = err.message || 'Failed to assign containers';
+            if (err.response?.data) {
+                const { error, details, message, skipped } = err.response.data;
+                msg = details || message || error || msg;
+                if (skipped?.length) msg += ` (${skipped.length} skipped)`;
+            }
+
+            setSnackbar({
+                open: true,
+                message: msg,
+                severity: 'error',
+            });
+        } finally {
+            setAssigning(false);
+            setOpenDirectAssign(false);
+            setDirectSelectedContainers([]);
+        }
+    };
+    const handleOpenDirectAssign = async (tempData) => {
+        setLoadingContainers(true);
+        setAssignmentError(null);
+
+        console.log('tempData received (raw):', tempData);
+        console.log('tempData type:', typeof tempData, Array.isArray(tempData) ? 'array' : 'not array');
+
+        let orderIdRaw;
+
+        // Case 1: tempData is an array → take first element (your current case)
+        if (Array.isArray(tempData) && tempData.length > 0) {
+            orderIdRaw = tempData[0]; // e.g. 110 from [110]
+            console.log('Detected array input → using first element:', orderIdRaw);
+        }
+        // Case 2: tempData is a plain number/string
+        else if (typeof tempData === 'number' || (typeof tempData === 'string' && !isNaN(Number(tempData)))) {
+            orderIdRaw = tempData;
+            console.log('Detected direct number/string input:', orderIdRaw);
+        }
+        // Case 3: tempData is object → fallback to your original properties
+        else if (tempData && typeof tempData === 'object') {
+            orderIdRaw =
+                tempData?.orderId ||
+                tempData?.id ||
+                tempData?.order_id ||
+                tempData?.OrderId ||
+                tempData?.orderID;
+            console.log('Detected object input → extracted:', orderIdRaw);
+        }
+
+        // Final validation
+        const orderId = Number(orderIdRaw);
+
+        if (!orderIdRaw || isNaN(orderId) || orderId <= 0) {
+            console.error('No valid orderId could be extracted from tempData:', {
+                rawInput: tempData,
+                extractedRaw: orderIdRaw,
+                converted: orderId
+            });
+
+            setSnackbar({
+                open: true,
+                message: 'Cannot open assignment dialog — no valid order selected',
+                severity: 'error',
+            });
+            setLoadingContainers(false);
+            return;
+        }
+
+        setTempOrderId(orderId);
+        console.log('Successfully set tempOrderId to:', orderId);
+
+        // Proceed with fetching containers...
+        try {
+            const response = await api.get('/api/containers', {
+                params: {
+                    container_number: '',
+                    container_size: '',
+                    container_type: '',
+                    owner_type: '',
+                    status: '',
+                    location: '',
+                    page: 1,
+                    limit: 50,
+                },
+            });
+
+            console.log('Fetched containers:', response.data);
+
+            const allContainers = response.data.data || [];
+            const availableContainers = allContainers.filter(c => {
+                const status = (c.derived_status || c.status || '').trim();
+                return status === 'Available' || status === 'Assigned to Job';
+            });
+
+            setContainers(availableContainers);
+
+        } catch (err) {
+            console.error("Error fetching containers:", err);
+            setAssignmentError('Failed to fetch containers.');
+            setSnackbar({ open: true, message: 'Failed to fetch containers', severity: 'error' });
+        } finally {
+            setLoadingContainers(false);
+            setOpenDirectAssign(true);
+        }
+    };
+    const handleCloseDirectAssign = () => {
+        setOpenDirectAssign(false);
+        setDirectSelectedContainers([]);
+    };
+
+
+    const handleAssignContainerAll = async () => {
+        if (!selectedContainer) {
+            setSnackbar({ open: true, message: 'Please select a container first', severity: 'warning' });
+            return;
+        }
+        console.log('Assigning container to orderId:', selectedContainer, 'with tempOrderId:', tempOrderId);
+
+        const orderId = Number(tempOrderId);
+        console.log('Assigning container to orderId:', orderId, 'with tempOrderId:', tempOrderId);
+        if (isNaN(orderId) || orderId <= 0) {
+            console.error('Invalid tempOrderId before send:', { tempOrderId, converted: orderId });
+            setSnackbar({
+                open: true,
+                message: 'No valid order selected. Please close and reopen the dialog.',
+                severity: 'error',
+            });
+            return;
+        }
+
+        setAssigning(true);
+
+        try {
+            const payload = {
+                orderId: orderId,
+                containerId: selectedContainer.cid || selectedContainer.container_number,
+            };
+
+            console.log('SENDING ASSIGNMENT PAYLOAD:', JSON.stringify(payload, null, 2));
+
+            const response = await api.post('/api/orders/assign-one-container-multi-receivers', payload);
+
+            setSnackbar({
+                open: true,
+                message: `Container assigned successfully to order #${orderId}`,
+                severity: 'success',
+            });
+
+            // Refresh data
+            fetchOrders?.();           // if you have this function
+            fetchReceivers?.(orderId); // if you have per-order fetch
+
+            setOpenDirectAssign(false);
+            setSelectedContainer(null);
+            setTempOrderId(null);
+
+        } catch (err) {
+            console.error('Assignment request failed:', err);
+
+            let msg = 'Failed to assign container';
+            if (err.response?.data?.details) {
+                msg = err.response.data.details; // e.g. "Valid orderId is required"
+            } else if (err.response?.data?.error) {
+                msg = err.response.data.error;
+            } else if (err.message) {
+                msg = err.message;
+            }
+
+            setSnackbar({ open: true, message: msg, severity: 'error' });
+        } finally {
+            setAssigning(false);
         }
     };
     const StatusChip = ({ status }) => {
@@ -1227,7 +1360,7 @@ const OrdersList = () => {
             backgroundColor: theme.palette.action.selected,
         },
     }));
- const StyledTableCell = styled(TableCell)(({ theme }) => ({
+    const StyledTableCell = styled(TableCell)(({ theme }) => ({
         borderBottom: `1px solid ${theme.palette.divider}`,
         fontSize: '12px',
         padding: theme.spacing(1.5, 2),
@@ -1263,6 +1396,19 @@ const OrdersList = () => {
     }
     const numSelected = selectedOrders.length;
     const rowCount = orders.length;
+
+    const handleFilterText = (e) => {
+        setFilters((prev) => ({
+            ...prev,
+            search: e.target.value,
+        }));
+    };
+
+    const onSearchClick = () => {
+        if (filters.search?.trim()) {
+            fetchOrders(filters.search.trim());
+        }
+    };
     return (
         <>
             <Paper sx={{ p: 3, borderRadius: 3, boxShadow: 3, bgcolor: "#fafafa" }}>
@@ -1333,16 +1479,56 @@ const OrdersList = () => {
                 {/* Filters - Updated: booking_ref for search */}
                 <Stack direction="row" spacing={2} mb={3} alignItems="center">
                     {/* General search input */}
-                    <TextField
-                        label="Search orders..."
-                        placeholder="Booking ref, sender, receiver, container..."
-                        type="search"
-                        name="search"                     // ← important: matches filters.search
-                        value={filters.search || ""}
-                        onChange={handleFilterText}
-                        size="small"
-                        sx={{ width: 280 }}
-                    />
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <TextField
+                            label="Search order By Form No"
+                            placeholder="Enter Form No"
+                            type="search"
+                            name="search"
+                            value={filters.search || ""}
+                            onChange={(e) => {
+                                setFilters((prev) => ({
+                                    ...prev,
+                                    search: e.target.value,
+                                }));
+                            }}
+                            size="small"
+                            sx={{ width: 320 }}
+                            onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    if (filters.search?.trim()) {
+                                        fetchOrders(filters.search.trim());
+                                    } else {
+                                        setFilters((prev) => ({ ...prev, search: "" }));
+                                        fetchOrders("");
+                                    }
+                                }
+                            }}
+                            InputProps={{
+                                endAdornment: (
+                                    <InputAdornment position="end">
+                                        <IconButton
+                                            onClick={() => {
+                                                if (filters.search?.trim()) {
+                                                    fetchOrders(filters.search.trim());
+                                                } else {
+                                                    setFilters((prev) => ({ ...prev, search: "" }));
+                                                    fetchOrders();
+                                                }
+                                            }}
+                                            // edge="end"
+                                            sx={{
+                                                color: "primary.main", // always looks clickable
+                                            }}
+                                        >
+                                            {filters.search?.trim() ? <SearchIcon /> : <SearchIcon />}
+                                        </IconButton>
+                                    </InputAdornment>
+                                ),
+                            }}
+                        />
+                    </Box>
                     <FormControl size="small" sx={{ minWidth: 150 }}>
                         <InputLabel>Status</InputLabel>
                         <Select
@@ -1710,7 +1896,7 @@ const OrdersList = () => {
                             disabled={!directSelectedContainers.length || loadingContainers}
                             startIcon={<AssignmentIcon />}
                         >
-                            Assign to All ({directSelectedContainers.length})
+                            Assign to Allsssss ({directSelectedContainers.length})
                         </Button>
                     </DialogActions>
                 </Dialog>
