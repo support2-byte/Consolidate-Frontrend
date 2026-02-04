@@ -9,6 +9,7 @@ import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import AddIcon from "@mui/icons-material/Add";
 import { useNavigate } from "react-router-dom";
+import axios from "axios";
 
 export default function CrudPage({ title, endpoint, columns, formFields, idKey = "id" }) {
   const [rows, setRows] = useState([]);
@@ -51,6 +52,46 @@ export default function CrudPage({ title, endpoint, columns, formFields, idKey =
     const route = `/${title.toLowerCase()}/add`;
     navigate(route);
   };
+
+ const loadZoho = async () => {
+  try {
+    setLoading(true);
+    
+    // Option 1: Use relative path (recommended if frontend & backend same domain)
+    // const response = await axios.get('/api/zohoCustomer/zoho-customer', {
+    //   params: {
+    //     search: 'All',
+    //     limit: 5000,          // or whatever you want
+    //     secret: import.meta.env.VITE_ZOHO_WEBHOOK_SECRET  // store in .env, NEVER hardcode
+    //   }
+    // });
+
+    // Option 2: Full URL (use only for testing, hide secret!)
+    const response = await axios.get(
+      'https://consolidate.onrender.com/api/customerPanals?search=All&limit=5000&',
+      // {
+      //   params: {
+      //     search: 'All',
+      //     limit: 5000,
+      //     secret: '729d8ae7b4ed55f4cfbab5ee07f1eca74eecb97011' // ← REMOVE in prod!
+      //   }
+      // }
+    );
+
+    console.log("Fetched Zoho sync data:", response.data);
+    
+    // If your endpoint returns the updated customer list:
+    // setRows(response.data);  // or update your table state
+    
+    showToast("Zoho customers synced successfully!", "success");
+  } catch (err) {
+    console.error("Failed to sync Zoho data:", err);
+    const errorMsg = err.response?.data?.error || err.message;
+    showToast(`Failed to sync: ${errorMsg}`, "error");
+  } finally {
+    setLoading(false);
+  }
+};  
 
   const startEdit = (row) => {
     const route = `/${title.toLowerCase()}/${row.zoho_id}/edit`;
@@ -132,6 +173,15 @@ export default function CrudPage({ title, endpoint, columns, formFields, idKey =
         >
           Add {title}
         </Button>
+            <Button
+          style={{ backgroundColor: "#f58220", color: "#fff" }}
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={loadZoho}
+          sx={{ borderRadius: 2 }}
+        >
+         ReLoad Zoho {title} 
+    </Button>
       </Stack>
 
       {/* Loader overlay */}

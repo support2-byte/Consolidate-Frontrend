@@ -124,7 +124,7 @@ const getConsignments = async () => {
       label={status} 
       color={status === "Delivered" ? "success" : status === "In Transit" ? "warning" : status === "Draft" ? "default" : "info"} 
       size="large"
-      sx={{ fontSize: '0.875rem', maxWidth: 240, marginLeft: -8 }}
+      sx={{ fontSize: 12, maxWidth: 240, marginLeft: -18 }}
     />
   );
 
@@ -243,7 +243,7 @@ setStatusList(data.statusOptions)
   key: "orders", 
   label: "Pieces", 
   sortable: true,
-  render: (item) => <Typography variant="body1" sx={{ fontSize: '0.875rem',maxWidth: 80, }}>{safeParseOrders(item.orders).length}</Typography>
+  render: (item) => <Typography variant="body1" sx={{ fontSize: '0.875rem',maxWidth: 80,marginLeft:10, }}>{safeParseOrders(item.orders).length}</Typography>
 },
 { 
     key: "status", 

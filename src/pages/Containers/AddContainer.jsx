@@ -2375,13 +2375,11 @@ console.log('Enhanced Grouped History:', locations);
                         </TableCell>
                         <TableCell>
                           {isEditing ? (
-                            <FormControl size="small" sx={{ minWidth: 120 }}>
-                              <Select value={currentLocation} onChange={(e) => setTempData({ ...tempData, location: e.target.value })} displayEmpty>
-                                <MenuItem value="">Select Location</MenuItem>
-                                {locations.map((loc) => (
-                                  <MenuItem key={loc.value} value={loc.value}>{loc.label}</MenuItem>
-                                ))}
-                              </Select>
+                            <FormControl size="small" sx={{ minWidth: 140 }}>
+                            <Select value={currentLocation} onChange={(e) => setTempData({ ...tempData, location: e.target.value })}>
+                              <MenuItem value="karachi_port">Karachi Port</MenuItem>
+                              <MenuItem value="dubai_port">Dubai Port</MenuItem>
+                            </Select>
                             </FormControl>
                           ) : (
                             currentLocation
