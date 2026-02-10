@@ -16,18 +16,25 @@ export default function Login() {
   const { login } = useAuth();
   const nav = useNavigate();
   const location = useLocation();
+  console.log("Login page - location state:", location.state);
   const from = location.state?.from?.pathname || "/";
 
   const [form, setForm] = useState({ email: "", password: "" });
   const [err, setError] = useState("");
 
   const onSubmit = async (e) => {
+    console.log("Login form submitted with:", form);  
     e.preventDefault();
-    setError("");
+    // setError("");
     try {
       const user = await login(form.email, form.password);
+        // nav("/dashboard" + from.replace(/^\//, ""));   // ensure no double slash
+      console.log("Login successful, user:", user);     
       if (user) {
-        nav(from, { replace: true });
+        
+        nav(from); // just go to the original destination
+
+
       }
     } catch {
       setError("Invalid credentials. Please try again.");

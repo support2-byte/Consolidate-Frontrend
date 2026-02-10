@@ -2988,7 +2988,7 @@ console.log('Enhanced Grouped History:', locations);
                                   <TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>Event Time</TableCell>
                                   <TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>Type</TableCell>
                                   <TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>Summary</TableCell>
-                                  <TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>Changed By</TableCell>
+                                  <TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>Updated By</TableCell>
                                   <TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>Location</TableCell>
                                   <TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>Order/Receiver</TableCell>
                                 </TableRow>
@@ -2996,7 +2996,7 @@ console.log('Enhanced Grouped History:', locations);
                               <TableBody>
                                 {sortedEvents.map((event, eventIndex) => (
                                   <TableRow key={`${jobNo}-${event.eventTime}-${eventIndex}`}>
-                                    <TableCell>{event.eventTime ? new Date(event.eventTime).toLocaleString() : 'N/A'}</TableCell>
+                                    <TableCell>{event.eventTime ? event.eventTime : 'N/A'}</TableCell>
                                     <TableCell>
                                       <Chip
                                         label={event.eventType || 'N/A'}

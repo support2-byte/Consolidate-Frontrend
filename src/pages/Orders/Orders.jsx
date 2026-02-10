@@ -614,7 +614,8 @@ const OrdersList = () => {
                 order.receiver_summary || '', // Aggregated receivers with status
                 order.receiver_containers || '', // Aggregated containers
                 order.container_number || '', // From containers join
-                new Date(order.created_at).toLocaleDateString()
+                order.created_by || '', // From containers join
+               new Date(order.created_at).toLocaleDateString()
             ]);
             const csvContent = [headers, ...rows]
                 .map((row) => row.map((cell) => `"${cell}"`).join(','))
@@ -1587,10 +1588,10 @@ const OrdersList = () => {
                                     <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff', width: 200 }} key="receivers">Receivers & Containers</StyledTableHeadCell>, // Multiple receivers with status
                                     // <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff', width: 100 }} key="containers"></StyledTableHeadCell>,
                                     // New column for Products (weight, category, item products, total number)
-                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="products">Products</StyledTableHeadCell>,
+                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="created_by">Created By</StyledTableHeadCell>,
                                     // <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="actions">Total Items</StyledTableHeadCell>,
 
-                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="updated_at">Updated At</StyledTableHeadCell>,
+                                    // <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="updated_at">Updated At</StyledTableHeadCell>,
                                     // <TableCell key="assoc">Associated Container</TableCell>,
                                     <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="created">Created At</StyledTableHeadCell>,
                                     <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="actions">Actions</StyledTableHeadCell>
@@ -1711,6 +1712,7 @@ const OrdersList = () => {
                                         </TableCell>
 
                                         {/* Updated Products column using actual shippingDetails data (corrected field names) */}
+                                      {/*
                                         <StyledTableCell>
                                             <Tooltip
                                                 title={
@@ -1724,7 +1726,7 @@ const OrdersList = () => {
                                                                     <Typography variant="body2"><strong>Item Type:</strong> {product.type}</Typography>
                                                                     <Typography variant="body2"><strong>Weight:</strong> {product.weight} kg</Typography>
                                                                     <Typography variant="body2"><strong>Total Items:</strong> {product.total_number}</Typography>
-                                                                    {/* <Typography variant="body2"><strong>Status:</strong> {product.status || '-'}</Typography> */}
+                                                                    {/* <Typography variant="body2"><strong>Status:</strong> {product.status || '-'}</Typography> 
                                                                     {product.itemRef && <Typography variant="body2"><strong>Item Ref:</strong> {product.itemRef}</Typography>}
                                                                 </Box>
                                                             ))
@@ -1754,16 +1756,18 @@ const OrdersList = () => {
                                                 </Typography>
                                             </Tooltip>
                                         </StyledTableCell>
-                                        {/* <StyledTableCell>{totalWeight.toFixed(1)} kg</StyledTableCell>
-                        <StyledTableCell>{totalItems.toFixed()} </StyledTableCell> */}
+                                    </StyledTableRow> */}
 
+                                        <StyledTableCell>{order.created_by.substring(0, 10) || ''}...</StyledTableCell>
+                        {/* <StyledTableCell>{totalItems.toFixed()} </StyledTableCell> */}
 
+{/* 
                                         <TableCell>
                                             {new Date(order.updated_at).toLocaleDateString()}
-                                        </TableCell>
+                                        </TableCell> */}
                                         <StyledTableCell>{new Date(order.created_at).toLocaleDateString()}</StyledTableCell>
                                         <StyledTableCell>
-                                            <Stack direction="row" spacing={1}>
+                                            <Stack direction="row" spacing={1}> 
                                                 {/* <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleStatusUpdate(order.id, order); }} title="Update Status">
                                     <UpdateIcon />
                                 </IconButton> */}

@@ -96,7 +96,7 @@ const CustomSelect = ({ name, value, onChange, onBlur, label, options, tooltip, 
           label={`${label}${required ? '*' : ''}`} // Keep for shrink behavior
           {...props}
         >
-          {options.map((opt, index) => {
+          {options?.map((opt, index) => {
             const safeKey = getSafeValue(opt) || index.toString();
             const safeValue = getSafeValue(opt);
             const safeText = typeof opt === 'object' ? (opt.label ?? opt.value ?? opt.name ?? '') : opt;
@@ -961,7 +961,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       }
 
       setOrdersLoading(true);
-
+      console.log("Fetching orders...",addedContainerIds);
       try {
         const params = {
           page: orderPage + 1,
@@ -976,8 +976,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
 
         console.log('Fetching orders with params:', params);
 
-        const response = await api.get('/api/orders/consignmentsOrders', { params });
-
+        const response = await api.get('/api/orders/consignmentsOrders',  { params: { includeContainer: true }})
         console.log('Fetched orders response:', response.data);
 
         const fetchedOrders = response.data?.data || [];
@@ -4241,7 +4240,7 @@ const generateshipmentsAndOrdersPDFWithCanvas = async (data, allReceivers, selec
 
     pdf.save(`Manifest_${data.consignment_number}_Containers_${Date.now()}.pdf`);
   };
-  // console.log('Rendering Add/Edit Consignment form in', eta,etaSuggestion);
+  console.log('Rendering Add/Edit Consignment form in', eta,etaSuggestion);
   return (
     <LocalizationProvider dateAdapter={AdapterDayjs}>
       <Snackbar open={snackbar.open} autoHideDuration={6000} onClose={() => setSnackbar({ ...snackbar, open: false })}>
