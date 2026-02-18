@@ -85,9 +85,11 @@ export default function Consignments() {
     limit: rowsPerPage,
     order_by: orderBy,
     order: order,
-    consignment_id: filters.consignment_id,
-    status: filters.status,
+    consignment_id: filters?.consignment_id,
+    status: filters?.status,
   }), [page, rowsPerPage, orderBy, order, filters]);
+
+  console.log('Fetching consignments with params:', params);
 const getConsignments = async () => {
       setLoading(true);
       setError(null);

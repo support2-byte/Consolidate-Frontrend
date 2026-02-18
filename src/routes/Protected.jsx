@@ -3,6 +3,7 @@ import { useAuth } from "../context/AuthContext";
 
 export default function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
+  console.log("ProtectedRoute check - user:", user, "loading:", loading);
   const location = useLocation();
 
   if (loading) return <div>Loading...</div>; // ⏳ optional spinner

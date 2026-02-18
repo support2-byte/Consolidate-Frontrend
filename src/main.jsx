@@ -28,6 +28,7 @@ import Banks from "./pages/SystemData/Banks";
 import ThirdParties from "./pages/SystemData/ThirdParties";
 import BarcodePrintTest from "./pages/SystemData/BarcodePrintTest";
 import EtaSetupPage from "./pages/SystemData/EtaSetup";
+import UserTracking from "./pages/UserTracking";
 
 function ThemedApp({ children }) {
   const { mode } = useThemeContext();
@@ -61,6 +62,10 @@ const router = createBrowserRouter([
     path: "/register",
     element: <Register />,
   },
+    {
+    path: "/UserTracking",
+    element: <UserTracking />,
+  },
   {
     path: "/",
     element: (
@@ -71,6 +76,8 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <DashboardCharts /> },
       { path: "customers", element: <Customers /> },
+      { path: "dashboard", element: <DashboardCharts /> },
+
       { path: "vendors", element: <Vendors /> },
       { path: "/containers", element: <ContainerForm /> },
       { path: "orders", element: <Orders /> },
@@ -83,27 +90,27 @@ const router = createBrowserRouter([
       { path: "/vendors/add", element: <VendorsForm mode="add" /> },
       { path: "/vendors/:id/edit", element: <VendorsForm mode="edit" /> },
       { path: "/consignments/add", element: <AddConsignment mode="add" /> },
-      { path: "/consignments/:id/edit", element: <AddConsignment mode="edit" /> },
-      { path: "/admin/payment-types", element: <PaymentTypes /> },
-      { path: "/admin/categories", element: <Categories /> },
-      { path: "/admin/vessels", element: <Vessels /> },
-      { path: "/admin/places", element: <Places /> },
-      { path: "/admin/banks", element: <Banks /> },
-      { path: "/admin/third-parties", element: <ThirdParties /> },
-      { path: "/admin/barcode-print", element: <BarcodePrintTest /> },
-      { path: "/admin/EtaSetupPage", element: <EtaSetupPage /> },
+          { path: "/consignments/:id/edit", element: <AddConsignment mode="edit" /> },
+          { path: "/admin/payment-types", element: <PaymentTypes /> },
+          { path: "/admin/categories", element: <Categories /> },
+          { path: "/admin/vessels", element: <Vessels /> },
+          { path: "/admin/places", element: <Places /> },
+          { path: "/admin/banks", element: <Banks /> },
+          { path: "/admin/third-parties", element: <ThirdParties /> },
+          { path: "/admin/barcode-print", element: <BarcodePrintTest /> },
+          { path: "/admin/EtaSetupPage", element: <EtaSetupPage /> },
 
-    ],
-  },
-]);
+        ],
+      },
+    ]);
 
-// 🟢 Removed StrictMode wrapper
-ReactDOM.createRoot(document.getElementById("root")).render(
-  <AuthProvider>
-    <CustomThemeProvider>
-      <ThemedApp>
-        <RouterProvider router={router} />
-      </ThemedApp>
-    </CustomThemeProvider>
-  </AuthProvider>
-);
+    // 🟢 Removed StrictMode wrapper
+    ReactDOM.createRoot(document.getElementById("root")).render(
+      <AuthProvider>
+        <CustomThemeProvider>
+          <ThemedApp>
+            <RouterProvider router={router} />
+          </ThemedApp>
+        </CustomThemeProvider>
+      </AuthProvider>
+    );

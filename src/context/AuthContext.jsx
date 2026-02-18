@@ -10,8 +10,11 @@ export function AuthProvider({ children }) {
   // ✅ check if already logged in on first load
   useEffect(() => {
     api.get("/auth/me")
-      .then((res) => setUser(res.data.user))
-      .catch(() => setUser(null))
+      .then((res) => {
+        console.log("Session check response:", res);
+        setUser(res.data);
+      })
+      .catch(() => setUser(null))  
       .finally(() => setLoading(false));
   }, []);
 
@@ -20,7 +23,29 @@ export function AuthProvider({ children }) {
     setUser(res.data.user);
     return res.data.user;
   };
+async function handleAdminReset(userEmail, newPassword) {
+  try {
+    const res = await fetch(`/api/admin/users/${encodeURIComponent(userEmail)}/reset-password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${yourAdminToken}`,
+      },
+      body: JSON.stringify({ newPassword }),
+    });
 
+    const data = await res.json();
+
+    if (!res.ok) {
+      alert(data.error || "Failed to reset password");
+      return;
+    }
+
+    alert(`Password reset successful for ${data.user.email}`);
+  } catch (err) {
+    alert("Network error");
+  }
+}
   const logout = async () => {
     await api.post("/auth/logout");
     setUser(null);

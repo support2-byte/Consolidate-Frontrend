@@ -8,29 +8,43 @@ import {
   Box,
   FormControlLabel,
   Checkbox,
-  Link
+  Link,
+  Alert,
 } from "@mui/material";
 import { useAuth } from "../context/AuthContext";
-
+import { api } from "../api";
+import ForgetPassword from "./ForgetPassword";
 export default function Login() {
   const { login } = useAuth();
-  const nav = useNavigate();
+  const navigate = useNavigate();
   const location = useLocation();
   const from = location.state?.from?.pathname || "/";
 
-  const [form, setForm] = useState({ email: "", password: "" });
-  const [err, setError] = useState("");
+  // ── Login states ─────────────────────────────────────────────
+  const [credentials, setCredentials] = useState({ email: "", password: "" });
+  const [loginError, setLoginError] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
 
-  const onSubmit = async (e) => {
+  // ── Forced reset states (admin-style) ────────────────────────
+  const [showResetForm, setShowResetForm] = useState(false);
+
+  // ── Normal login ─────────────────────────────────────────────
+  const handleLogin = async (e) => {
     e.preventDefault();
-    setError("");
+    setLoginError("");
+    setLoginLoading(true);
+
     try {
-      const user = await login(form.email, form.password);
-      if (user) {
-        nav(from, { replace: true });
-      }
-    } catch {
-      setError("Invalid credentials. Please try again.");
+      await login(credentials.email.trim(), credentials.password);
+      navigate(from, { replace: true });
+    } catch (err) {
+      setLoginError(
+        err?.response?.data?.error ||
+        err?.response?.data?.message ||
+        "Invalid credentials. Please try again."
+      );
+    } finally {
+      setLoginLoading(false);
     }
   };
 
@@ -43,73 +57,87 @@ export default function Login() {
         mt: 10,
         p: 4,
         textAlign: "center",
-        borderRadius: 2
+        borderRadius: 2,
       }}
     >
-      {/* Logo */}
       <Box component="img" src="/logo-2.png" alt="Logo" sx={{ height: 60, mb: 2 }} />
 
-      {/* Title */}
-      <Typography variant="h6" sx={{ mb: 2, color: "#000", fontWeight: "bold" }}>
-        Admin Login
+      <Typography variant="h6" sx={{ mb: 3, fontWeight: "bold" }}>
+        {showResetForm ? "Force Reset Password" : "Admin Login"}
       </Typography>
 
-      {/* Form */}
-      <form onSubmit={onSubmit}>
-        <TextField
-          fullWidth
-          margin="normal"
-          label="Username"
-          value={form.email}
-          onChange={(e) => setForm({ ...form, email: e.target.value })}
-        />
-        <TextField
-          fullWidth
-          margin="normal"
-          label="Password"
-          type="password"
-          value={form.password}
-          onChange={(e) => setForm({ ...form, password: e.target.value })}
-        />
-
-        {/* Remember me + Forgot password */}
-        <Box
-          display="flex"
-          justifyContent="space-between"
-          alignItems="center"
-          sx={{ mt: 1, mb: 2 }}
-        >
-          <FormControlLabel
-            control={<Checkbox size="small" />}
-            label={<Typography variant="body2">Remember me</Typography>}
+      {showResetForm ? (
+        <ForgetPassword open={showResetForm} onClose={() => setShowResetForm(false)} />
+      ) : (
+        // ── Normal Login Form ────────────────────────────────────
+        <form onSubmit={handleLogin} noValidate>
+          <TextField
+            fullWidth
+            margin="normal"
+            label="Email / Username"
+            autoComplete="email"
+            value={credentials.email}
+            onChange={(e) => setCredentials({ ...credentials, email: e.target.value })}
+            disabled={loginLoading}
           />
-          <Link href="#" underline="hover" variant="body2">
-            Forgot password?
-          </Link>
-        </Box>
 
-        {/* Error Message */}
-        {err && (
-          <Typography color="error" variant="body2" sx={{ mb: 1 }}>
-            {err}
-          </Typography>
-        )}
+          <TextField
+            fullWidth
+            margin="normal"
+            label="Password"
+            type="password"
+            autoComplete="current-password"
+            value={credentials.password}
+            onChange={(e) => setCredentials({ ...credentials, password: e.target.value })}
+            disabled={loginLoading}
+          />
 
-        {/* Login Button */}
-        <Button
-          variant="contained"
-          type="submit"
-          color="#fff"
-          fullWidth
-          sx={{
-            mt: 1,
-            bgcolor: "#f58220", // orange color
-            "&:hover": { bgcolor: "#d96b1b" }
-          }}
-        >
-         <Typography sx={{  color: "#fff", fontWeight: "" }}>Login </Typography>
-        </Button>
-      </form>
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              mt: 1,
+              mb: 3,
+            }}
+          >
+            <FormControlLabel
+              control={<Checkbox size="small" />}
+              label={<Typography variant="body2">Remember me</Typography>}
+            />
+
+            <Link
+              component="button"
+              variant="body2"
+              underline="hover"
+              onClick={() => setShowResetForm(true)}
+              type="button"
+            >
+              Force reset password
+            </Link>
+          </Box>
+
+          {loginError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {loginError}
+            </Alert>
+          )}
+
+          <Button
+            type="submit"
+            fullWidth
+            variant="contained"
+            disabled={loginLoading}
+            sx={{
+              bgcolor: "#f58220",
+              "&:hover": { bgcolor: "#d96b1b" },
+              py: 1.5,
+            }}
+          >
+            {loginLoading ? "Logging in..." : "Login"}
+          </Button>
+        </form>
+      )}
     </Paper>
   );
 }
