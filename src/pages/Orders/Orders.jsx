@@ -1584,14 +1584,14 @@ const OrdersList = () => {
                                   
                                   <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="ref">Booking Ref</StyledTableHeadCell>,
                                     <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="form_no">Form No</StyledTableHeadCell>,
+                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff', width: 200 }} key="receivers">Receivers & Containers</StyledTableHeadCell>, // Multiple receivers with status
 
                                     // <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="loading">POL</StyledTableHeadCell>,
                                     <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="dest">POD</StyledTableHeadCell>,
                                     <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="sender">Sender</StyledTableHeadCell>,
-                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff', width: 200 }} key="receivers">Receivers & Containers</StyledTableHeadCell>, // Multiple receivers with status
                                     // <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff', width: 100 }} key="containers"></StyledTableHeadCell>,
                                     // New column for Products (weight, category, item products, total number)
-                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="created_by">Created By</StyledTableHeadCell>,
+                                    // <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="created_by">Created By</StyledTableHeadCell>,
                                     <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff', fontSize: 10 }} key="total_items">Total Items & Weight</StyledTableHeadCell>,
                                     // <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff',  }} key="total_weight">Weight</StyledTabl  eHeadCell>,
 
@@ -1666,11 +1666,7 @@ const OrdersList = () => {
                                         <StyledTableCell>{new Date(order.created_at).toLocaleDateString()}</StyledTableCell>
                                         <StyledTableCell>{order.booking_ref}</StyledTableCell>
                                         <StyledTableCell>{order?.rgl_booking_number}</StyledTableCell>
-                                        {/* <StyledTableCell>{getPlaceName(order?.place_of_loading)}</StyledTableCell> */}
-                                        <StyledTableCell>{getPlaceName(order.place_of_delivery)}</StyledTableCell>
-                                        <StyledTableCell colSpan={1.5}>{order.sender_name?.substring(0, 20)}</StyledTableCell>
-
-                                        <TableCell colSpan={1.5}> { /* optional: merge visually */}
+                                          <TableCell colSpan={1.5}> { /* optional: merge visually */}
                                             <StyledTooltip
                                                 title={<CombinedTooltip order={order} />}
                                                 arrow
@@ -1715,9 +1711,14 @@ const OrdersList = () => {
                                                 </Typography>
                                             </StyledTooltip>
                                         </TableCell>
+                                        {/* <StyledTableCell>{getPlaceName(order?.place_of_loading)}</StyledTableCell> */}
+                                        <StyledTableCell>{getPlaceName(order.place_of_delivery)}</StyledTableCell>
+                                        <StyledTableCell colSpan={1.5}>{order.sender_name?.substring(0, 20)}</StyledTableCell>
+
+                                    
 
 
-                                        <StyledTableCell>{order.created_by.substring(10, 0) || ''}...</StyledTableCell>
+                                        {/* <StyledTableCell>{order.created_by.substring(10, 0) || ''}...</StyledTableCell> */}
                                         <TableCell sx={{flexWrap:'wrap',display:'flex',p:5}}>
                                             <StyledTableCell sx={{paddingLeft:0,fontWeight:'bold',color:'#000',border:0}}>{totalItems.toFixed()} Packages</StyledTableCell>
                                         <StyledTableCell sx={{paddingLeft:0,fontWeight:'bold',color:'#555',border:0}}>{totalWeight.toFixed()} kg</StyledTableCell>
@@ -1725,9 +1726,7 @@ const OrdersList = () => {
                                         {/* <StyledTableCell sx={{bgcolor:"#555",color:"#fff"}} >{}</StyledTableCell> */}
                                         <StyledTableCell>
                                             <Stack direction="row" spacing={0}>
-                                                <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleStatusUpdate(order.id, order); }} title="Update Status">
-                                                    <UpdateIcon />
-                                                </IconButton>
+                                               
                                                 <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleView(order.id); }} title="View Details">
                                                     <VisibilityIcon />
                                                 </IconButton>
