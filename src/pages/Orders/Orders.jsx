@@ -58,6 +58,7 @@ import OrderModalView from './OrderModalView'
 import AssignModal from "./AssignContainer";
 // import { ordersApi } from "../api"; // Adjust path as needed
 import { api } from "../../api";
+// import { fontWeight } from "html2canvas/dist/types/css/property-descriptors/font-weight";
 // Handlers
 
 const OrdersList = () => {
@@ -615,7 +616,7 @@ const OrdersList = () => {
                 order.receiver_containers || '', // Aggregated containers
                 order.container_number || '', // From containers join
                 order.created_by || '', // From containers join
-               new Date(order.created_at).toLocaleDateString()
+                new Date(order.created_at).toLocaleDateString()
             ]);
             const csvContent = [headers, ...rows]
                 .map((row) => row.map((cell) => `"${cell}"`).join(','))
@@ -1579,21 +1580,23 @@ const OrdersList = () => {
                     /> */}
                                 </StyledTableHeadCell>
                                 {[
-                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="ref">Booking Ref</StyledTableHeadCell>,
+                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="created">Created At</StyledTableHeadCell>,
+                                  
+                                  <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="ref">Booking Ref</StyledTableHeadCell>,
                                     <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="form_no">Form No</StyledTableHeadCell>,
 
-                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="loading">POL</StyledTableHeadCell>,
+                                    // <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="loading">POL</StyledTableHeadCell>,
                                     <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="dest">POD</StyledTableHeadCell>,
                                     <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="sender">Sender</StyledTableHeadCell>,
                                     <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff', width: 200 }} key="receivers">Receivers & Containers</StyledTableHeadCell>, // Multiple receivers with status
                                     // <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff', width: 100 }} key="containers"></StyledTableHeadCell>,
                                     // New column for Products (weight, category, item products, total number)
                                     <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="created_by">Created By</StyledTableHeadCell>,
-                                    // <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="actions">Total Items</StyledTableHeadCell>,
+                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff', fontSize: 10 }} key="total_items">Total Items & Weight</StyledTableHeadCell>,
+                                    // <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff',  }} key="total_weight">Weight</StyledTabl  eHeadCell>,
 
                                     // <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="updated_at">Updated At</StyledTableHeadCell>,
                                     // <TableCell key="assoc">Associated Container</TableCell>,
-                                    <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="created">Created At</StyledTableHeadCell>,
                                     <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="actions">Actions</StyledTableHeadCell>
                                 ]}
                             </TableRow>
@@ -1659,9 +1662,11 @@ const OrdersList = () => {
                                                 }}
                                             />
                                         </StyledTableCell>
+                         
+                                        <StyledTableCell>{new Date(order.created_at).toLocaleDateString()}</StyledTableCell>
                                         <StyledTableCell>{order.booking_ref}</StyledTableCell>
                                         <StyledTableCell>{order?.rgl_booking_number}</StyledTableCell>
-                                        <StyledTableCell>{getPlaceName(order?.place_of_loading)}</StyledTableCell>
+                                        {/* <StyledTableCell>{getPlaceName(order?.place_of_loading)}</StyledTableCell> */}
                                         <StyledTableCell>{getPlaceName(order.place_of_delivery)}</StyledTableCell>
                                         <StyledTableCell colSpan={1.5}>{order.sender_name?.substring(0, 20)}</StyledTableCell>
 
@@ -1711,66 +1716,18 @@ const OrdersList = () => {
                                             </StyledTooltip>
                                         </TableCell>
 
-                                        {/* Updated Products column using actual shippingDetails data (corrected field names) */}
-                                      {/*
-                                        <StyledTableCell>
-                                            <Tooltip
-                                                title={
-                                                    <Box sx={{ minWidth: 250 }}>
-                                                        <Typography variant="subtitle2" gutterBottom>Product Details</Typography>
-                                                        {productsSummary.length > 0 ? (
-                                                            productsSummary.map((product, idx) => (
-                                                                <Box key={idx} sx={{ mb: 1, p: 1, border: '1px solid #e0e0e0', borderRadius: 1 }}>
-                                                                    <Typography variant="body2"><strong>Category:</strong> {product.category}</Typography>
-                                                                    <Typography variant="body2"><strong>Subcategory:</strong> {product.subcategory || '-'}</Typography>
-                                                                    <Typography variant="body2"><strong>Item Type:</strong> {product.type}</Typography>
-                                                                    <Typography variant="body2"><strong>Weight:</strong> {product.weight} kg</Typography>
-                                                                    <Typography variant="body2"><strong>Total Items:</strong> {product.total_number}</Typography>
-                                                                    {/* <Typography variant="body2"><strong>Status:</strong> {product.status || '-'}</Typography> 
-                                                                    {product.itemRef && <Typography variant="body2"><strong>Item Ref:</strong> {product.itemRef}</Typography>}
-                                                                </Box>
-                                                            ))
-                                                        ) : (
-                                                            <Typography variant="body2">-</Typography>
-                                                        )}
-                                                        {productsSummary.length > 0 && (
-                                                            <Box sx={{ mt: 1, pt: 1, borderTop: '1px solid #e0e0e0' }}>
-                                                                <Typography variant="body2"><strong>Total Weight:</strong> {totalWeight.toFixed(1)} kg</Typography>
-                                                                <Typography variant="body2"><strong>Total Items:</strong>{totalItems}</Typography>
-                                                            </Box>
-                                                        )}
-                                                    </Box>
-                                                }
-                                                arrow
-                                                placement="top"
-                                            >
-                                                <Typography variant="body2" noWrap sx={{ maxWidth: 120, cursor: 'help', fontWeight: 'medium' }}>
-                                                    {productsSummary.length > 0 ? (
-                                                        <>
-                                                            {productsSummary.length > 1 && <sup style={{ padding: 2, borderRadius: 50, float: 'right', background: '#00695c', color: '#fff', fontSize: '0.75rem' }}>({productsSummary.length})</sup>}
-                                                            <span style={{ paddingLeft: productsSummary.length > 1 ? 10 : 10 }}>
-                                                                Cat: {categoryList.substring(0, 10)}... | Wt: {totalWeight.toFixed(0)}kg | Items: {totalItems}
-                                                            </span>
-                                                        </>
-                                                    ) : '-'}
-                                                </Typography>
-                                            </Tooltip>
-                                        </StyledTableCell>
-                                    </StyledTableRow> */}
 
-                                        <StyledTableCell>{order.created_by.substring(0, 10) || ''}...</StyledTableCell>
-                        {/* <StyledTableCell>{totalItems.toFixed()} </StyledTableCell> */}
-
-{/* 
-                                        <TableCell>
-                                            {new Date(order.updated_at).toLocaleDateString()}
-                                        </TableCell> */}
-                                        <StyledTableCell>{new Date(order.created_at).toLocaleDateString()}</StyledTableCell>
+                                        <StyledTableCell>{order.created_by.substring(10, 0) || ''}...</StyledTableCell>
+                                        <TableCell sx={{flexWrap:'wrap',display:'flex',p:5}}>
+                                            <StyledTableCell sx={{paddingLeft:0,fontWeight:'bold',color:'#000',border:0}}>{totalItems.toFixed()} Packages</StyledTableCell>
+                                        <StyledTableCell sx={{paddingLeft:0,fontWeight:'bold',color:'#555',border:0}}>{totalWeight.toFixed()} kg</StyledTableCell>
+                                       </TableCell>
+                                        {/* <StyledTableCell sx={{bgcolor:"#555",color:"#fff"}} >{}</StyledTableCell> */}
                                         <StyledTableCell>
-                                            <Stack direction="row" spacing={1}> 
-                                                {/* <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleStatusUpdate(order.id, order); }} title="Update Status">
-                                    <UpdateIcon />
-                                </IconButton> */}
+                                            <Stack direction="row" spacing={0}>
+                                                <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleStatusUpdate(order.id, order); }} title="Update Status">
+                                                    <UpdateIcon />
+                                                </IconButton>
                                                 <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleView(order.id); }} title="View Details">
                                                     <VisibilityIcon />
                                                 </IconButton>
@@ -1900,7 +1857,7 @@ const OrdersList = () => {
                             disabled={!directSelectedContainers.length || loadingContainers}
                             startIcon={<AssignmentIcon />}
                         >
-                            Assign to Allsssss ({directSelectedContainers.length})
+                            Assign to All ({directSelectedContainers.length})
                         </Button>
                     </DialogActions>
                 </Dialog>

@@ -18,6 +18,7 @@ export default function Navbar() {
           <Brightness4 sx={{ color: "black" }} />
         )}
       </IconButton>
+      
     </nav>
   );
 }

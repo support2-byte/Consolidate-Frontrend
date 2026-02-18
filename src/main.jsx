@@ -28,6 +28,7 @@ import Banks from "./pages/SystemData/Banks";
 import ThirdParties from "./pages/SystemData/ThirdParties";
 import BarcodePrintTest from "./pages/SystemData/BarcodePrintTest";
 import EtaSetupPage from "./pages/SystemData/EtaSetup";
+import UserTracking from "./pages/UserTracking";
 
 function ThemedApp({ children }) {
   const { mode } = useThemeContext();
@@ -60,6 +61,10 @@ const router = createBrowserRouter([
   {
     path: "/register",
     element: <Register />,
+  },
+    {
+    path: "/UserTracking",
+    element: <UserTracking />,
   },
   {
     path: "/",

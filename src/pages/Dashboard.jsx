@@ -34,7 +34,9 @@ import Accessibility from "@mui/icons-material/Accessibility";
 import { useState } from "react";
 import { useThemeContext } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
-
+import { Person } from "@mui/icons-material";
+import { useNavigate } from "react-router-dom";
+import ForgetPassword from "./ForgetPassword";
 const expandedWidth = 260;
 const collapsedWidth = 80;
 
@@ -42,10 +44,11 @@ export default function DashboardLayout() {
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [showResetForm, setShowResetForm] = useState(false);
   const [openAdmin, setOpenAdmin] = useState(true);
   const { mode, toggleTheme } = useThemeContext();
   const { user, logout } = useAuth();
-
+const navigate = useNavigate();
   const tabs = [
     { label: "Dashboard", path: "/", icon: <DashboardIcon /> },
     { label: "Customers", path: "/customers", icon: <PeopleIcon /> },
@@ -349,12 +352,18 @@ export default function DashboardLayout() {
             </Typography>
           </Box>
 
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0 }}>
             <Tooltip title={`Switch to ${mode === "dark" ? "Light" : "Dark"} Mode`} arrow>
               <IconButton onClick={toggleTheme} color="inherit" sx={{ borderRadius: "50%" }}>
                 {mode === "dark" ? <Brightness7Icon /> : <Brightness4Icon />}
               </IconButton>
+
             </Tooltip>
+               {user ? 
+               <Person  color="inherit" sx={{ borderRadius: "50%", marginLeft: 2 }} fontSize="large" onClick={() => setShowResetForm(true)} /> : null}
+      
+        <ForgetPassword open={showResetForm} onClose={() => setShowResetForm(false)} />
+
             {user && (
               <Tooltip title="Logout" arrow>
                 <IconButton
@@ -366,8 +375,12 @@ export default function DashboardLayout() {
                     "&:hover": { backgroundColor: "rgba(255,255,255,0.1)", transform: "scale(1.05)" },
                   }}
                 >
+
                   <LogoutIcon />
-                </IconButton>
+
+                 </IconButton>
+                  
+           
               </Tooltip>
             )}
           </Box>
