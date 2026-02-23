@@ -1471,7 +1471,30 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     }
   };
 
+const updateStatusChange = async (consignmentId, selectedStatus, reason = '') => {
+  try {
+    const res = await api.put(`/api/consignments/${effectiveConsignmentId}/status`, {newStatus: values.status, reason })
+    const { message } = res.data || {};
+      console.log('Status updated:', res);
+      loadConsignment(effectiveConsignmentId);
+      setLoading(false)
 
+      setSnackbar({
+        open: true,
+        message: message || 'Status advanced successfully!',
+        severity: 'success',
+      });
+    } catch (err) {
+      setLoading(false)
+
+      console.error('Error advancing status:', err);
+      setSnackbar({
+        open: true,
+        message: 'Failed to advance status.',
+        severity: 'error',
+      });
+    }
+  };
   useEffect(() => {
 
     if (orders && orders.length > 0) {
@@ -4319,14 +4342,24 @@ const generateshipmentsAndOrdersPDFWithCanvas = async (data, allReceivers, selec
                             loading={etaLoading}  // Brief spinner (optional, since instant)
                           />
                           {mode === 'edit' && (
+                            <Box flexDirection={"row"} justifyContent={"space-between"} sx={{flexDirection:'row',justifyContent:"space-between"}}>
                             <Button
                               variant="outlined"
                               size="small"
                               onClick={advanceStatus}
-                              sx={{ borderColor: '#f58220', color: '#f58220', minHeight: '56px', marginTop: 1 }}
+                              sx={{ borderColor: '#f58220', color: '#f58220', minHeight: '40px', marginTop: 1 }}
                             >
                               Change
                             </Button>
+                             <Button
+                              variant="outlined"
+                              size="small"
+                              onClick={updateStatusChange}
+                              sx={{ borderColor: '#f58220',float:"right", color: '#f58220', minHeight: '40px',alignSelf:"flex-end", marginTop: 1 }}
+                            >
+                              Update
+                            </Button>
+                            </Box>
                           )}
                         </Box>
 

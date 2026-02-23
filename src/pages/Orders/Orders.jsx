@@ -103,6 +103,8 @@ const OrdersList = () => {
     const [openStatusDialog, setOpenStatusDialog] = useState(false);
     const [selectedOrderForUpdate, setSelectedOrderForUpdate] = useState(null);
     const [selectedReceiverForUpdate, setSelectedReceiverForUpdate] = useState(null);
+    const [selectedReceiverForUpdateDetails, setSelectedReceiverForUpdateDetails] = useState(null);
+
     const [selectedStatus, setSelectedStatus] = useState('');
     // ... your existing component logic (useState, handlers, etc.)
     // Handlers
@@ -111,9 +113,13 @@ const OrdersList = () => {
         setSelectedOrderForUpdate(orderId);
         if (orderId && orderId.length) {
             const firstRec = orderId[0];
+        console.log('receiverr',firstRec)
+            
             setSelectedReceiverForUpdate(firstRec);
             setSelectedStatus(firstRec.status || 'Received for Shipment'); // Default to receiver's status or first status
         }
+        console.log('receiverr',order,orderId)
+
         setOpenStatusDialog(true);
     };
     const handleCloseStatusDialog = () => {
@@ -128,9 +134,19 @@ const OrdersList = () => {
     };
     const handleReceiverChange = (event) => {
         const recId = event.target.value;
-        const rec = selectedOrderForUpdate?.find(r => r.id === recId);
+        const rec = selectedOrderForUpdate?.receivers?.find(r => r.id === recId);
         setSelectedReceiverForUpdate(rec);
         setSelectedStatus(rec?.status || 'Received for Shipment');
+    };
+
+     const handleShippingChange = (event) => {
+        console.log('itemssss ',event.target.value)
+        const recId = event.target.value;
+        const rec = selectedReceiverForUpdate?.shippingdetails?.find(r => r.itemRef === recId)
+        console.log('seklected',rec)
+       
+        setSelectedReceiverForUpdateDetails(rec);
+        // setSelectedStatus(rec?.status || 'Received for Shipment');ss
     };
     const handleConfirmStatusUpdate = async () => {
         if (!selectedOrderForUpdate || !selectedReceiverForUpdate || !selectedStatus) return;
@@ -138,15 +154,16 @@ const OrdersList = () => {
             setLoading(true);
             // console.log('Updating status to:', selectedStatus, 'for receiver:', selectedReceiverForUpdate);      
             // API call to update receiver status (triggers notifications as per mapping)
-            await api.put(`/api/orders/${selectedReceiverForUpdate.order_id}/receivers/${selectedReceiverForUpdate.id}/status`, {
+            await api.put(`/api/orders/${selectedOrderForUpdate.id}/receivers/${selectedReceiverForUpdate.id}/items/${selectedReceiverForUpdateDetails.itemRef}/status`, {
                 status: selectedStatus,
+                itemRefs: [selectedReceiverForUpdateDetails.itemRef],
                 // Optional: Include trigger logic if backend handles notifications
                 notifyClient: true, // Based on "Shown to Client?" mapping
                 notifyParties: true // Sender/Receiver as per rules
             });
             setSnackbar({
                 open: true,
-                message: `Status updated to "${selectedStatus}" for "${selectedReceiverForUpdate.receiver_name}" successfully! Notifications sent as per rules.`,
+                message: `Status updated to "${selectedStatus}" for "${selectedReceiverForUpdate.receivername}" successfully! Notifications sent as per rules.`,
                 severity: 'success',
             });
             fetchOrders(); // Refresh the list to update overall status
@@ -286,6 +303,7 @@ const OrdersList = () => {
                 api.get('api/options/subcategories/crud'), // For subcategories
                 api.get('api/options/statuses'),
             ]);
+            console.log('statussss',statusesRes)
             // Places: assume data.places = [{id, name, is_destination, ...}]
             // console.log('optionssss', placesRes, companiesRes, categoriesRes, subcategoriesRes, statusesRes);
             const allPlaces = placesRes?.data?.places || [];
@@ -1726,8 +1744,10 @@ const OrdersList = () => {
                                         {/* <StyledTableCell sx={{bgcolor:"#555",color:"#fff"}} >{}</StyledTableCell> */}
                                         <StyledTableCell>
                                             <Stack direction="row" spacing={0}>
-                                               
-                                                <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleView(order.id); }} title="View Details">
+                                                <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleStatusUpdate(order); }} title="Update Status">
+                                                    <UpdateIcon />
+                                                </IconButton>                                               
+                                                <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleView(order.id ); }} title="View Details">
                                                     <VisibilityIcon />
                                                 </IconButton>
                                                 <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleEdit(order.id); }} title="Edit">
@@ -1879,9 +1899,24 @@ const OrdersList = () => {
                                 label="Receiver"
                                 onChange={handleReceiverChange}
                             >
-                                {selectedOrderForUpdate?.map((rec) => (
-                                    <MenuItem key={rec.id} value={rec.id}>
-                                        {rec.receiver_name} (Current: {rec.status})
+                   {
+                   selectedOrderForUpdate?.receivers?.map((rec) => (                                    <MenuItem key={rec.id} value={rec.id}>
+                                        {rec.receivername} (Current: {rec.status})
+                                    </MenuItem>
+                                ))}
+                            </Select>
+                        </FormControl>
+                             <FormControl fullWidth margin="dense">
+                            <InputLabel>Items</InputLabel>
+                            <Select
+                                value={selectedReceiverForUpdateDetails?.itemRef || ''}
+                                label="Receiver"
+                                onChange={handleShippingChange}
+                            >
+                   {
+                   selectedReceiverForUpdate?.shippingdetails?.map((rec) => (    
+                           <MenuItem key={rec.itemRef} value={rec.itemRef}>
+                                        {rec.itemRef} (Category: {rec.category})
                                     </MenuItem>
                                 ))}
                             </Select>
