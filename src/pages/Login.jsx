@@ -1,4 +1,5 @@
-import { useState } from "react";
+// src/pages/Login.jsx
+import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   TextField,
@@ -10,86 +11,156 @@ import {
   Checkbox,
   Link,
   Alert,
+  CircularProgress,
+  InputAdornment,
+  IconButton,
+  Backdrop,
 } from "@mui/material";
+import { Visibility, VisibilityOff } from "@mui/icons-material";
 import { useAuth } from "../context/AuthContext";
-import { api } from "../api";
-import ForgetPassword from "./ForgetPassword";
+
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const from = location.state?.from?.pathname || "/";
 
-  // ── Login states ─────────────────────────────────────────────
-  const [credentials, setCredentials] = useState({ email: "", password: "" });
-  const [loginError, setLoginError] = useState("");
-  const [loginLoading, setLoginLoading] = useState(false);
+  // ── Form states ────────────────────────────────────────────────
+  const [credentials, setCredentials] = useState({
+    email: localStorage.getItem("rememberedEmail") || "",
+    password: "",
+  });
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(!!localStorage.getItem("rememberMe"));
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  // ── Forced reset states (admin-style) ────────────────────────
-  const [showResetForm, setShowResetForm] = useState(false);
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  e.stopPropagation();
 
-  // ── Normal login ─────────────────────────────────────────────
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    setLoginError("");
-    setLoginLoading(true);
+  setError("");
+  setLoading(true);
 
-    try {
-      await login(credentials.email.trim(), credentials.password);
-      navigate(from, { replace: true });
-    } catch (err) {
-      setLoginError(
-        err?.response?.data?.error ||
-        err?.response?.data?.message ||
-        "Invalid credentials. Please try again."
-      );
-    } finally {
-      setLoginLoading(false);
+  try {
+    const email = credentials.email.trim();
+    const password = credentials.password;
+
+    if (!email || !password) throw new Error("Email and password required");
+
+    await login(email, password);
+
+    // Save remember me
+    if (rememberMe) {
+      localStorage.setItem("rememberMe", "true");
+      localStorage.setItem("rememberedEmail", email);
+    } else {
+      localStorage.removeItem("rememberMe");
+      localStorage.removeItem("rememberedEmail");
     }
-  };
 
+    // Navigate – small delay helps React finalize state
+    await new Promise(r => setTimeout(r, 300));
+
+    const redirectTo = location.state?.from?.pathname || "/dashboard";
+    navigate(redirectTo, { replace: true });
+
+  } catch (err) {
+    const message = err.message || "Login failed";
+    setError(message);
+  } finally {
+    setLoading(false);
+  }
+};
   return (
-    <Paper
-      elevation={6}
+    <Box
       sx={{
-        maxWidth: 400,
-        mx: "auto",
-        mt: 10,
-        p: 4,
-        textAlign: "center",
-        borderRadius: 2,
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        bgcolor: "background.default",
+        p: 2,
+        position: "relative",
       }}
     >
-      <Box component="img" src="/logo-2.png" alt="Logo" sx={{ height: 60, mb: 2 }} />
+      {/* Full-screen loading overlay */}
+      <Backdrop
+        sx={{ color: "#fff", zIndex: (theme) => theme.zIndex.drawer + 1 }}
+        open={loading}
+      >
+        <CircularProgress color="inherit" />
+      </Backdrop>
 
-      <Typography variant="h6" sx={{ mb: 3, fontWeight: "bold" }}>
-        {showResetForm ? "Force Reset Password" : "Admin Login"}
-      </Typography>
+      <Paper
+        elevation={6}
+        sx={{
+          maxWidth: 550,
+          width: "100%",
+          p: { xs: 3, sm: 5 },
+          borderRadius: 3,
+          textAlign: "center",
+          position: "relative",
+        }}
+      >
+        {/* Logo */}
+        <Box component="img" src="/logo-2.png" alt="Logo" sx={{ height: 70, mb: 3 }} />
 
-      {showResetForm ? (
-        <ForgetPassword open={showResetForm} onClose={() => setShowResetForm(false)} />
-      ) : (
-        // ── Normal Login Form ────────────────────────────────────
-        <form onSubmit={handleLogin} noValidate>
+        <Typography variant="h5" fontWeight="bold" gutterBottom>
+          Welcome Back
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 4 }}>
+          Sign in to continue to Consolidate Dashboard
+        </Typography>
+
+        {/* Error Alert */}
+        {error && (
+          <Alert severity="error" sx={{ mb: 3 }}>
+            {error}
+          </Alert>
+        )}
+<Box component="form" onSubmit={handleSubmit} noValidate sx={{ mt: 1 }}>
+
           <TextField
             fullWidth
             margin="normal"
-            label="Email / Username"
+            label="Email"
+            type="email"
             autoComplete="email"
+            autoFocus
             value={credentials.email}
             onChange={(e) => setCredentials({ ...credentials, email: e.target.value })}
-            disabled={loginLoading}
+            disabled={loading}
+            error={!!error && !credentials.email.trim()}
+            helperText={!!error && !credentials.email.trim() ? "Email is required" : " "}
+            sx={{ mb: 2 }}
           />
 
           <TextField
             fullWidth
             margin="normal"
             label="Password"
-            type="password"
+            type={showPassword ? "text" : "password"}
             autoComplete="current-password"
             value={credentials.password}
             onChange={(e) => setCredentials({ ...credentials, password: e.target.value })}
-            disabled={loginLoading}
+            disabled={loading}
+            error={!!error && !credentials.password}
+            helperText={!!error && !credentials.password ? "Password is required" : " "}
+            InputProps={{
+              endAdornment: (
+                <InputAdornment position="end">
+                  <IconButton
+                    onClick={() => setShowPassword(!showPassword)}
+                    edge="end"
+                    disabled={loading}
+                  >
+                    {showPassword ? <VisibilityOff /> : <Visibility />}
+                  </IconButton>
+                </InputAdornment>
+              ),
+            }}
+            sx={{ mb: 1 }}
           />
 
           <Box
@@ -97,47 +168,58 @@ export default function Login() {
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
-              mt: 1,
               mb: 3,
             }}
           >
             <FormControlLabel
-              control={<Checkbox size="small" />}
-              label={<Typography variant="body2">Remember me</Typography>}
+              control={
+                <Checkbox
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  size="small"
+                  disabled={loading}
+                />
+              }
+              label="Remember me"
             />
 
-            <Link
+            {/* <Link
               component="button"
               variant="body2"
               underline="hover"
-              onClick={() => setShowResetForm(true)}
+              onClick={() => navigate("/forgot-password")}
               type="button"
+              disabled={loading}
             >
-              Force reset password
-            </Link>
+              Forgot password?
+            </Link> */}
           </Box>
 
-          {loginError && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {loginError}
-            </Alert>
-          )}
+  {/* Your TextFields */}
 
-          <Button
-            type="submit"
-            fullWidth
-            variant="contained"
-            disabled={loginLoading}
-            sx={{
-              bgcolor: "#f58220",
-              "&:hover": { bgcolor: "#d96b1b" },
-              py: 1.5,
-            }}
-          >
-            {loginLoading ? "Logging in..." : "Login"}
-          </Button>
-        </form>
-      )}
-    </Paper>
+  <Button
+    type="submit"
+    fullWidth
+    variant="contained"
+    disabled={loading}
+    sx={{ py: 1.5, mt: 3 }}
+  >
+    {loading ? (
+      <>
+        <CircularProgress size={20} sx={{ mr: 1 }} />
+        Signing in...
+      </>
+    ) : (
+      "Sign In"
+    )}
+  </Button>
+</Box>
+
+        {/* Optional hint */}
+        <Typography variant="caption" color="text.secondary" sx={{ mt: 3, display: "block" }}>
+          Admin access? Use your registered credentials.
+        </Typography>
+      </Paper>
+    </Box>
   );
 }

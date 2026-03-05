@@ -1,191 +1,242 @@
-import { useState } from 'react';
+// src/components/AdminResetPasswordDialog.jsx
+import React, { useState } from 'react';
 import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogContentText,
   DialogActions,
   Button,
   TextField,
   Box,
   Alert,
+  CircularProgress,
+  InputAdornment,
+  IconButton,
+  Typography,
 } from '@mui/material';
+import { Visibility, VisibilityOff } from '@mui/icons-material';
 import { api } from '../api';
+
 export default function AdminResetPasswordDialog({ open, onClose, targetUserEmail }) {
+  const [resetEmail, setResetEmail] = useState(targetUserEmail || '');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Force reset states
-  const [resetEmail, setResetEmail] = useState(targetUserEmail || "");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [resetError, setResetError] = useState("");
-  const [resetSuccess, setResetSuccess] = useState("");
-  const [resetLoading, setResetLoading] = useState(false);
-
-  // ── Password validation logic ───────────────────────────────────────
-  const passwordRequirements = {
+  // ────────────────────────────────────────────────────────────────
+  // Validation Helpers
+  // ────────────────────────────────────────────────────────────────
+  const passwordRules = {
     minLength: newPassword.length >= 8,
-    hasUppercase: /[A-Z]/.test(newPassword),
-    hasLowercase: /[a-z]/.test(newPassword),
+    hasUpper: /[A-Z]/.test(newPassword),
+    hasLower: /[a-z]/.test(newPassword),
     hasNumber: /[0-9]/.test(newPassword),
     // hasSpecial: /[!@#$%^&*(),.?":{}|<>]/.test(newPassword), // optional
   };
 
   const isPasswordValid = 
-    passwordRequirements.minLength &&
-    passwordRequirements.hasUppercase &&
-    passwordRequirements.hasLowercase &&
-    passwordRequirements.hasNumber;
-    // && passwordRequirements.hasSpecial // if you want to enforce special char
+    passwordRules.minLength &&
+    passwordRules.hasUpper &&
+    passwordRules.hasLower &&
+    passwordRules.hasNumber;
 
-  const passwordsMatch = newPassword === confirmPassword && newPassword !== "";
+  const passwordsMatch = newPassword === confirmPassword && newPassword !== '';
 
-  const getPasswordHelperText = () => {
-    if (!newPassword) return " ";
-    if (!passwordRequirements.minLength) return "Must be at least 8 characters";
-    if (!passwordRequirements.hasUppercase) return "Must contain at least one uppercase letter";
-    if (!passwordRequirements.hasLowercase) return "Must contain at least one lowercase letter";
-    if (!passwordRequirements.hasNumber) return "Must contain at least one number";
-    // if (!passwordRequirements.hasSpecial) return "Must contain at least one special character";
-    return " ";
+  const getPasswordHelper = () => {
+    if (!newPassword) return 'Enter a strong password';
+    if (!passwordRules.minLength) return 'At least 8 characters';
+    if (!passwordRules.hasUpper) return 'At least 1 uppercase letter';
+    if (!passwordRules.hasLower) return 'At least 1 lowercase letter';
+    if (!passwordRules.hasNumber) return 'At least 1 number';
+    return 'Strong password!';
   };
 
-  const getConfirmHelperText = () => {
-    if (!confirmPassword) return " ";
-    if (!passwordsMatch) return "Passwords do not match";
-    return " ";
+  const getConfirmHelper = () => {
+    if (!confirmPassword) return 'Confirm your new password';
+    if (!passwordsMatch) return 'Passwords do not match';
+    return 'Passwords match!';
   };
 
-  const handleForceReset = async (e) => {
+console.log("forget password",targetUserEmail)
+
+  // ────────────────────────────────────────────────────────────────
+  // Submit handler
+  // ────────────────────────────────────────────────────────────────
+  const handleReset = async (e) => {
     e.preventDefault();
-    setResetError("");
-    setResetSuccess("");
+    setError('');
+    setSuccess('');
 
+    // Validation
     if (!resetEmail.trim()) {
-      setResetError("Email is required");
+      setError('Email is required');
       return;
     }
 
     if (!isPasswordValid) {
-      setResetError("New password does not meet requirements");
+      setError('New password does not meet requirements');
       return;
     }
 
     if (!passwordsMatch) {
-      setResetError("Passwords do not match");
+      setError('Passwords do not match');
       return;
     }
 
-    setResetLoading(true);
+    setLoading(true);
 
     try {
-      const response = await api.post("auth/admin/reset-user-password", {
-        email: resetEmail.trim(),
+      const response = await api.post('/auth/admin/reset-user-password', {
+        email: resetEmail.trim().toLowerCase(),
         newPassword,
         confirmPassword,
       });
-
-      const data = response.data;
-      console.log("Force reset success:", data);
-
-      setResetSuccess(`Password successfully reset for ${resetEmail.trim()}`);
       
-      // Optional: reset fields & close
-      setResetEmail("");
-      setNewPassword("");
-      setConfirmPassword("");
-      setTimeout(() => onClose(), 1200); // give user time to see success message
 
+      setSuccess(`Password successfully reset for ${resetEmail.trim()}`);
+      
+      // Auto-close after 1.5 seconds
+      setTimeout(() => {
+        onClose();
+        // Optional: refresh users list in parent component
+        // window.location.reload(); // or call refreshSession() from context
+      }, 1500);
     } catch (err) {
-      setResetError(err.response?.data?.message || err.message || "Failed to reset password");
+      const msg = err.response?.data?.error ||
+                  err.response?.data?.message ||
+                  'Failed to reset password. Please try again.';
+      setError(msg);
     } finally {
-      setResetLoading(false);
+      setLoading(false);
     }
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Force Reset Password</DialogTitle>
+    <Dialog 
+      open={open} 
+      onClose={loading ? undefined : onClose} 
+      maxWidth="sm" 
+      fullWidth
+      disableEscapeKeyDown={loading}
+      disableBackdropClick={loading}
+    >
+      <DialogTitle sx={{ bgcolor: '#f58220', color: 'white', py: 1.5 }}>
+        Force Reset User Password
+      </DialogTitle>
 
-      <DialogContent>
-        <Box component="form" onSubmit={handleForceReset} noValidate sx={{ mt: 1 }}>
+      <DialogContent sx={{ pt: 5 }}>
+       
+        {error && (
+          <Alert severity="error" sx={{ mb: 3 }}>
+            {error}
+          </Alert>
+        )}
+
+        {success && (
+          <Alert severity="success" sx={{ mb: 3 }}>
+            {success}
+          </Alert>
+        )}
+
+        <Box component="form" onSubmit={handleReset} noValidate>
           <TextField
             fullWidth
-            margin="normal"
+            margin="dense"
             label="User Email"
             type="email"
-            autoComplete="email"
-            autoFocus
-            value={resetEmail}
+            value={targetUserEmail}
             onChange={(e) => setResetEmail(e.target.value)}
-            disabled={resetLoading}
-            error={!!resetError && !resetEmail.trim()}
-            helperText={resetError && !resetEmail.trim() ? "Email is required" : " "}
+            disabled
+            error={!!error && !resetEmail.trim()}
+            helperText={!resetEmail.trim() && error ? 'Email is required' : ' '}
+            sx={{ mt: 3 }}
           />
 
           <TextField
             fullWidth
-            margin="normal"
+            margin="dense"
             label="New Password"
-            type="password"
+            type={showNewPassword ? 'text' : 'password'}
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
-            disabled={resetLoading}
-            error={newPassword.length > 0 && !isPasswordValid}
-            helperText={getPasswordHelperText()}
-            FormHelperTextProps={{
-              sx: { color: newPassword && !isPasswordValid ? 'error.main' : 'text.secondary' }
+            disabled={loading}
+            error={newPassword && !isPasswordValid}
+            helperText={getPasswordHelper()}
+            FormHelperTextProps={{ sx: { color: newPassword && !isPasswordValid ? 'error.main' : 'text.secondary' } }}
+            InputProps={{
+              endAdornment: (
+                <InputAdornment position="end">
+                  <IconButton
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                    edge="end"
+                    disabled={loading}
+                  >
+                    {showNewPassword ? <VisibilityOff /> : <Visibility />}
+                  </IconButton>
+                </InputAdornment>
+              ),
             }}
+            sx={{ mb: 1 }}
           />
 
           <TextField
             fullWidth
-            margin="normal"
+            margin="dense"
             label="Confirm New Password"
-            type="password"
+            type={showConfirmPassword ? 'text' : 'password'}
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
-            disabled={resetLoading}
-            error={confirmPassword.length > 0 && !passwordsMatch}
-            helperText={getConfirmHelperText()}
-            FormHelperTextProps={{
-              sx: { color: confirmPassword && !passwordsMatch ? 'error.main' : 'text.secondary' }
+            disabled={loading}
+            error={confirmPassword && !passwordsMatch}
+            helperText={getConfirmHelper()}
+            FormHelperTextProps={{ sx: { color: confirmPassword && !passwordsMatch ? 'error.main' : 'text.secondary' } }}
+            InputProps={{
+              endAdornment: (
+                <InputAdornment position="end">
+                  <IconButton
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    edge="end"
+                    disabled={loading}
+                  >
+                    {showConfirmPassword ? <VisibilityOff /> : <Visibility />}
+                  </IconButton>
+                </InputAdornment>
+              ),
             }}
           />
-
-          {resetError && (
-            <Alert severity="error" sx={{ mt: 2 }}>
-              {resetError}
-            </Alert>
-          )}
-
-          {resetSuccess && (
-            <Alert severity="success" sx={{ mt: 2 }}>
-              {resetSuccess}
-            </Alert>
-          )}
         </Box>
       </DialogContent>
 
-      <DialogActions>
-        <Button onClick={onClose} disabled={resetLoading}>
+      <DialogActions sx={{ px: 3, pb: 3 }}>
+        <Button 
+          onClick={onClose} 
+          disabled={loading}
+          variant="outlined"
+        >
           Cancel
         </Button>
         <Button
+          type="submit"
           variant="contained"
           color="error"
-          onClick={handleForceReset}
+          onClick={handleReset}
           disabled={
-            resetLoading ||
+            loading ||
             !resetEmail.trim() ||
             !newPassword ||
             !confirmPassword ||
             !isPasswordValid ||
             !passwordsMatch
           }
+          startIcon={loading ? <CircularProgress size={20} color="inherit" /> : null}
         >
-          {resetLoading ? 'Resetting...' : 'Reset Password Now'}
+          {loading ? 'Resetting...' : 'Force Reset Password'}
         </Button>
       </DialogActions>
     </Dialog>
