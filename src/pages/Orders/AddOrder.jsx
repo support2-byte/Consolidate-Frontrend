@@ -2940,6 +2940,7 @@ import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 // import { Delete } from "@mui/icons-material";
 import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
+import DialogActions from "@mui/material/DialogActions";
 import CloseIcon from "@mui/icons-material/Close";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import DownloadIcon from "@mui/icons-material/Download";
@@ -3564,266 +3565,259 @@ const OrderForm = () => {
         }
     };
 const fetchOrder = async (id) => {
-    setLoading(true);
-    try {
-        const response = await api.get(`/api/orders/${id}`, { params: { includeContainer: true } });
-        if (!response.data) {
-            throw new Error('Invalid response data');
-        }
-        console.log('Fetched order data:', response.data);
-        setSelectedOrder(response.data);
-
-        // Map snake_case to camelCase for core fields
-        const camelData = {};
-        Object.keys(response.data).forEach(apiKey => {
-            let value = response.data[apiKey];
-            if (value === null || value === undefined) value = '';
-            if (['eta', 'etd', 'drop_date', 'delivery_date'].includes(apiKey)) {
-                if (value) {
-                    const date = new Date(value);
-                    if (!isNaN(date.getTime())) {
-                        value = date.toISOString().split('T')[0]; // YYYY-MM-DD
-                    }
-                } else {
-                    value = '';
-                }
-            }
-            const camelKey = snakeToCamel(apiKey);
-            camelData[camelKey] = value;
-        });
-
-        // Set senderType from API
-        camelData.senderType = response.data.sender_type || 'sender';
-
-        // Map owner fields
-        const ownerPrefix = camelData.senderType === 'sender' ? 'sender' : 'receiver';
-        const ownerFields = ['name', 'contact', 'address', 'email', 'ref', 'remarks'];
-        ownerFields.forEach(field => {
-            const apiKey = `${ownerPrefix}_${field}`;
-            const snakeVal = response.data[apiKey];
-            if (snakeVal !== null && snakeVal !== undefined) {
-                camelData[`${ownerPrefix}${field.charAt(0).toUpperCase() + field.slice(1)}`] = snakeVal;
-            }
-        });
-
-        // NEW: Auto-populate owner fields if selected_sender_owner exists but name is empty
-        const ownerNameKey = `${ownerPrefix}Name`;
-        if (camelData.selectedSenderOwner && !camelData[ownerNameKey]?.trim()) {
-            try {
-                console.log(`Auto-populating owner from ID: ${camelData.selectedSenderOwner}`);
-                const customerRes = await api.get(`/api/customers/${camelData.selectedSenderOwner}`);
-                if (customerRes?.data) {
-                    const customer = customerRes.data;
-                    camelData[ownerNameKey] = customer.contact_name || customer.contact_persons?.[0]?.name || '';
-                    camelData[`${ownerPrefix}Contact`] = customer.primary_phone || customer.contact_persons?.[0]?.phone || '';
-                    camelData[`${ownerPrefix}Address`] = customer.zoho_notes || customer.billing_address || '';
-                    camelData[`${ownerPrefix}Email`] = customer.email || customer.contact_persons?.[0]?.email || '';
-                    camelData[`${ownerPrefix}Ref`] = customer.zoho_id || customer.ref || '';
-                    camelData[`${ownerPrefix}Remarks`] = customer.zoho_notes || customer.system_notes || '';
-                    console.log(`Auto-populated ${ownerNameKey}:`, camelData[ownerNameKey]);
-                }
-            } catch (autoErr) {
-                console.error('Auto-populate owner failed:', autoErr);
-            }
-        }
-
-        // Handle panel2 - dynamic based on senderType
-        const panel2ApiKey = 'receivers';
-        const panel2Prefix = camelData.senderType === 'sender' ? 'receiver' : 'sender';
-        const panel2ListKey = camelData.senderType === 'sender' ? 'receivers' : 'senders';
-        const initialItem = panel2Prefix === 'receiver' ? initialReceiver : initialSenderObject;
-        let mappedPanel2 = [];
-
-        if (response.data[panel2ApiKey]) {
-            mappedPanel2 = (response.data[panel2ApiKey] || []).map(rec => {
-                if (!rec) return null;
-                const camelRec = {
-                    ...initialItem,
-                    shippingDetails: [],
-                    isNew: false,
-                    validationWarnings: null
-                };
-
-                Object.keys(rec).forEach(apiKey => {
-                    let val = rec[apiKey];
-                    if (val === null || val === undefined) val = '';
-                    const camelKey = snakeToCamel(apiKey);
-
-                    if (['name', 'contact', 'address', 'email', 'marksAndNumber'].includes(camelKey)) {
-                        // NEW: Map marksAndNumber to UI state key
-                        const uiKey = camelKey === 'marksAndNumber' ? `${panel2Prefix}MarksNumber` : `${panel2Prefix}${camelKey.charAt(0).toUpperCase() + camelKey.slice(1)}`;
-                        camelRec[uiKey] = val;
-                    } else {
-                        camelRec[camelKey] = val;
-                    }
-                });
-
-                // Handle shippingdetails array
-                if (rec.shippingdetails) {
-                    const mappedShippingDetails = (rec.shippingdetails || []).map(sd => {
-                        const camelSd = { ...initialShippingDetail };
-                        Object.keys(sd).forEach(sdApiKey => {
-                            let sdVal = sd[sdApiKey];
-                            if (sdVal === null || sdVal === undefined) sdVal = '';
-                            const sdCamelKey = snakeToCamel(sdApiKey);
-                            camelSd[sdCamelKey] = sdVal;
-                        });
-
-                        // Map nested containerDetails
-                        if (sd.containerDetails) {
-                            const mappedContainerDetails = (sd.containerDetails || []).map(cd => {
-                                const camelCd = { totalNumber: '', container: null, status: '' };
-                                Object.keys(cd).forEach(cdApiKey => {
-                                    let cdVal = cd[cdApiKey];
-                                    if (cdVal === null || cdVal === undefined) cdVal = '';
-                                    const cdCamelKey = snakeToCamel(cdApiKey);
-                                    camelCd[cdCamelKey] = cdVal;
-                                });
-                                if ('total_number' in cd) {
-                                    camelCd.totalNumber = cd.total_number || '';
-                                }
-                                return camelCd;
-                            });
-                            camelSd.containerDetails = mappedContainerDetails;
-                        } else {
-                            camelSd.containerDetails = [{ totalNumber: '', container: null, status: '' }];
-                        }
-                        return camelSd;
-                    });
-                    camelRec.shippingDetails = mappedShippingDetails;
-                }
-
-                // Fallback if no shippingDetails
-                if (!camelRec.shippingDetails || camelRec.shippingDetails.length === 0) {
-                    camelRec.shippingDetails = [{
-                        ...initialShippingDetail,
-                        totalNumber: rec.total_number || '',
-                        weight: rec.total_weight || ''
-                    }];
-                }
-
-                camelRec.status = rec.status || "Created";
-                camelRec.fullPartial = camelRec.fullPartial || '';
-                camelRec.qtyDelivered = camelRec.qtyDelivered != null ? String(camelRec.qtyDelivered) : '0';
-
-                return camelRec;
-            }).filter(Boolean);
-        }
-
-        // Fallback panel2 fields to order-level if empty
-        mappedPanel2.forEach(rec => {
-            if (rec.eta === '' && camelData.eta) rec.eta = camelData.eta;
-            if (rec.etd === '' && camelData.etd) rec.etd = camelData.etd;
-            if (rec.shippingLine === '' && camelData.shippingLine) rec.shippingLine = camelData.shippingLine;
-        });
-
-        // Compute remainingItems on load (unchanged)
-        mappedPanel2 = mappedPanel2.map(rec => {
-            const shippingDetails = rec.shippingDetails || [];
-            const recTotal = shippingDetails.reduce((sum, sd) => {
-                return sum + ((sd.containerDetails || []).reduce((s, cd) => s + (parseInt(cd.totalNumber || 0) || 0), 0));
-            }, 0);
-            const delivered = parseInt(rec.qtyDelivered || 0) || 0;
-            const recRemaining = Math.max(0, recTotal - delivered);
-            let updatedDetails = shippingDetails;
-            if (rec.fullPartial === 'Partial' && recTotal > 0) {
-                updatedDetails = shippingDetails.map(sd => {
-                    const sdTotal = (sd.containerDetails || []).reduce((s, cd) => s + (parseInt(cd.totalNumber || 0) || 0), 0);
-                    const sdRemaining = Math.round((sdTotal / recTotal) * recRemaining);
-                    return { 
-                        ...sd, 
-                        containerDetails: (sd.containerDetails || []).map(cd => ({ 
-                            ...cd, 
-                            remainingItems: Math.round((parseInt(cd.totalNumber || 0) / sdTotal) * sdRemaining).toString() 
-                        }))
-                    };
-                });
-            } else {
-                updatedDetails = shippingDetails.map(sd => ({ 
-                    ...sd, 
-                    containerDetails: (sd.containerDetails || []).map(cd => ({ 
-                        ...cd, 
-                        remainingItems: (parseInt(cd.totalNumber || 0) || 0).toString() 
-                    }))
-                }));
-            }
-            rec.shippingDetails = updatedDetails;
-
-            // Validation warnings (unchanged)
-            let warnings = null;
-            const isInvalidTotal = recTotal <= 0;
-            const isPartialInvalid = rec.fullPartial === 'Partial' && delivered > recTotal;
-            if (isInvalidTotal || isPartialInvalid) {
-                warnings = {};
-                if (isPartialInvalid) warnings.qty_delivered = 'Cannot exceed total_number';
-            }
-            rec.validationWarnings = warnings;
-            return rec;
-        });
-
-        camelData[panel2ListKey] = mappedPanel2;
-        if (!camelData[panel2ListKey] || camelData[panel2ListKey].length === 0) {
-            camelData[panel2ListKey] = [{
-                ...initialItem,
-                shippingDetails: [],
-                isNew: true
-            }];
-        }
-
-        // Ensure the other list is empty
-        const otherListKey = panel2ListKey === 'receivers' ? 'senders' : 'receivers';
-        camelData[otherListKey] = [];
-
-        // Attachments/gatepass cleanup (unchanged)
-        const cleanAttachments = (paths) => (paths || []).map(path => {
-            if (typeof path === 'string' && path.startsWith('function wrap()')) {
-                return path.substring(62);
-            }
-            return path;
-        });
-        camelData.attachments = cleanAttachments(camelData.attachments || []);
-        camelData.gatepass = cleanAttachments(camelData.gatepass || []);
-
-        const apiBase = import.meta.env.VITE_API_URL;
-        camelData.attachments = camelData.attachments.map(path =>
-            path.startsWith('http') ? path : `${apiBase}${path}`
-        );
-        camelData.gatepass = camelData.gatepass.map(path =>
-            path.startsWith('http') ? path : `${apiBase}${path}`
-        );
-
-        setFormData(camelData);
-
-        // Set initial errors from validation warnings
-        const initialErrors = {};
-        mappedPanel2.forEach((rec, i) => {
-            if (rec.validationWarnings) {
-                if (rec.validationWarnings.total_number) {
-                    initialErrors[`${panel2ListKey}[${i}].shippingDetails[0].containerDetails[0].totalNumber`] = rec.validationWarnings.total_number;
-                }
-                if (rec.validationWarnings.qty_delivered) {
-                    initialErrors[`${panel2ListKey}[${i}].qtyDelivered`] = rec.validationWarnings.qty_delivered;
-                }
-            }
-        });
-        setErrors(initialErrors);
-
-        const hasWarnings = mappedPanel2.some(r => r && r.validationWarnings);
-        // if (hasWarnings) { setSnackbar warning... } // optional
-
-    } catch (err) {
-        console.error("Error fetching order:", err);
-        setSnackbar({
-            open: true,
-            message: err.response?.data?.error || err.message || 'Failed to fetch order',
-            severity: 'error',
-        });
-        if (err.response?.status === 404) {
-            navigate('/orders');
-        }
-    } finally {
-        setLoading(false);
+  setLoading(true);
+  try {
+    const response = await api.get(`/api/orders/${id}`, { params: { includeContainer: true } });
+    if (!response.data) {
+      throw new Error('Invalid response data');
     }
+
+    console.log('Fetched order data:', response.data);
+
+    // ── Parse attachments & gatepass safely ─────────────────────────────────
+    const safeParseArray = (value, fallback = []) => {
+      if (Array.isArray(value)) return value;
+      if (value === null || value === undefined) return fallback;
+      if (typeof value === 'string') {
+        try {
+          const parsed = JSON.parse(value);
+          return Array.isArray(parsed) ? parsed : fallback;
+        } catch (e) {
+          console.warn('Failed to parse JSON array:', e.message, 'Raw value:', value);
+          return fallback;
+        }
+      }
+      return fallback;
+    };
+
+    let attachments = safeParseArray(response.data.attachments || response.data.order?.attachments);
+    let gatepass = safeParseArray(response.data.gatepass || response.data.order?.gatepass);
+
+    // Clean legacy/invalid entries (e.g., "[object File]", broken local paths)
+    attachments = attachments.filter(item => {
+      if (typeof item === 'string') {
+        return item.trim() && !item.includes('[object File]') && !item.includes('function wrap()');
+      }
+      return item?.url && typeof item.url === 'string' && item.url.startsWith('http');
+    });
+
+    gatepass = gatepass.filter(item => {
+      if (typeof item === 'string') return item.trim() && !item.includes('[object File]');
+      return item?.url && typeof item.url === 'string' && item.url.startsWith('http');
+    });
+
+    console.log('Parsed attachments count:', attachments.length);
+    console.log('First attachment (if any):', attachments[0]?.url || 'none');
+
+    // ── Map snake_case to camelCase ─────────────────────────────────────────
+    const camelData = {};
+    Object.keys(response.data).forEach(apiKey => {
+      let value = response.data[apiKey];
+      if (value === null || value === undefined) value = '';
+
+      // Handle dates
+      if (['eta', 'etd', 'drop_date', 'delivery_date'].includes(apiKey)) {
+        if (value) {
+          const date = new Date(value);
+          if (!isNaN(date.getTime())) {
+            value = date.toISOString().split('T')[0]; // YYYY-MM-DD
+          } else {
+            value = '';
+          }
+        } else {
+          value = '';
+        }
+      }
+
+      const camelKey = snakeToCamel(apiKey);
+      camelData[camelKey] = value;
+    });
+
+    // Set senderType
+    camelData.senderType = response.data.sender_type || 'sender';
+
+    // Map owner fields
+    const ownerPrefix = camelData.senderType === 'sender' ? 'sender' : 'receiver';
+    const ownerFields = ['name', 'contact', 'address', 'email', 'ref', 'remarks'];
+    ownerFields.forEach(field => {
+      const apiKey = `${ownerPrefix}_${field}`;
+      const snakeVal = response.data[apiKey];
+      if (snakeVal !== null && snakeVal !== undefined) {
+        camelData[`${ownerPrefix}${field.charAt(0).toUpperCase() + field.slice(1)}`] = snakeVal;
+      }
+    });
+
+    // Auto-populate owner from customer ID if name is missing
+    const ownerNameKey = `${ownerPrefix}Name`;
+    if (camelData.selectedSenderOwner && !camelData[ownerNameKey]?.trim()) {
+      try {
+        console.log(`Auto-populating owner from customer ID: ${camelData.selectedSenderOwner}`);
+        const customerRes = await api.get(`/api/customers/${camelData.selectedSenderOwner}`);
+        if (customerRes?.data) {
+          const customer = customerRes.data;
+          camelData[ownerNameKey] = customer.contact_name || customer.contact_persons?.[0]?.name || '';
+          camelData[`${ownerPrefix}Contact`] = customer.primary_phone || customer.contact_persons?.[0]?.phone || '';
+          camelData[`${ownerPrefix}Address`] = customer.zoho_notes || customer.billing_address || '';
+          camelData[`${ownerPrefix}Email`] = customer.email || customer.contact_persons?.[0]?.email || '';
+          camelData[`${ownerPrefix}Ref`] = customer.zoho_id || customer.ref || '';
+          camelData[`${ownerPrefix}Remarks`] = customer.zoho_notes || customer.system_notes || '';
+          console.log(`Auto-populated ${ownerNameKey}:`, camelData[ownerNameKey]);
+        }
+      } catch (autoErr) {
+        console.error('Auto-populate owner failed:', autoErr);
+      }
+    }
+
+    // ── Panel2 (receivers/senders) handling ─────────────────────────────────
+    const panel2ApiKey = 'receivers';
+    const panel2Prefix = camelData.senderType === 'sender' ? 'receiver' : 'sender';
+    const panel2ListKey = camelData.senderType === 'sender' ? 'receivers' : 'senders';
+    const initialItem = panel2Prefix === 'receiver' ? initialReceiver : initialSenderObject;
+
+    let mappedPanel2 = [];
+
+    if (response.data[panel2ApiKey]) {
+      mappedPanel2 = (response.data[panel2ApiKey] || []).map(rec => {
+        if (!rec) return null;
+        const camelRec = {
+          ...initialItem,
+          shippingDetails: [],
+          isNew: false,
+          validationWarnings: null
+        };
+
+        Object.keys(rec).forEach(apiKey => {
+          let val = rec[apiKey];
+          if (val === null || val === undefined) val = '';
+          const camelKey = snakeToCamel(apiKey);
+
+          if (['name', 'contact', 'address', 'email', 'marksAndNumber'].includes(camelKey)) {
+            const uiKey = camelKey === 'marksAndNumber' ? `${panel2Prefix}MarksNumber` : `${panel2Prefix}${camelKey.charAt(0).toUpperCase() + camelKey.slice(1)}`;
+            camelRec[uiKey] = val;
+          } else {
+            camelRec[camelKey] = val;
+          }
+        });
+
+        // Shipping details
+        if (rec.shippingdetails) {
+          const mappedShippingDetails = (rec.shippingdetails || []).map(sd => {
+            const camelSd = { ...initialShippingDetail };
+            Object.keys(sd).forEach(sdApiKey => {
+              let sdVal = sd[sdApiKey];
+              if (sdVal === null || sdVal === undefined) sdVal = '';
+              const sdCamelKey = snakeToCamel(sdApiKey);
+              camelSd[sdCamelKey] = sdVal;
+            });
+
+            // Container details
+            if (sd.containerDetails) {
+              camelSd.containerDetails = (sd.containerDetails || []).map(cd => {
+                const camelCd = { totalNumber: '', container: null, status: '' };
+                Object.keys(cd).forEach(cdApiKey => {
+                  let cdVal = cd[cdApiKey];
+                  if (cdVal === null || cdVal === undefined) cdVal = '';
+                  const cdCamelKey = snakeToCamel(cdApiKey);
+                  camelCd[cdCamelKey] = cdVal;
+                });
+                if ('total_number' in cd) camelCd.totalNumber = cd.total_number || '';
+                return camelCd;
+              });
+            } else {
+              camelSd.containerDetails = [{ totalNumber: '', container: null, status: '' }];
+            }
+
+            return camelSd;
+          });
+          camelRec.shippingDetails = mappedShippingDetails;
+        }
+
+        // Fallback shipping details
+        if (!camelRec.shippingDetails?.length) {
+          camelRec.shippingDetails = [{
+            ...initialShippingDetail,
+            totalNumber: rec.total_number || '',
+            weight: rec.total_weight || ''
+          }];
+        }
+
+        camelRec.status = rec.status || "Created";
+        camelRec.fullPartial = camelRec.fullPartial || '';
+        camelRec.qtyDelivered = camelRec.qtyDelivered != null ? String(camelRec.qtyDelivered) : '0';
+
+        return camelRec;
+      }).filter(Boolean);
+    }
+
+    // Fallback if no panel2 items
+    if (!mappedPanel2.length) {
+      mappedPanel2 = [{
+        ...initialItem,
+        shippingDetails: [],
+        isNew: true
+      }];
+    }
+
+    // Ensure other list is empty
+    const otherListKey = panel2ListKey === 'receivers' ? 'senders' : 'receivers';
+    camelData[otherListKey] = [];
+
+    camelData[panel2ListKey] = mappedPanel2;
+
+    // ── Set attachments & gatepass in formData ──────────────────────────────
+    const apiBase = import.meta.env.VITE_API_URL || '';
+
+    camelData.attachments = attachments.map(item => {
+      if (typeof item === 'string') {
+        // Legacy path → convert to full URL if needed
+        return item.startsWith('http') ? item : `${apiBase}${item}`;
+      }
+      // Already object with url
+      return item;
+    });
+
+    camelData.gatepass = gatepass.map(item => {
+      if (typeof item === 'string') {
+        return item.startsWith('http') ? item : `${apiBase}${item}`;
+      }
+      return item;
+    });
+
+    // Set form data
+    setFormData(camelData);
+
+    // Set initial errors from validation warnings
+    const initialErrors = {};
+    mappedPanel2.forEach((rec, i) => {
+      if (rec.validationWarnings) {
+        if (rec.validationWarnings.total_number) {
+          initialErrors[`${panel2ListKey}[${i}].shippingDetails[0].containerDetails[0].totalNumber`] = rec.validationWarnings.total_number;
+        }
+        if (rec.validationWarnings.qty_delivered) {
+          initialErrors[`${panel2ListKey}[${i}].qtyDelivered`] = rec.validationWarnings.qty_delivered;
+        }
+      }
+    });
+    setErrors(initialErrors);
+
+    // Optional: show warning if validation issues
+    if (mappedPanel2.some(r => r.validationWarnings)) {
+      // setSnackbar({ open: true, message: 'Some fields need attention', severity: 'warning' });
+    }
+
+  } catch (err) {
+    console.error("Error fetching order:", err);
+    setSnackbar({
+      open: true,
+      message: err.response?.data?.error || err.message || 'Failed to fetch order',
+      severity: 'error',
+    });
+    if (err.response?.status === 404) {
+      navigate('/orders');
+    }
+  } finally {
+    setLoading(false);
+  }
 };
 
 formData.receivers.map((item) => {console.log('release',item.status)})
@@ -7321,37 +7315,80 @@ formDataToSend.append(panel2ArrayKey, JSON.stringify(panel2ToSend));
                                         Upload File
                                         <input type="file" hidden multiple onChange={handleFileUpload} />
                                     </Button>
-                                    {Array.isArray(formData.attachments) && formData.attachments.length > 0 && (
-                                        <Stack spacing={1} direction="row" flexWrap="wrap" gap={1}>
-                                            {formData.attachments.map((attachment, i) => {
-                                                const src = typeof attachment === 'string' ? attachment : URL.createObjectURL(attachment);
-                                                const label = typeof attachment === 'string' ? attachment.split('/').pop() : attachment.name || 'File';
-                                                return (
-                                                    <Chip
-                                                        key={i}
-                                                        label={label}
-                                                        color="secondary"
-                                                        size="small"
-                                                        variant="outlined"
-                                                        onClick={() => {
-                                                            setPreviewSrc(src);
-                                                            setPreviewOpen(true);
-                                                        }}
-                                                        onDelete={() => {
-                                                            // Revoke object URL if it's a File object to free memory
-                                                            if (typeof attachment === 'object' && attachment !== null) {
-                                                                URL.revokeObjectURL(src);
-                                                            }
-                                                            // Remove the attachment from the array
-                                                            const newAttachments = formData.attachments.filter((_, index) => index !== i);
-                                                            setFormData(prev => ({ ...prev, attachments: newAttachments }));
-                                                        }}
-                                                        sx={{ cursor: 'pointer', '&:hover': { backgroundColor: '#f58220', color: 'white' } }}
-                                                    />
-                                                );
-                                            })}
-                                        </Stack>
-                                    )}
+                                   {Array.isArray(formData.attachments) && formData.attachments.length > 0 && (
+  <Stack spacing={1} direction="row" flexWrap="wrap" gap={1}>
+    {formData.attachments.map((attachment, i) => {
+      // ────────────────────────────────────────────────────────────────
+      // Determine display label & preview source
+      // ────────────────────────────────────────────────────────────────
+      let label = 'File';
+      let previewSrc;
+
+      if (typeof attachment === 'string') {
+        // Legacy string path (old local uploads)
+        label = attachment.split('/').pop() || 'File';
+        previewSrc = attachment.startsWith('http') 
+          ? attachment 
+          : `${import.meta.env.VITE_API_URL || ''}${attachment}`;
+      } else if (attachment?.url) {
+        // Cloudinary / uploaded attachment object ← this is your current format
+        label = attachment.originalname || attachment.filename || 'File';
+        previewSrc = attachment.url;  // ← use this directly
+      } else if (attachment instanceof File || attachment?.previewUrl) {
+        // Local file preview (before upload) – only in this case use createObjectURL
+        previewSrc = attachment.previewUrl || URL.createObjectURL(attachment);
+        label = attachment.name || 'File';
+      } else {
+        // Fallback for unknown format
+        label = 'Unknown';
+        previewSrc = null;
+      }
+
+      // Determine if it's likely an image for chip icon
+      const isImage = 
+        previewSrc?.match(/\.(jpg|jpeg|png|gif|webp)$/i) ||
+        attachment?.mimetype?.startsWith('image/');
+
+      return (
+        <Chip
+          key={i}
+          label={label}
+          color="secondary"
+          size="small"
+          variant="outlined"
+        //   icon={isImage ? <ImageIcon fontSize="small" /> : <AttachFileIcon fontSize="small" />}
+          onClick={() => {
+            if (previewSrc) {
+              setPreviewSrc(previewSrc);
+              setPreviewOpen(true);
+            } else {
+              console.warn('No valid preview source for attachment:', attachment);
+            }
+          }}
+          onDelete={() => {
+            // Only revoke if it's a local blob preview URL
+            if (attachment.previewUrl) {
+              URL.revokeObjectURL(attachment.previewUrl);
+            }
+
+            // Remove from state
+            const newAttachments = formData.attachments.filter((_, index) => index !== i);
+            setFormData(prev => ({ ...prev, attachments: newAttachments }));
+          }}
+          sx={{ 
+            cursor: previewSrc ? 'pointer' : 'default',
+            '&:hover': previewSrc ? { 
+              backgroundColor: '#f58220', 
+              color: 'white',
+              borderColor: '#f58220'
+            } : {}
+          }}
+          deleteIcon={<DeleteIcon fontSize="small" />}
+        />
+      );
+    })}
+  </Stack>
+)}
                                 </Stack>
                             </AccordionDetails>
                         </Accordion>
@@ -7370,47 +7407,143 @@ formDataToSend.append(panel2ArrayKey, JSON.stringify(panel2ToSend));
                 </Box>
             </Paper>
             {/* Preview Modal */}
-            <Dialog open={previewOpen} onClose={() => setPreviewOpen(false)} maxWidth="lg" fullWidth>
-                <DialogTitle>
-                    File Preview
-                    <IconButton
-                        onClick={() => setPreviewOpen(false)}
-                        sx={{ position: 'absolute', right: 8, top: 8 }}
-                    >
-                        <CloseIcon />
-                    </IconButton>
-                </DialogTitle>
-                <DialogContent sx={{ p: 2 }}>
-                    {previewSrc && (
-                        <img
-                            src={previewSrc}
-                            alt="Preview"
-                            style={{
-                                width: '100%',
-                                height: 'auto',
-                                maxHeight: '70vh',
-                                objectFit: 'contain',
-                                borderRadius: 2,
-                                boxShadow: '0 4px 20px rgba(0,0,0,0.1)'
-                            }}
-                            onLoad={() => console.log('Preview loaded:', previewSrc)}
-                            onError={(e) => {
-                                e.target.style.display = 'none';
-                                setSnackbar({
-                                    open: true,
-                                    message: 'Failed to load file. Check URL or file type.',
-                                    severity: 'error'
-                                });
-                            }}
-                        />
-                    )}
-                    {!previewSrc.startsWith('blob:') && previewSrc.endsWith('.pdf') && (
-                        <a href={previewSrc} target="_blank" rel="noopener noreferrer" style={{ display: 'block', textAlign: 'center', mt: 2 }}>
-                            <Button variant="outlined" startIcon={<DownloadIcon />}>Open PDF</Button>
-                        </a>
-                    )}
-                </DialogContent>
-            </Dialog>
+         <Dialog 
+  open={previewOpen} 
+  onClose={() => setPreviewOpen(false)} 
+  maxWidth="lg" 
+  fullWidth
+  PaperProps={{
+    sx: { 
+      height: '90vh', 
+      display: 'flex', 
+      flexDirection: 'column' 
+    }
+  }}
+>
+  <DialogTitle sx={{ position: 'relative', pr: 6 }}>
+    File Preview — {previewSrc?.split('/').pop() || 'Attachment'}
+    <IconButton
+      onClick={() => setPreviewOpen(false)}
+      sx={{ 
+        position: 'absolute', 
+        right: 8, 
+        top: 8 
+      }}
+    >
+      <CloseIcon />
+    </IconButton>
+  </DialogTitle>
+
+  <DialogContent sx={{ 
+    p: 3, 
+    flex: 1, 
+    overflow: 'auto', 
+    display: 'flex', 
+    flexDirection: 'column', 
+    alignItems: 'center',
+    justifyContent: previewSrc ? 'center' : 'flex-start'
+  }}>
+    {previewSrc ? (
+      // ── Image preview ────────────────────────────────────────
+      previewSrc.match(/\.(jpg|jpeg|png|gif|webp)$/i) || 
+      previewSrc.includes('image/upload') ? (
+        <img
+          src={previewSrc}
+          alt="Preview"
+          style={{
+            maxWidth: '100%',
+            maxHeight: '75vh',
+            objectFit: 'contain',
+            borderRadius: 8,
+            boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
+            background: '#f8f9fa'
+          }}
+          onLoad={() => console.log('Image preview loaded:', previewSrc)}
+          onError={(e) => {
+            e.target.src = '/fallback-image.png'; // or some placeholder
+            e.target.style.objectFit = 'contain';
+            setSnackbar({
+              open: true,
+              message: 'Failed to load image preview',
+              severity: 'warning'
+            });
+          }}
+        />
+      ) : 
+      // ── PDF preview with iframe ──────────────────────────────
+      previewSrc.toLowerCase().endsWith('.pdf') || 
+      previewSrc.includes('application/pdf') ? (
+        <Box sx={{ width: '100%', height: '75vh', borderRadius: 2, overflow: 'hidden', boxShadow: 3 }}>
+          <iframe
+            src={previewSrc}
+            title="PDF Preview"
+            width="100%"
+            height="100%"
+            style={{ border: 'none' }}
+            onError={() => {
+              setSnackbar({
+                open: true,
+                message: 'Failed to load PDF preview — try downloading instead',
+                severity: 'warning'
+              });
+            }}
+          />
+        </Box>
+      ) : 
+      // ── Other file types (fallback) ──────────────────────────
+      (
+        <Box sx={{ 
+          textAlign: 'center', 
+          py: 8,
+          px: 4,
+          bgcolor: 'grey.100',
+          borderRadius: 2,
+          width: '100%',
+          maxWidth: 500
+        }}>
+          <Typography variant="h6" color="text.secondary" gutterBottom>
+            Preview not available for this file type
+          </Typography>
+          <Typography variant="body2" color="text.secondary" paragraph>
+            {previewSrc.split('/').pop() || 'Unknown file'}
+          </Typography>
+          <Button
+            variant="contained"
+            startIcon={<DownloadIcon />}
+            href={previewSrc}
+            target="_blank"
+            rel="noopener noreferrer"
+            sx={{ mt: 2 }}
+          >
+            Download File
+          </Button>
+        </Box>
+      )
+    ) : (
+      <Typography color="text.secondary">
+        No preview available
+      </Typography>
+    )}
+  </DialogContent>
+
+  {/* Optional footer with actions */}
+  <DialogActions>
+    <Button onClick={() => setPreviewOpen(false)}>
+      Close
+    </Button>
+    {previewSrc && (
+      <Button 
+        variant="outlined" 
+        startIcon={<DownloadIcon />}
+        href={previewSrc}
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        Download
+      </Button>
+    )}
+  </DialogActions>
+</Dialog>
             {/* Snackbar for notifications */}
             <Snackbar
                 open={snackbar.open}

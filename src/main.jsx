@@ -1,22 +1,23 @@
+// src/main.jsx (updated)
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { createBrowserRouter, RouterProvider } from "react-router-dom";
+import { createBrowserRouter, RouterProvider, Navigate } from "react-router-dom";
+import { AuthProvider } from "./context/AuthContext";
+import { ThemeProvider } from "./context/ThemeContext";
+import ProtectedRoute from "./routes/Protected";
+import { Outlet } from "react-router-dom";
+// Pages & Components
 import Login from "./pages/Login";
 import Register from "./pages/Register";
-import DashboardLayout from "./pages/Dashboard";
+import DashboardLayout from "./pages/Dashboard"; // ← this has sidebar + topbar
 import DashboardCharts from "./pages/DashboardCharts";
 import Customers from "./pages/Customers/Customers";
 import ContainerForm from "./pages/Containers/AddContainer";
-import ProtectedRoute from "./routes/Protected";
 import Vendors from "./pages/Vendors/Vendors";
 import Orders from "./pages/Orders/Orders";
-import { ThemeProvider as CustomThemeProvider, useThemeContext } from "./context/ThemeContext";
-import { ThemeProvider as MuiThemeProvider, createTheme } from "@mui/material/styles";
-import CssBaseline from "@mui/material/CssBaseline";
-import { AuthProvider } from "./context/AuthContext";
-import CustomerAdd from "./pages/Customers/AddCustomer";
 import Consignments from "./pages/Consignments/Consignments";
 import AddConsignment from "./pages/Consignments/AddConsignment";
+import CustomerAdd from "./pages/Customers/AddCustomer";
 import VendorsForm from "./pages/Vendors/AddVendors";
 import OrderForm from "./pages/Orders/AddOrder";
 import TrackingPage from "./pages/Orders/TrackingPage";
@@ -29,88 +30,206 @@ import ThirdParties from "./pages/SystemData/ThirdParties";
 import BarcodePrintTest from "./pages/SystemData/BarcodePrintTest";
 import EtaSetupPage from "./pages/SystemData/EtaSetup";
 import UserTracking from "./pages/UserTracking";
+import UsersManagement from "./pages/Admin/UserModule";
+import PermissionEditor from "./pages/Admin/PermissionEditor";
 
-function ThemedApp({ children }) {
-  const { mode } = useThemeContext();
- const theme = createTheme({
-    palette: {
-      mode,
-      primary: { main: "#f58220" },
-      secondary: { main: "#06b6d4" },
-    },
-    // Optional: you can influence density here too
-    typography: {
-      fontSize: 11,          // helps a lot with the "too big" feeling
-    },
-    spacing: 3,
-  });
+// Fallback Pages
+import Unauthorized from "./pages/Unauthorized";
 
-  return (
-    <MuiThemeProvider theme={theme}>
-           <CssBaseline />
-      {children}
-    </MuiThemeProvider>
-  );
-}
-
+// ────────────────────────────────────────────────────────────────
+// Router Configuration
+// ────────────────────────────────────────────────────────────────
 const router = createBrowserRouter([
-  {
-    path: "/login",
-    element: <Login />,
-  },
-  {
-    path: "/register",
-    element: <Register />,
-  },
-    {
-    path: "/UserTracking",
-    element: <UserTracking />,
-  },
+  // Public routes (no auth required)
+  { path: "/login", element: <Login /> },
+  { path: "/register", element: <Register /> },
+
+  // Protected routes (require authentication)
   {
     path: "/",
     element: (
       <ProtectedRoute>
-        <DashboardLayout />
+        <DashboardLayout />  {/* ← Sidebar + Topbar wrapper */}
       </ProtectedRoute>
     ),
     children: [
+      // Default / Dashboard
       { index: true, element: <DashboardCharts /> },
-      { path: "customers", element: <Customers /> },
       { path: "dashboard", element: <DashboardCharts /> },
 
-      { path: "vendors", element: <Vendors /> },
-      { path: "/containers", element: <ContainerForm /> },
-      { path: "orders", element: <Orders /> },
-      { path: "/orders/add", element: <OrderForm mode="add" /> },
-      { path: "/orders/:id/edit", element: <OrderForm mode="edit" /> },
-      { path: "/tracking", element: <TrackingPage /> },
-      { path: "consignments", element: <Consignments /> },
-      { path: "/customers/add", element: <CustomerAdd mode="add" /> },
-      { path: "/customers/:id/edit", element: <CustomerAdd mode="edit" /> },
-      { path: "/vendors/add", element: <VendorsForm mode="add" /> },
-      { path: "/vendors/:id/edit", element: <VendorsForm mode="edit" /> },
-      { path: "/consignments/add", element: <AddConsignment mode="add" /> },
-          { path: "/consignments/:id/edit", element: <AddConsignment mode="edit" /> },
-          { path: "/admin/payment-types", element: <PaymentTypes /> },
-          { path: "/admin/categories", element: <Categories /> },
-          { path: "/admin/vessels", element: <Vessels /> },
-          { path: "/admin/places", element: <Places /> },
-          { path: "/admin/banks", element: <Banks /> },
-          { path: "/admin/third-parties", element: <ThirdParties /> },
-          { path: "/admin/barcode-print", element: <BarcodePrintTest /> },
-          { path: "/admin/EtaSetupPage", element: <EtaSetupPage /> },
+      // Operational pages – view only for staff
+      { 
+        path: "customers", 
+        element: (
+          <ProtectedRoute permission={{ module: "customers", action: "view" }}>
+            <Customers />
+          </ProtectedRoute>
+        ) 
+      },
+      { 
+        path: "vendors", 
+        element: (
+          <ProtectedRoute permission={{ module: "vendors", action: "view" }}>
+            <Vendors />
+          </ProtectedRoute>
+        ) 
+      },
+      { 
+        path: "containers", 
+        element: (
+          <ProtectedRoute permission={{ module: "containers", action: "view" }}>
+            <ContainerForm />
+          </ProtectedRoute>
+        ) 
+      },
+      { 
+        path: "orders", 
+        element: (
+          <ProtectedRoute permission={{ module: "orders", action: "view" }}>
+            <Orders />
+          </ProtectedRoute>
+        ) 
+      },
+      { 
+        path: "tracking", 
+        element: (
+          <ProtectedRoute permission={{ module: "tracking", action: "view" }}>
+            <TrackingPage />
+          </ProtectedRoute>
+        ) 
+      },
+      { 
+        path: "consignments", 
+        element: (
+          <ProtectedRoute permission={{ module: "consignments", action: "view" }}>
+            <Consignments />
+          </ProtectedRoute>
+        ) 
+      },
 
+      // Forms – protected by create/edit permissions
+      { 
+        path: "orders/add", 
+        element: (
+          <ProtectedRoute permission={{ module: "orders", action: "create" }}>
+            <OrderForm mode="add" />
+          </ProtectedRoute>
+        ) 
+      },
+      { 
+        path: "orders/:id/edit", 
+        element: (
+          <ProtectedRoute permission={{ module: "orders", action: "edit" }}>
+            <OrderForm mode="edit" />
+          </ProtectedRoute>
+        ) 
+      },
+      { 
+        path: "customers/add", 
+        element: (
+          <ProtectedRoute permission={{ module: "customers", action: "create" }}>
+            <CustomerAdd mode="add" />
+          </ProtectedRoute>
+        ) 
+      },
+      { 
+        path: "customers/:id/edit", 
+        element: (
+          <ProtectedRoute permission={{ module: "customers", action: "edit" }}>
+            <CustomerAdd mode="edit" />
+          </ProtectedRoute>
+        ) 
+      },
+      { 
+        path: "vendors/add", 
+        element: (
+          <ProtectedRoute permission={{ module: "vendors", action: "create" }}>
+            <VendorsForm mode="add" />
+          </ProtectedRoute>
+        ) 
+      },
+      { 
+        path: "vendors/:id/edit", 
+        element: (
+          <ProtectedRoute permission={{ module: "vendors", action: "edit" }}>
+            <VendorsForm mode="edit" />
+          </ProtectedRoute>
+        ) 
+      },
+      { 
+        path: "consignments/add", 
+        element: (
+          <ProtectedRoute permission={{ module: "consignments", action: "create" }}>
+            <AddConsignment mode="add" />
+          </ProtectedRoute>
+        ) 
+      },
+      { 
+        path: "consignments/:id/edit", 
+        element: (
+          <ProtectedRoute permission={{ module: "consignments", action: "edit" }}>
+            <AddConsignment mode="edit" />
+          </ProtectedRoute>
+        ) 
+      },
+
+      // Admin-only pages
+      { 
+        path: "users", 
+        element: (
+          <ProtectedRoute permission={{ module: "users", action: "view" }}>
+            <UsersManagement />
+          </ProtectedRoute>
+        ) 
+      },
+      { 
+        path: "permissions", 
+        element: (
+          <ProtectedRoute permission={{ module: "permissions", action: "view" }}>
+            <PermissionEditor />
+          </ProtectedRoute>
+        ) 
+      },
+
+      // System/Admin section
+      {
+        path: "admin",
+        element: (
+          <ProtectedRoute permission={{ module: "admin", action: "view" }}>
+            <Outlet />
+          </ProtectedRoute>
+        ),
+        children: [
+          { path: "payment-types", element: <PaymentTypes /> },
+          { path: "categories", element: <Categories /> },
+          { path: "vessels", element: <Vessels /> },
+          { path: "places", element: <Places /> },
+          { path: "banks", element: <Banks /> },
+          { path: "third-parties", element: <ThirdParties /> },
+          { path: "barcode-print", element: <BarcodePrintTest /> },
+          { path: "eta-setup", element: <EtaSetupPage /> },
         ],
       },
-    ]);
 
-    // 🟢 Removed StrictMode wrapper
-    ReactDOM.createRoot(document.getElementById("root")).render(
-      <AuthProvider>
-        <CustomThemeProvider>
-          <ThemedApp>
-            <RouterProvider router={router} />
-          </ThemedApp>
-        </CustomThemeProvider>
-      </AuthProvider>
-    );
+      // Other pages
+      { path: "user-tracking", element: <UserTracking /> },
+    ],
+  },
+
+  // Fallbacks
+  { path: "/unauthorized", element: <Unauthorized /> },
+  { path: "*", element: <Navigate to="/" replace /> },
+]);
+
+// ────────────────────────────────────────────────────────────────
+// Root Render
+// ────────────────────────────────────────────────────────────────
+ReactDOM.createRoot(document.getElementById("root")).render(
+  <React.StrictMode>
+    <AuthProvider>
+      <ThemeProvider>
+        <RouterProvider router={router} />
+      </ThemeProvider>
+    </AuthProvider>
+  </React.StrictMode>
+);
