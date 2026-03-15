@@ -21,9 +21,19 @@ export default function ProtectedRoute({
   redirectTo = "/login",
   unauthorizedPath = "/unauthorized",
 }) {
-  const { isAuthenticated, loading, can } = useAuth();
+  // const { isAuthenticated, loading, can } = useAuth();
   const location = useLocation();
+const { isAuthenticated, loading, can, permissions, user } = useAuth(); // ← add permissions & user if available
 
+  console.log('ProtectedRoute → user:', user);
+  console.log('ProtectedRoute → all permissions:', permissions);
+
+  if (permission?.module) {
+    const hasPerm = can(permission.module, permission.action);
+    console.log(
+      `Checking permission: ${permission.module}.${permission.action} → ${hasPerm ? 'YES' : 'NO'}`
+    );
+  }
   // ────────────────────────────────────────────────────────────────
   // Loading state — full-screen centered spinner
   // ────────────────────────────────────────────────────────────────

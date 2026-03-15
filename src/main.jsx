@@ -13,6 +13,7 @@ import DashboardLayout from "./pages/Dashboard"; // ← this has sidebar + topba
 import DashboardCharts from "./pages/DashboardCharts";
 import Customers from "./pages/Customers/Customers";
 import ContainerForm from "./pages/Containers/AddContainer";
+import NotificationManage from "./pages/SystemData/ManageNotifications";
 import Vendors from "./pages/Vendors/Vendors";
 import Orders from "./pages/Orders/Orders";
 import Consignments from "./pages/Consignments/Consignments";
@@ -35,6 +36,7 @@ import PermissionEditor from "./pages/Admin/PermissionEditor";
 
 // Fallback Pages
 import Unauthorized from "./pages/Unauthorized";
+import NotificationSettings from "./pages/SystemData/NotificationSetting";
 
 // ────────────────────────────────────────────────────────────────
 // Router Configuration
@@ -190,16 +192,30 @@ const router = createBrowserRouter([
           </ProtectedRoute>
         ) 
       },
+            { 
+        path: "notifications", 
+        element: (
+          <ProtectedRoute permission={{ module: "notifications", action: "view" }}>
+            <NotificationSettings />
+          </ProtectedRoute>
+        ) 
+      },
+          { 
+        path: "notifications/:id", 
+        element: (
+          <ProtectedRoute permission={{ module: "notifications", action: "view" }}>
+            <NotificationManage />
+          </ProtectedRoute>
+        ) 
+      },
 
       // System/Admin section
       {
         path: "admin",
-        element: (
-          <ProtectedRoute permission={{ module: "admin", action: "view" }}>
-            <Outlet />
-          </ProtectedRoute>
+        element: ( <Outlet />
         ),
         children: [
+          // { path: "notifications", element: <NotificationSettings /> },
           { path: "payment-types", element: <PaymentTypes /> },
           { path: "categories", element: <Categories /> },
           { path: "vessels", element: <Vessels /> },
@@ -208,6 +224,7 @@ const router = createBrowserRouter([
           { path: "third-parties", element: <ThirdParties /> },
           { path: "barcode-print", element: <BarcodePrintTest /> },
           { path: "eta-setup", element: <EtaSetupPage /> },
+
         ],
       },
 
