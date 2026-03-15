@@ -35,6 +35,7 @@ import BarcodePrintTest from './pages/SystemData/BarcodePrintTest';
 import EtaSetupPage from './pages/SystemData/EtaSetup';
 import UsersManagement from './pages/Admin/UserModule';
 import PermissionEditor from './pages/Admin/PermissionEditor';
+import NotificationSettings from './pages/SystemData/NotificationSetting';
 
 // ────────────────────────────────────────────────────────────────
 // Protected Route Wrapper (checks auth + optional permission)
@@ -125,6 +126,7 @@ export default function App() {
               <Route path="containers" element={<AddContainers />} />
               <Route path="consignments/add" element={<AddConsignment mode="add" />} />
               <Route path="consignments/:id/edit" element={<AddConsignment mode="edit" />} />
+                <Route path="notifications" element={<NotificationSettings />} />
 
               {/* Users Management – protected by permission */}
               <Route
@@ -136,22 +138,23 @@ export default function App() {
                 }
               />
             </Route>
-
-            {/* Admin-only section */}
-            <Route element={<AdminRoute />}>
-              <Route path="admin">
-                <Route path="payment-types" element={<PaymentTypes />} />
-                <Route path="categories" element={<Categories />} />
-                <Route path="vessels" element={<Vessels />} />
-                <Route path="places" element={<Places />} />
-                <Route path="banks" element={<Banks />} />
-                <Route path="third-parties" element={<ThirdParties />} />
-                <Route path="barcode-print" element={<BarcodePrintTest />} />
-                <Route path="eta-setup" element={<EtaSetupPage />} />
-
-                {/* You can add more admin-only pages here */}
-              </Route>
-            </Route>
+<Route
+        path="admin"
+        element={
+          <ProtectedRoute requiredPermission={{ module: 'admin', action: 'view' }}>
+            <Outlet />
+          </ProtectedRoute>
+        }
+      >
+        <Route path="payment-types" element={<PaymentTypes />} />
+        <Route path="categories"     element={<Categories />} />
+        <Route path="vessels"        element={<Vessels />} />
+        <Route path="places"         element={<Places />} />
+        <Route path="banks"          element={<Banks />} />
+        <Route path="third-parties"  element={<ThirdParties />} />
+        <Route path="barcode-print"  element={<BarcodePrintTest />} />
+        <Route path="eta-setup"      element={<EtaSetupPage />} />
+      </Route>
           </Route>
 
           {/* Catch-all unauthorized / 404 */}

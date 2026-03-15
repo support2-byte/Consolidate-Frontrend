@@ -19,6 +19,7 @@ export const ROLE_MODULES = {
     "users",                  // manage users
     "settings",               // full settings
     "payment-types",
+    "notifications",
     "categories",
     "vessels",
     "places",
