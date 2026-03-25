@@ -3568,11 +3568,27 @@ const fetchOrder = async (id) => {
   setLoading(true);
   try {
     const response = await api.get(`/api/orders/${id}`, { params: { includeContainer: true } });
-    if (!response.data) {
-      throw new Error('Invalid response data');
-    }
+    if (!response.data) throw new Error('Invalid response data');
 
-    console.log('Fetched order data:', response.data);
+    console.log('[fetchOrder] Raw response:', response.data);
+
+    // ── FIX: normalize response shape ───────────────────────────────────────
+    // GET /api/orders/:id returns flat: response.data = { id, booking_ref, ... receivers: [], attachments: [] }
+    // PUT /api/orders/:id returns nested: response.data = { order: {...}, senders: [], attachments: [], gatepass: [] }
+    // fetchOrder is only called on GET, so we always expect flat — but let's guard both shapes:
+    const orderData = response.data.order
+      ? {
+          ...response.data.order,
+          receivers:   response.data.receivers   || response.data.order.receivers   || [],
+          senders:     response.data.senders     || response.data.order.senders     || [],
+          attachments: response.data.attachments || response.data.order.attachments || [],
+          gatepass:    response.data.gatepass    || response.data.order.gatepass    || [],
+        }
+      : response.data; // already flat from GET
+
+    console.log('[fetchOrder] Normalized orderData keys:', Object.keys(orderData));
+    console.log('[fetchOrder] booking_ref:', orderData.booking_ref);
+    console.log('[fetchOrder] rgl_booking_number:', orderData.rgl_booking_number);
 
     // ── Parse attachments & gatepass safely ─────────────────────────────────
     const safeParseArray = (value, fallback = []) => {
@@ -3583,21 +3599,18 @@ const fetchOrder = async (id) => {
           const parsed = JSON.parse(value);
           return Array.isArray(parsed) ? parsed : fallback;
         } catch (e) {
-          console.warn('Failed to parse JSON array:', e.message, 'Raw value:', value);
+          console.warn('Failed to parse JSON array:', e.message);
           return fallback;
         }
       }
       return fallback;
     };
 
-    let attachments = safeParseArray(response.data.attachments || response.data.order?.attachments);
-    let gatepass = safeParseArray(response.data.gatepass || response.data.order?.gatepass);
+    let attachments = safeParseArray(orderData.attachments);
+    let gatepass    = safeParseArray(orderData.gatepass);
 
-    // Clean legacy/invalid entries (e.g., "[object File]", broken local paths)
     attachments = attachments.filter(item => {
-      if (typeof item === 'string') {
-        return item.trim() && !item.includes('[object File]') && !item.includes('function wrap()');
-      }
+      if (typeof item === 'string') return item.trim() && !item.includes('[object File]');
       return item?.url && typeof item.url === 'string' && item.url.startsWith('http');
     });
 
@@ -3606,222 +3619,186 @@ const fetchOrder = async (id) => {
       return item?.url && typeof item.url === 'string' && item.url.startsWith('http');
     });
 
-    console.log('Parsed attachments count:', attachments.length);
-    console.log('First attachment (if any):', attachments[0]?.url || 'none');
+    console.log('[fetchOrder] Parsed attachments count:', attachments.length);
 
     // ── Map snake_case to camelCase ─────────────────────────────────────────
     const camelData = {};
-    Object.keys(response.data).forEach(apiKey => {
-      let value = response.data[apiKey];
+    Object.keys(orderData).forEach(apiKey => {
+      let value = orderData[apiKey];
       if (value === null || value === undefined) value = '';
 
-      // Handle dates
       if (['eta', 'etd', 'drop_date', 'delivery_date'].includes(apiKey)) {
         if (value) {
           const date = new Date(value);
-          if (!isNaN(date.getTime())) {
-            value = date.toISOString().split('T')[0]; // YYYY-MM-DD
-          } else {
-            value = '';
-          }
+          value = !isNaN(date.getTime()) ? date.toISOString().split('T')[0] : '';
         } else {
           value = '';
         }
       }
 
-      const camelKey = snakeToCamel(apiKey);
-      camelData[camelKey] = value;
+      camelData[snakeToCamel(apiKey)] = value;
     });
 
-    // Set senderType
-    camelData.senderType = response.data.sender_type || 'sender';
+    // ── senderType ──────────────────────────────────────────────────────────
+    camelData.senderType = orderData.sender_type || 'sender';
 
-    // Map owner fields
+    // ── Owner fields ────────────────────────────────────────────────────────
     const ownerPrefix = camelData.senderType === 'sender' ? 'sender' : 'receiver';
     const ownerFields = ['name', 'contact', 'address', 'email', 'ref', 'remarks'];
     ownerFields.forEach(field => {
-      const apiKey = `${ownerPrefix}_${field}`;
-      const snakeVal = response.data[apiKey];
+      const apiKey  = `${ownerPrefix}_${field}`;
+      const snakeVal = orderData[apiKey];
       if (snakeVal !== null && snakeVal !== undefined) {
         camelData[`${ownerPrefix}${field.charAt(0).toUpperCase() + field.slice(1)}`] = snakeVal;
       }
     });
 
-    // Auto-populate owner from customer ID if name is missing
+    // ── Auto-populate owner from customer if name missing ───────────────────
     const ownerNameKey = `${ownerPrefix}Name`;
     if (camelData.selectedSenderOwner && !camelData[ownerNameKey]?.trim()) {
       try {
-        console.log(`Auto-populating owner from customer ID: ${camelData.selectedSenderOwner}`);
         const customerRes = await api.get(`/api/customers/${camelData.selectedSenderOwner}`);
         if (customerRes?.data) {
-          const customer = customerRes.data;
-          camelData[ownerNameKey] = customer.contact_name || customer.contact_persons?.[0]?.name || '';
-          camelData[`${ownerPrefix}Contact`] = customer.primary_phone || customer.contact_persons?.[0]?.phone || '';
-          camelData[`${ownerPrefix}Address`] = customer.zoho_notes || customer.billing_address || '';
-          camelData[`${ownerPrefix}Email`] = customer.email || customer.contact_persons?.[0]?.email || '';
-          camelData[`${ownerPrefix}Ref`] = customer.zoho_id || customer.ref || '';
-          camelData[`${ownerPrefix}Remarks`] = customer.zoho_notes || customer.system_notes || '';
-          console.log(`Auto-populated ${ownerNameKey}:`, camelData[ownerNameKey]);
+          const c = customerRes.data;
+          camelData[ownerNameKey]              = c.contact_name || c.contact_persons?.[0]?.name  || '';
+          camelData[`${ownerPrefix}Contact`]   = c.primary_phone || c.contact_persons?.[0]?.phone || '';
+          camelData[`${ownerPrefix}Address`]   = c.zoho_notes   || c.billing_address             || '';
+          camelData[`${ownerPrefix}Email`]     = c.email        || c.contact_persons?.[0]?.email || '';
+          camelData[`${ownerPrefix}Ref`]       = c.zoho_id      || c.ref                         || '';
+          camelData[`${ownerPrefix}Remarks`]   = c.zoho_notes   || c.system_notes                || '';
         }
       } catch (autoErr) {
         console.error('Auto-populate owner failed:', autoErr);
       }
     }
 
-    // ── Panel2 (receivers/senders) handling ─────────────────────────────────
-    const panel2ApiKey = 'receivers';
-    const panel2Prefix = camelData.senderType === 'sender' ? 'receiver' : 'sender';
+    // ── Panel2 (receivers/senders) ──────────────────────────────────────────
+    const panel2Prefix  = camelData.senderType === 'sender' ? 'receiver' : 'sender';
     const panel2ListKey = camelData.senderType === 'sender' ? 'receivers' : 'senders';
-    const initialItem = panel2Prefix === 'receiver' ? initialReceiver : initialSenderObject;
+    const initialItem   = panel2Prefix === 'receiver' ? initialReceiver : initialSenderObject;
 
-    let mappedPanel2 = [];
+    // FIX: use orderData (normalized) not response.data
+    const rawPanel2 = orderData.receivers || orderData.senders || [];
 
-    if (response.data[panel2ApiKey]) {
-      mappedPanel2 = (response.data[panel2ApiKey] || []).map(rec => {
-        if (!rec) return null;
-        const camelRec = {
-          ...initialItem,
-          shippingDetails: [],
-          isNew: false,
-          validationWarnings: null
-        };
+    let mappedPanel2 = rawPanel2.map(rec => {
+      if (!rec) return null;
 
-        Object.keys(rec).forEach(apiKey => {
-          let val = rec[apiKey];
-          if (val === null || val === undefined) val = '';
-          const camelKey = snakeToCamel(apiKey);
+      const camelRec = {
+        ...initialItem,
+        shippingDetails:    [],
+        isNew:              false,
+        validationWarnings: null,
+      };
 
-          if (['name', 'contact', 'address', 'email', 'marksAndNumber'].includes(camelKey)) {
-            const uiKey = camelKey === 'marksAndNumber' ? `${panel2Prefix}MarksNumber` : `${panel2Prefix}${camelKey.charAt(0).toUpperCase() + camelKey.slice(1)}`;
-            camelRec[uiKey] = val;
-          } else {
-            camelRec[camelKey] = val;
-          }
-        });
+      Object.keys(rec).forEach(apiKey => {
+        let val = rec[apiKey];
+        if (val === null || val === undefined) val = '';
+        const camelKey = snakeToCamel(apiKey);
 
-        // Shipping details
-        if (rec.shippingdetails) {
-          const mappedShippingDetails = (rec.shippingdetails || []).map(sd => {
-            const camelSd = { ...initialShippingDetail };
-            Object.keys(sd).forEach(sdApiKey => {
-              let sdVal = sd[sdApiKey];
-              if (sdVal === null || sdVal === undefined) sdVal = '';
-              const sdCamelKey = snakeToCamel(sdApiKey);
-              camelSd[sdCamelKey] = sdVal;
-            });
+        if (['name', 'contact', 'address', 'email', 'marksAndNumber'].includes(camelKey)) {
+          const uiKey = camelKey === 'marksAndNumber'
+            ? `${panel2Prefix}MarksNumber`
+            : `${panel2Prefix}${camelKey.charAt(0).toUpperCase() + camelKey.slice(1)}`;
+          camelRec[uiKey] = val;
+        } else {
+          camelRec[camelKey] = val;
+        }
+      });
 
-            // Container details
-            if (sd.containerDetails) {
-              camelSd.containerDetails = (sd.containerDetails || []).map(cd => {
+      // Shipping details
+      if (rec.shippingdetails) {
+        camelRec.shippingDetails = (rec.shippingdetails || []).map(sd => {
+          const camelSd = { ...initialShippingDetail };
+          Object.keys(sd).forEach(sdApiKey => {
+            let sdVal = sd[sdApiKey];
+            if (sdVal === null || sdVal === undefined) sdVal = '';
+            camelSd[snakeToCamel(sdApiKey)] = sdVal;
+          });
+
+          camelSd.containerDetails = sd.containerDetails?.length
+            ? sd.containerDetails.map(cd => {
                 const camelCd = { totalNumber: '', container: null, status: '' };
-                Object.keys(cd).forEach(cdApiKey => {
-                  let cdVal = cd[cdApiKey];
-                  if (cdVal === null || cdVal === undefined) cdVal = '';
-                  const cdCamelKey = snakeToCamel(cdApiKey);
-                  camelCd[cdCamelKey] = cdVal;
+                Object.keys(cd).forEach(cdKey => {
+                  camelCd[snakeToCamel(cdKey)] = cd[cdKey] ?? '';
                 });
                 if ('total_number' in cd) camelCd.totalNumber = cd.total_number || '';
                 return camelCd;
-              });
-            } else {
-              camelSd.containerDetails = [{ totalNumber: '', container: null, status: '' }];
-            }
+              })
+            : [{ totalNumber: '', container: null, status: '' }];
 
-            return camelSd;
-          });
-          camelRec.shippingDetails = mappedShippingDetails;
-        }
+          return camelSd;
+        });
+      }
 
-        // Fallback shipping details
-        if (!camelRec.shippingDetails?.length) {
-          camelRec.shippingDetails = [{
-            ...initialShippingDetail,
-            totalNumber: rec.total_number || '',
-            weight: rec.total_weight || ''
-          }];
-        }
+      if (!camelRec.shippingDetails?.length) {
+        camelRec.shippingDetails = [{
+          ...initialShippingDetail,
+          totalNumber: rec.total_number || '',
+          weight:      rec.total_weight || '',
+        }];
+      }
 
-        camelRec.status = rec.status || "Created";
-        camelRec.fullPartial = camelRec.fullPartial || '';
-        camelRec.qtyDelivered = camelRec.qtyDelivered != null ? String(camelRec.qtyDelivered) : '0';
+      camelRec.status       = rec.status       || 'Created';
+      camelRec.fullPartial  = camelRec.fullPartial || '';
+      camelRec.qtyDelivered = camelRec.qtyDelivered != null ? String(camelRec.qtyDelivered) : '0';
 
-        return camelRec;
-      }).filter(Boolean);
-    }
+      return camelRec;
+    }).filter(Boolean);
 
-    // Fallback if no panel2 items
     if (!mappedPanel2.length) {
-      mappedPanel2 = [{
-        ...initialItem,
-        shippingDetails: [],
-        isNew: true
-      }];
+      mappedPanel2 = [{ ...initialItem, shippingDetails: [], isNew: true }];
     }
 
-    // Ensure other list is empty
     const otherListKey = panel2ListKey === 'receivers' ? 'senders' : 'receivers';
-    camelData[otherListKey] = [];
-
+    camelData[otherListKey]  = [];
     camelData[panel2ListKey] = mappedPanel2;
 
-    // ── Set attachments & gatepass in formData ──────────────────────────────
+    // ── Attachments & gatepass ──────────────────────────────────────────────
     const apiBase = import.meta.env.VITE_API_URL || '';
 
-    camelData.attachments = attachments.map(item => {
-      if (typeof item === 'string') {
-        // Legacy path → convert to full URL if needed
-        return item.startsWith('http') ? item : `${apiBase}${item}`;
-      }
-      // Already object with url
-      return item;
-    });
+    camelData.attachments = attachments.map(item =>
+      typeof item === 'string'
+        ? (item.startsWith('http') ? item : `${apiBase}${item}`)
+        : item
+    );
 
-    camelData.gatepass = gatepass.map(item => {
-      if (typeof item === 'string') {
-        return item.startsWith('http') ? item : `${apiBase}${item}`;
-      }
-      return item;
-    });
+    camelData.gatepass = gatepass.map(item =>
+      typeof item === 'string'
+        ? (item.startsWith('http') ? item : `${apiBase}${item}`)
+        : item
+    );
 
-    // Set form data
+    console.log('[fetchOrder] Final camelData keys:', Object.keys(camelData));
+    console.log('[fetchOrder] bookingRef:', camelData.bookingRef);
+    console.log('[fetchOrder] rglBookingNumber:', camelData.rglBookingNumber);
+    console.log('[fetchOrder] attachments:', camelData.attachments?.length);
+
     setFormData(camelData);
 
-    // Set initial errors from validation warnings
+    // ── Validation warnings ─────────────────────────────────────────────────
     const initialErrors = {};
     mappedPanel2.forEach((rec, i) => {
-      if (rec.validationWarnings) {
-        if (rec.validationWarnings.total_number) {
-          initialErrors[`${panel2ListKey}[${i}].shippingDetails[0].containerDetails[0].totalNumber`] = rec.validationWarnings.total_number;
-        }
-        if (rec.validationWarnings.qty_delivered) {
-          initialErrors[`${panel2ListKey}[${i}].qtyDelivered`] = rec.validationWarnings.qty_delivered;
-        }
+      if (rec.validationWarnings?.total_number) {
+        initialErrors[`${panel2ListKey}[${i}].shippingDetails[0].containerDetails[0].totalNumber`] = rec.validationWarnings.total_number;
+      }
+      if (rec.validationWarnings?.qty_delivered) {
+        initialErrors[`${panel2ListKey}[${i}].qtyDelivered`] = rec.validationWarnings.qty_delivered;
       }
     });
     setErrors(initialErrors);
 
-    // Optional: show warning if validation issues
-    if (mappedPanel2.some(r => r.validationWarnings)) {
-      // setSnackbar({ open: true, message: 'Some fields need attention', severity: 'warning' });
-    }
-
   } catch (err) {
-    console.error("Error fetching order:", err);
+    console.error('[fetchOrder] Error:', err);
     setSnackbar({
-      open: true,
-      message: err.response?.data?.error || err.message || 'Failed to fetch order',
+      open:     true,
+      message:  err.response?.data?.error || err.message || 'Failed to fetch order',
       severity: 'error',
     });
-    if (err.response?.status === 404) {
-      navigate('/orders');
-    }
+    if (err.response?.status === 404) navigate('/orders');
   } finally {
     setLoading(false);
   }
 };
-
-formData.receivers.map((item) => {console.log('release',item.status)})
-
 const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => {
@@ -3892,11 +3869,31 @@ const handleChange = (e) => {
             receivers: [...prev.receivers, { ...initialReceiver, shippingDetails: [], isNew: true }]
         }));
     };
-    const removeReceiver = (index) => {
-        setFormData(prev => ({
-            ...prev,
-            receivers: prev.receivers.filter((_, i) => i !== index)
-        }));
+    const removeReceiver = async (order) => {
+        console.log('Removing receiver:', order, 'from order:', orderId);
+  try {
+    const response = await api.delete(`/api/orders/${orderId}/receivers/${order.id}`);
+    
+    // Update local state with returned receivers list
+    setFormData(prev => ({
+      ...prev,
+      receivers: response.data.receivers,
+    }));
+
+    setSnackbar({
+      open: true,
+      message: 'Receiver removed successfully',
+      severity: 'success',
+    });
+  } catch (err) {
+    console.error('[handleRemoveReceiver] Error:', err.response?.data || err.message);
+    setSnackbar({
+      open: true,
+      message: err.response?.data?.error || 'Failed to remove receiver',
+      severity: 'error',
+    });
+  }
+// };
     };
 
     const loadImageAsBase64 = (url) =>
@@ -4712,14 +4709,36 @@ const getPlaceName = (placeId) => {
             )
         }));
     };
-    const removeReceiverShipping = (index, j) => {
-        setFormData(prev => ({
-            ...prev,
-            receivers: prev.receivers.map((r, i) =>
-                i === index ? { ...r, shippingDetails: r.shippingDetails.filter((_, k) => k !== j) } : r
-            )
-        }));
-    };
+   
+const removeReceiverShipping = async (index, j) => {
+    const receiver = formData.receivers[index];
+    const shippingDetail = receiver?.shippingDetails?.[j];
+
+    // If item exists in DB, delete it via API
+    if (shippingDetail?.id) {
+        try {
+            await api.delete(`/api/orders/${orderId}/order-items/${shippingDetail.id}`);
+        } catch (err) {
+            console.error('[removeReceiverShipping] Failed to delete from DB:', err.response?.data || err.message);
+            setSnackbar({
+                open: true,
+                message: err.response?.data?.error || 'Failed to remove shipping detail',
+                severity: 'error',
+            });
+            return; // Don't update local state if DB delete failed
+        }
+    }
+
+    // Update local state
+    setFormData(prev => ({
+        ...prev,
+        receivers: prev.receivers.map((r, i) =>
+            i === index
+                ? { ...r, shippingDetails: r.shippingDetails.filter((_, k) => k !== j) }
+                : r
+        )
+    }));
+};
     // Frontend: handleSaveShipping function (add this to your AddOrder.jsx component)
     // This function saves/updates shipping details for a specific receiver index without full form submission
     // It can be called on the "Save" button click for shipping section
@@ -5020,158 +5039,157 @@ const statuses = [
         setFormData((prev) => ({ ...prev, gatepass: [...(Array.isArray(prev.gatepass) ? prev.gatepass : []), ...files] }));
     };
 
-
 const handleSave = async () => {
-    console.log("Submitting form data:",);
-    // console.log('Saving owner name:', formDataToSend); // Debug
-    // if (!validateForm()) {
-    //     setSnackbar({
-    //         open: true,
-    //         message: 'Please fix the errors in the form',
-    //         severity: 'error',
-    //     });
-    //     return;
-    // }
-    setLoading(true);
-    const formDataToSend = new FormData();
-    const dateFields = ['eta', 'etd', 'dropDate', 'deliveryDate'];
-    // Append core orders fields
-    const coreKeys = ['bookingRef', 'rglBookingNumber', 'placeOfLoading', 'pointOfOrigin', 'finalDestination', 'placeOfDelivery', 'orderRemarks', 'eta', 'etd', 'attachments'];
-    coreKeys.forEach(key => {
-        const value = formData[key];
-        if (dateFields.includes(key) && value === '') { 
-            // Skip empty dates
-        } else {
-            const apiKey = camelToSnake(key);
-            formDataToSend.append(apiKey, value || '');
-        }
+  console.log('Submitting form data');
+  setLoading(true);
+
+  const formDataToSend = new FormData();
+  const dateFields = ['eta', 'etd', 'dropDate', 'deliveryDate'];
+
+  const coreKeys = [
+    'bookingRef', 'rglBookingNumber', 'placeOfLoading', 'pointOfOrigin',
+    'finalDestination', 'placeOfDelivery', 'orderRemarks', 'eta', 'etd',
+  ];
+
+  coreKeys.forEach(key => {
+    const value = formData[key];
+    if (dateFields.includes(key) && value === '') {
+      // Skip empty dates
+    } else {
+      formDataToSend.append(camelToSnake(key), value || '');
+    }
+  });
+
+  const ownerFieldPrefix = formData.senderType === 'sender' ? 'sender' : 'receiver';
+  const ownerFields = ['Name', 'Contact', 'Address', 'Email', 'Ref', 'Remarks'];
+  ownerFields.forEach(key => {
+    const value = formData[`${ownerFieldPrefix}${key}`] || '';
+    formDataToSend.append(`${ownerFieldPrefix}_${key.toLowerCase()}`, value);
+  });
+
+  formDataToSend.append('sender_type', formData.senderType);
+  formDataToSend.append('selected_sender_owner', formData.selectedSenderOwner || '');
+
+  const panel2Items = formData.senderType === 'receiver' ? formData.senders : formData.receivers;
+  const panel2FieldPrefix = formData.senderType === 'sender' ? 'receiver' : 'sender';
+  const panel2ArrayKey = `${panel2FieldPrefix}s`;
+
+  const panel2ToSend = panel2Items.map(item => ({
+  id: item.id || null, // ← ADD THIS — existing DB receiver id
+    [`${panel2FieldPrefix}_name`]:    formData.senderType === 'sender' ? (item.receiverName    || '') : (item.senderName    || ''),
+    [`${panel2FieldPrefix}_contact`]: formData.senderType === 'sender' ? (item.receiverContact || '') : (item.senderContact || ''),
+    [`${panel2FieldPrefix}_address`]: formData.senderType === 'sender' ? (item.receiverAddress || '') : (item.senderAddress || ''),
+    [`${panel2FieldPrefix}_email`]:   formData.senderType === 'sender' ? (item.receiverEmail   || '') : (item.senderEmail   || ''),
+    [`${panel2FieldPrefix}_marks_and_number`]: item[`${panel2FieldPrefix}MarksNumber`] || '',
+    eta:           item.eta          || '',
+    etd:           item.etd          || '',
+    shipping_line: item.shippingLine || '',
+    full_partial:  item.fullPartial  || 'Full',
+    qty_delivered: item.qtyDelivered || '',
+    status:        item.status       || 'Order Created',
+    remarks:       item.remarks      || '',
+    containers:    Array.isArray(item.containers) ? item.containers.flat() : [],
+  }));
+
+  formDataToSend.append(panel2ArrayKey, JSON.stringify(panel2ToSend));
+
+  // ── Order items — FIX: receiver_index added ─────────────────────────────
+  // ── Order items — use existing itemRef if available ──────────────────────
+const orderItemsToSend = [];
+panel2Items.forEach((item, i) => {
+  (item.shippingDetails || []).forEach((sd, j) => {
+    const snakeItem = {};
+    Object.keys(sd).forEach(key => {
+      if (key !== 'remainingItems' && key !== 'containerDetails') {
+        snakeItem[camelToSnake(key)] = sd[key] || '';
+      }
     });
-    console.log('Core fields appended', Array.from(formDataToSend.entries())); // Debug
-    // Append owner fields dynamically
-    const ownerFieldPrefix = formData.senderType === 'sender' ? 'sender' : 'receiver';
-    const ownerFields = ['Name', 'Contact', 'Address', 'Email', 'Ref', 'Remarks'];
-    ownerFields.forEach(key => {
-        const value = formData[`${ownerFieldPrefix}${key}`] || '';
-        const apiKey = `${ownerFieldPrefix}_${camelToSnake(key.toLowerCase())}`;
-        formDataToSend.append(apiKey, value);
+    snakeItem.container_details = (sd.containerDetails || []).map(cd => {
+      const snakeCd = {};
+      Object.keys(cd).forEach(ck => { snakeCd[camelToSnake(ck)] = cd[ck]; });
+      return snakeCd;
     });
-    formDataToSend.append('sender_type', formData.senderType);
-    // Append selected_sender_owner
-    formDataToSend.append('selected_sender_owner', formData.selectedSenderOwner || '');
-    // Dynamic panel2 items
-    const panel2Items = formData.senderType === 'receiver' ? formData.senders : formData.receivers;
-    const panel2FieldPrefix = formData.senderType === 'sender' ? 'receiver' : 'sender';
-    const panel2ArrayKey = `${panel2FieldPrefix}s`;
-    // Append panel2 as JSON (basic info)
-const panel2ToSend = panel2Items.map((item) => {
-    const snakeRec = {
-        [`${panel2FieldPrefix}_name`]: formData.senderType === 'sender' ? (item.receiverName || '') : (item.senderName || ''),
-        [`${panel2FieldPrefix}_contact`]: formData.senderType === 'sender' ? (item.receiverContact || '') : (item.senderContact || ''),
-        [`${panel2FieldPrefix}_address`]: formData.senderType === 'sender' ? (item.receiverAddress || '') : (item.senderAddress || ''),
-        [`${panel2FieldPrefix}_email`]: formData.senderType === 'sender' ? (item.receiverEmail || '') : (item.senderEmail || ''),
-        [`${panel2FieldPrefix}_marks_and_number`]: item[`${panel2FieldPrefix}MarksNumber`] || '',   // ← Added
-        eta: item.eta || '',
-        etd: item.etd || '',
-        shipping_line: item.shippingLine || '',
-        full_partial: item.fullPartial || item.fullPartial || 'Full',
-        qty_delivered: item.qtyDelivered || item.qtyDelivered || '',
-        status: item.status || 'Order Created',   
-        remarks: item.remarks || '',
-        containers: Array.isArray(item.containers) ? item.containers.flat().flat() : [],
-    };
-    return snakeRec;
+
+    // ── FIX: reuse existing itemRef/id, only generate new ref for new items ──
+    snakeItem.item_ref = sd.itemRef || sd.item_ref || `ORDER-ITEM-REF-${i + 1}-${j + 1}-${Date.now()}`;
+    snakeItem.existing_id = sd.id || null; // pass DB id if item already exists
+    snakeItem.receiver_index = i;
+    orderItemsToSend.push(snakeItem);
+  });
 });
-formDataToSend.append(panel2ArrayKey, JSON.stringify(panel2ToSend));
-    // Append order_items from all shippingDetails flat, now with nested containers
-    const orderItemsToSend = [];
-    panel2Items.forEach((item, i) => {
-        (item.shippingDetails || []).forEach((sd, j) => {
-            const snakeItem = {};
-            Object.keys(sd).forEach(key => {
-                if (key !== 'remainingItems' && key !== 'containerDetails') {
-                    const snakeKey = camelToSnake(key);
-                    snakeItem[snakeKey] = sd[key] || '';
-                }
-            });
-            // NEW: Handle nested containerDetails as 'container_details' array of snake_case objects
-            snakeItem.container_details = (sd.containerDetails || []).map((cd) => {
-                const snakeCd = {};
-                Object.keys(cd).forEach(ck => {
-                    const snakeCk = camelToSnake(ck);
-                    snakeCd[snakeCk] = cd[ck]; // container is CID primitive
-                });
-                return snakeCd;
-            });
-            snakeItem.item_ref = `ORDER-ITEM-REF-${i + 1}-${j + 1}-${Date.now()}`;
-            orderItemsToSend.push(snakeItem);
-        });
-    });
-    formDataToSend.append('order_items', JSON.stringify(orderItemsToSend));
-    // Append transport fields
-    const transportKeys = ['transportType', 'collection_scope', 'thirdPartyTransport', 'driverName', 'driverContact', 'driverNic', 'driverPickupLocation', 'truckNumber', 'dropMethod', 'dropoffName', 'dropOffCnic', 'dropOffMobile', 'plateNo', 'dropDate', 'collectionMethod', 'clientReceiverName', 'clientReceiverId', 'clientReceiverMobile', 'deliveryDate', 'gatepass'];
-    transportKeys.forEach(key => {
-        const value = formData[key];
-        const apiKey = camelToSnake(key);
-        formDataToSend.append(apiKey, value || '');
-    });
-    // NEW: Handle nested dropOffDetails - Flatten all receiver-specific drop-offs into a single JSON array for backend
-    const flattenedDropOffDetails = [];
-    if (formData.dropOffDetails && typeof formData.dropOffDetails === 'object') {
-        Object.keys(formData.dropOffDetails).forEach(receiverIndex => {
-            const receiverDetails = formData.dropOffDetails[receiverIndex];
-            if (Array.isArray(receiverDetails)) {
-                receiverDetails.forEach((detail, detailIndex) => {
-                    flattenedDropOffDetails.push({
-                        receiver_index: receiverIndex,
-                        ...detail  // Spread dropMethod, dropoffName, etc.
-                    });
-                });
-            }
-        });
+
+  formDataToSend.append('order_items', JSON.stringify(orderItemsToSend));
+
+  const transportKeys = [
+    'transportType', 'collection_scope', 'thirdPartyTransport', 'driverName',
+    'driverContact', 'driverNic', 'driverPickupLocation', 'truckNumber',
+    'dropMethod', 'dropoffName', 'dropOffCnic', 'dropOffMobile', 'plateNo',
+    'dropDate', 'collectionMethod', 'clientReceiverName', 'clientReceiverId',
+    'clientReceiverMobile', 'deliveryDate',
+  ];
+
+  transportKeys.forEach(key => {
+    const value = formData[key];
+    if (dateFields.includes(key) && value === '') {
+      // Skip empty dates
+    } else {
+      formDataToSend.append(camelToSnake(key), value || '');
     }
-    formDataToSend.append('drop_off_details', JSON.stringify(flattenedDropOffDetails));
-    // Handle attachments and gatepass
-    ['attachments', 'gatepass'].forEach(key => {
-        const value = formData[key];
-        if (Array.isArray(value) && value.length > 0) {
-            const existing = value.filter(item => typeof item === 'string');
-            const newFiles = value.filter(item => item instanceof File);
-            if (newFiles.length > 0) {
-                newFiles.forEach(file => formDataToSend.append(key, file));
-            }
-            if (existing.length > 0) {
-                const apiKey = camelToSnake(key);
-                formDataToSend.append(`${apiKey}_existing`, JSON.stringify(existing));
-            }
-        }
+  });
+
+  const flattenedDropOffDetails = [];
+  if (formData.dropOffDetails && typeof formData.dropOffDetails === 'object') {
+    Object.keys(formData.dropOffDetails).forEach(receiverIndex => {
+      const receiverDetails = formData.dropOffDetails[receiverIndex];
+      if (Array.isArray(receiverDetails)) {
+        receiverDetails.forEach(detail => {
+          flattenedDropOffDetails.push({ receiver_index: receiverIndex, ...detail });
+        });
+      }
     });
-    try {
-        const endpoint = isEditMode ? `/api/orders/${orderId}` : '/api/orders';
-        const method = isEditMode ? 'put' : 'post';
-        const response = await api[method](endpoint, formDataToSend, {
-            headers: { 'Content-Type': 'multipart/form-data' }
-        });
-        if (isEditMode) {
-            await fetchOrder(orderId);
-        } else {
-            navigate('/orders');
-        }
-        setSnackbar({
-            open: true,
-            message: isEditMode ? 'Order updated successfully' : 'Order created successfully',
-            severity: 'success',
-        });
-    } catch (err) {
-        console.error("[handleSave] Backend error:", err.response?.data || err.message);
-        const backendMsg = err.response?.data?.error || err.message || 'Failed to save order';
-        setSnackbar({
-            open: true,
-            message: `Backend Error: ${backendMsg}`,
-            severity: 'error',
-        });
-    } finally {
-        setLoading(false);
+  }
+  formDataToSend.append('drop_off_details', JSON.stringify(flattenedDropOffDetails));
+
+  ['attachments', 'gatepass'].forEach(key => {
+    const value = formData[key];
+    if (Array.isArray(value) && value.length > 0) {
+      const newFiles = value.filter(item => item instanceof File);
+      const existing = value.filter(item => !(item instanceof File));
+      if (newFiles.length > 0) {
+        newFiles.forEach(file => formDataToSend.append(key, file));
+      }
+      if (existing.length > 0) {
+        formDataToSend.append(`${camelToSnake(key)}_existing`, JSON.stringify(existing));
+      }
     }
+  });
+
+  try {
+    const endpoint = isEditMode ? `/api/orders/${orderId}` : '/api/orders';
+    const method   = isEditMode ? 'put' : 'post';
+
+    const response = await api[method](endpoint, formDataToSend, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+
+    if (isEditMode) {
+      await fetchOrder(orderId);
+    } else {
+      navigate('/orders');
+    }
+
+    setSnackbar({
+      open: true,
+      message: isEditMode ? 'Order updated successfully' : 'Order created successfully',
+      severity: 'success',
+    });
+  } catch (err) {
+    console.error('[handleSave] Backend error:', err.response?.data || err.message);
+    const backendMsg = err.response?.data?.error || err.message || 'Failed to save order';
+    setSnackbar({ open: true, message: `Backend Error: ${backendMsg}`, severity: 'error' });
+  } finally {
+    setLoading(false);
+  }
 };
     const handleCancel = () => {
         navigate(-1);
@@ -6588,7 +6606,7 @@ formDataToSend.append(panel2ArrayKey, JSON.stringify(panel2ToSend));
                                     </IconButton>
                                     {currentList.length > 1 && (
                                         <IconButton
-                                            onClick={() => removeRecFn(i)}
+                                            onClick={() => removeRecFn(rec)}
                                             size="small"
                                             title="Delete"
                                             color="error"

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import axios, { all } from 'axios';
 import {
   Box, Button, TextField, Select, MenuItem, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Paper, Chip, IconButton, Typography, Modal, FormControl, InputLabel, Radio, RadioGroup, FormControlLabel, Tooltip, Divider,
@@ -262,7 +262,7 @@ console.log('Fetched options:', { statusRes, locationRes, sizeRes, typeRes, owne
   };
 
   // Fetch container by ID with usage history
-  const fetchContainerById = async (cid) => {
+   const fetchContainerById = async (cid) => {
     setLoadingHistory(true);
     setUsageHistory([]);
 
@@ -330,6 +330,7 @@ console.log('Fetched options:', { statusRes, locationRes, sizeRes, typeRes, owne
       setLoadingHistory(false);
     }
   };
+
 
   useEffect(() => {
     if (!propContainers || propContainers.length === 0) {
@@ -745,7 +746,7 @@ console.log('Enhanced Grouped History:', locations);
 
       const doc = new jsPDF("p", "mm", "a4");
       const pageWidth = doc.internal.pageSize.getWidth();
-      const margin = 14;
+      const margin = 10;
       const brandPrimary = [13, 108, 106]; // #0d6c6a
       const brandLight = [220, 245, 243];
       let y = 30;
@@ -964,7 +965,7 @@ console.log('Enhanced Grouped History:', locations);
           const shippingDetails = receiver.shippingDetails || [];
           shippingDetails.forEach((detail) => {
             const orderData = receiver.sourceOrderData || firstOrder;
-
+console.log("Processing receiver:", allReceiversData.length + 1, { receiver, detail, orderData });
             allReceiversData.push({
               receiverName: receiver.receiver_name || "N/A",
               category: detail.category || "N/A",
@@ -978,6 +979,8 @@ console.log('Enhanced Grouped History:', locations);
               bookingRef: orderData.booking_ref || "N/A",
               rglBookingNumber: orderData.rgl_booking_number || "N/A",
               senderName: orderData.sender_name || "N/A",
+              pod: detail.deliveryAddress || "N/A",
+              pol: detail.pickupLocation || "N/A",
             });
           });
         }
@@ -1076,8 +1079,8 @@ console.log('Enhanced Grouped History:', locations);
             0: { cellWidth: 50 },
             1: { cellWidth: 40 },
             2: { cellWidth: 40 },
-            3: { cellWidth: 30 },
-            4: { cellWidth: 30 },
+            3: { cellWidth: 27 },
+            4: { cellWidth: 27 },
           },
           margin: { left: margin, right: margin },
           didParseCell: function (data) {
@@ -1103,7 +1106,7 @@ console.log('Enhanced Grouped History:', locations);
 
         // ===  ============== SECOND TABLE (Detailed List) =================
         const secondTableBody = allReceiversData.map((receiver, index) => [
-          index + 1,
+          // index + 1,
           receiver.bookingRef || "-",
           receiver.rglBookingNumber || "-",
           receiver.senderName || "-",
@@ -1111,50 +1114,52 @@ console.log('Enhanced Grouped History:', locations);
           receiver.category || "-",
           receiver.subcategory || "-",
           receiver.type || "-",
-          receiver.totalNumber || 0,
-          receiver.weight || 0,
+          // receiver.totalNumber || 0,
+          // receiver.weight || 0,
+          receiver.pod || "-",
+          receiver.pol || "-",  
         ]);
 
-        const totalQty = allReceiversData.reduce(
-          (sum, item) => sum + Number(item.totalNumber || 0),
-          0
-        );
-        const totalWeightSecond = allReceiversData.reduce(
-          (sum, item) => sum + Number(item.weight || 0),
-          0
-        );
+        // const totalQty = allReceiversData.reduce(
+        //   (sum, item) => sum + Number(item.totalNumber || 0),
+        //   0
+        // );
+        // const totalWeightSecond = allReceiversData.reduce(
+        //   (sum, item) => sum + Number(item.weight || 0),
+        //   0
+        // );
 
-        secondTableBody.push([
-          {
-            content: "TOTAL",
-            colSpan: 8,
-            styles: {
-              halign: "center",
-              fontStyle: "bold",
-              textColor: [...brandPrimary],
-            },
-          },
-          {
-            content: totalQty.toString(),
-            styles: {
-              halign: "left",
-              fontStyle: "bold",
-            },
-          },
-          {
-            content: totalWeightSecond.toString(),
-            styles: {
-              halign: "left",
-              fontStyle: "bold",
-            },
-          },
-        ]);
+        // secondTableBody.push([
+        //   {
+        //     content: "TOTAL",
+        //     colSpan: 8,
+        //     styles: {
+        //       halign: "center",
+        //       fontStyle: "bold",
+        //       textColor: [...brandPrimary],
+        //     },
+        //   },
+        //   {
+        //     content: totalQty.toString(),
+        //     styles: {
+        //       halign: "left",
+        //       fontStyle: "bold",
+        //     },
+        //   },
+        //   {
+        //     content: totalWeightSecond.toString(),
+        //     styles: {
+        //       halign: "left",
+        //       fontStyle: "bold",
+        //     },
+        //   },
+        // ]);
 
         doc.autoTable({
           startY: y,
           head: [
             [
-              "S.No",
+              // "S.No",
               "Order No",
               "RGSL",
               "Sender",
@@ -1162,8 +1167,10 @@ console.log('Enhanced Grouped History:', locations);
               "Category",
               "Sub Category",
               "Type",
-              "Qty",
-              "Weight",
+              // "Qty",
+              // "Weight",
+              "Pod",
+              "Pol",
             ],
           ],
           body: secondTableBody,
@@ -1190,16 +1197,15 @@ console.log('Enhanced Grouped History:', locations);
             lineColor: [200, 200, 200],
           },
           columnStyles: {
-            0: { cellWidth: 10 },
-            1: { cellWidth: 15 },
-            2: { cellWidth: 21 },
-            3: { cellWidth: 30 },
-            4: { cellWidth: 25 },
-            5: { cellWidth: 23 },
-            6: { cellWidth: 20 },
-            7: { cellWidth: 17 },
-            8: { cellWidth: 13 },
-            9: { cellWidth: 16 },
+            0: { cellWidth: 19 },
+            1: { cellWidth: 19 },
+            2: { cellWidth: 26 },
+            3: { cellWidth: 26 },
+            4: { cellWidth: 21 },
+            5: { cellWidth: 18},
+            6: { cellWidth: 15 },
+            7: { cellWidth: 20 },
+            8: { cellWidth: 20 },
           },
           margin: { left: margin, right: margin },
           didParseCell: function (data) {
@@ -2882,150 +2888,130 @@ console.log('Enhanced Grouped History:', locations);
                 <Typography variant="body2" sx={{ ml: 1 }}>Loading history...</Typography>
               </Box>
             ) : (
-              <Box>
-                {(!usageHistory || usageHistory.length === 0) ? (
-                  <Typography variant="body2" align="center" sx={{ py: 4, color: 'text.secondary' }}>
-                    No assignment history available
-                  </Typography>
-                ) : (
-                  usageHistory
-                    .filter(group => group && group.length > 0)
-                    .map((group, groupIndex) => {
-                      const filteredGroup = group.filter(event => event.eventType === "ASSIGNMENT");
-                      if (filteredGroup.length === 0) return null;
+            <Box>
+  {!Array.isArray(usageHistory) || usageHistory.length === 0 ? (
+    <Typography variant="body2" align="center" sx={{ py: 4, color: 'text.secondary' }}>
+      No assignment history available
+    </Typography>
+  ) : (
+    usageHistory
+      .filter(group => Array.isArray(group) && group.length > 0)
+      .map((group, groupIndex) => {
+        const filteredGroup = group.filter(event => event.eventType === "ASSIGNMENT");
+        if (filteredGroup.length === 0) return null;
 
-                      const firstEvent = filteredGroup[0];
-                      const jobNo = firstEvent.jobNo || `General Period ${groupIndex + 1}`;
-                      const pol = firstEvent.pol || 'N/A';
-                      const pod = firstEvent.pod || 'N/A';
-                      const linkedOrders = firstEvent.linkedOrders || 'N/A';
-                      const sortedEvents = [...group].sort((a, b) => new Date(b.eventTime) - new Date(a.eventTime));
-                      const earliestEvent = sortedEvents[sortedEvents.length - 1] || {};
-                      const latestEvent = sortedEvents[0] || {};
+        const firstEvent = filteredGroup[0];
+        const jobNo = firstEvent.jobNo || `General Period ${groupIndex + 1}`;
+        const pol = firstEvent.pol || 'N/A';
+        const pod = firstEvent.pod || 'N/A';
+        const linkedOrders = firstEvent.linkedOrders || 'N/A';
 
-                      return (
-                        <Box key={jobNo || `group-${groupIndex}`} sx={{ mb: 3 }}>
-                          {/* Group Summary Row with Print Button */}
-                          <Paper elevation={1} sx={{ p: 2, mb: 2 }}>
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                              <Typography variant="h6" sx={{ color: '#0d6c6a', fontWeight: 'bold' }}>
-                                Job: {jobNo}
-                              </Typography>
+        // Sort by eventTime descending (newest first)
+        const sortedEvents = [...group].sort((a, b) => 
+          new Date(b.eventTime) - new Date(a.eventTime)
+        );
 
-                              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                                <Chip label={`Events: ${group.length}`} color="info" size="small" />
+        const earliestEvent = sortedEvents[sortedEvents.length - 1] || {};
+        const latestEvent = sortedEvents[0] || {};
 
-                                {/* Single Job Print Button */}
-                                <Tooltip title="Print this job only">
-                                  <IconButton
-                                    size="small"
-                                    onClick={() => generateSingleJobManifestPDF(
-                                      group,
-                                      selectedContainerNo,
-                                      jobNo,
-                                      pol,
-                                      pod,
-                                      linkedOrders
-                                    )}
-                                    disabled={generatingPDF}
-                                    sx={{
-                                      color: '#0d6c6a',
-                                      '&:hover': {
-                                        backgroundColor: 'rgba(13, 108, 106, 0.1)'
-                                      }
-                                    }}
-                                  >
-                                    {generatingPDF ? (
-                                      <CircularProgress size={20} />
-                                    ) : (
-                                      <DownloadIcon fontSize="small" />
-                                    )}
-                                  </IconButton>
-                                </Tooltip>
+        return (
+          <Box key={jobNo || `group-${groupIndex}`} sx={{ mb: 3 }}>
+            {/* Group Summary Row */}
+            <Paper elevation={1} sx={{ p: 2, mb: 2 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                <Typography variant="h6" sx={{ color: '#0d6c6a', fontWeight: 'bold' }}>
+                  Job: {jobNo}
+                </Typography>
 
-                                {/* Detailed Manifest Button (if you want both options) */}
-                                <Tooltip title="Print detailed manifest">
-                                  <Button
-                                    variant="outlined"
-                                    size="small"
-                                    startIcon={<DownloadIcon />}
-                                    onClick={() => generateJobDetailManifestPDF(
-                                      jobNo,
-                                      pol,
-                                      pod,
-                                      linkedOrders,
-                                      group
-                                    )}
-                                    disabled={generatingPDF}
-                                    sx={{
-                                      borderRadius: 1,
-                                      borderColor: "#f58220",
-                                      color: "#f58220",
-                                      fontSize: '0.75rem',
-                                      py: 0.5,
-                                      px: 1
-                                    }}
-                                  >
-                                    Manifest
-                                  </Button>
-                                </Tooltip>
-                              </Box>
-                            </Box>
+                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                  <Chip label={`Events: ${group.length}`} color="info" size="small" />
 
-                            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                              <Chip label={`${getPlaceName(pol)} → ${getPlaceName(pod)}`} color="default" size="small" />
-                              <Chip label={`Orders: ${linkedOrders}`} color="primary" size="small" />
-                              <Chip label={`Start: ${earliestEvent.startDate || 'N/A'}`} color="secondary" size="small" />
-                              <Chip label={`End: ${latestEvent.endDate || 'N/A'}`} color="warning" size="small" />
-                            </Box>
-                          </Paper>
+                  <Tooltip title="Print this job only">
+                    <IconButton
+                      size="small"
+                      onClick={() => generateSingleJobManifestPDF(
+                        group,
+                        selectedContainerNo,
+                        jobNo,
+                        pol,
+                        pod,
+                        linkedOrders
+                      )}
+                      disabled={generatingPDF}
+                      sx={{ color: '#0d6c6a' }}
+                    >
+                      {generatingPDF ? <CircularProgress size={20} /> : <DownloadIcon fontSize="small" />}
+                    </IconButton>
+                  </Tooltip>
 
-                          {/* Events Sub-Table */}
-                          <TableContainer component={Paper} sx={{ boxShadow: 1, borderRadius: 1 }}>
-                            <Table size="small">
-                              <TableHead>
-                                <TableRow>
-                                  <TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>Event Time</TableCell>
-                                  <TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>Type</TableCell>
-                                  <TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>Summary</TableCell>
-                                  <TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>Updated By</TableCell>
-                                  <TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>Location</TableCell>
-                                  <TableCell sx={{ bgcolor: '#0d6c6a', color: 'white', fontWeight: 'bold' }}>Order/Receiver</TableCell>
-                                </TableRow>
-                              </TableHead>
-                              <TableBody>
-                                {sortedEvents.map((event, eventIndex) => (
-                                  <TableRow key={`${jobNo}-${event.eventTime}-${eventIndex}`}>
-                                    <TableCell>{event.eventTime ? event.eventTime : 'N/A'}</TableCell>
-                                    <TableCell>
-                                      <Chip
-                                        label={event.eventType || 'N/A'}
-                                        color={event.eventType === 'CREATION' ? 'success' : event.eventType === 'ASSIGNMENT' ? 'primary' : 'info'}
-                                        size="small"
-                                      />
-                                    </TableCell>
-                                    <TableCell sx={{ maxWidth: 200, wordBreak: 'break-word' }}>
-                                      {event.eventSummary || 'N/A'}
-                                    </TableCell>
-                                    <TableCell>{event.changedBy || 'System'}</TableCell>
-                                    <TableCell>
-                                      {event.pol && event.pod ? (
-                                        `${getPlaceName(event.pol)} → ${getPlaceName(event.pod)}`
-                                      ) : (
-                                        event.location || 'N/A'
-                                      )}
-                                    </TableCell>
-                                    <TableCell>{`${event.orderId || 'N/A'}/${event.receiverId || 'N/A'}`}</TableCell>
-                                  </TableRow>
-                                ))}
-                              </TableBody>
-                            </Table>
-                          </TableContainer>
-                        </Box>
-                      );
-                    })
-                )}
+                  <Tooltip title="Print detailed manifest">
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      startIcon={<DownloadIcon />}
+                      onClick={() => generateJobDetailManifestPDF(jobNo, pol, pod, linkedOrders, group)}
+                      disabled={generatingPDF}
+                      sx={{ borderColor: "#f58220", color: "#f58220", fontSize: '0.75rem' }}
+                    >
+                      Manifest
+                    </Button>
+                  </Tooltip>
+                </Box>
               </Box>
+
+              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                <Chip label={`${getPlaceName(pol)} → ${getPlaceName(pod)}`} color="default" size="small" />
+                <Chip label={`Orders: ${linkedOrders}`} color="primary" size="small" />
+                <Chip label={`Start: ${earliestEvent.startDate || 'N/A'}`} color="secondary" size="small" />
+                <Chip label={`End: ${latestEvent.endDate || 'N/A'}`} color="warning" size="small" />
+              </Box>
+            </Paper>
+
+            {/* Events Table */}
+            <TableContainer component={Paper} sx={{ boxShadow: 1, borderRadius: 1 }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow sx={{ bgcolor: '#0d6c6a' }}>
+                    <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Event Time</TableCell>
+                    <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Type</TableCell>
+                    <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Summary</TableCell>
+                    <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Updated By</TableCell>
+                    <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Location</TableCell>
+                    <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Order/Receiver</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {sortedEvents.map((event, eventIndex) => (
+                    <TableRow key={`${jobNo}-${event.eventTime}-${eventIndex}`}>
+                      <TableCell>{event.eventTime || 'N/A'}</TableCell>
+                      <TableCell>
+                        <Chip
+                          label={event.eventType || 'N/A'}
+                          color={event.eventType === 'ASSIGNMENT' ? 'primary' : 'info'}
+                          size="small"
+                        />
+                      </TableCell>
+                      <TableCell sx={{ maxWidth: 200, wordBreak: 'break-word' }}>
+                        {event.eventSummary || 'N/A'}
+                      </TableCell>
+                      <TableCell>{event.changedBy || 'System'}</TableCell>
+                      <TableCell>
+                        {event.pol && event.pod 
+                          ? `${getPlaceName(event.pol)} → ${getPlaceName(event.pod)}`
+                          : event.location || 'N/A'
+                        }
+                      </TableCell>
+                      <TableCell>{`${event.orderId || 'N/A'}/${event.receiverId || 'N/A'}`}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Box>
+        );
+      })
+  )}
+</Box>
             )}
 
             <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center' }}>

@@ -219,7 +219,7 @@ const modalStyle = {
       console.error('Error fetching container details:', error);
       setUsageHistory([]);
       setSelectedContainerNo(cid);
-      handleError(error, 'Error fetching container details');
+      // handleError(error, 'Error fetching container details');
     } finally {
       setLoadingHistory(false);
     }
@@ -348,6 +348,7 @@ const modalStyle = {
 
   // Handle history modal open
   const openHistory = (cid) => {
+    console.log('Opening history for container ID:', cid);
     if (!cid) {
       handleError(new Error('Invalid container ID'));
       return;
