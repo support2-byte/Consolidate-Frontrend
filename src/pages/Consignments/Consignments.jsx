@@ -229,6 +229,77 @@ export default function Consignments() {
     }
   };
 
+          const handleView = (id) => {
+        navigate(`/consignments/${id}/edit`,{ state: { mode: 'edit', consignmentId: id  } });
+
+  };
+
+  const handleEdit = (id) => {
+    
+    navigate(`/consignments/${id}/edit`, { state: { mode: 'edit', consignmentId: id } });
+  };
+
+  const handleDelete = (id) => {
+    if (window.confirm('Are you sure you want to delete this consignment?')) {
+      console.log('Delete consignment', id);
+      setSnackbar({ open: true, message: 'Consignment deleted successfully!', severity: 'success' });
+    }
+  };
+
+  const handleStatusChange = (e) => {
+    setSelectedStatus(e.target.value);
+  };
+
+//   const handleConfirmStatusUpdate = async(row) => {
+//     console.log('consignments',row)
+//         try {
+//           const res = await api.put(`/api/consignments/${row.id}/next`);
+//           const { message } = res.data || {};
+//           getConsignments()
+//           console.log('Status advanced:', res)
+//           setSnackbar({
+//             open: true,
+//             message: message || 'Status advanced successfully!',
+//             severity: 'success',
+//           });
+//         } catch (err) {
+//           console.error('Error advancing status:', err);
+//           setSnackbar({
+//             open: true,
+//             message: 'Failed to advance status.',
+//             severity: 'error',
+//           });
+        
+//       };
+//     setOpenStatusDialog(false);
+//     // setSnackbar({ open: true, message: 'Status updated successfully!', severity: 'success' });
+      
+// }
+
+  const handleCloseStatusDialog = () => {
+    setOpenStatusDialog(false);
+    setSelectedConsignmentForUpdate(null);
+    setSelectedStatus('');
+};
+
+  const handleCloseSnackbar = () => {
+    setSnackbar({ ...snackbar, open: false });
+  };
+  // Safe JSON parse helper to avoid errors
+  const safeParseOrders = (orders) => {
+  if (!orders) return [];
+  if (Array.isArray(orders) || (typeof orders === 'object' && orders !== null)) {
+    return orders; // Already parsed (from DB JSONB)
+  }
+  if (orders === '[]') return [];
+  try {
+    return JSON.parse(orders);
+  } catch (e) {
+    console.warn('Invalid orders JSON:', orders, e);
+    return [];
+  }
+};
+
   // ... (keep your other handlers: handleExport, handleView, handleEdit, etc.)
 
   return (
@@ -319,13 +390,14 @@ export default function Consignments() {
                   <TableCell>{renderStatus(row.status)}</TableCell>
                   <TableCell>
                     <Stack direction="row" spacing={1}>
-                      <Tooltip title="View">
+                      {/* <Tooltip title="View">
                         <IconButton size="small" onClick={() => navigate(`/consignments/${row.id}`)}>
                           <VisibilityIcon fontSize="small" />
                         </IconButton>
-                      </Tooltip>
+                      </Tooltip> */}
                       <Tooltip title="Edit">
-                        <IconButton size="small" onClick={() => navigate(`/consignments/${row.id}/edit`)}>
+                        {console.log('Row data for edit:', row)}
+                        <IconButton size="small" onClick={() => handleEdit(row.id)}>
                           <EditIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>

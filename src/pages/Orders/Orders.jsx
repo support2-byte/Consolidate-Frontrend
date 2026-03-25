@@ -1215,7 +1215,7 @@ const OrdersList = () => {
                                     <Stack direction="row" alignItems="center" spacing={1.5}>
                                         <Box sx={{ flex: 1, minWidth: 0 }}>
                                             <Typography variant="body2" fontWeight="medium" noWrap>
-                                                {receiver.receivername || 'Unnamed Receiver'}
+                                                {receiver.receiverName || 'Unnamed Receiver'}
                                             </Typography>
 
                                         </Box>
@@ -1458,7 +1458,7 @@ const OrdersList = () => {
     const getReceiverName = (orderData) => {
         if (orderData.receivers && orderData.receivers.length > 0) {
             const firstReceiver = orderData.receivers[0];
-            return firstReceiver.receivername || null;
+            return firstReceiver.receiverName || null;
         }
         return null;
     };
@@ -2219,12 +2219,12 @@ const OrdersList = () => {
 
         // Get first receiver data
         const receiver = orderData.receivers && orderData.receivers[0] ? orderData.receivers[0] : {};
-        const receiverName = getValue(receiver.receivername);
-        const receiverContact = getValue(receiver.receivercontact);
-        const receiverAddress = getValue(receiver.receiveraddress);
+        const receiverName = getValue(receiver.receiverName);
+        const receiverContact = getValue(receiver.receiverContact);
+        const receiverAddress = getValue(receiver.receiverAddress);
 
         // Get shipping details
-        const shippingDetails = receiver.shippingdetails || [];
+        const shippingDetails = receiver.shippingDetails || [];
 
         // Get container details
         const containers = receiver.containers || [];
@@ -7704,7 +7704,7 @@ applicable law provides otherwise
                                                                 </sup>
                                                             )}
                                                             <span style={{ padding: 0 }}>
-                                                                {order.receivers.map(r => r.receivername || '')}
+                                                                {order.receivers.map(r => r.receiverName || '')}
                                                             </span>
                                                         </>
                                                         : '-'}
