@@ -72,7 +72,7 @@ console.log('rglBookingNorglBookingNo',typeToEndpoint)
     try {
       const res = await api.get(url);
       let rawData = res.data?.data ?? res.data;
-      console.log('sender response rawdata', rawData)
+      console.log('sender response rawdata', res)
       let trackingDataToSet;
 
       if (trackType === 'consignment_no') {
@@ -194,7 +194,7 @@ console.log('rglBookingNorglBookingNo',typeToEndpoint)
     'Ready for Loading',
     'Loaded Into Container',
     'Shipment Processing',
-    'Shipment In Transit',
+    'In Transit',
     'Under Processing',
     'Arrived at Sort Facility',
     'Ready for Delivery',
@@ -227,7 +227,7 @@ console.log('rglBookingNorglBookingNo',typeToEndpoint)
           textAlign: 'center',
         }}
       >
-        <Typography variant="h3" fontWeight={800} sx={{ mt: 15 }}>
+        <Typography variant="h3" fontWeight={800} sx={{ mt: 2 }}>
           Track Your Shipment
         </Typography>
 
@@ -338,6 +338,8 @@ console.log('rglBookingNorglBookingNo',typeToEndpoint)
 const ItemRefLayout = ({ trackingData }) => {
   const receiver = trackingData.receivers?.[0] || {};
   const item = receiver.items?.[0] || {};
+console.log('receiver', receiver)
+console.log('item', item)
 
   // Place mapping
   const placeMap = {
@@ -358,7 +360,7 @@ const ItemRefLayout = ({ trackingData }) => {
     'Ready for Loading',
     'Loaded Into Container',
     'Shipment Processing',
-    'Shipment In Transit',
+    'In Transit',
     'Under Processing',
     'Arrived at Sort Facility',
     'Ready for Delivery',
@@ -387,16 +389,17 @@ const ItemRefLayout = ({ trackingData }) => {
   const hasIssue = history.some(h => h.notes?.toLowerCase().includes('reverse') || h.notes?.toLowerCase().includes('issue'));
 
   return (
-    <Box sx={{ maxWidth: 1100, mx: 'auto', px: { xs: 2, sm: 3 }, pb: 6 }}>
+    <Box sx={{ maxWidth: 1100, mx: 'auto', }}>
       {/* Header / Title */}
-      <Box sx={{ textAlign: 'center', mb: 5 }}>
+      <Box sx={{ textAlign: 'center', m: 5 }}>
         <Typography
           variant="h4"
           fontWeight={800}
           sx={{
             color: '#0d6c6a',
             letterSpacing: '-0.5px',
-            mb: 1,
+            display:'block',
+            mt: 3,
           }}
         >
           Track Your Shipment
@@ -437,12 +440,12 @@ const ItemRefLayout = ({ trackingData }) => {
           direction={{ xs: 'column', sm: 'row' }}
           spacing={2}
           justifyContent="center"
-          flexWrap="wrap"
+          flexWrap="nowrap"
           sx={{ mb: 5 }}
         >
           <Chip
             label={
-              <Box sx={{ textAlign: 'center', py: 0.5, color: '#fff' }}>
+              <Box sx={{ textAlign: 'center', py:1, color: '#fff' }}>
                 <Typography sx={{ fontSize: '0.75rem', color: '#000', fontWeight: "bold" }}>
                   ITEM REF ID
                 </Typography>
@@ -453,7 +456,7 @@ const ItemRefLayout = ({ trackingData }) => {
             }
             variant="filled"
 
-            sx={{ background: '#fff', width: 260, height: 'auto', py: 1.5 }}
+            sx={{ background: '#fff', width: 310, height: 'auto', py: 1.5 }}
           />
 
           <Chip
@@ -508,8 +511,8 @@ const ItemRefLayout = ({ trackingData }) => {
                   ETA
                 </Typography>
                 <Typography variant="body1" fontWeight={600}>
-                  {receiver.eta
-                    ? new Date(receiver.eta).toLocaleDateString('en-GB', {
+                  {trackingData.eta
+                    ? new Date(trackingData.eta).toLocaleDateString('en-GB', {
                       day: 'numeric',
                       month: 'short',
                       year: 'numeric',

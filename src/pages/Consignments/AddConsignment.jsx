@@ -298,9 +298,9 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         setValues(prev => ({ ...prev, eta: suggestedEta }));
       }
 
-      console.log(
-        `Consignment Status: "${newStatus}" → Receiver Status: "${receiverStatus}" → +${offsetDays} days → Suggested ETA: ${suggestedEta}`
-      );
+      // console.log(
+      //   `Consignment Status: "${newStatus}" → Receiver Status: "${receiverStatus}" → +${offsetDays} days → Suggested ETA: ${suggestedEta}`
+      // );
     } catch (err) {
       console.warn('ETA suggestion failed:', err);
       setEtaSuggestion(null);
@@ -905,17 +905,17 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       // Normalize selected container IDs to numbers + use Set for fast lookup
       const selectedCidsSet = new Set(
         selectedContainerIds
-          .map(id => parseInt(id, 10))
+          .map(id => parseInt(id, 1000))
           .filter(id => !isNaN(id))
       );
 
       if (selectedCidsSet.size === 0) {
-        console.warn('No valid numeric container IDs for filtering');
+        // console.warn('No valid numeric container IDs for filtering');
         return [];
       }
 
       console.log('Filtering orders for container CIDs:', [...selectedCidsSet]);
-
+// console.log('Original orders count:', orders);
       return orders.map(order => {
         const filteredReceivers = (order.receivers || [])
           .map(receiver => {
@@ -964,8 +964,8 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       console.log("Fetching orders...",addedContainerIds);
       try {
         const params = {
-          page: orderPage + 1,
-          limit: orderRowsPerPage,
+          page:  1,
+          limit: orderRowsPerPage || 1000,
           container_id: addedContainerIds.join(','), // backend pre-filters orders
           ...(filters?.booking_ref && { booking_ref: filters.booking_ref }),
           ...(filters?.status && { status: filters.status }),
@@ -985,9 +985,9 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         // Apply client-side filtering (keeps only matching details + containers)
         const filteredOrders = filterOrdersByContainers(fetchedOrders, addedContainerIds);
 
-        console.log('After client-side container filtering:', filteredOrders);
+      console.log('After client-side container filtering:', fetchedOrders);
 
-        setOrders(filteredOrders);
+        setOrders(fetchedOrders);
         setOrderTotal(fetchedTotal);
 
         // Auto-select all visible rows
@@ -1879,7 +1879,7 @@ const updateStatusChange = async (consignmentId, selectedStatus, reason = '') =>
 
   const StyledTableCell = styled(TableCell)(({ theme }) => ({
     borderBottom: `1px solid ${theme.palette.divider}`,
-    fontSize: '0.875rem',
+    fontSize: '12px',
     padding: theme.spacing(1.5, 2),
   }));
   const StyledTableHeadCell = styled(TableCell)(({ theme }) => ({
@@ -4263,7 +4263,7 @@ const generateshipmentsAndOrdersPDFWithCanvas = async (data, allReceivers, selec
 
     pdf.save(`Manifest_${data.consignment_number}_Containers_${Date.now()}.pdf`);
   };
-  console.log('Rendering Add/Edit Consignment form in', eta,etaSuggestion);
+  // console.log('Rendering Add/Edit Consignment form in', eta,etaSuggestion);
   return (
     <LocalizationProvider dateAdapter={AdapterDayjs}>
       <Snackbar open={snackbar.open} autoHideDuration={6000} onClose={() => setSnackbar({ ...snackbar, open: false })}>
@@ -4847,7 +4847,7 @@ const generateshipmentsAndOrdersPDFWithCanvas = async (data, allReceivers, selec
                         ) : (
                           (values.containers || []).map((container, index) => {
                             // Get error for this specific row
-                            console.log('derived_status', container)
+                            // console.log('derived_status', container)
                             const rowErrors = getContainerError(index);
                             return (
                               <Fade in key={`${container.containerNo || 'new'}-${index}`} timeout={300 * index}>
@@ -5034,7 +5034,7 @@ const generateshipmentsAndOrdersPDFWithCanvas = async (data, allReceivers, selec
                         '&::-webkit-scrollbar-thumb': { background: '#0d6c6a', borderRadius: 4 },
                       }}
                     >
-                      <Table stickyHeader size="small" aria-label="shipments-by-container-table">
+                      <Table size="large" aria-label="shipments-by-container-table">
                         <TableHead sx={{ bgcolor: '#0d6c6a' }}>
                           <TableRow sx={{ bgcolor: '#0d6c6a' }}>
                             <TableCell sx={{ bgcolor: '#0d6c6a', color: '#fff', fontWeight: 'Bold' }}>Item Ref No</TableCell>
@@ -5070,7 +5070,7 @@ const generateshipmentsAndOrdersPDFWithCanvas = async (data, allReceivers, selec
                             </TableRow>
                           ) : (
                             flatShipments.map((shipment, index) => (
-                              console.log('shipments', shipment),
+                              // console.log('shipments', shipment),
                               <TableRow key={`${shipment.orderId}-${shipment.containerNumber}-${index}`}>
                                 <TableCell>{shipment.itemRef}</TableCell>
                                 <TableCell>{shipment.bookingRef}</TableCell>
@@ -5082,16 +5082,16 @@ const generateshipmentsAndOrdersPDFWithCanvas = async (data, allReceivers, selec
                                     </Typography>
                                     <Typography variant="caption" color="text.secondary">
                                       {shipment.subcategory && `${shipment.subcategory} • `}
-                                      {/* {shipment.type} */}
+                                      {/* {shipment.productName} */}
                                     </Typography>
                                   </Box>
                                 </TableCell>
 
 
-                                <TableCell>{shipment.pol}</TableCell>
-                                <TableCell>{shipment.pod}</TableCell>
-                                <TableCell>{shipment.sender}</TableCell>
-                                <TableCell>{shipment.receiverName}</TableCell>
+                                <TableCell>{shipment.pol.substring(0, 15)}</TableCell>
+                                <TableCell>{shipment.pod.substring(0, 15)}</TableCell>
+                                <TableCell>{shipment.sender.substring(0, 15)}</TableCell>
+                                <TableCell>{shipment.receiverName.substring(0, 15)}</TableCell>
 
 
                                 <TableCell>
