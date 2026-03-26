@@ -54,6 +54,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { applyPlugin } from 'jspdf-autotable';
 import logoPic from "../../../public/logo.png"
+import { get } from 'lodash';
 applyPlugin(jsPDF); 
 // Assuming other imports are present: api, styled, MUI components (Paper, Table, etc.), icons, etc.
 
@@ -204,30 +205,33 @@ export default function Consignments() {
   };
 
   const handleStatusUpdate = (consignment) => {
+    console.log('Updating status for consignment:', consignment.id);
     setSelectedConsignmentForUpdate(consignment);
     setSelectedStatus(consignment.status || '');
     setOpenStatusDialog(true);
   };
 
-  const handleConfirmStatusUpdate = async () => {
-    if (!selectedConsignmentForUpdate || !selectedStatus) return;
-
-    try {
-      await api.put(`/api/consignments/${selectedConsignmentForUpdate.id}/status`, {
-        status: selectedStatus,
-      });
-      setSnackbar({ open: true, message: 'Status updated successfully!', severity: 'success' });
-      getConsignments();
-    } catch (err) {
-      setSnackbar({
-        open: true,
-        message: 'Failed to update status',
-        severity: 'error',
-      });
-    } finally {
-      setOpenStatusDialog(false);
-    }
-  };
+//   const handleConfirmStatusUpdate = async () => {
+//     console.log('Confirming status update for consignment:', selectedConsignmentForUpdate?.id, 'to', selectedStatus);
+//     if (!selectedConsignmentForUpdate || !selectedStatus) return;
+// // console.log('Updating status for consignment', selectedConsignmentForUpdate.id, 'to', selectedStatus);
+//     try {
+//   const res = await api.put(`/api/consignments/${selectedConsignmentForUpdate.id}/status`, {
+//         status: selectedStatus,
+//       });
+//       console.log('Status updated:', res);
+//       setSnackbar({ open: true, message: 'Status updated successfully!', severity: 'success' });
+//       // getConsignments();
+//     } catch (err) {
+//       setSnackbar({
+//         open: true,
+//         message: 'Failed to update status',
+//         severity: 'error',
+//       });
+//     } finally {
+//       setOpenStatusDialog(false);
+//     }
+//   };
 
           const handleView = (id) => {
         navigate(`/consignments/${id}/edit`,{ state: { mode: 'edit', consignmentId: id  } });
@@ -250,31 +254,35 @@ export default function Consignments() {
     setSelectedStatus(e.target.value);
   };
 
-//   const handleConfirmStatusUpdate = async(row) => {
-//     console.log('consignments',row)
-//         try {
-//           const res = await api.put(`/api/consignments/${row.id}/next`);
-//           const { message } = res.data || {};
-//           getConsignments()
-//           console.log('Status advanced:', res)
-//           setSnackbar({
-//             open: true,
-//             message: message || 'Status advanced successfully!',
-//             severity: 'success',
-//           });
-//         } catch (err) {
-//           console.error('Error advancing status:', err);
-//           setSnackbar({
-//             open: true,
-//             message: 'Failed to advance status.',
-//             severity: 'error',
-//           });
-        
-//       };
-//     setOpenStatusDialog(false);
-//     // setSnackbar({ open: true, message: 'Status updated successfully!', severity: 'success' });
+  const handleConfirmStatusUpdate = async(row) => {
+    console.log('consignments',row)
+     try {
+        const res = await api.put(`/api/consignments/${row.id}/status`, {newStatus: selectedStatus, reason: "Status advanced via UI"});
+        const { message } = res.data || {};
+          console.log('Status updated:', res);
+              getConsignments();
+          setLoading(false)
+    
+          setSnackbar({
+            open: true,
+            message: message || 'Status advanced successfully!',
+            severity: 'success',
+          });
+        } catch (err) {
+          setLoading(false)
+    
+          console.error('Error advancing status:', err);
+          setSnackbar({
+            open: true,
+            message: 'Failed to advance status.',
+            severity: 'error',
+          });
+        }
       
-// }
+    setOpenStatusDialog(false);
+    // setSnackbar({ open: true, message: 'Status updated successfully!', severity: 'success' });
+      
+}
 
   const handleCloseStatusDialog = () => {
     setOpenStatusDialog(false);
@@ -396,7 +404,7 @@ export default function Consignments() {
                         </IconButton>
                       </Tooltip> */}
                       <Tooltip title="Edit">
-                        {console.log('Row data for edit:', row)}
+                        {/* {console.log('Row data for edit:', row)} */}
                         <IconButton size="small" onClick={() => handleEdit(row.id)}>
                           <EditIcon fontSize="small" />
                         </IconButton>
@@ -448,7 +456,7 @@ export default function Consignments() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenStatusDialog(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleConfirmStatusUpdate}>
+          <Button variant="contained" onClick={() => handleConfirmStatusUpdate(selectedConsignmentForUpdate)} sx={{ bgcolor: '#0d6c6a', '&:hover': { bgcolor: '#0a5a59' } }}>
             Update
           </Button>
         </DialogActions>

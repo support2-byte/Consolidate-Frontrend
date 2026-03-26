@@ -59,7 +59,7 @@ import AdminResetPasswordDialog from "./ForgetPassword";
 // Constants
 const expandedWidth = 260;
 const collapsedWidth = 80;
-const layoutHeight = '100vh'; // 90% of viewport height
+const layoutHeight = '95vh'; // 90% of viewport height
 const layoutWidth = '83vw';  // 90% of viewport width (desktop)
 
 export default function DashboardLayout() {
@@ -125,7 +125,7 @@ export default function DashboardLayout() {
     }}>
       {/* Logo / Header */}
       <Toolbar sx={{ 
-        minHeight: 72, 
+        minHeight: 22, 
         justifyContent: collapsed ? "center" : "flex-start",
         px: collapsed ? 0 : 2,
       }}>
@@ -282,7 +282,7 @@ export default function DashboardLayout() {
           color: mode === "dark" ? "#e2e8f0" : "#1e293b",
           borderBottom: `1px solid ${mode === "dark" ? "#334155" : "#e2e8f0"}`,
           width: { xs: '100%', md: layoutWidth },
-          ml: { md: `calc((100vw - ${layoutWidth}) / 2)` },
+          // ml: { md: `calc((100vw - ${layoutWidth}) / 2)` },
         }}
       >
         <Toolbar sx={{ justifyContent: "space-between", minHeight: 64 }}>
@@ -344,7 +344,7 @@ export default function DashboardLayout() {
                   onClose={handleProfileClose}
                   PaperProps={{
                     elevation: 4,
-                    sx: { mt: 1.5, minWidth: 200, borderRadius: 2 },
+                    sx: { mt: 1, minWidth: 200, borderRadius: 2 },
                   }}
                 >
                   <MenuItem disabled sx={{ fontWeight: "bold", color: "#f58220" }}>
@@ -411,8 +411,8 @@ export default function DashboardLayout() {
             width: expandedWidth,
             boxSizing: "border-box",
             background: mode === "dark" ? "#0f172a" : "#f8fafc",
-            height: layoutHeight,
-            // top: '5vh',
+            height: "AUTO",
+            top: '5vh',
           },
         }}
       >
@@ -426,11 +426,11 @@ export default function DashboardLayout() {
           flexGrow: 1,
           p: { xs: 2, md: 4 },
           mt: { xs: 8, md: 9 },
-          ml: { md: collapsed ? `${collapsedWidth}px` : `${expandedWidth}px` },
+          // ml: { md: collapsed ? `${collapsedWidth}px` : `${expandedWidth}px` },
           width: { xs: '100%', md: layoutWidth },
           mx: { md: 'auto' },
           height: layoutHeight,
-          overflowY: 'auto',
+          overflowY: 'SCROLL',
           background: mode === "dark" ? "#0f172a" : "#f8fafc",
           transition: "margin 0.3s, padding 0.3s",
           borderRadius: 3,
