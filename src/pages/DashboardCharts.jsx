@@ -1,214 +1,383 @@
-// src/pages/Dashboard.jsx
-import React from "react";
+import React from 'react';
 import {
-  LineChart, Line,
-  BarChart, Bar,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
-} from "recharts";
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  Grid,
+  Button,
+  Chip,
+  Paper,
+  Stack,
+  Divider,
+} from '@mui/material';
 import {
-  Box, Typography, Paper, Grid, Chip, Tooltip as MuiTooltip,
-  CircularProgress, Card, CardContent, CardHeader
-} from "@mui/material";
-import {Avatar} from "@mui/material";
-import { useAuth } from "../context/AuthContext";
-import { useThemeContext } from "../context/ThemeContext";
+  Package,
+  Truck,
+  Plane,
+  Ship,
+  MapPin,
+  Calendar,
+  TrendingUp,
+  TrendingDown,
+} from 'lucide-react';
+import { styled } from '@mui/material/styles';
 
-// Sample data (you can replace with real API data later)
-const salesSummary = [
-  { title: "$1K", subtitle: "Customers", change: "+15%", module: "customers" },
-  { title: "300", subtitle: "Vendors", change: "+10%", module: "vendors" },
-  { title: "5", subtitle: "Containers", change: "-2%", module: "containers" },
-  { title: "8", subtitle: "Orders", change: "+6%", module: "orders" },
-];
+const StyledCard = styled(Card)(({ theme }) => ({
+  borderRadius: 16,
+  boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
+  transition: 'all 0.3s ease',
+  '&:hover': {
+    transform: 'translateY(-4px)',
+    boxShadow: '0 8px 25px rgba(0,0,0,0.12)',
+  },
+}));
 
-const visitorInsightsData = [ /* ... your data ... */ ];
-const revenueData = [ /* ... */ ];
-const satisfactionData = [ /* ... */ ];
-const targetRealityData = [ /* ... */ ];
+const DashboardCharts = () => {
+  const kpiData = [
+    {
+      title: "Total Shipments",
+      value: "26,666",
+      change: "+21.01%",
+      trend: "up",
+      icon: Package,
+      color: "#f58220",
+    },
+    {
+      title: "Out for Delivery",
+      value: "6,500",
+      change: "+21.01%",
+      trend: "up",
+      icon: Truck,
+      color: "#f58220",
+    },
+    {
+      title: "In Transit",
+      value: "5,000",
+      change: "+21.01%",
+      trend: "up",
+      icon: Plane,
+      color: "#f58220",
+    },
+    {
+      title: "Pending",
+      value: "26,666",
+      change: "-21.01%",
+      trend: "down",
+      icon: Ship,
+      color: "#ef4444",
+    },
+  ];
 
-export default function Dashboard() {
-  const { user, permissions, loading, can } = useAuth();
-  const { mode } = useThemeContext();
-console.log("userrere",user,permissions, loading, can)
-  if (loading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '80vh' }}>
-        <CircularProgress />
-      </Box>
-    );
-  }
-
-  const bg = mode === "dark" ? "#0f172a" : "#f8fafc";
-  const cardBg = mode === "dark" ? "#1e293b" : "#ffffff";
-  const textColor = mode === "dark" ? "#e2e8f0" : "#1e293b";
-  const accent = "#f58220";
-
-  // Helper to show what permissions user has for a module
-  const getPermissionBadge = (module) => {
-    if (!can(module, 'view')) return null;
-    const actions = permissions[module] || [];
-    return (
-      <MuiTooltip title={`Access: ${actions.join(", ") || "view only"}`}>
-        <Chip
-          size="small"
-          label={actions.length > 0 ? `${actions.length} perms` : "View"}
-          color="success"
-          variant="outlined"
-          sx={{ ml: 1, fontSize: '0.7rem' }}
-        />
-      </MuiTooltip>
-    );
-  };
+  const recentShipments = [
+    {
+      id: "#3752584",
+      status: "In Transit",
+      statusColor: "#3b82f6",
+      bgColor: "#eff6ff",
+      address: "789 Front Street West, Toronto",
+      eta: "Jan 27 - Feb 01",
+      icon: Truck,
+      progress: 65,
+    },
+    {
+      id: "#3752584",
+      status: "Out for Delivery",
+      statusColor: "#8b5cf6",
+      bgColor: "#f3e8ff",
+      address: "789 Front Street West, Toronto",
+      eta: "Jan 27 - Feb 01",
+      icon: Plane,
+      progress: 85,
+    },
+    {
+      id: "#3752584",
+      status: "Processing",
+      statusColor: "#f59e0b",
+      bgColor: "#fef3c7",
+      address: "789 Front Street West, Toronto",
+      eta: "Jan 27 - Feb 01",
+      icon: Ship,
+      progress: 35,
+    },
+  ];
 
   return (
-    <Box sx={{ 
-      p: { xs: 2, md: 4 }, 
-      bgcolor: bg, 
-      minHeight: "100vh", 
-      color: textColor 
-    }}>
-      {/* Header with role indicator */}
-      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Typography variant="h4" fontWeight="bold">
-          Dashboard Overview
-        </Typography>
-
-        {user && (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Chip
-              avatar={<Avatar sx={{ bgcolor: accent }}>{user.email?.[0]?.toUpperCase()}</Avatar>}
-              label={`${user.role?.toUpperCase() || 'User'}`}
-              color="primary"
-              variant="outlined"
-            />
-            <Typography variant="body2" color="text.secondary">
-              {user.email}
+    <Box sx={{ p: 4, bgcolor: '#f8fafc', minHeight: '100vh' }}>
+      <Box sx={{ maxWidth: 1400, mx: 'auto' }}>
+        {/* Header */}
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 5 }}>
+          <Box>
+            <Typography variant="h4" fontWeight="bold" color="#1f2937">
+              Dashboard
+            </Typography>
+            <Typography variant="body1" color="text.secondary" sx={{ mt: 0.5 }}>
+              Welcome back, Daniel
             </Typography>
           </Box>
-        )}
-      </Box>
 
-      {/* Sales Summary Cards – only show if permitted */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        {salesSummary.map((item, index) => {
-          if (!can(item.module, 'view')) return null;
+          <Button
+            variant="contained"
+            size="large"
+            startIcon={<Package size={20} />}
+            sx={{
+              bgcolor: '#f58220',
+              '&:hover': { bgcolor: '#059669' },
+              borderRadius: 3,
+              textTransform: 'none',
+              px: 4,
+              py: 1.5,
+            }}
+          >
+            Create Shipment
+          </Button>
+        </Box>
 
-          return (
+        {/* KPI Cards */}
+        <Grid container spacing={3} sx={{ mb: 6 }}>
+          {kpiData.map((kpi, index) => (
             <Grid item xs={12} sm={6} md={3} key={index}>
-              <Card 
-                elevation={3}
-                sx={{ 
-                  bgcolor: cardBg,
-                  borderRadius: 2,
+              <StyledCard>
+                <CardContent sx={{ p: 3 }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <Box
+                      sx={{
+                        p: 1.5,
+                        borderRadius: 3,
+                        bgcolor: `${kpi.color}15`,
+                      }}
+                    >
+                      <kpi.icon size={32} color={kpi.color} />
+                    </Box>
+
+                    <Chip
+                      label={kpi.change}
+                      size="small"
+                      icon={kpi.trend === 'up' ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
+                      sx={{
+                        bgcolor: kpi.trend === 'up' ? '#ecfdf5' : '#fef2f2',
+                        color: kpi.trend === 'up' ? '#f58220' : '#ef4444',
+                        fontWeight: 600,
+                      }}
+                    />
+                  </Box>
+
+                  <Typography variant="h5" fontWeight="600" sx={{ mt: 4, mb: 0.5 }}>
+                    {kpi.value}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {kpi.title}
+                  </Typography>
+
+                  {/* Mini Sparkline */}
+                  <Box sx={{ mt: 3, height: 48, display: 'flex', alignItems: 'flex-end', gap: 0.8 }}>
+                    {Array.from({ length: 12 }).map((_, i) => (
+                      <Box
+                        key={i}
+                        sx={{
+                          flex: 1,
+                          height: `${30 + (i % 5) * 8}px`,
+                          bgcolor: '#f58220',
+                          borderRadius: '4px 4px 0 0',
+                          opacity: 0.7 + (i % 3) * 0.1,
+                        }}
+                      />
+                    ))}
+                  </Box>
+                </CardContent>
+              </StyledCard>
+            </Grid>
+          ))}
+        </Grid>
+
+        <Grid container spacing={3}>
+          {/* Recent Shipments */}
+          <Grid item xs={12} lg={8}>
+            <Paper
+              elevation={0}
+              sx={{
+                borderRadius: 4,
+                p: 4,
+                border: '1px solid #e5e7eb',
+              }}
+            >
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
+                <Typography variant="h6" fontWeight="600" sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                  <Package size={24} /> Recent Shipments
+                </Typography>
+                <Button variant="text" endIcon={<span>→</span>} sx={{ color: '#f58220' }}>
+                  View All
+                </Button>
+              </Box>
+
+              <Stack spacing={3}>
+                {recentShipments.map((shipment, index) => (
+                  <Card key={index} variant="outlined" sx={{ borderRadius: 3, p: 3 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
+                      <Box>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                          <Typography variant="h6" fontWeight="600" fontFamily="monospace">
+                            {shipment.id}
+                          </Typography>
+                          <Chip
+                            label={shipment.status}
+                            size="small"
+                            sx={{
+                              bgcolor: shipment.bgColor,
+                              color: shipment.statusColor,
+                              fontWeight: 600,
+                            }}
+                          />
+                        </Box>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1, color: 'text.secondary' }}>
+                          <MapPin size={18} />
+                          <Typography variant="body2">{shipment.address}</Typography>
+                        </Box>
+                      </Box>
+
+                      <Box textAlign="right">
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'text.secondary', mb: 1 }}>
+                          <Calendar size={18} />
+                          <Typography variant="body2">ETA: {shipment.eta}</Typography>
+                        </Box>
+                        <shipment.icon size={52} color="#9ca3af" />
+                      </Box>
+                    </Box>
+
+                    {/* Progress Bar */}
+                    <Box sx={{ mb: 1 }}>
+                      <Box sx={{ height: 8, bgcolor: '#f1f5f9', borderRadius: 4, overflow: 'hidden' }}>
+                        <Box
+                          sx={{
+                            height: '100%',
+                            width: `${shipment.progress}%`,
+                            bgcolor: 'linear-gradient(90deg, #f58220, #34d399)',
+                            borderRadius: 4,
+                          }}
+                        />
+                      </Box>
+                    </Box>
+
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', color: '#64748b' }}>
+                      <div>Order Placed</div>
+                      <div>Processing</div>
+                      <div>In Transit</div>
+                      <div>Out for Delivery</div>
+                      <div>Delivered</div>
+                    </Box>
+                  </Card>
+                ))}
+              </Stack>
+            </Paper>
+          </Grid>
+
+          {/* Real-Time Map Sidebar */}
+          <Grid item xs={12} lg={4}>
+            <Paper
+              elevation={0}
+              sx={{
+                borderRadius: 4,
+                p: 4,
+                height: '100%',
+                border: '1px solid #e5e7eb',
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 4 }}>
+                <Box sx={{ p: 1.5, bgcolor: '#bae6fd', borderRadius: 3 }}>
+                  <MapPin size={28} color="#0ea5e9" />
+                </Box>
+                <Typography variant="h6" fontWeight="600">
+                  Real-Time Map
+                </Typography>
+              </Box>
+
+              {/* Map Area */}
+              <Box
+                sx={{
+                  height: 320,
+                  borderRadius: 3,
                   overflow: 'hidden',
-                  transition: 'transform 0.2s',
-                  '&:hover': { transform: 'translateY(-4px)' }
+                  position: 'relative',
+                  mb: 4,
+                  border: '1px solid #e5e7eb',
                 }}
               >
-                <CardContent>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                    <Typography variant="subtitle2" color="text.secondary">
-                      {item.subtitle}
-                    </Typography>
-                    {getPermissionBadge(item.module)}
-                  </Box>
-                  <Typography variant="h4" fontWeight="bold" color={accent}>
-                    {item.title}
-                  </Typography>
-                  <Typography 
-                    variant="body2" 
-                    sx={{ 
-                      mt: 1,
-                      color: item.change.startsWith('+') ? 'success.main' : 'error.main' 
+                <img
+                  src="https://images.unsplash.com/photo-1521295121783-8a321d551ad2?w=800"
+                  alt="World Map"
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
+                <Box
+                  sx={{
+                    position: 'absolute',
+                    inset: 0,
+                    background: 'linear-gradient(transparent, rgba(0,0,0,0.4))',
+                  }}
+                />
+              </Box>
+
+              {/* Live Tracking List */}
+              <Stack spacing={2}>
+                {[
+                  { id: "#3752584", status: "Out for Delivery", type: "Food Materials", color: "#8b5cf6" },
+                  { id: "#3752584", status: "In Transit", type: "Food Materials", color: "#3b82f6" },
+                  { id: "#3752584", status: "Processing", type: "Food Materials", color: "#f59e0b" },
+                ].map((item, i) => (
+                  <Paper
+                    key={i}
+                    variant="outlined"
+                    sx={{
+                      p: 2.5,
+                      borderRadius: 3,
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
                     }}
                   >
-                    {item.change} this month
-                  </Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-          );
-        })}
-      </Grid>
+                    <Box>
+                      <Typography variant="subtitle2" fontWeight="600">
+                        {item.id}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {item.type}
+                      </Typography>
+                    </Box>
+                    <Chip
+                      label={item.status}
+                      size="small"
+                      sx={{
+                        bgcolor: `${item.color}15`,
+                        color: item.color,
+                        fontWeight: 600,
+                      }}
+                    />
+                  </Paper>
+                ))}
+              </Stack>
 
-      {/* Charts Section – conditionally shown */}
-      <Grid container spacing={3}>
-        {/* Visitor Insights */}
-        {can('dashboard', 'view') && (
-          <Grid item xs={12} md={6}>
-            <Card elevation={3} sx={{ bgcolor: cardBg, borderRadius: 2 }}>
-              <CardHeader 
-                title="Visitor Insights" 
-                action={getPermissionBadge('dashboard')}
-              />
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <LineChart data={visitorInsightsData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={mode === "dark" ? "#334155" : "#e2e8f0"} />
-                    <XAxis dataKey="month" stroke={textColor} />
-                    <YAxis stroke={textColor} />
-                    <Tooltip />
-                    <Legend />
-                    <Line type="monotone" dataKey="legal" stroke="#9b59b6" />
-                    <Line type="monotone" dataKey="new" stroke="#e74c3c" />
-                    <Line type="monotone" dataKey="unique" stroke="#27ae60" />
-                  </LineChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          </Grid>
-        )}
-
-        {/* Add other charts with similar can() checks */}
-        {/* Example: Total Revenue */}
-        {can('orders', 'view') && (
-          <Grid item xs={12} md={6}>
-            <Card elevation={3} sx={{ bgcolor: cardBg, borderRadius: 2 }}>
-              <CardHeader title="Revenue Breakdown" action={getPermissionBadge('orders')} />
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={revenueData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={mode === "dark" ? "#334155" : "#e2e8f0"} />
-                    <XAxis dataKey="day" stroke={textColor} />
-                    <YAxis stroke={textColor} />
-                    <Tooltip />
-                    <Legend />
-                    <Bar dataKey="online" fill="#3498db" />
-                    <Bar dataKey="offline" fill="#2ecc71" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          </Grid>
-        )}
-
-        {/* You can continue adding other charts with can() checks */}
-      </Grid>
-
-      {/* Quick permission summary (optional – for debugging or user awareness) */}
-      {/* {user && (
-        <Box sx={{ mt: 4, p: 2, bgcolor: 'background.paper', borderRadius: 2 }}>
-          <Typography variant="subtitle1" gutterBottom>
-            Your Current Permissions
-          </Typography>
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-            {Object.entries(permissions).map(([module, actions]) => (
-              <Chip
-                key={module}
-                label={`${module}: ${actions.join(', ')}`}
-                size="small"
-                color="primary"
+              <Button
+                fullWidth
                 variant="outlined"
-              />
-            ))}
-            {Object.keys(permissions).length === 0 && (
-              <Typography variant="body2" color="text.secondary">
-                No specific permissions loaded (falling back to role-based access)
-              </Typography>
-            )}
-          </Box>
-        </Box>
-      )} */}
+                sx={{
+                  mt: 4,
+                  borderRadius: 3,
+                  py: 1.5,
+                  borderColor: '#f58220',
+                  color: '#f58220',
+                  '&:hover': {
+                    borderColor: '#059669',
+                    bgcolor: '#f0fdf4',
+                  },
+                }}
+              >
+                View All Shipments
+              </Button>
+            </Paper>
+          </Grid>
+        </Grid>
+      </Box>
     </Box>
   );
-}
+};
+
+export default DashboardCharts;
