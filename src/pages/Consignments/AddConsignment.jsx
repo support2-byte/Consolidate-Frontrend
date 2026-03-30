@@ -963,20 +963,20 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       setOrdersLoading(true);
       console.log("Fetching orders...",addedContainerIds);
       try {
-        const params = {
-          page:  1,
-          limit: orderRowsPerPage || 1000,
-          container_id: addedContainerIds.join(','), // backend pre-filters orders
-          ...(filters?.booking_ref && { booking_ref: filters.booking_ref }),
-          ...(filters?.status && { status: filters.status }),
-          includeContainer: true,
-          includeReceivers: true,
-          includeShippingDetails: true,
-        };
+        // const params = {
+        //   page:  1,
+        //   limit: orderRowsPerPage || 1000,
+        //   container_id: addedContainerIds.join(','), // backend pre-filters orders
+        //   ...(filters?.booking_ref && { booking_ref: filters.booking_ref }),
+        //   ...(filters?.status && { status: filters.status }),
+        //   includeContainer: true,
+        //   includeReceivers: true,
+        //   includeShippingDetails: true,
+        // };
 
-        console.log('Fetching orders with params:', params);
+        // console.log('Fetching orders with params:', params);
 
-        const response = await api.get('/api/orders/consignmentsOrders',  { params: { includeContainer: true }})
+        const response = await api.get('/api/orders/consignmentsOrders',  { params: { page: 1, limit: 1000, container_id: addedContainerIds.join(',') } }); 
         console.log('Fetched orders response:', response.data);
 
         const fetchedOrders = response.data?.data || [];

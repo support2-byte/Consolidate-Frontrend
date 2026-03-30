@@ -2920,6 +2920,7 @@ import {
     Divider,
     Chip,
     Accordion,
+    Grid,
     AccordionSummary,
     AccordionDetails,
     IconButton,
@@ -3282,7 +3283,47 @@ const OrderForm = () => {
     const snakeToCamel = (str) => str.replace(/(_[a-z])/g, g => g[1].toUpperCase());
     // Helper to convert camelCase to snake_case
     const camelToSnake = (str) => str.replace(/([A-Z])/g, '_$1').toLowerCase();
+// Add these functions
+const updateDropOffField = (entryIndex, field, value) => {
+  const receiverIndex = formData.selectedReceiverForDropOff;
+  setFormData(prev => {
+    const current = prev.dropOffDetails?.[receiverIndex] || [];
+    const updated = [...current];
+    updated[entryIndex] = { ...updated[entryIndex], [field]: value };
+    return {
+      ...prev,
+      dropOffDetails: {
+        ...prev.dropOffDetails,
+        [receiverIndex]: updated
+      }
+    };
+  });
+};
 
+const addNewDropOffEntry = () => {
+  const receiverIndex = formData.selectedReceiverForDropOff;
+  setFormData(prev => ({
+    ...prev,
+    dropOffDetails: {
+      ...prev.dropOffDetails,
+      [receiverIndex]: [
+        ...(prev.dropOffDetails?.[receiverIndex] || []),
+        { dropMethod: "", dropoffName: "", dropOffCnic: "", dropOffMobile: "", plateNo: "", dropDate: "" }
+      ]
+    }
+  }));
+};
+
+const removeDropOffEntry = (entryIndex) => {
+  const receiverIndex = formData.selectedReceiverForDropOff;
+  setFormData(prev => ({
+    ...prev,
+    dropOffDetails: {
+      ...prev.dropOffDetails,
+      [receiverIndex]: prev.dropOffDetails[receiverIndex].filter((_, i) => i !== entryIndex)
+    }
+  }));
+};
 
     // Auto generate bookingRef and rglBookingNumber for new orders
     // Auto generate bookingRef, rgslBookingRef, and rglBookingNumber for new orders
@@ -3567,33 +3608,21 @@ const OrderForm = () => {
 const fetchOrder = async (id) => {
   setLoading(true);
   try {
-    const response = await api.get(`/api/orders/${id}`, { params: { includeContainer: true } });
+    const response = await api.get(`/api/orders/${id}`, { 
+      params: { includeContainer: true } 
+    });
+
     if (!response.data) throw new Error('Invalid response data');
 
-    console.log('[fetchOrder] Raw response:', response.data);
+    console.log('[fetchOrder] Raw response received');
 
-    // ── FIX: normalize response shape ───────────────────────────────────────
-    // GET /api/orders/:id returns flat: response.data = { id, booking_ref, ... receivers: [], attachments: [] }
-    // PUT /api/orders/:id returns nested: response.data = { order: {...}, senders: [], attachments: [], gatepass: [] }
-    // fetchOrder is only called on GET, so we always expect flat — but let's guard both shapes:
-    const orderData = response.data.order
-      ? {
-          ...response.data.order,
-          receivers:   response.data.receivers   || response.data.order.receivers   || [],
-          senders:     response.data.senders     || response.data.order.senders     || [],
-          attachments: response.data.attachments || response.data.order.attachments || [],
-          gatepass:    response.data.gatepass    || response.data.order.gatepass    || [],
-        }
-      : response.data; // already flat from GET
+    // The actual response is FLAT (as per your example)
+    const orderData = response.data;   // ← No .order wrapper in GET
 
-    console.log('[fetchOrder] Normalized orderData keys:', Object.keys(orderData));
-    console.log('[fetchOrder] booking_ref:', orderData.booking_ref);
-    console.log('[fetchOrder] rgl_booking_number:', orderData.rgl_booking_number);
-
-    // ── Parse attachments & gatepass safely ─────────────────────────────────
+    // Safe array parser
     const safeParseArray = (value, fallback = []) => {
       if (Array.isArray(value)) return value;
-      if (value === null || value === undefined) return fallback;
+      if (!value) return fallback;
       if (typeof value === 'string') {
         try {
           const parsed = JSON.parse(value);
@@ -3606,28 +3635,28 @@ const fetchOrder = async (id) => {
       return fallback;
     };
 
+    // ── Parse attachments and gatepass ─────────────────────────────
     let attachments = safeParseArray(orderData.attachments);
-    let gatepass    = safeParseArray(orderData.gatepass);
+    let gatepass = safeParseArray(orderData.gatepass);
 
-    attachments = attachments.filter(item => {
-      if (typeof item === 'string') return item.trim() && !item.includes('[object File]');
-      return item?.url && typeof item.url === 'string' && item.url.startsWith('http');
-    });
+    const apiBase = import.meta.env.VITE_API_URL || '';
 
-    gatepass = gatepass.filter(item => {
-      if (typeof item === 'string') return item.trim() && !item.includes('[object File]');
-      return item?.url && typeof item.url === 'string' && item.url.startsWith('http');
-    });
+    attachments = attachments
+      .filter(item => item?.url && typeof item.url === 'string')
+      .map(item => (typeof item === 'string' ? `${apiBase}${item}` : item));
 
-    console.log('[fetchOrder] Parsed attachments count:', attachments.length);
+    gatepass = gatepass
+      .filter(item => item?.url && typeof item.url === 'string')
+      .map(item => (typeof item === 'string' ? `${apiBase}${item}` : item));
 
-    // ── Map snake_case to camelCase ─────────────────────────────────────────
+    // ── Convert snake_case → camelCase + date formatting ───────────
     const camelData = {};
-    Object.keys(orderData).forEach(apiKey => {
-      let value = orderData[apiKey];
-      if (value === null || value === undefined) value = '';
 
-      if (['eta', 'etd', 'drop_date', 'delivery_date'].includes(apiKey)) {
+    Object.keys(orderData).forEach(key => {
+      let value = orderData[key];
+
+      // Date fields normalization
+      if (['eta', 'etd', 'delivery_date', 'drop_date'].includes(key)) {
         if (value) {
           const date = new Date(value);
           value = !isNaN(date.getTime()) ? date.toISOString().split('T')[0] : '';
@@ -3636,162 +3665,141 @@ const fetchOrder = async (id) => {
         }
       }
 
-      camelData[snakeToCamel(apiKey)] = value;
+      camelData[snakeToCamel(key)] = value ?? '';
     });
 
-    // ── senderType ──────────────────────────────────────────────────────────
+    // Explicit important fields
     camelData.senderType = orderData.sender_type || 'sender';
+    camelData.transportType = orderData.transport_type || 'Drop Off';
+    camelData.collectionScope = orderData.collection_scope || 'Partial';
+    camelData.collectionMethod = orderData.collection_method || '';
+    camelData.deliveryDate = camelData.deliveryDate || '';
+    camelData.plateNo = orderData.plate_no || '';
 
-    // ── Owner fields ────────────────────────────────────────────────────────
+    // Owner fields (sender or receiver)
     const ownerPrefix = camelData.senderType === 'sender' ? 'sender' : 'receiver';
     const ownerFields = ['name', 'contact', 'address', 'email', 'ref', 'remarks'];
+
     ownerFields.forEach(field => {
-      const apiKey  = `${ownerPrefix}_${field}`;
-      const snakeVal = orderData[apiKey];
-      if (snakeVal !== null && snakeVal !== undefined) {
-        camelData[`${ownerPrefix}${field.charAt(0).toUpperCase() + field.slice(1)}`] = snakeVal;
+      const snakeKey = `${ownerPrefix}_${field}`;
+      if (orderData[snakeKey] !== undefined) {
+        const camelKey = `${ownerPrefix}${field.charAt(0).toUpperCase() + field.slice(1)}`;
+        camelData[camelKey] = orderData[snakeKey] || '';
       }
     });
 
-    // ── Auto-populate owner from customer if name missing ───────────────────
-    const ownerNameKey = `${ownerPrefix}Name`;
-    if (camelData.selectedSenderOwner && !camelData[ownerNameKey]?.trim()) {
-      try {
-        const customerRes = await api.get(`/api/customers/${camelData.selectedSenderOwner}`);
-        if (customerRes?.data) {
-          const c = customerRes.data;
-          camelData[ownerNameKey]              = c.contact_name || c.contact_persons?.[0]?.name  || '';
-          camelData[`${ownerPrefix}Contact`]   = c.primary_phone || c.contact_persons?.[0]?.phone || '';
-          camelData[`${ownerPrefix}Address`]   = c.zoho_notes   || c.billing_address             || '';
-          camelData[`${ownerPrefix}Email`]     = c.email        || c.contact_persons?.[0]?.email || '';
-          camelData[`${ownerPrefix}Ref`]       = c.zoho_id      || c.ref                         || '';
-          camelData[`${ownerPrefix}Remarks`]   = c.zoho_notes   || c.system_notes                || '';
-        }
-      } catch (autoErr) {
-        console.error('Auto-populate owner failed:', autoErr);
-      }
-    }
+    camelData.selectedSenderOwner = orderData.selected_sender_owner || '';
 
-    // ── Panel2 (receivers/senders) ──────────────────────────────────────────
-    const panel2Prefix  = camelData.senderType === 'sender' ? 'receiver' : 'sender';
+    // ── Process Receivers + Drop-off Details + ShippingDetails ─────
+    const rawReceivers = orderData.receivers || [];
+    const panel2Prefix = camelData.senderType === 'sender' ? 'receiver' : 'sender';
     const panel2ListKey = camelData.senderType === 'sender' ? 'receivers' : 'senders';
-    const initialItem   = panel2Prefix === 'receiver' ? initialReceiver : initialSenderObject;
 
-    // FIX: use orderData (normalized) not response.data
-    const rawPanel2 = orderData.receivers || orderData.senders || [];
-
-    let mappedPanel2 = rawPanel2.map(rec => {
-      if (!rec) return null;
-
+    const mappedReceivers = rawReceivers.map((rec, index) => {
       const camelRec = {
-        ...initialItem,
-        shippingDetails:    [],
-        isNew:              false,
-        validationWarnings: null,
+        ...initialReceiver,           // or initialSenderObject depending on type
+        id: rec.id,
+        shippingDetails: [],
+        isNew: false,
       };
 
+      // Basic receiver fields
       Object.keys(rec).forEach(apiKey => {
-        let val = rec[apiKey];
-        if (val === null || val === undefined) val = '';
         const camelKey = snakeToCamel(apiKey);
+        let val = rec[apiKey];
 
-        if (['name', 'contact', 'address', 'email', 'marksAndNumber'].includes(camelKey)) {
-          const uiKey = camelKey === 'marksAndNumber'
-            ? `${panel2Prefix}MarksNumber`
-            : `${panel2Prefix}${camelKey.charAt(0).toUpperCase() + camelKey.slice(1)}`;
-          camelRec[uiKey] = val;
+        if (['receiver_name', 'sender_name'].includes(apiKey)) {
+          camelRec[`${panel2Prefix}Name`] = val || '';
+        } else if (['receiver_contact', 'sender_contact'].includes(apiKey)) {
+          camelRec[`${panel2Prefix}Contact`] = val || '';
+        } else if (['receiver_address', 'sender_address'].includes(apiKey)) {
+          camelRec[`${panel2Prefix}Address`] = val || '';
+        } else if (['receiver_email', 'sender_email'].includes(apiKey)) {
+          camelRec[`${panel2Prefix}Email`] = val || '';
+        } else if (apiKey === 'receiver_marks_and_number' || apiKey === 'marksAndNumber') {
+          camelRec[`${panel2Prefix}MarksNumber`] = val || '';
         } else {
-          camelRec[camelKey] = val;
+          camelRec[camelKey] = val ?? '';
         }
       });
 
-      // Shipping details
-      if (rec.shippingdetails) {
-        camelRec.shippingDetails = (rec.shippingdetails || []).map(sd => {
-          const camelSd = { ...initialShippingDetail };
-          Object.keys(sd).forEach(sdApiKey => {
-            let sdVal = sd[sdApiKey];
-            if (sdVal === null || sdVal === undefined) sdVal = '';
-            camelSd[snakeToCamel(sdApiKey)] = sdVal;
-          });
+      // Shipping Details
+      const shippingDetailsRaw = rec.shippingDetails || rec.shippingdetails || [];
+      camelRec.shippingDetails = shippingDetailsRaw.map(sd => {
+        const camelSd = { ...initialShippingDetail };
 
-          camelSd.containerDetails = sd.containerDetails?.length
-            ? sd.containerDetails.map(cd => {
-                const camelCd = { totalNumber: '', container: null, status: '' };
-                Object.keys(cd).forEach(cdKey => {
-                  camelCd[snakeToCamel(cdKey)] = cd[cdKey] ?? '';
-                });
-                if ('total_number' in cd) camelCd.totalNumber = cd.total_number || '';
-                return camelCd;
-              })
-            : [{ totalNumber: '', container: null, status: '' }];
-
-          return camelSd;
+        Object.keys(sd).forEach(sdKey => {
+          camelSd[snakeToCamel(sdKey)] = sd[sdKey] ?? '';
         });
+
+        // Container Details inside shipping detail
+        camelSd.containerDetails = (sd.containerDetails || sd.container_details || []).map(cd => ({
+          ...cd,
+          totalNumber: cd.total_number ?? cd.totalNumber ?? '',
+        }));
+
+        return camelSd;
+      });
+
+      if (!camelRec.shippingDetails.length) {
+        camelRec.shippingDetails = [{ ...initialShippingDetail }];
       }
 
-      if (!camelRec.shippingDetails?.length) {
-        camelRec.shippingDetails = [{
-          ...initialShippingDetail,
-          totalNumber: rec.total_number || '',
-          weight:      rec.total_weight || '',
-        }];
-      }
-
-      camelRec.status       = rec.status       || 'Created';
-      camelRec.fullPartial  = camelRec.fullPartial || '';
-      camelRec.qtyDelivered = camelRec.qtyDelivered != null ? String(camelRec.qtyDelivered) : '0';
+      // ←←← IMPORTANT: Handle drop_off_details per receiver ←←←
+      camelRec.dropOffDetails = Array.isArray(rec.drop_off_details) 
+        ? rec.drop_off_details.map(drop => ({
+            dropMethod:   drop.drop_method || drop.dropMethod || '',
+            dropoffName:  drop.dropoff_name || drop.dropoffName || '',
+            dropOffCnic:  drop.drop_off_cnic || drop.dropOffCnic || '',
+            dropOffMobile: drop.drop_off_mobile || drop.dropOffMobile || '',
+            plateNo:      drop.plate_no || drop.plateNo || '',
+            dropDate:     drop.drop_date 
+              ? new Date(drop.drop_date).toISOString().split('T')[0] 
+              : '',
+          }))
+        : [];
 
       return camelRec;
-    }).filter(Boolean);
+    });
 
-    if (!mappedPanel2.length) {
-      mappedPanel2 = [{ ...initialItem, shippingDetails: [], isNew: true }];
+    // Fallback if no receivers
+    if (!mappedReceivers.length) {
+      mappedReceivers.push({ 
+        ...initialReceiver, 
+        shippingDetails: [{ ...initialShippingDetail }], 
+        isNew: true 
+      });
     }
 
-    const otherListKey = panel2ListKey === 'receivers' ? 'senders' : 'receivers';
-    camelData[otherListKey]  = [];
-    camelData[panel2ListKey] = mappedPanel2;
+    camelData[panel2ListKey] = mappedReceivers;
+    camelData.senders = camelData.senderType === 'receiver' ? mappedReceivers : []; // adjust if needed
 
-    // ── Attachments & gatepass ──────────────────────────────────────────────
-    const apiBase = import.meta.env.VITE_API_URL || '';
-
-    camelData.attachments = attachments.map(item =>
-      typeof item === 'string'
-        ? (item.startsWith('http') ? item : `${apiBase}${item}`)
-        : item
-    );
-
-    camelData.gatepass = gatepass.map(item =>
-      typeof item === 'string'
-        ? (item.startsWith('http') ? item : `${apiBase}${item}`)
-        : item
-    );
-
-    console.log('[fetchOrder] Final camelData keys:', Object.keys(camelData));
-    console.log('[fetchOrder] bookingRef:', camelData.bookingRef);
-    console.log('[fetchOrder] rglBookingNumber:', camelData.rglBookingNumber);
-    console.log('[fetchOrder] attachments:', camelData.attachments?.length);
-
-    setFormData(camelData);
-
-    // ── Validation warnings ─────────────────────────────────────────────────
-    const initialErrors = {};
-    mappedPanel2.forEach((rec, i) => {
-      if (rec.validationWarnings?.total_number) {
-        initialErrors[`${panel2ListKey}[${i}].shippingDetails[0].containerDetails[0].totalNumber`] = rec.validationWarnings.total_number;
-      }
-      if (rec.validationWarnings?.qty_delivered) {
-        initialErrors[`${panel2ListKey}[${i}].qtyDelivered`] = rec.validationWarnings.qty_delivered;
+    // ── DropOffDetails at root level (for form state) ─────────────
+    // If you use formData.dropOffDetails as object with receiverIndex as key:
+    const dropOffDetailsObj = {};
+    mappedReceivers.forEach((rec, index) => {
+      if (rec.dropOffDetails && rec.dropOffDetails.length > 0) {
+        dropOffDetailsObj[index] = rec.dropOffDetails;
       }
     });
-    setErrors(initialErrors);
+    camelData.dropOffDetails = dropOffDetailsObj;
+
+    // Also set selected receiver for drop off (if any has data)
+    if (Object.keys(dropOffDetailsObj).length > 0) {
+      camelData.selectedReceiverForDropOff = Object.keys(dropOffDetailsObj)[0];
+    }
+
+    // ── Final Set ─────────────────────────────────────────────────
+    console.log('[fetchOrder] Final formData ready. Receivers count:', mappedReceivers.length);
+    console.log('[fetchOrder] dropOffDetails keys:', Object.keys(camelData.dropOffDetails || {}));
+
+    setFormData(camelData);
 
   } catch (err) {
     console.error('[fetchOrder] Error:', err);
     setSnackbar({
-      open:     true,
-      message:  err.response?.data?.error || err.message || 'Failed to fetch order',
+      open: true,
+      message: err.response?.data?.error || err.message || 'Failed to fetch order',
       severity: 'error',
     });
     if (err.response?.status === 404) navigate('/orders');
@@ -5039,141 +5047,194 @@ const statuses = [
         setFormData((prev) => ({ ...prev, gatepass: [...(Array.isArray(prev.gatepass) ? prev.gatepass : []), ...files] }));
     };
 
-const handleSave = async () => {
-  console.log('Submitting form data');
+
+    const handleSave = async () => {
+  console.log('Submitting form data...');
   setLoading(true);
 
   const formDataToSend = new FormData();
   const dateFields = ['eta', 'etd', 'dropDate', 'deliveryDate'];
 
-  const coreKeys = [
-    'bookingRef', 'rglBookingNumber', 'placeOfLoading', 'pointOfOrigin',
-    'finalDestination', 'placeOfDelivery', 'orderRemarks', 'eta', 'etd',
-  ];
+  // ── 1. Core Order Fields ─────────────────────────────────────
+  const coreFields = {
+    booking_ref: formData.bookingRef,
+    rgl_booking_number: formData.rglBookingNumber,
+    place_of_loading: formData.placeOfLoading,
+    point_of_origin: formData.pointOfOrigin,
+    final_destination: formData.finalDestination,
+    place_of_delivery: formData.placeOfDelivery,
+    order_remarks: formData.orderRemarks,
+    eta: formData.eta,
+    etd: formData.etd,
+    sender_type: formData.senderType,
+    selected_sender_owner: formData.selectedSenderOwner || '',
+  };
 
-  coreKeys.forEach(key => {
-    const value = formData[key];
-    if (dateFields.includes(key) && value === '') {
-      // Skip empty dates
-    } else {
-      formDataToSend.append(camelToSnake(key), value || '');
+  Object.entries(coreFields).forEach(([key, value]) => {
+    if (value !== undefined && value !== null) {
+      if (dateFields.includes(key) && value === '') {
+        return; // skip empty dates
+      }
+      formDataToSend.append(key, value);
     }
   });
 
-  const ownerFieldPrefix = formData.senderType === 'sender' ? 'sender' : 'receiver';
+  // ── 2. Sender / Owner Fields ─────────────────────────────────
+  const ownerPrefix = formData.senderType === 'sender' ? 'sender' : 'receiver';
   const ownerFields = ['Name', 'Contact', 'Address', 'Email', 'Ref', 'Remarks'];
-  ownerFields.forEach(key => {
-    const value = formData[`${ownerFieldPrefix}${key}`] || '';
-    formDataToSend.append(`${ownerFieldPrefix}_${key.toLowerCase()}`, value);
+
+  ownerFields.forEach(field => {
+    const value = formData[`${ownerPrefix}${field}`] || '';
+    formDataToSend.append(`${ownerPrefix}_${field.toLowerCase()}`, value);
   });
 
-  formDataToSend.append('sender_type', formData.senderType);
-  formDataToSend.append('selected_sender_owner', formData.selectedSenderOwner || '');
-
+  // ── 3. Panel 2: Receivers / Senders ──────────────────────────
   const panel2Items = formData.senderType === 'receiver' ? formData.senders : formData.receivers;
   const panel2FieldPrefix = formData.senderType === 'sender' ? 'receiver' : 'sender';
   const panel2ArrayKey = `${panel2FieldPrefix}s`;
 
   const panel2ToSend = panel2Items.map(item => ({
-  id: item.id || null, // ← ADD THIS — existing DB receiver id
-    [`${panel2FieldPrefix}_name`]:    formData.senderType === 'sender' ? (item.receiverName    || '') : (item.senderName    || ''),
-    [`${panel2FieldPrefix}_contact`]: formData.senderType === 'sender' ? (item.receiverContact || '') : (item.senderContact || ''),
-    [`${panel2FieldPrefix}_address`]: formData.senderType === 'sender' ? (item.receiverAddress || '') : (item.senderAddress || ''),
-    [`${panel2FieldPrefix}_email`]:   formData.senderType === 'sender' ? (item.receiverEmail   || '') : (item.senderEmail   || ''),
+    id: item.id || null,
+    [`${panel2FieldPrefix}_name`]: formData.senderType === 'sender' 
+      ? (item.receiverName || '') 
+      : (item.senderName || ''),
+    [`${panel2FieldPrefix}_contact`]: formData.senderType === 'sender' 
+      ? (item.receiverContact || '') 
+      : (item.senderContact || ''),
+    [`${panel2FieldPrefix}_address`]: formData.senderType === 'sender' 
+      ? (item.receiverAddress || '') 
+      : (item.senderAddress || ''),
+    [`${panel2FieldPrefix}_email`]: formData.senderType === 'sender' 
+      ? (item.receiverEmail || '') 
+      : (item.senderEmail || ''),
     [`${panel2FieldPrefix}_marks_and_number`]: item[`${panel2FieldPrefix}MarksNumber`] || '',
-    eta:           item.eta          || '',
-    etd:           item.etd          || '',
+    eta: item.eta || '',
+    etd: item.etd || '',
     shipping_line: item.shippingLine || '',
-    full_partial:  item.fullPartial  || 'Full',
+    full_partial: item.fullPartial || 'Full',
     qty_delivered: item.qtyDelivered || '',
-    status:        item.status       || 'Order Created',
-    remarks:       item.remarks      || '',
-    containers:    Array.isArray(item.containers) ? item.containers.flat() : [],
+    status: item.status || 'Order Created',
+    remarks: item.remarks || '',
+    containers: Array.isArray(item.containers) ? item.containers.flat() : [],
   }));
 
   formDataToSend.append(panel2ArrayKey, JSON.stringify(panel2ToSend));
 
-  // ── Order items — FIX: receiver_index added ─────────────────────────────
-  // ── Order items — use existing itemRef if available ──────────────────────
-const orderItemsToSend = [];
-panel2Items.forEach((item, i) => {
-  (item.shippingDetails || []).forEach((sd, j) => {
-    const snakeItem = {};
-    Object.keys(sd).forEach(key => {
-      if (key !== 'remainingItems' && key !== 'containerDetails') {
-        snakeItem[camelToSnake(key)] = sd[key] || '';
-      }
-    });
-    snakeItem.container_details = (sd.containerDetails || []).map(cd => {
-      const snakeCd = {};
-      Object.keys(cd).forEach(ck => { snakeCd[camelToSnake(ck)] = cd[ck]; });
-      return snakeCd;
-    });
+  // ── 4. Order Items ───────────────────────────────────────────
+  const orderItemsToSend = [];
+  panel2Items.forEach((item, receiverIndex) => {
+    (item.shippingDetails || []).forEach((sd, j) => {
+      const snakeItem = {};
 
-    // ── FIX: reuse existing itemRef/id, only generate new ref for new items ──
-    snakeItem.item_ref = sd.itemRef || sd.item_ref || `ORDER-ITEM-REF-${i + 1}-${j + 1}-${Date.now()}`;
-    snakeItem.existing_id = sd.id || null; // pass DB id if item already exists
-    snakeItem.receiver_index = i;
-    orderItemsToSend.push(snakeItem);
+      Object.keys(sd).forEach(key => {
+        if (key !== 'remainingItems' && key !== 'containerDetails') {
+          snakeItem[camelToSnake(key)] = sd[key] || '';
+        }
+      });
+
+      // Handle container details
+      snakeItem.container_details = (sd.containerDetails || []).map(cd => {
+        const snakeCd = {};
+        Object.keys(cd).forEach(ck => {
+          snakeCd[camelToSnake(ck)] = cd[ck];
+        });
+        return snakeCd;
+      });
+
+      snakeItem.item_ref = sd.itemRef || sd.item_ref || `ORDER-ITEM-REF-${receiverIndex + 1}-${j + 1}-${Date.now()}`;
+      snakeItem.existing_id = sd.id || null;
+      snakeItem.receiver_index = receiverIndex;
+
+      orderItemsToSend.push(snakeItem);
+    });
   });
-});
 
   formDataToSend.append('order_items', JSON.stringify(orderItemsToSend));
 
-  const transportKeys = [
-    'transportType', 'collection_scope', 'thirdPartyTransport', 'driverName',
-    'driverContact', 'driverNic', 'driverPickupLocation', 'truckNumber',
-    'dropMethod', 'dropoffName', 'dropOffCnic', 'dropOffMobile', 'plateNo',
-    'dropDate', 'collectionMethod', 'clientReceiverName', 'clientReceiverId',
-    'clientReceiverMobile', 'deliveryDate',
-  ];
+  // ── 5. Transport Fields ──────────────────────────────────────
+  const transportFields = {
+    transport_type: formData.transportType || 'Drop Off',
+    collection_scope: formData.collection_scope || 'Partial',
+    collection_method: formData.collectionMethod || '',
+    third_party_transport: formData.thirdPartyTransport || '',
+    driver_name: formData.driverName || '',
+    driver_contact: formData.driverContact || '',
+    driver_nic: formData.driverNic || '',
+    driver_pickup_location: formData.driverPickupLocation || '',
+    truck_number: formData.truckNumber || '',
+    client_receiver_name: formData.clientReceiverName || '',
+    client_receiver_id: formData.clientReceiverId || '',
+    client_receiver_mobile: formData.clientReceiverMobile || '',
+    delivery_date: formData.deliveryDate || '',
+    plate_no: formData.plateNo || '',
+  };
 
-  transportKeys.forEach(key => {
-    const value = formData[key];
-    if (dateFields.includes(key) && value === '') {
-      // Skip empty dates
-    } else {
-      formDataToSend.append(camelToSnake(key), value || '');
+  Object.entries(transportFields).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      if (dateFields.includes(key.replace('_', '')) && value === '') return;
+      formDataToSend.append(key, value);
     }
   });
 
+  // ── 6. Drop Off Details (Flattened) ──────────────────────────
   const flattenedDropOffDetails = [];
+
   if (formData.dropOffDetails && typeof formData.dropOffDetails === 'object') {
     Object.keys(formData.dropOffDetails).forEach(receiverIndex => {
-      const receiverDetails = formData.dropOffDetails[receiverIndex];
-      if (Array.isArray(receiverDetails)) {
-        receiverDetails.forEach(detail => {
-          flattenedDropOffDetails.push({ receiver_index: receiverIndex, ...detail });
+      const entries = formData.dropOffDetails[receiverIndex];
+      if (Array.isArray(entries) && entries.length > 0) {
+        entries.forEach(detail => {
+            console.log('Processing drop-off detail for receiver index', receiverIndex, detail);    
+          flattenedDropOffDetails.push({
+            receiver_index: receiverIndex,
+            drop_method: detail.dropMethod || null,
+            dropoff_name: detail.dropoffName || null,
+            drop_off_cnic: detail.dropOffCnic || null,
+            drop_off_mobile: detail.dropOffMobile || null,
+            plate_no: detail.plateNo || null,
+            drop_date: detail.dropDate || null,
+          });
         });
       }
     });
   }
+
   formDataToSend.append('drop_off_details', JSON.stringify(flattenedDropOffDetails));
 
+  // ── 7. Attachments & Gatepass ────────────────────────────────
   ['attachments', 'gatepass'].forEach(key => {
     const value = formData[key];
     if (Array.isArray(value) && value.length > 0) {
       const newFiles = value.filter(item => item instanceof File);
       const existing = value.filter(item => !(item instanceof File));
-      if (newFiles.length > 0) {
-        newFiles.forEach(file => formDataToSend.append(key, file));
-      }
+
+      // Append new files
+      newFiles.forEach(file => {
+        formDataToSend.append(key, file);
+      });
+
+      // Append existing files metadata
       if (existing.length > 0) {
         formDataToSend.append(`${camelToSnake(key)}_existing`, JSON.stringify(existing));
       }
     }
   });
 
+  // ── 8. Final Submit ──────────────────────────────────────────
   try {
     const endpoint = isEditMode ? `/api/orders/${orderId}` : '/api/orders';
-    const method   = isEditMode ? 'put' : 'post';
+    const method = isEditMode ? 'put' : 'post';
+
+    console.log('Sending FormData with keys:', Array.from(formDataToSend.keys()));
 
     const response = await api[method](endpoint, formDataToSend, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
 
+    console.log('Save response:', response.data);
+
     if (isEditMode) {
-      await fetchOrder(orderId);
+      await fetchOrder(orderId);   // Refresh data after update
     } else {
       navigate('/orders');
     }
@@ -5183,10 +5244,16 @@ panel2Items.forEach((item, i) => {
       message: isEditMode ? 'Order updated successfully' : 'Order created successfully',
       severity: 'success',
     });
+
   } catch (err) {
-    console.error('[handleSave] Backend error:', err.response?.data || err.message);
-    const backendMsg = err.response?.data?.error || err.message || 'Failed to save order';
-    setSnackbar({ open: true, message: `Backend Error: ${backendMsg}`, severity: 'error' });
+    console.error('[handleSave] Error:', err.response?.data || err.message);
+    const backendMsg = err.response?.data?.error || err.response?.data?.message || err.message || 'Failed to save order';
+    
+    setSnackbar({
+      open: true,
+      message: `Error: ${backendMsg}`,
+      severity: 'error',
+    });
   } finally {
     setLoading(false);
   }
@@ -6775,443 +6842,256 @@ panel2Items.forEach((item, i) => {
         </Stack>
     </AccordionDetails>
 </Accordion>
-                        <Accordion
-                            expanded={expanded.has("panel3")}
-                            onChange={handleAccordionChange("panel3")}
-                            sx={{
-                                borderRadius: 2,
-                                boxShadow: "none",
-                                "&:before": { display: "none" },
-                                "&.Mui-expanded": { boxShadow: "0 2px 8px rgba(0,0,0,0.1)" },
-                            }}
-                        >
-                            <AccordionSummary
-                                expandIcon={<ExpandMoreIcon />}
-                                sx={{
-                                    bgcolor: expanded.has("panel3") ? "#0d6c6a" : "#fff3e0",
-                                    borderRadius: 2,
-                                    "& .MuiAccordionSummary-content": { fontWeight: "bold", color: expanded.has("panel3") ? "#fff" : "#f58220" },
-                                }}
-                            >
-                                3. Transport
-                            </AccordionSummary>
-                            <AccordionDetails sx={{ p: 3, bgcolor: "#fff" }}>
-                                <Stack spacing={3}>
-                                    <FormControl component="fieldset">
-                                        <Typography variant="h6" color="#f58220" gutterBottom>
-                                            Transport Type
-                                        </Typography>
-                                        <RadioGroup
-                                            name="transportType"
-                                            value={formData.transportType || "Drop Off"}  // Default to "Drop Off" in render
-                                            onChange={handleChange}
-                                            style={{ flexDirection: "row" }}
-                                        >
-                                            <FormControlLabel value="Drop Off" control={<Radio />} label="Drop Off" />
-                                            <FormControlLabel value="Collection" control={<Radio />} label="Collection" />
-                                            <FormControlLabel value="Third Party" control={<Radio />} label="Third Party" />
-                                        </RadioGroup>
-                                        {errors.transportType && <FormHelperText error>{errors.transportType}</FormHelperText>}
-                                    </FormControl>
-  {formData.transportType === 'Drop Off' && (
-  <Stack spacing={3}>
-    {/* Receiver Selector */}
-    <FormControl fullWidth error={!!errors.selectedReceiver}>
-      <InputLabel>Select Receiver *</InputLabel>
-      <Select
-        label="Select Receiver *"
-        value={formData.selectedReceiver ?? ""}
-        onChange={(e) => {
-          const receiverIndex = e.target.value;
-          setFormData(prev => ({
-            ...prev,
-            selectedReceiver: receiverIndex,
-            // Ensure dropOffDetails exists for this receiver
-            dropOffDetails: {
-              ...prev.dropOffDetails,
-              [receiverIndex]: prev.dropOffDetails?.[receiverIndex] || []
-            }
-          }));
-        }}
-      >
-        <MenuItem value="">Select a Receiver</MenuItem>
-        {(formData.receivers || []).map((receiver, index) => (
-          <MenuItem key={index} value={index}>
-            {receiver.receiverName?.trim() || `Receiver ${index + 1}`}
-          </MenuItem>
-        ))}
-        {(formData.receivers || []).length === 0 && (
-          <MenuItem disabled>No Receivers Available</MenuItem>
-        )}
-      </Select>
-      {errors.selectedReceiver && (
-        <FormHelperText>{errors.selectedReceiver}</FormHelperText>
-      )}
-    </FormControl>
+{/* ==================== TRANSPORT PANEL ==================== */}
+<Accordion
+  expanded={expanded.has("panel3")}
+  onChange={handleAccordionChange("panel3")}
+  sx={{
+    borderRadius: 2,
+    boxShadow: "none",
+    "&:before": { display: "none" },
+    "&.Mui-expanded": { boxShadow: "0 2px 8px rgba(0,0,0,0.1)" },
+  }}
+>
+  <AccordionSummary
+    expandIcon={<ExpandMoreIcon />}
+    sx={{
+      bgcolor: expanded.has("panel3") ? "#0d6c6a" : "#fff3e0",
+      borderRadius: 2,
+      "& .MuiAccordionSummary-content": { 
+        fontWeight: "bold", 
+        color: expanded.has("panel3") ? "#fff" : "#f58220" 
+      },
+    }}
+  >
+    3. Transport & Delivery
+  </AccordionSummary>
 
-    {/* Drop-Off Details for Selected Receiver */}
-    {formData.selectedReceiver !== undefined && 
-     formData.selectedReceiver !== "" && 
-     formData.receivers?.[formData.selectedReceiver] && (
-      <Stack spacing={3}>
+  <AccordionDetails sx={{ p: 3, bgcolor: "#fff" }}>
+    <Stack spacing={4}>
+      {/* Transport Type */}
+      <FormControl component="fieldset">
         <Typography variant="h6" color="#f58220" gutterBottom>
-          Drop-Off Details for{' '}
-          {formData.receivers[formData.selectedReceiver].receiverName?.trim() || 
-           `Receiver ${parseInt(formData.selectedReceiver) + 1}`}
+          Transport Type *
         </Typography>
+        <RadioGroup
+          row
+          name="transportType"
+          value={formData.transportType || "Drop Off"}
+          onChange={handleChange}
+        >
+          <FormControlLabel value="Drop Off" control={<Radio />} label="Drop Off" />
+          <FormControlLabel value="Collection" control={<Radio />} label="Collection" />
+          <FormControlLabel value="Third Party" control={<Radio />} label="Third Party" />
+        </RadioGroup>
+      </FormControl>
 
-        {/* List of Drop-Off Entries */}
-        {(formData.dropOffDetails?.[formData.selectedReceiver] || []).map((detail, index) => (
-          <Stack
-            key={index}
-            spacing={3}
-            sx={{
-              p: 3,
-              border: '1px solid #e0e0e0',
-              borderRadius: 2,
-              backgroundColor: '#fafafa'
-            }}
-          >
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Typography variant="subtitle1" color="text.primary">
-                Drop-Off Entry {index + 1}
-              </Typography>
-              {index > 0 && (
-                <Button
-                  size="small"
-                  color="error"
-                  variant="text"
-                  onClick={() => {
-                    setFormData(prev => ({
-                      ...prev,
-                      dropOffDetails: {
-                        ...prev.dropOffDetails,
-                        [formData.selectedReceiver]: prev.dropOffDetails[formData.selectedReceiver].filter((_, i) => i !== index)
-                      }
-                    }));
-                  }}
-                >
-                  Remove
-                </Button>
-              )}
-            </Box>
+      {/* ====================== DROP OFF ====================== */}
+      {formData.transportType === 'Drop Off' && (
+        <Stack spacing={3}>
+          <Typography variant="h6" color="#f58220">
+            Drop Off Details
+          </Typography>
 
-            <CustomSelect
-              label="Drop Method *"
-              value={detail.dropMethod || ""}
+          <FormControl fullWidth>
+            <InputLabel>Select Receiver for Drop Off *</InputLabel>
+            <Select
+              value={formData.selectedReceiverForDropOff ?? ""}
               onChange={(e) => {
-                setFormData(prev => {
-                  const updated = { ...prev };
-                  updated.dropOffDetails[formData.selectedReceiver][index].dropMethod = e.target.value;
-                  return updated;
-                });
+                const idx = e.target.value;
+                setFormData(prev => ({
+                  ...prev,
+                  selectedReceiverForDropOff: idx,
+                  dropOffDetails: {
+                    ...prev.dropOffDetails,
+                    [idx]: prev.dropOffDetails?.[idx] || [{}]   // Ensure at least one empty entry
+                  }
+                }));
               }}
-              error={!!errors[`dropOffDetails[${formData.selectedReceiver}][${index}].dropMethod`]}
-              helperText={errors[`dropOffDetails[${formData.selectedReceiver}][${index}].dropMethod`] || "Required"}
+              label="Select Receiver for Drop Off *"
             >
-              <MenuItem value="">Select Drop Method</MenuItem>
-              <MenuItem value="Drop-Off">Drop-Off</MenuItem>
-              <MenuItem value="RGSL Pickup">RGSL Pickup</MenuItem>
+              <MenuItem value="">-- Select Receiver --</MenuItem>
+              {(formData.receivers || []).map((rec, i) => (
+                <MenuItem key={i} value={i}>
+                  {rec.receiverName || `Receiver ${i + 1}`}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          {formData.selectedReceiverForDropOff !== "" && formData.selectedReceiverForDropOff !== undefined && (
+            <Stack spacing={3}>
+              {(formData.dropOffDetails?.[formData.selectedReceiverForDropOff] || []).map((detail, idx) => (
+                <Paper key={idx} elevation={1} sx={{ p: 3, borderRadius: 2 }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+                    <Typography variant="subtitle1" fontWeight="bold">
+                      Drop-Off #{idx + 1}
+                    </Typography>
+                    {idx > 0 && (
+                      <Button size="small" color="error" onClick={() => removeDropOffEntry(idx)}>
+                        Remove
+                      </Button>
+                    )}
+                  </Box>
+
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} sm={6}>
+                      <CustomSelect
+                        label="Drop Method *"
+                        value={detail.dropMethod || ""}
+                        onChange={(e) => updateDropOffField(idx, 'dropMethod', e.target.value)}
+                      >
+                        <MenuItem value="">Select Method</MenuItem>
+                        <MenuItem value="Drop-Off">Drop-Off</MenuItem>
+                        <MenuItem value="RGSL Pickup">RGSL Pickup</MenuItem>
+                      </CustomSelect>
+                    </Grid>
+
+                    <Grid item xs={12} sm={6}>
+                      <CustomTextField
+                        label="Person Name *"
+                        value={detail.dropoffName || ""}
+                        onChange={(e) => updateDropOffField(idx, 'dropoffName', e.target.value)}
+                      />
+                    </Grid>
+
+                    <Grid item xs={12} sm={6}>
+                      <CustomTextField
+                        label="CNIC / ID"
+                        value={detail.dropOffCnic || ""}
+                        onChange={(e) => updateDropOffField(idx, 'dropOffCnic', e.target.value)}
+                      />
+                    </Grid>
+
+                    <Grid item xs={12} sm={6}>
+                      <CustomTextField
+                        label="Mobile Number"
+                        value={detail.dropOffMobile || ""}
+                        onChange={(e) => updateDropOffField(idx, 'dropOffMobile', e.target.value)}
+                      />
+                    </Grid>
+
+                    <Grid item xs={12} sm={6}>
+                      <CustomTextField
+                        label="Plate No (Optional)"
+                        value={detail.plateNo || ""}
+                        onChange={(e) => updateDropOffField(idx, 'plateNo', e.target.value)}
+                      />
+                    </Grid>
+
+                    <Grid item xs={12} sm={6}>
+                      <CustomTextField
+                        label="Drop Date"
+                        type="date"
+                        value={detail.dropDate || ""}
+                        onChange={(e) => updateDropOffField(idx, 'dropDate', e.target.value)}
+                        InputLabelProps={{ shrink: true }}
+                      />
+                    </Grid>
+                  </Grid>
+                </Paper>
+              ))}
+
+              <Button
+                variant="outlined"
+                startIcon={<AddIcon />}
+                onClick={addNewDropOffEntry}
+                sx={{ alignSelf: 'flex-start' }}
+              >
+                Add Another Drop-Off Entry
+              </Button>
+            </Stack>
+          )}
+        </Stack>
+      )}
+
+      {/* ====================== COLLECTION ====================== */}
+      {formData.transportType === 'Collection' && (
+        <Stack spacing={3}>
+          <Typography variant="h6" color="#f58220">Collection Details</Typography>
+
+          <CustomSelect
+            label="Collection Method"
+            name="collectionMethod"
+            value={formData.collectionMethod || ""}
+            onChange={handleChange}
+          >
+            <MenuItem value="">Select Method</MenuItem>
+            <MenuItem value="Delivered by RGSL">Delivered by RGSL</MenuItem>
+            <MenuItem value="Collected by Client">Collected by Client</MenuItem>
+          </CustomSelect>
+
+          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+            <CustomSelect
+              label="Scope"
+              name="collection_scope"
+              value={formData.collection_scope || "Partial"}
+              onChange={handleChange}
+            >
+              <MenuItem value="Full">Full</MenuItem>
+              <MenuItem value="Partial">Partial</MenuItem>
             </CustomSelect>
 
-            <CustomTextField
-              label="Person Name"
-              value={detail.dropoffName || ""}
-              onChange={(e) => {
-                setFormData(prev => {
-                  const updated = { ...prev };
-                  updated.dropOffDetails[formData.selectedReceiver][index].dropoffName = e.target.value;
-                  return updated;
-                });
-              }}
-              error={!!errors[`dropOffDetails[${formData.selectedReceiver}][${index}].dropoffName`]}
-              helperText={errors[`dropOffDetails[${formData.selectedReceiver}][${index}].dropoffName`]}
-            />
+            {formData.collection_scope === "Partial" && (
+              <CustomTextField
+                label="Qty Delivered"
+                name="qtyDelivered"
+                type="number"
+                value={formData.qtyDelivered || ""}
+                onChange={handleChange}
+              />
+            )}
+          </Box>
 
-            <Box sx={{ display: 'flex', gap: 2, flexDirection: { xs: 'column', sm: 'row' } }}>
-              <CustomTextField
-                label="CNIC/ID"
-                value={detail.dropOffCnic || ""}
-                onChange={(e) => {
-                  setFormData(prev => {
-                    const updated = { ...prev };
-                    updated.dropOffDetails[formData.selectedReceiver][index].dropOffCnic = e.target.value;
-                    return updated;
-                  });
-                }}
-              />
-              <CustomTextField
-                label="Mobile"
-                value={detail.dropOffMobile || ""}
-                onChange={(e) => {
-                  setFormData(prev => {
-                    const updated = { ...prev };
-                    updated.dropOffDetails[formData.selectedReceiver][index].dropOffMobile = e.target.value;
-                    return updated;
-                  });
-                }}
-              />
+          <Stack spacing={2}>
+            <CustomTextField label="Client Receiver Name" name="clientReceiverName" value={formData.clientReceiverName || ""} onChange={handleChange} />
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              <CustomTextField label="Receiver ID" name="clientReceiverId" value={formData.clientReceiverId || ""} onChange={handleChange} />
+              <CustomTextField label="Receiver Mobile" name="clientReceiverMobile" value={formData.clientReceiverMobile || ""} onChange={handleChange} />
             </Box>
-
-            <CustomTextField
-              label="Plate No (optional)"
-              value={detail.plateNo || ""}
-              onChange={(e) => {
-                setFormData(prev => {
-                  const updated = { ...prev };
-                  updated.dropOffDetails[formData.selectedReceiver][index].plateNo = e.target.value;
-                  return updated;
-                });
-              }}
-            />
-
-            <CustomTextField
-              label="Drop Date"
-              type="date"
-              value={detail.dropDate || ""}
-              onChange={(e) => {
-                setFormData(prev => {
-                  const updated = { ...prev };
-                  updated.dropOffDetails[formData.selectedReceiver][index].dropDate = e.target.value;
-                  return updated;
-                });
-              }}
-              InputLabelProps={{ shrink: true }}
-            />
+            <CustomTextField label="Plate No (Optional)" name="plateNo" value={formData.plateNo || ""} onChange={handleChange} />
+            <CustomTextField label="Delivery Date" type="date" name="deliveryDate" value={formData.deliveryDate || ""} onChange={handleChange} InputLabelProps={{ shrink: true }} />
           </Stack>
-        ))}
 
-        {/* Add More Drop-Off Button */}
-        <Button
-          variant="outlined"
-          startIcon={<AddIcon />}
-          onClick={() => {
-            setFormData(prev => ({
-              ...prev,
-              dropOffDetails: {
-                ...prev.dropOffDetails,
-                [formData.selectedReceiver]: [
-                  ...(prev.dropOffDetails?.[formData.selectedReceiver] || []),
-                  {
-                    dropMethod: "",
-                    dropoffName: "",
-                    dropOffCnic: "",
-                    dropOffMobile: "",
-                    plateNo: "",
-                    dropDate: ""
-                  }
-                ]
-              }
-            }));
-          }}
-          sx={{
-            alignSelf: 'flex-start',
-            borderColor: "#f58220",
-            color: "#f58220",
-            '&:hover': { borderColor: "#e5731a", backgroundColor: "rgba(245, 130, 32, 0.04)" }
-          }}
-        >
-          Add Another Drop-Off Entry
-        </Button>
-      </Stack>
-    )}
+          {/* Gatepass Upload */}
+          <Button variant="outlined" component="label" sx={{ borderColor: "#f58220", color: "#f58220" }}>
+            Upload Gatepass (Optional)
+            <input type="file" hidden multiple accept="image/*" onChange={handleGatepassUpload} />
+          </Button>
+        </Stack>
+      )}
 
-    {/* Optional: Show message if no receiver selected */}
-    {formData.selectedReceiver === "" && (
-      <Alert severity="info" sx={{ mt: 2 }}>
-        Please select a receiver to add drop-off details.
-      </Alert>
-    )}
-  </Stack>
-)}
-                                    {formData.transportType === 'Collection' && (
-                                        <Stack spacing={2}>
-                                            <Typography variant="h6" color="#f58220" gutterBottom>
-                                                🚛 Collection Details
-                                            </Typography>
-                                            <CustomSelect
-                                                label="Collection Method"
-                                                name="collectionMethod"
-                                                value={formData.collectionMethod || ""}
-                                                onChange={handleChange}
-                                                error={!!errors.collectionMethod}
-                                                helperText={errors.collectionMethod}
-                                                renderValue={(selected) => selected || "Select Collection Method"}
-                                            >
-                                                <MenuItem value="">Select Collection Method</MenuItem>
-                                                <MenuItem value="Delivered by RGSL">Delivered by RGSL</MenuItem>
-                                                <MenuItem value="Collected by Client">Collected by Client</MenuItem>
-                                            </CustomSelect>
-                                            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                                <CustomSelect
-                                                    label="Full / Partial"
-                                                    name="collection_scope"
-                                                    value={formData.collection_scope || "Partial"}
-                                                    onChange={handleChange}
-                                                    error={!!errors.collection_scope}
-                                                    helperText={errors.collection_scope}
-                                                >
-                                                    <MenuItem value="Full">Full</MenuItem>
-                                                    <MenuItem value="Partial">Partial</MenuItem>
-                                                </CustomSelect>
-                                                {formData.collection_scope === "Partial" && (
-                                                    <CustomTextField
-                                                        label="Qty Delivered"
-                                                        name="qtyDelivered"
-                                                        value={formData.qtyDelivered || ""}
-                                                        onChange={handleChange}
-                                                        error={!!errors.qtyDelivered}
-                                                        helperText={errors.qtyDelivered}
-                                                    />
-                                                )}
-                                            </Box>
-                                            <Stack spacing={2}>
-                                                <CustomTextField
-                                                    label="Receiver Name / CNIC/ID"
-                                                    name="clientReceiverName"
-                                                    value={formData.clientReceiverName}
-                                                    onChange={handleChange}
-                                                    error={!!errors.clientReceiverName}
-                                                    helperText={errors.clientReceiverName}
-                                                />
-                                                <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                                    <CustomTextField
-                                                        label="Receiver ID"
-                                                        name="clientReceiverId"
-                                                        value={formData.clientReceiverId}
-                                                        onChange={handleChange}
-                                                        error={!!errors.clientReceiverId}
-                                                        helperText={errors.clientReceiverId}
-                                                    />
-                                                    <CustomTextField
-                                                        label="Receiver Mobile"
-                                                        name="clientReceiverMobile"
-                                                        value={formData.clientReceiverMobile}
-                                                        onChange={handleChange}
-                                                        error={!!errors.clientReceiverMobile}
-                                                        helperText={errors.clientReceiverMobile}
-                                                    />
-                                                </Box>
-                                                <CustomTextField
-                                                    label="Plate No (optional)"
-                                                    name="plateNo"
-                                                    value={formData.plateNo}
-                                                    onChange={handleChange}
-                                                    error={!!errors.plateNo}
-                                                    helperText={errors.plateNo}
-                                                />
-                                            </Stack>
-                                            <CustomTextField
-                                                label="Delivery Date"
-                                                name="deliveryDate"
-                                                type="date"
-                                                value={formData.deliveryDate}
-                                                onChange={handleChange}
-                                                InputLabelProps={{ shrink: true }}
-                                                error={!!errors.deliveryDate}
-                                                helperText={errors.deliveryDate}
-                                            />
-                                            <Button
-                                                variant="outlined"
-                                                component="label"
-                                                sx={{ borderRadius: 2, borderColor: "#f58220", color: "#f58220", px: 3 }}
-                                            >
-                                                Gatepass Upload (Optional)
-                                                <input type="file" hidden multiple onChange={handleGatepassUpload} />
-                                            </Button>
-                                            {Array.isArray(formData.gatepass) && formData.gatepass.length > 0 && (
-                                                <Stack spacing={1} direction="row" flexWrap="wrap" gap={1}>
-                                                    {formData.gatepass.map((gatepass, j) => {
-                                                        const src = typeof gatepass === 'string' ? gatepass : URL.createObjectURL(gatepass);
-                                                        const label = typeof gatepass === 'string' ? gatepass.split('/').pop() : gatepass.name || 'File';
-                                                        return (
-                                                            <Chip
-                                                                key={j}
-                                                                label={label}
-                                                                color="secondary"
-                                                                size="small"
-                                                                variant="outlined"
-                                                                onClick={() => {
-                                                                    setPreviewSrc(src);
-                                                                    setPreviewOpen(true);
-                                                                }}
-                                                                sx={{ cursor: 'pointer', '&:hover': { backgroundColor: '#f58220', color: 'white' } }}
-                                                            />
-                                                        );
-                                                    })}
-                                                </Stack>
-                                            )}
-                                        </Stack>
-                                    )}
-                                    {formData.transportType === 'Third Party' && (
-                                        <Stack spacing={2}>
-                                            <Typography variant="h6" color="#f58220" gutterBottom>
-                                                👥 Third Party Details
-                                            </Typography>
-                                            <CustomSelect
-                                                label="3rd party Transport Company"
-                                                name="thirdPartyTransport"
-                                                value={formData.thirdPartyTransport || ""}
-                                                onChange={handleChange}
-                                                error={!!errors.thirdPartyTransport}
-                                                helperText={errors.thirdPartyTransport}
-                                                renderValue={(selected) => companies.find(c => c.value === selected)?.label || "Select Company"}
-                                            >
-                                                {companies.map((c) => (
-                                                    <MenuItem key={c.value} value={c.value}>
-                                                        {c.label}
-                                                    </MenuItem>
-                                                ))}
-                                            </CustomSelect>
-                                            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                                <CustomTextField
-                                                    label="Driver Name"
-                                                    name="driverName"
-                                                    value={formData.driverName}
-                                                    onChange={handleChange}
-                                                    error={!!errors.driverName}
-                                                    helperText={errors.driverName}
-                                                />
-                                                <CustomTextField
-                                                    label="Driver Contact number"
-                                                    name="driverContact"
-                                                    value={formData.driverContact}
-                                                    onChange={handleChange}
-                                                    error={!!errors.driverContact}
-                                                    helperText={errors.driverContact}
-                                                />
-                                            </Box>
-                                            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: 'stretch' }}>
-                                                <CustomTextField
-                                                    label="Driver NIC Number"
-                                                    name="driverNic"
-                                                    value={formData.driverNic}
-                                                    onChange={handleChange}
-                                                    error={!!errors.driverNic}
-                                                    helperText={errors.driverNic}
-                                                />
-                                                <CustomTextField
-                                                    label="Driver Pickup Location"
-                                                    name="driverPickupLocation"
-                                                    value={formData.driverPickupLocation}
-                                                    onChange={handleChange}
-                                                    error={!!errors.driverPickupLocation}
-                                                    helperText={errors.driverPickupLocation}
-                                                />
-                                            </Box>
-                                            <CustomTextField
-                                                label="Truck number"
-                                                name="truckNumber"
-                                                value={formData.truckNumber}
-                                                onChange={handleChange}
-                                                error={!!errors.truckNumber}
-                                                helperText={errors.truckNumber}
-                                            />
-                                        </Stack>
-                                    )}
-                                </Stack>
-                            </AccordionDetails>
-                        </Accordion>
+      {/* ====================== THIRD PARTY ====================== */}
+      {formData.transportType === 'Third Party' && (
+        <Stack spacing={3}>
+          <Typography variant="h6" color="#f58220">Third Party Transport</Typography>
+
+          <CustomSelect label="Transport Company" name="thirdPartyTransport" value={formData.thirdPartyTransport || ""} onChange={handleChange}>
+            {companies.map(c => <MenuItem key={c.value} value={c.value}>{c.label}</MenuItem>)}
+          </CustomSelect>
+
+          <Grid container spacing={2}>
+            <Grid item xs={12} sm={6}>
+              <CustomTextField label="Driver Name" name="driverName" value={formData.driverName || ""} onChange={handleChange} />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <CustomTextField label="Driver Contact" name="driverContact" value={formData.driverContact || ""} onChange={handleChange} />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <CustomTextField label="Driver NIC" name="driverNic" value={formData.driverNic || ""} onChange={handleChange} />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <CustomTextField label="Pickup Location" name="driverPickupLocation" value={formData.driverPickupLocation || ""} onChange={handleChange} />
+            </Grid>
+            <Grid item xs={12}>
+              <CustomTextField label="Truck Number" name="truckNumber" value={formData.truckNumber || ""} onChange={handleChange} />
+            </Grid>
+          </Grid>
+        </Stack>
+      )}
+    </Stack>
+  </AccordionDetails>
+</Accordion>
                         <Accordion
                             expanded={expanded.has("panel4")}
                             onChange={handleAccordionChange("panel4")}
