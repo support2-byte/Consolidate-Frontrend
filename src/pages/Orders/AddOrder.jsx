@@ -4828,17 +4828,15 @@ const OrderForm = () => {
                                   />
                                 </Box>
                                 {/* FIXED: Add button for container instead of section */}
-                                <Button
-                                  variant="outlined"
-                                  startIcon={<AddIcon />}
-                                  onClick={() => {
-                                    addShippingFn(i);
-                                    addContainerDetail(0);
-                                  }}
-                                  size="small"
+                                <Typography
+                                  variant="body2"
+                                  color="primary"
+                                  fontWeight="bold"
+                                  my={4}
+                                  textAlign="center"
                                 >
-                                  Add Container Assignment
-                                </Button>
+                                  No Contianer Assigned
+                                </Typography>
                               </Stack>
                             </Box>
                           ) : (
@@ -5192,16 +5190,17 @@ const OrderForm = () => {
                                         disabled={true}
                                       />
                                     </Box>
-                                    {/* FIXED: Container Details Section - only if hasContainers, else button */}
+
                                     {!hasContainers ? (
-                                      <Button
-                                        variant="outlined"
-                                        startIcon={<AddIcon />}
-                                        onClick={() => addContainerDetail(j)}
-                                        size="small"
+                                      <Typography
+                                        variant="body2"
+                                        color="primary"
+                                        fontWeight="bold"
+                                        my={4}
+                                        textAlign="center"
                                       >
-                                        Add Container Assignment
-                                      </Button>
+                                        No Contianer Assigned
+                                      </Typography>
                                     ) : (
                                       <>
                                         <Stack spacing={1}>
@@ -5270,37 +5269,6 @@ const OrderForm = () => {
                                                     >
                                                       Container {k + 1}
                                                     </Typography>
-                                                    <Stack
-                                                      direction="row"
-                                                      spacing={1}
-                                                    >
-                                                      <IconButton
-                                                        onClick={() =>
-                                                          duplicateContainerDetail(
-                                                            j,
-                                                            k,
-                                                          )
-                                                        }
-                                                        size="small"
-                                                        title="Duplicate"
-                                                        color="primary"
-                                                      >
-                                                        <ContentCopyIcon />
-                                                      </IconButton>
-                                                      <IconButton
-                                                        onClick={() =>
-                                                          removeContainerDetail(
-                                                            j,
-                                                            k,
-                                                          )
-                                                        }
-                                                        size="small"
-                                                        title="Delete"
-                                                        color="error"
-                                                      >
-                                                        <DeleteIcon />
-                                                      </IconButton>
-                                                    </Stack>
                                                   </Stack>
                                                   {/* NEW: Split into two rows for better layout */}
                                                   <Stack spacing={1.5}>
@@ -5319,7 +5287,7 @@ const OrderForm = () => {
                                                       <CustomTextField
                                                         label="Assign Total Box"
                                                         value={
-                                                          cd.assignTotalBox ||
+                                                          cd.assign_total_box ||
                                                           ""
                                                         }
                                                         onChange={(e) =>
@@ -5345,12 +5313,13 @@ const OrderForm = () => {
                                                             sm: "50%",
                                                           },
                                                         }}
+                                                        disabled={true}
                                                       />
                                                       {/* NEW: Assign Weight Field */}
                                                       <CustomTextField
                                                         label="Assign Weight"
                                                         value={
-                                                          cd.assignWeight || ""
+                                                          cd.assign_weight || ""
                                                         }
                                                         onChange={(e) =>
                                                           handleContainerDetailChange(
@@ -5375,6 +5344,7 @@ const OrderForm = () => {
                                                             sm: "50%",
                                                           },
                                                         }}
+                                                        disabled={true}
                                                       />
                                                     </Box>
                                                     <Box
@@ -5429,7 +5399,7 @@ const OrderForm = () => {
                                                             sm: "50%",
                                                           },
                                                         }}
-
+                                                        disabled
                                                         // fullWidth
                                                       />
                                                       <CustomSelect
@@ -5464,6 +5434,7 @@ const OrderForm = () => {
                                                           selected ||
                                                           "Select Status"
                                                         }
+                                                        disabled={true}
                                                       >
                                                         <MenuItem value="">
                                                           Select Status
@@ -5483,7 +5454,7 @@ const OrderForm = () => {
                                               );
                                             },
                                           )}
-                                          <Button
+                                          {/* <Button
                                             variant="outlined"
                                             startIcon={<AddIcon />}
                                             onClick={() =>
@@ -5492,7 +5463,7 @@ const OrderForm = () => {
                                             size="small"
                                           >
                                             Add Container
-                                          </Button>
+                                          </Button> */}
                                           {/* NEW: Total Assign Summary Row (always appears, uses current sd for sum) */}
                                           <Box
                                             sx={{
