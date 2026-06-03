@@ -250,6 +250,8 @@ const OrdersList = () => {
 
     try {
       const params = {
+        status: "",
+        search: "",
         page: page + 1,
         limit: rowsPerPage,
         includeContainer: true,
@@ -263,25 +265,6 @@ const OrdersList = () => {
         params.search = filters.search.trim();
       }
 
-      // ───────────────────────────────
-      // Option A: General search field
-      // ───────────────────────────────
-      if (filters.search?.trim()) {
-        params.search = filters.search.trim(); // backend should search multiple columns
-        // or: params.q = filters.search.trim();
-        // or: params.keyword = filters.search.trim();
-      }
-
-      // ───────────────────────────────
-      // Option B: If you still want separate booking_ref / form_no
-      // ───────────────────────────────
-      // if (filters.booking_ref?.trim()) {
-      //   params.booking_ref = filters.booking_ref.trim();
-      // }
-
-      if (filters.status) {
-        params.status = filters.status;
-      }
       console.log("parametors", params);
       const response = await api.get("/api/orders", { params });
       // ────────────────────────────────────────────────
@@ -405,15 +388,14 @@ const OrdersList = () => {
     }
   };
 
-  const handleClearSearch = () => {
+  const handleClearSearch = async () => {
     setFilters({
       status: "",
       search: "",
     });
 
     setPage(0);
-
-    fetchOrders();
+    window.location.reload();
   };
 
   const handleDocuments = async (orderId) => {
