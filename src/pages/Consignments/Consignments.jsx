@@ -1,4 +1,4 @@
-import React, { useState, useEffect,useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Box,
   Chip,
@@ -33,7 +33,7 @@ import {
   CircularProgress,
   Card,
   CardContent,
-  Slide
+  Slide,
 } from "@mui/material";
 import {
   Add as AddIcon,
@@ -42,39 +42,39 @@ import {
   Visibility as VisibilityIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
-  Info as InfoIcon
+  Info as InfoIcon,
 } from "@mui/icons-material";
-import dayjs from 'dayjs';
+import dayjs from "dayjs";
 import { useNavigate } from "react-router-dom"; // Assuming React Router is used
-  import { styled } from '@mui/material/styles';
-import {api} from "../../api"; // Assuming api
-import EditNoteIcon from '@mui/icons-material/EditNote';
-import html2canvas from 'html2canvas';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import { applyPlugin } from 'jspdf-autotable';
-import logoPic from "../../../public/logo.png"
-import { get } from 'lodash';
-applyPlugin(jsPDF); 
+import { styled } from "@mui/material/styles";
+import { api } from "../../api"; // Assuming api
+import EditNoteIcon from "@mui/icons-material/EditNote";
+import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+import { applyPlugin } from "jspdf-autotable";
+import logoPic from "../../../public/logo.png";
+import { get } from "lodash";
+applyPlugin(jsPDF);
 // Assuming other imports are present: api, styled, MUI components (Paper, Table, etc.), icons, etc.
 
 // Styled components
 const StyledTableRow = styled(TableRow)(({ theme }) => ({
-  '&:nth-of-type(odd)': { backgroundColor: theme.palette.action.hover },
-  '&:last-child td, &:last-child th': { border: 0 },
-  '&:hover': { backgroundColor: theme.palette.action.selected },
-  fontSize: 10
+  "&:nth-of-type(odd)": { backgroundColor: theme.palette.action.hover },
+  "&:last-child td, &:last-child th": { border: 0 },
+  "&:hover": { backgroundColor: theme.palette.action.selected },
+  fontSize: 10,
 }));
 
 const StyledTableCell = styled(TableCell)(({ theme }) => ({
   borderBottom: `1px solid ${theme.palette.divider}`,
   padding: theme.spacing(1.5, 2),
-  fontSize: 10
+  fontSize: 10,
 }));
 
 const StyledTableHeadCell = styled(TableCell)(({ theme }) => ({
-  backgroundColor: '#0d6c6a',
-  color: '#fff',
+  backgroundColor: "#0d6c6a",
+  color: "#fff",
   fontWeight: 400,
   fontSize: 12,
   // padding: theme.spacing(1.5, 2),
@@ -85,51 +85,64 @@ export default function Consignments() {
   const navigate = useNavigate();
 
   const [consignments, setConsignments] = useState([]);
-  const [orderBy, setOrderBy] = useState('created_at');
-  const [order, setOrder] = useState('desc');
+  const [orderBy, setOrderBy] = useState("created_at");
+  const [order, setOrder] = useState("desc");
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
-  const [filters, setFilters] = useState({ consignment_id: '', status: '' });
+  const [filters, setFilters] = useState({
+    consignment_id: "",
+    status: "",
+    container_number: "",
+  });
   const [selected, setSelected] = useState([]);
   const [selectedExport, setSelectedExport] = useState([]);
   const [numSelected, setNumSelected] = useState(0);
   const [rowCount, setRowCount] = useState(0);
   const [openStatusDialog, setOpenStatusDialog] = useState(false);
-  const [selectedConsignmentForUpdate, setSelectedConsignmentForUpdate] = useState(null);
-  const [selectedStatus, setSelectedStatus] = useState('');
-  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
+  const [selectedConsignmentForUpdate, setSelectedConsignmentForUpdate] =
+    useState(null);
+  const [selectedStatus, setSelectedStatus] = useState("");
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: "",
+    severity: "info",
+  });
   const [exporting, setExporting] = useState(false);
   const [loading, setLoading] = useState(false);
   const [statusList, setStatusList] = useState([]);
   const [error, setError] = useState(null);
 
   // Server-side params
-  const params = useMemo(() => ({
-    page: page + 1,
-    limit: rowsPerPage,
-    order_by: orderBy,
-    order,
-    consignment_id: filters.consignment_id || undefined,
-    status: filters.status || undefined,
-  }), [page, rowsPerPage, orderBy, order, filters]);
+  const params = useMemo(
+    () => ({
+      page: page + 1,
+      limit: rowsPerPage,
+      order_by: orderBy,
+      order,
+      consignment_id: filters.consignment_id || undefined,
+      container_number: filters.container_number || undefined,
+      status: filters.status || undefined,
+    }),
+    [page, rowsPerPage, orderBy, order, filters],
+  );
 
   const getConsignments = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await api.get('/api/consignments', { params });
+      const response = await api.get("/api/consignments", { params });
       const data = response.data;
-      console.log('API Response:', data);
+      console.log("API Response:", data);
 
       setConsignments(data.data || []);
       setRowCount(data.total || 0);
     } catch (err) {
-      console.error('Fetch error:', err);
-      setError('Failed to load consignments');
+      console.error("Fetch error:", err);
+      setError("Failed to load consignments");
       setSnackbar({
         open: true,
-        message: err.response?.data?.error || 'Failed to load consignments',
-        severity: 'error',
+        message: err.response?.data?.error || "Failed to load consignments",
+        severity: "error",
       });
     } finally {
       setLoading(false);
@@ -144,10 +157,10 @@ export default function Consignments() {
   useEffect(() => {
     const fetchStatus = async () => {
       try {
-        const res = await api.get('/api/consignments/statuses');
+        const res = await api.get("/api/consignments/statuses");
         setStatusList(res.data.statusOptions || []);
       } catch (err) {
-        console.error('Error fetching statuses:', err);
+        console.error("Error fetching statuses:", err);
       }
     };
     fetchStatus();
@@ -156,17 +169,25 @@ export default function Consignments() {
   // Render helpers
   const renderDate = (dateStr) => {
     if (!dateStr) return "N/A";
-    return new Date(dateStr).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    return new Date(dateStr).toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
   };
 
   const renderStatus = (status) => (
-    <Chip 
-      label={status || 'N/A'} 
+    <Chip
+      label={status || "N/A"}
       color={
-        status === "Delivered" ? "success" :
-        status === "In Transit" ? "warning" :
-        status === "Draft" ? "default" : "info"
-      } 
+        status === "Delivered"
+          ? "success"
+          : status === "In Transit"
+            ? "warning"
+            : status === "Draft"
+              ? "default"
+              : "info"
+      }
       size="small"
       sx={{ fontSize: 12 }}
     />
@@ -186,14 +207,14 @@ export default function Consignments() {
 
   // Handlers
   const handleRequestSort = (property) => {
-    const isAsc = orderBy === property && order === 'asc';
-    setOrder(isAsc ? 'desc' : 'asc');
+    const isAsc = orderBy === property && order === "asc";
+    setOrder(isAsc ? "desc" : "asc");
     setOrderBy(property);
   };
 
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
-    setFilters(prev => ({ ...prev, [name]: value }));
+    setFilters((prev) => ({ ...prev, [name]: value }));
     setPage(0);
   };
 
@@ -205,48 +226,54 @@ export default function Consignments() {
   };
 
   const handleStatusUpdate = (consignment) => {
-    console.log('Updating status for consignment:', consignment.id);
+    console.log("Updating status for consignment:", consignment.id);
     setSelectedConsignmentForUpdate(consignment);
-    setSelectedStatus(consignment.status || '');
+    setSelectedStatus(consignment.status || "");
     setOpenStatusDialog(true);
   };
 
-//   const handleConfirmStatusUpdate = async () => {
-//     console.log('Confirming status update for consignment:', selectedConsignmentForUpdate?.id, 'to', selectedStatus);
-//     if (!selectedConsignmentForUpdate || !selectedStatus) return;
-// // console.log('Updating status for consignment', selectedConsignmentForUpdate.id, 'to', selectedStatus);
-//     try {
-//   const res = await api.put(`/api/consignments/${selectedConsignmentForUpdate.id}/status`, {
-//         status: selectedStatus,
-//       });
-//       console.log('Status updated:', res);
-//       setSnackbar({ open: true, message: 'Status updated successfully!', severity: 'success' });
-//       // getConsignments();
-//     } catch (err) {
-//       setSnackbar({
-//         open: true,
-//         message: 'Failed to update status',
-//         severity: 'error',
-//       });
-//     } finally {
-//       setOpenStatusDialog(false);
-//     }
-//   };
+  //   const handleConfirmStatusUpdate = async () => {
+  //     console.log('Confirming status update for consignment:', selectedConsignmentForUpdate?.id, 'to', selectedStatus);
+  //     if (!selectedConsignmentForUpdate || !selectedStatus) return;
+  // // console.log('Updating status for consignment', selectedConsignmentForUpdate.id, 'to', selectedStatus);
+  //     try {
+  //   const res = await api.put(`/api/consignments/${selectedConsignmentForUpdate.id}/status`, {
+  //         status: selectedStatus,
+  //       });
+  //       console.log('Status updated:', res);
+  //       setSnackbar({ open: true, message: 'Status updated successfully!', severity: 'success' });
+  //       // getConsignments();
+  //     } catch (err) {
+  //       setSnackbar({
+  //         open: true,
+  //         message: 'Failed to update status',
+  //         severity: 'error',
+  //       });
+  //     } finally {
+  //       setOpenStatusDialog(false);
+  //     }
+  //   };
 
-          const handleView = (id) => {
-        navigate(`/consignments/${id}/edit`,{ state: { mode: 'edit', consignmentId: id  } });
-
+  const handleView = (id) => {
+    navigate(`/consignments/${id}/edit`, {
+      state: { mode: "edit", consignmentId: id },
+    });
   };
 
   const handleEdit = (id) => {
-    
-    navigate(`/consignments/${id}/edit`, { state: { mode: 'edit', consignmentId: id } });
+    navigate(`/consignments/${id}/edit`, {
+      state: { mode: "edit", consignmentId: id },
+    });
   };
 
   const handleDelete = (id) => {
-    if (window.confirm('Are you sure you want to delete this consignment?')) {
-      console.log('Delete consignment', id);
-      setSnackbar({ open: true, message: 'Consignment deleted successfully!', severity: 'success' });
+    if (window.confirm("Are you sure you want to delete this consignment?")) {
+      console.log("Delete consignment", id);
+      setSnackbar({
+        open: true,
+        message: "Consignment deleted successfully!",
+        severity: "success",
+      });
     }
   };
 
@@ -254,66 +281,76 @@ export default function Consignments() {
     setSelectedStatus(e.target.value);
   };
 
-  const handleConfirmStatusUpdate = async(row) => {
-    console.log('consignments',row)
-     try {
-        const res = await api.put(`/api/consignments/${row.id}/status`, {newStatus: selectedStatus, reason: "Status advanced via UI"});
-        const { message } = res.data || {};
-          console.log('Status updated:', res);
-              getConsignments();
-          setLoading(false)
-    
-          setSnackbar({
-            open: true,
-            message: message || 'Status advanced successfully!',
-            severity: 'success',
-          });
-        } catch (err) {
-          setLoading(false)
-    
-          console.error('Error advancing status:', err);
-          setSnackbar({
-            open: true,
-            message: 'Failed to advance status.',
-            severity: 'error',
-          });
-        }
-      
+  const handleConfirmStatusUpdate = async (row) => {
+    console.log("consignments", row);
+    try {
+      const res = await api.put(`/api/consignments/${row.id}/status`, {
+        newStatus: selectedStatus,
+        reason: "Status advanced via UI",
+      });
+      const { message } = res.data || {};
+      console.log("Status updated:", res);
+      getConsignments();
+      setLoading(false);
+
+      setSnackbar({
+        open: true,
+        message: message || "Status advanced successfully!",
+        severity: "success",
+      });
+    } catch (err) {
+      setLoading(false);
+
+      console.error("Error advancing status:", err);
+      setSnackbar({
+        open: true,
+        message: "Failed to advance status.",
+        severity: "error",
+      });
+    }
+
     setOpenStatusDialog(false);
     // setSnackbar({ open: true, message: 'Status updated successfully!', severity: 'success' });
-      
-}
+  };
 
   const handleCloseStatusDialog = () => {
     setOpenStatusDialog(false);
     setSelectedConsignmentForUpdate(null);
-    setSelectedStatus('');
-};
+    setSelectedStatus("");
+  };
 
   const handleCloseSnackbar = () => {
     setSnackbar({ ...snackbar, open: false });
   };
   // Safe JSON parse helper to avoid errors
   const safeParseOrders = (orders) => {
-  if (!orders) return [];
-  if (Array.isArray(orders) || (typeof orders === 'object' && orders !== null)) {
-    return orders; // Already parsed (from DB JSONB)
-  }
-  if (orders === '[]') return [];
-  try {
-    return JSON.parse(orders);
-  } catch (e) {
-    console.warn('Invalid orders JSON:', orders, e);
-    return [];
-  }
-};
+    if (!orders) return [];
+    if (
+      Array.isArray(orders) ||
+      (typeof orders === "object" && orders !== null)
+    ) {
+      return orders; // Already parsed (from DB JSONB)
+    }
+    if (orders === "[]") return [];
+    try {
+      return JSON.parse(orders);
+    } catch (e) {
+      console.warn("Invalid orders JSON:", orders, e);
+      return [];
+    }
+  };
 
   // ... (keep your other handlers: handleExport, handleView, handleEdit, etc.)
 
   return (
     <Paper sx={{ p: 3, borderRadius: 3, boxShadow: 3, bgcolor: "#fafafa" }}>
       {/* Header + Add Button */}
-      <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}>
+      <Stack
+        direction="row"
+        justifyContent="space-between"
+        alignItems="center"
+        mb={3}
+      >
         <Typography variant="h4" fontWeight="bold" color="#f58220">
           Consignments
         </Typography>
@@ -321,14 +358,14 @@ export default function Consignments() {
           variant="contained"
           startIcon={<AddIcon />}
           onClick={() => navigate("/consignments/add")}
-          sx={{ bgcolor: '#0d6c6a', '&:hover': { bgcolor: '#0a5a59' } }}
+          sx={{ bgcolor: "#0d6c6a", "&:hover": { bgcolor: "#0a5a59" } }}
         >
           New Consignment
         </Button>
       </Stack>
 
       {/* Filters */}
-      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} mb={3}>
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={2} mb={3}>
         <TextField
           label="Search Consignment #"
           name="consignment_id"
@@ -337,6 +374,16 @@ export default function Consignments() {
           size="small"
           fullWidth
         />
+
+        <TextField
+          label="Search Container #"
+          name="container_number"
+          value={filters.container_number}
+          onChange={handleFilterChange}
+          size="small"
+          fullWidth
+        />
+
         <FormControl size="small" fullWidth>
           <InputLabel>Status</InputLabel>
           <Select
@@ -347,21 +394,30 @@ export default function Consignments() {
           >
             <MenuItem value="">All</MenuItem>
             {statusList.map((s) => (
-              <MenuItem key={s.value} value={s.value}>{s.label}</MenuItem>
+              <MenuItem key={s.value} value={s.value}>
+                {s.label}
+              </MenuItem>
             ))}
           </Select>
         </FormControl>
       </Stack>
 
       {/* Table */}
-      <TableContainer sx={{ borderRadius: 2, overflow: 'auto',display:"table-cell", maxHeight: 600 }}>
-        <Table  >
+      <TableContainer
+        sx={{
+          borderRadius: 2,
+          overflow: "auto",
+          display: "table-cell",
+          maxHeight: 600,
+        }}
+      >
+        <Table>
           <TableHead>
             <TableRow>
               <StyledTableHeadCell padding="checkbox">
                 <Checkbox />
               </StyledTableHeadCell>
-              {columns.map(col => (
+              {columns.map((col) => (
                 <StyledTableHeadCell key={col.key}>
                   {col.label}
                 </StyledTableHeadCell>
@@ -383,14 +439,22 @@ export default function Consignments() {
                 </TableCell>
               </TableRow>
             ) : (
-              consignments.map(row => (
-                <StyledTableRow key={row.id} sx={{fontSize:10}} hover>
+              consignments.map((row) => (
+                <StyledTableRow key={row.id} sx={{ fontSize: 10 }} hover>
                   <TableCell padding="checkbox">
                     <Checkbox />
                   </TableCell>
-                  <TableCell>{row.consignment_number || 'N/A'}</TableCell>
-                  <TableCell>{row.shipperName?.substring(0, 20) || row.shipper?.substring(0, 20) || 'N/A'}</TableCell>
-                  <TableCell>{row.consigneeName?.substring(0, 20) || row.consignee?.substring(0, 20) || 'N/A'}</TableCell>
+                  <TableCell>{row.consignment_number || "N/A"}</TableCell>
+                  <TableCell>
+                    {row.shipperName?.substring(0, 20) ||
+                      row.shipper?.substring(0, 20) ||
+                      "N/A"}
+                  </TableCell>
+                  <TableCell>
+                    {row.consigneeName?.substring(0, 20) ||
+                      row.consignee?.substring(0, 20) ||
+                      "N/A"}
+                  </TableCell>
                   <TableCell>{renderDate(row.eta)}</TableCell>
                   <TableCell>{renderDate(row.created_at)}</TableCell>
                   <TableCell>{row.gross_weight || 0} kg</TableCell>
@@ -405,12 +469,18 @@ export default function Consignments() {
                       </Tooltip> */}
                       <Tooltip title="Edit">
                         {/* {console.log('Row data for edit:', row)} */}
-                        <IconButton size="small" onClick={() => handleEdit(row.id)}>
+                        <IconButton
+                          size="small"
+                          onClick={() => handleEdit(row.id)}
+                        >
                           <EditIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Update Status">
-                        <IconButton size="small" onClick={() => handleStatusUpdate(row)}>
+                        <IconButton
+                          size="small"
+                          onClick={() => handleStatusUpdate(row)}
+                        >
                           <EditNoteIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
@@ -438,7 +508,10 @@ export default function Consignments() {
       />
 
       {/* Status Update Dialog */}
-      <Dialog open={openStatusDialog} onClose={() => setOpenStatusDialog(false)}>
+      <Dialog
+        open={openStatusDialog}
+        onClose={() => setOpenStatusDialog(false)}
+      >
         <DialogTitle>Update Status</DialogTitle>
         <DialogContent>
           <FormControl fullWidth>
@@ -446,17 +519,25 @@ export default function Consignments() {
             <Select
               value={selectedStatus}
               label="Status"
-              onChange={e => setSelectedStatus(e.target.value)}
+              onChange={(e) => setSelectedStatus(e.target.value)}
             >
-              {statusList.map(s => (
-                <MenuItem key={s.value} value={s.value}>{s.label}</MenuItem>
+              {statusList.map((s) => (
+                <MenuItem key={s.value} value={s.value}>
+                  {s.label}
+                </MenuItem>
               ))}
             </Select>
           </FormControl>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenStatusDialog(false)}>Cancel</Button>
-          <Button variant="contained" onClick={() => handleConfirmStatusUpdate(selectedConsignmentForUpdate)} sx={{ bgcolor: '#0d6c6a', '&:hover': { bgcolor: '#0a5a59' } }}>
+          <Button
+            variant="contained"
+            onClick={() =>
+              handleConfirmStatusUpdate(selectedConsignmentForUpdate)
+            }
+            sx={{ bgcolor: "#0d6c6a", "&:hover": { bgcolor: "#0a5a59" } }}
+          >
             Update
           </Button>
         </DialogActions>
