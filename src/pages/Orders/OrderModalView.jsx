@@ -237,6 +237,7 @@ const OrderModalView = ({
       };
       img.onerror = () => resolve(null);
     });
+
   const generateOrderPDF = async (order) => {
     if (!order) return;
 
@@ -519,12 +520,6 @@ const OrderModalView = ({
     };
 
     y = drawBoxText(y, "Order Remarks", order.order_remarks);
-
-    // -------- ATTACHMENTS --------
-    const attachmentsText = order.attachments?.length
-      ? order.attachments.join(", ")
-      : "None";
-    y = drawBoxText(y, "Attachments", attachmentsText);
 
     // -------- FOOTER --------
     const footerY = 275;
@@ -1217,29 +1212,29 @@ const OrderModalView = ({
               py: 1.5,
               px: 2,
             }}
-            secondaryAction={
-              <Button
-                size="small"
-                variant="contained"
-                color="primary"
-                startIcon={<DownloadIcon />}
-                component="a"
-                href={file?.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                download={file?.originalname}
-                sx={{
-                  mt: 4,
-                  borderRadius: 2,
-                  minWidth: { xs: 40, sm: 120 },
-                  px: { xs: 1, sm: 2 },
-                }}
-              >
-                <Box sx={{ display: { xs: "none", sm: "block" } }}>
-                  Download
-                </Box>
-              </Button>
-            }
+            // secondaryAction={
+            //   <Button
+            //     size="small"
+            //     variant="contained"
+            //     color="primary"
+            //     startIcon={<DownloadIcon />}
+            //     component="a"
+            //     href={file?.url}
+            //     target="_blank"
+            //     rel="noopener noreferrer"
+            //     download={file?.originalname}
+            //     sx={{
+            //       mt: 4,
+            //       borderRadius: 2,
+            //       minWidth: { xs: 40, sm: 120 },
+            //       px: { xs: 1, sm: 2 },
+            //     }}
+            //   >
+            //     <Box sx={{ display: { xs: "none", sm: "block" } }}>
+            //       Download
+            //     </Box>
+            //   </Button>
+            // }
           >
             <ListItemIcon>
               <AttachFileIcon sx={{ color: "#f58220" }} />
@@ -2438,11 +2433,11 @@ const OrderModalView = ({
             p: 3,
             bgcolor: "linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)",
             borderTop: "1px solid #e0e0e0",
-            justifyContent: "space-between",
+            // justifyContent: "space-between",
             boxShadow: "0 -4px 12px rgba(0,0,0,0.05)",
           }}
         >
-          <Box>
+          {/* <Box>
             <FormControl size="small" sx={{ minWidth: 150 }}>
               <InputLabel id="pdf-method-label">PDF Method</InputLabel>
               <Select
@@ -2456,7 +2451,7 @@ const OrderModalView = ({
                 <MenuItem value="html2canvas">Visual PDF</MenuItem>
               </Select>
             </FormControl>
-          </Box>
+          </Box> */}
 
           <Box sx={{ display: "flex", gap: 2 }}>
             <Button

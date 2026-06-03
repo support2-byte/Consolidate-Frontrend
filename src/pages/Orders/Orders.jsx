@@ -250,10 +250,18 @@ const OrdersList = () => {
 
     try {
       const params = {
-        page: page + 1, // 1-based paging (common convention)
+        page: page + 1,
         limit: rowsPerPage,
         includeContainer: true,
       };
+
+      if (filters.status?.trim()) {
+        params.status = filters.status.trim();
+      }
+
+      if (filters.search?.trim()) {
+        params.search = filters.search.trim();
+      }
 
       // ───────────────────────────────
       // Option A: General search field
@@ -397,9 +405,15 @@ const OrdersList = () => {
     }
   };
 
-  const handleClearSearch = async () => {
-    setFilters({ status: "", search: "" });
-    window.location.reload();
+  const handleClearSearch = () => {
+    setFilters({
+      status: "",
+      search: "",
+    });
+
+    setPage(0);
+
+    fetchOrders();
   };
 
   const handleDocuments = async (orderId) => {
@@ -8171,8 +8185,8 @@ applicable law provides otherwise
           {/* General search input */}
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             <TextField
-              label="Search order By Form No"
-              placeholder="Enter Form No"
+              label="Search Orders"
+              placeholder="Booking Ref, Form No, Sender, Receiver, Status..."
               type="search"
               name="search"
               value={filters.search || ""}
