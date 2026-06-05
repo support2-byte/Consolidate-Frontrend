@@ -628,6 +628,7 @@ const OrdersList = () => {
               qty,
               totalAssignedWeight: weightKg, // trust user input
               containers,
+              loadingDate: detail.loadingDate || null,
             };
           }
         });

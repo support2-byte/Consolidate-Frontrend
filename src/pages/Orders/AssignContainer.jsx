@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, {
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  useRef,
+} from "react";
 import {
   Dialog,
   DialogTitle,
@@ -103,6 +109,14 @@ const AssignModal = ({
   const [assignmentWeights, setAssignmentWeights] = useState({});
   const [selectedContainersPerDetail, setSelectedContainersPerDetail] =
     useState({});
+
+  const [loadingDate, setLoadingDate] = useState("");
+
+  const loadingDateRef = useRef(loadingDate);
+  useEffect(() => {
+    loadingDateRef.current = loadingDate;
+  }, [loadingDate]);
+
   const availableContainers = useMemo(
     () =>
       containers.filter(
@@ -172,6 +186,15 @@ const AssignModal = ({
       // showToast?.('No orders selected to assign', 'warning');
       return;
     }
+    if (!loadingDate) {
+      console.warn("Loading date is required");
+      return;
+    }
+    console.log("loadingDateRef.current:", loadingDateRef.current);
+    console.log("assignmentQuantities:", assignmentQuantities);
+    console.log("assignmentWeights:", assignmentWeights);
+    console.log("selectedContainersPerDetail:", selectedContainersPerDetail);
+
     console.log("selectedOrdersselectedOrdersselectedOrders", selectedOrders);
     const assignments = selectedOrders.reduce((acc, orderId) => {
       const fullOrder =
@@ -221,11 +244,14 @@ const AssignModal = ({
           }
 
           recAcc[idx] = {
-            orderItemId: detailItem.id, // Real DB ID from order_items table
+            orderItemId: detailItem.id,
             qty,
             totalAssignedWeight: weightKg,
-            containers, // array of cids
+            containers,
+            loadingDate: loadingDateRef.current,
           };
+
+          console.log("recAcc entry:", rec.id, idx, recAcc[idx]);
 
           return recAcc;
         }, {});
@@ -290,6 +316,7 @@ const AssignModal = ({
     getDetailKey,
     handleAssign,
     setOpenAssignModal,
+    loadingDate,
     // showToast,
   ]);
   const needsFetching = selectedOrders.some((id) => !detailedOrders[id]);
@@ -665,6 +692,8 @@ const AssignModal = ({
                         setAssignmentQuantities={setAssignmentQuantities}
                         assignmentWeights={assignmentWeights}
                         setAssignmentWeights={setAssignmentWeights}
+                        loadingDate={loadingDate}
+                        setLoadingDate={setLoadingDate}
                         selectedContainersPerDetail={
                           selectedContainersPerDetail
                         }

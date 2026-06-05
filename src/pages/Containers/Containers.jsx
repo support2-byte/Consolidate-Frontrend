@@ -54,6 +54,7 @@ const modalStyle = {
 };
 
 const ContainerModule = ({
+  isConsignment,
   containers: propContainers = [],
   selectedContainers = [],
   onToggle,
@@ -223,10 +224,20 @@ const ContainerModule = ({
         page: currentPage,
         limit: rowsPerPage,
       };
-      const response = await api.get("/api/containers", { params });
+
+      let response;
+      if (isConsignment === true) {
+        response = await api.get("/api/containers/consignment-containers", {
+          params,
+        });
+      } else {
+        response = await api.get("/api/containers", { params });
+      }
+
       if (response.status !== 200) {
         throw new Error(`Unexpected response status: ${response.status}`);
       }
+
       setContainers(response.data?.data || []);
       setTotalCount(response.data?.total || 0);
     } catch (error) {

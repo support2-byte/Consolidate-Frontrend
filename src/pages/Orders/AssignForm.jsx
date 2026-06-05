@@ -27,6 +27,8 @@ const AssignmentForm = React.memo(
     setAssignmentWeights,
     setSelectedContainersPerDetail,
     onAssignPreview,
+    loadingDate,
+    setLoadingDate,
   }) => {
     const [localQty, setLocalQty] = useState(
       assignmentQuantities[keyDetail] ?? "",
@@ -35,6 +37,8 @@ const AssignmentForm = React.memo(
     const [localWeight, setLocalWeight] = useState(
       assignmentWeights[keyDetail] ?? "",
     );
+
+    const today = new Date().toISOString().split("T")[0];
 
     // Single selected container
     const selectedCid = selectedContainersPerDetail[keyDetail] || "";
@@ -253,6 +257,29 @@ const AssignmentForm = React.memo(
               </MenuItem>
             ))}
           </Select>
+          <TextField
+            sx={{ mt: 4 }}
+            fullWidth
+            label="Loading Date"
+            type="date"
+            value={loadingDate}
+            onChange={(e) => {
+              const selectedDate = e.target.value;
+
+              if (selectedDate < today) {
+                return;
+              }
+
+              setLoadingDate(selectedDate);
+            }}
+            onPaste={(e) => e.preventDefault()}
+            InputLabelProps={{
+              shrink: true,
+            }}
+            inputProps={{
+              min: today,
+            }}
+          />
         </FormControl>
 
         <Tooltip
