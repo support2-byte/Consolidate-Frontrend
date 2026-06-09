@@ -6,6 +6,8 @@ import {
   TextField,
   Select,
   MenuItem,
+  Tabs,
+  Tab,
   Table,
   TableBody,
   TableCell,
@@ -183,6 +185,10 @@ const ContainerModule = ({ propContainers = [] }) => {
     placeOfDelivery: "",
   });
 
+  const [activeHistoryTab, setActiveHistoryTab] = useState(0);
+  const [unassignedOrders, setUnassignedOrders] = useState([]);
+  const [loadingUnassigned, setLoadingUnassigned] = useState(false);
+
   const handleSnackbarClose = () => {
     setSnackbar({ ...snackbar, open: false });
   };
@@ -326,7 +332,7 @@ const ContainerModule = ({ propContainers = [] }) => {
 
       const data = containerRes.data;
       const groupedHistory = historyRes.data?.groupedByConsignment || {};
-      const historyArray = Object.values(groupedHistory);
+      const historyArray = Object.values(groupedHistory).reverse();
 
       setUsageHistory(historyArray);
       setSelectedContainerNo(data.container_number || cid);
@@ -337,6 +343,19 @@ const ContainerModule = ({ propContainers = [] }) => {
       handleError(error, "Error fetching container details");
     } finally {
       setLoadingHistory(false);
+    }
+  };
+
+  const fetchUnassignedOrders = async (cid) => {
+    setLoadingUnassigned(true);
+    try {
+      const res = await api.get(`/api/containers/${cid}/unassigned-orders`);
+      setUnassignedOrders(res.data?.orders || []);
+    } catch (err) {
+      console.error("Error fetching unassigned orders:", err);
+      setUnassignedOrders([]);
+    } finally {
+      setLoadingUnassigned(false);
     }
   };
 
@@ -484,8 +503,14 @@ const ContainerModule = ({ propContainers = [] }) => {
       return;
     }
     setSelectedContainerNo(cid);
-    fetchContainerById(cid);
     setHistoryCid(cid);
+    setActiveHistoryTab(0);
+    setUnassignedOrders([]);
+
+    fetchContainerById(cid);
+
+    fetchUnassignedOrders(cid);
+
     setOpenHistoryModal(true);
   };
 
@@ -721,15 +746,13 @@ const ContainerModule = ({ propContainers = [] }) => {
   // and renders one section (summary cards + category table + detail table)
   // per consignment, exactly like generateJobDetailManifestPDF does.
   // ─────────────────────────────────────────────────────────────────────────────
-  const generateFullManifestPDF = async (allOrderIds, historyCid) => {
-    console.log("Generating full manifest PDF, historyCid:", historyCid);
 
+  const generateFullManifestPDF = async (allOrderIds, historyCid) => {
     if (!usageHistory || usageHistory.length === 0) {
       showToast("No history data available to print", "warning");
       return;
     }
 
-    // Filter consignments that actually have orders
     const consignmentGroups = usageHistory.filter(
       (c) => c.orders && Array.isArray(c.orders) && c.orders.length > 0,
     );
@@ -741,7 +764,6 @@ const ContainerModule = ({ propContainers = [] }) => {
 
     setGeneratingPDF(true);
     try {
-      // ── Collect ALL unique order IDs across every consignment ──────────────
       const uniqueOrderIds = [
         ...new Set(
           consignmentGroups
@@ -752,25 +774,19 @@ const ContainerModule = ({ propContainers = [] }) => {
         ),
       ];
 
-      // ── Pre-fetch all orders once ──────────────────────────────────────────
-      const allOrdersMap = {}; // orderId -> { data, receivers }
+      const allOrdersMap = {};
       for (const orderId of uniqueOrderIds) {
         try {
           const response = await api.get(`/api/orders/${orderId}`, {
             params: { includeOrders: true },
           });
-          if (response.data) {
-            allOrdersMap[orderId] = response.data;
-          }
+          if (response.data) allOrdersMap[orderId] = response.data;
         } catch (err) {
           console.error(`Error fetching order ${orderId}:`, err);
         }
       }
 
-      // ── Resolve container number ───────────────────────────────────────────
       let matchedContainerNumber = selectedContainerNo || "N/A";
-
-      // Try to find it in receivers' containerDetails
       outer: for (const orderData of Object.values(allOrdersMap)) {
         for (const receiver of orderData.receivers || []) {
           for (const detail of receiver.shippingDetails || []) {
@@ -783,8 +799,6 @@ const ContainerModule = ({ propContainers = [] }) => {
           }
         }
       }
-
-      // Fallback: assignmentHistory
       if (!matchedContainerNumber || matchedContainerNumber === "N/A") {
         for (const orderData of Object.values(allOrdersMap)) {
           const match = (orderData.assignmentHistory || []).find(
@@ -797,96 +811,110 @@ const ContainerModule = ({ propContainers = [] }) => {
         }
       }
 
-      // ── Create PDF ─────────────────────────────────────────────────────────
+      let containerSize = "N/A";
+      try {
+        const containerRes = await api.get(`/api/containers/${historyCid}`);
+        containerSize = containerRes.data?.container_size || "N/A";
+        if (!matchedContainerNumber || matchedContainerNumber === "N/A") {
+          matchedContainerNumber = containerRes.data?.container_number || "N/A";
+        }
+      } catch (err) {
+        console.error("Error fetching container details for size:", err);
+      }
+
       const doc = new jsPDF("p", "mm", "a4");
       const pageWidth = doc.internal.pageSize.getWidth();
-      const margin = 10;
-      const brandPrimary = [13, 108, 106];
-      const brandLight = [220, 245, 243];
+      const margin = 14;
+      const teal = [13, 108, 106];
+      const orange = [245, 130, 32];
+      const lightGrey = [245, 245, 245];
+      const borderGrey = [210, 210, 210];
 
-      // ── PAGE 1: Cover / global summary ────────────────────────────────────
-      let y = 30;
+      // ── Helper: draw section sub-header (teal left-border accent style) ──────
+      const drawSectionHeader = (text, y) => {
+        doc.setFillColor(...teal);
+        doc.rect(margin, y, 3, 5, "F");
+        doc.setFont("helvetica", "bold").setFontSize(10);
+        doc.setTextColor(...teal);
+        doc.text(text, margin + 6, y + 4);
+        return y + 9;
+      };
 
-      const logoBase64 = await loadImageAsBase64("./logo-2.png");
-      if (logoBase64) doc.addImage(logoBase64, "PNG", margin, 4, 60, 12);
-
-      doc.setFont("helvetica", "bold").setFontSize(16);
-      doc.setTextColor(...brandPrimary);
-      doc.text("CONTAINER MANIFEST SUMMARY", pageWidth - margin, 10, {
-        align: "right",
-      });
-
-      // Global totals across all consignments
-      let grandTotalOrders = 0;
-      let grandTotalPackages = 0;
-      let grandTotalWeight = 0;
-
-      consignmentGroups.forEach((consignment) => {
-        const consignmentOrderIds = [
-          ...new Set(
-            (consignment.orders || [])
-              .map((e) => e.orderId?.toString())
-              .filter(Boolean),
-          ),
-        ];
-        grandTotalOrders += consignmentOrderIds.length;
-
-        consignmentOrderIds.forEach((oid) => {
-          const orderData = allOrdersMap[oid];
-          if (!orderData) return;
-          (orderData.receivers || []).forEach((receiver) => {
-            (receiver.shippingDetails || []).forEach((detail) => {
-              grandTotalPackages += Number(detail.totalNumber || 0);
-              grandTotalWeight += Number(detail.weight || 0);
-            });
-          });
-        });
-      });
-
-      const globalCards = [
-        ["Container Number", matchedContainerNumber],
-        ["Total Consignments", consignmentGroups.length.toString()],
-        ["Total Orders", grandTotalOrders.toString()],
-        ["Total Packages", grandTotalPackages.toString()],
-        ["Total Weight", grandTotalWeight + " Kgs"],
-        ["Generated On", new Date().toLocaleDateString()],
-      ];
-
-      const cardWidth = (pageWidth - margin * 2 - 12) / 2;
-      const cardHeight = 16;
-
-      globalCards.forEach((item, i) => {
-        const col = i % 2;
-        const row = Math.floor(i / 2);
-        const x = margin + col * (cardWidth + 12);
-        const cardY = y + row * (cardHeight + 3);
-
-        doc.setDrawColor(220, 220, 220);
-        doc.setFillColor(...brandLight);
-        doc.roundedRect(x, cardY, cardWidth, cardHeight, 3, 3, "FD");
-
-        doc.setFillColor(...brandPrimary);
-        doc.rect(x, cardY, cardWidth, 5, "F");
+      // ── Helper: draw a label-value row ────────────────────────────────────────
+      const drawLabelValue = (label, value, x, y, labelWidth = 28) => {
         doc.setFont("helvetica", "bold").setFontSize(9);
-        doc.setTextColor(255, 255, 255);
-        doc.text(item[0], x + 3, cardY + 4);
+        doc.setTextColor(80, 80, 80);
+        doc.text(label + ":", x, y);
+        doc.setFont("helvetica", "normal").setFontSize(9);
+        doc.setTextColor(30, 30, 30);
+        doc.text(String(value || "N/A"), x + labelWidth, y);
+      };
 
-        doc.setFont("helvetica", "normal");
-        doc.setTextColor(50, 50, 50);
-        const lines = doc.splitTextToSize(
-          String(item[1] || "N/A"),
-          cardWidth - 6,
-        );
-        doc.text(lines, x + 3, cardY + 11);
-      });
+      // ── Helper: thin full-width divider ───────────────────────────────────────
+      const drawDivider = (y, color = borderGrey) => {
+        doc.setDrawColor(...color);
+        doc.setLineWidth(0.3);
+        doc.line(margin, y, pageWidth - margin, y);
+      };
 
-      y += Math.ceil(globalCards.length / 2) * (cardHeight + 3) + 12;
+      // ── PAGE HEADER renderer (called once per consignment section) ────────────
+      const renderPageHeader = async (
+        doc,
+        consignmentNo,
+        pol,
+        pod,
+        totalContainers,
+      ) => {
+        const logoBase64 = await loadImageAsBase64("./logo-2.png");
+        if (logoBase64) doc.addImage(logoBase64, "PNG", margin, 5, 55, 12);
 
-      // ── PER-CONSIGNMENT SECTIONS ───────────────────────────────────────────
+        // Right-side metadata block
+        doc.setFont("helvetica", "bold").setFontSize(10);
+        doc.setTextColor(...orange);
+        doc.text(`Consignment: ${consignmentNo}`, pageWidth - margin, 8, {
+          align: "right",
+        });
+
+        doc.setFont("helvetica", "normal").setFontSize(8);
+        doc.setTextColor(60, 60, 60);
+        const metaLines = [
+          `Total Containers: ${totalContainers}`,
+          `POL: ${pol}`,
+          `POD: ${pod}`,
+          `Generated: ${new Date().toLocaleString()}`,
+        ];
+        metaLines.forEach((line, i) => {
+          doc.text(line, pageWidth - margin, 13 + i * 4, { align: "right" });
+        });
+
+        // Company name + title
+        doc.setFont("helvetica", "bold").setFontSize(13);
+        doc.setTextColor(...teal);
+        doc.text("ROYAL GULF SHIPPING & LOGISTICS LLC", margin, 22);
+
+        doc.setFont("helvetica", "normal").setFontSize(7.5);
+        doc.setTextColor(120, 120, 120);
+        doc.text("Dubai • London • Karachi • Shenzhen", margin, 26);
+
+        // Bold manifest title
+        doc.setFont("helvetica", "bold").setFontSize(14);
+        doc.setTextColor(...teal);
+        doc.text("CONSOLIDATION MANIFEST - CONTAINER LEVEL", margin, 33);
+
+        // Teal divider under title
+        doc.setDrawColor(...teal);
+        doc.setLineWidth(0.6);
+        doc.line(margin, 36, pageWidth - margin, 36);
+
+        return 40; // y after header
+      };
+
+      // ── RENDER EACH CONSIGNMENT AS A FULL PAGE SECTION ───────────────────────
+      let firstPage = true;
+
       for (let ci = 0; ci < consignmentGroups.length; ci++) {
         const consignment = consignmentGroups[ci];
 
-        // Gather order IDs that belong to this consignment
         const consignmentOrderIds = [
           ...new Set(
             (consignment.orders || [])
@@ -895,7 +923,6 @@ const ContainerModule = ({ propContainers = [] }) => {
           ),
         ];
 
-        // Get receiver rows for this consignment
         const receiversData = [];
         consignmentOrderIds.forEach((oid) => {
           const orderData = allOrdersMap[oid];
@@ -912,6 +939,7 @@ const ContainerModule = ({ propContainers = [] }) => {
                 bookingRef: orderData.booking_ref || "N/A",
                 rglBookingNumber: orderData.rgl_booking_number || "N/A",
                 senderName: orderData.sender_name || "N/A",
+                receiverCompany: receiver.receiver_name || "N/A",
                 pod: detail.deliveryAddress || "N/A",
                 pol: detail.pickupLocation || "N/A",
               });
@@ -919,283 +947,300 @@ const ContainerModule = ({ propContainers = [] }) => {
           });
         });
 
-        // Resolve pol / pod display names for this consignment
-        const firstOrder = consignment.orders?.[0] || {};
-        const cPol = getPlaceName(consignment.pol || firstOrder.pol);
-        const cPod = getPlaceName(consignment.pod || firstOrder.pod);
+        const firstEvent = consignment.orders?.[0] || {};
+        const cPol = getPlaceName(consignment.pol || firstEvent.pol);
+        const cPod = getPlaceName(consignment.pod || firstEvent.pod);
         const cConsignmentNo =
           consignment.consignmentNo || `Consignment ${ci + 1}`;
-        const cDate =
-          consignment.loadedAt ||
-          consignment.orders?.[0]?.loadedAt ||
-          consignment.orders?.[0]?.startDate ||
-          "N/A";
 
-        // ── Page break check ────────────────────────────────────────────────
-        if (y > 220) {
-          doc.addPage();
-          y = 20;
-        }
+        if (!firstPage) doc.addPage();
+        firstPage = false;
 
-        // ── Consignment section header bar ──────────────────────────────────
-        const headerText = `Consignment ${ci + 1}: ${cConsignmentNo}
-Date: ${cDate}
-Orders: ${consignmentOrderIds.length}`;
-
-        const headerLines = doc.splitTextToSize(
-          headerText,
-          pageWidth - margin * 2 - 6,
+        let y = await renderPageHeader(
+          doc,
+          cConsignmentNo,
+          cPol,
+          cPod,
+          consignmentOrderIds.length,
         );
 
-        const headerHeight = Math.max(10, headerLines.length * 4 + 4);
+        y += 3;
+        drawLabelValue(
+          "Shipper",
+          firstEvent.shipperName || "N/A",
+          margin,
+          y,
+          22,
+        );
 
-        doc.setFillColor(...brandPrimary);
-        doc.rect(margin, y, pageWidth - 2 * margin, headerHeight, "F");
+        y += 6;
 
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(9);
-        doc.setTextColor(255, 255, 255);
+        drawLabelValue(
+          "Consignee",
+          firstEvent.consigneeName || "N/A",
+          margin,
+          y,
+          22,
+        );
 
-        doc.text(headerLines, margin + 3, y + 4);
+        y += 8;
+        drawDivider(y);
+        y += 5;
 
-        y += headerHeight + 4;
+        // ── Container block header ────────────────────────────────────────────
+        doc.setFillColor(...teal);
+        doc.setDrawColor(...teal);
+        doc.setLineWidth(0.4);
+        doc.rect(margin, y, pageWidth - 2 * margin, 7, "S");
+        doc.setFont("helvetica", "bold").setFontSize(9);
+        doc.setTextColor(...teal);
+        doc.text(
+          `CONTAINER ${ci + 1}: ${matchedContainerNumber} | SIZE: ${containerSize}`,
+          margin + 3,
+          y + 5,
+        );
+        y += 12;
 
-        // ── Consignment summary cards (mini) ────────────────────────────────
+        // ── CONTAINER SUMMARY table ───────────────────────────────────────────
+        y = drawSectionHeader(
+          `CONTAINER SUMMARY - ${matchedContainerNumber}`,
+          y,
+        );
+
         const totalPkgs = receiversData.reduce((s, r) => s + r.totalNumber, 0);
         const totalWt = receiversData.reduce((s, r) => s + r.weight, 0);
 
-        const miniCards = [
-          ["Consignment No", cConsignmentNo],
-          ["Route", `${cPol} - ${cPod}`],
-          ["Linked Orders", consignmentOrderIds.join(", ") || "N/A"],
-          ["Total Packages", totalPkgs.toString()],
-          ["Total Weight", totalWt + " Kgs"],
-          ["Date", cDate],
-        ];
+        doc.autoTable({
+          head: [
+            [
+              "ORDERS IN CONTAINER",
+              "TOTAL PACKAGES",
+              "TOTAL WEIGHT (KGS)",
+              "GROSS WEIGHT (APPROX.)",
+            ],
+          ],
+          body: [
+            [
+              consignmentOrderIds.length.toString(),
+              totalPkgs.toString(),
+              totalWt.toFixed(2),
+              (totalWt * 1.15).toFixed(2),
+            ],
+          ],
+          startY: y,
+          styles: {
+            fontSize: 9,
+            cellPadding: 3,
+            halign: "center",
+            lineWidth: 0.2,
+            lineColor: borderGrey,
+          },
+          headStyles: {
+            fillColor: [255, 255, 255],
+            textColor: [50, 50, 50],
+            fontStyle: "bold",
+            fontSize: 8,
+            lineWidth: 0.2,
+            lineColor: borderGrey,
+          },
+          bodyStyles: { fillColor: [255, 255, 255], textColor: [30, 30, 30] },
+          margin: { left: margin, right: margin },
+          tableLineColor: borderGrey,
+          tableLineWidth: 0.2,
+        });
+        y = doc.lastAutoTable.finalY + 8;
 
-        const miniCardW = (pageWidth - margin * 2 - 20) / 3;
-        const miniCardH = 22;
+        // ── COMMODITY SUMMARY table ───────────────────────────────────────────
+        y = drawSectionHeader(
+          `CONTAINER COMMODITY SUMMARY - ${matchedContainerNumber}`,
+          y,
+        );
 
-        miniCards.forEach((item, i) => {
-          const col = i % 3;
-          const row = Math.floor(i / 3);
-          const x = margin + col * (miniCardW + 10);
-          const cardY = y + row * (miniCardH + 3);
+        doc.setFont("helvetica", "italic").setFontSize(8);
+        doc.setTextColor(120, 120, 120);
+        doc.text("Commodity-wise breakdown for this container", margin, y + 1);
+        y += 6;
 
-          doc.setDrawColor(200, 200, 200);
-          doc.setFillColor(...brandLight);
-          doc.roundedRect(x, cardY, miniCardW, miniCardH, 2, 2, "FD");
-
-          doc.setFillColor(...brandPrimary);
-          doc.rect(x, cardY, miniCardW, 4, "F");
-          doc.setFont("helvetica", "bold").setFontSize(7.5);
-          doc.setTextColor(255, 255, 255);
-          doc.text(item[0], x + 2, cardY + 3);
-
-          doc.setFont("helvetica", "normal").setFontSize(7.5);
-          doc.setTextColor(50, 50, 50);
-          const lines = doc.splitTextToSize(
-            String(item[1] || "N/A"),
-            miniCardW - 4,
-          );
-          doc.text(lines, x + 2, cardY + 8, {
-            maxWidth: miniCardW - 4,
-          });
+        const catMap = {};
+        receiversData.forEach((r) => {
+          const key = r.category;
+          if (!catMap[key])
+            catMap[key] = {
+              category: r.category,
+              orders: new Set(),
+              totalNumber: 0,
+              weight: 0,
+            };
+          catMap[key].totalNumber += r.totalNumber;
+          catMap[key].weight += r.weight;
+          catMap[key].orders.add(r.bookingRef);
         });
 
-        y += Math.ceil(miniCards.length / 3) * (miniCardH + 3) + 5;
+        const catRows = Object.values(catMap).map((item) => [
+          item.category,
+          item.orders.size.toString(),
+          item.totalNumber.toString(),
+          item.weight.toFixed(2),
+        ]);
+        const catTotal = Object.values(catMap).reduce(
+          (s, i) => ({ q: s.q + i.totalNumber, w: s.w + i.weight }),
+          { q: 0, w: 0 },
+        );
+        catRows.push([
+          {
+            content: "TOTAL",
+            styles: { fontStyle: "bold", textColor: [30, 30, 30] },
+          },
+          { content: "", styles: { fontStyle: "bold" } },
+          { content: catTotal.q.toString(), styles: { fontStyle: "bold" } },
+          { content: catTotal.w.toFixed(2), styles: { fontStyle: "bold" } },
+        ]);
 
-        if (receiversData.length > 0) {
-          // ── Category summary table ────────────────────────────────────────
-          const catMap = {};
-          receiversData.forEach((r) => {
-            const key = `${r.category}|${r.subcategory}|${r.type}`;
-            if (!catMap[key])
-              catMap[key] = {
-                category: r.category,
-                subcategory: r.subcategory,
-                type: r.type,
-                totalNumber: 0,
-                weight: 0,
-              };
-            catMap[key].totalNumber += r.totalNumber;
-            catMap[key].weight += r.weight;
-          });
+        doc.autoTable({
+          head: [
+            ["COMMODITY", "TOTAL ORDERS", "TOTAL PKGS", "TOTAL WEIGHT (KGS)"],
+          ],
+          body: catRows,
+          startY: y,
+          styles: {
+            fontSize: 9,
+            cellPadding: 3,
+            lineWidth: 0.2,
+            lineColor: borderGrey,
+          },
+          headStyles: {
+            fillColor: [255, 255, 255],
+            textColor: [50, 50, 50],
+            fontStyle: "bold",
+            fontSize: 8,
+            lineWidth: 0.2,
+            lineColor: borderGrey,
+          },
+          bodyStyles: { fillColor: [255, 255, 255] },
+          margin: { left: margin, right: margin },
+          tableLineWidth: 0.2,
+          tableLineColor: borderGrey,
+          didParseCell(data) {
+            if (
+              data.section === "body" &&
+              data.row.index === catRows.length - 1
+            ) {
+              data.cell.styles.fontStyle = "bold";
+            }
+          },
+        });
+        y = doc.lastAutoTable.finalY + 8;
 
-          const catRows = Object.values(catMap).map((item) => [
-            item.category,
-            item.subcategory,
-            item.type,
-            item.totalNumber.toString(),
-            item.weight.toString(),
-          ]);
+        // ── DETAILED MANIFEST table ───────────────────────────────────────────
+        y = drawSectionHeader(
+          `DETAILED MANIFEST - ${matchedContainerNumber}`,
+          y,
+        );
 
-          const catTotal = Object.values(catMap).reduce(
-            (s, i) => ({ q: s.q + i.totalNumber, w: s.w + i.weight }),
-            { q: 0, w: 0 },
-          );
+        const detailRows = receiversData.map((r, i) => [
+          (i + 1).toString(),
+          r.bookingRef,
+          r.senderName,
+          r.receiverName,
+          "N/A", // Marks & Nos
+          r.totalNumber.toString(),
+          r.weight.toFixed(2),
+          r.category + (r.subcategory !== "N/A" ? ` - ${r.subcategory}` : ""),
+        ]);
 
-          catRows.push([
-            {
-              content: "TOTAL",
-              colSpan: 3,
-              styles: {
-                halign: "center",
-                fontStyle: "bold",
-                textColor: [...brandPrimary],
-              },
-            },
-            { content: catTotal.q.toString(), styles: { fontStyle: "bold" } },
-            { content: catTotal.w.toString(), styles: { fontStyle: "bold" } },
-          ]);
+        // Totals row
+        detailRows.push([
+          {
+            content: "TOTAL:",
+            colSpan: 5,
+            styles: { halign: "right", fontStyle: "bold" },
+          },
+          { content: totalPkgs.toString(), styles: { fontStyle: "bold" } },
+          { content: totalWt.toFixed(2), styles: { fontStyle: "bold" } },
+          { content: "", styles: {} },
+        ]);
 
-          doc.autoTable({
-            head: [["Category", "Subcategory", "Type", "Qty", "Weight"]],
-            body: catRows,
-            startY: y,
-            styles: {
-              fontSize: 8,
-              cellPadding: 2,
-              overflow: "linebreak",
-              valign: "top",
-              lineWidth: 0.1,
-              lineColor: [200, 200, 200],
-            },
-            headStyles: {
-              fillColor: brandPrimary,
-              textColor: [255, 255, 255],
-              fontStyle: "bold",
-              fontSize: 9,
-            },
-            columnStyles: {
-              0: { cellWidth: 50 },
-              1: { cellWidth: 40 },
-              2: { cellWidth: 40 },
-              3: { cellWidth: 27 },
-              4: { cellWidth: 27 },
-            },
-            margin: { left: margin, right: margin },
-            didParseCell(data) {
-              if (data.section === "body") {
-                data.cell.styles.fillColor =
-                  data.row.index % 2 === 0 ? [245, 245, 245] : [255, 255, 255];
-                if (data.row.index === catRows.length - 1)
-                  data.cell.styles.fontStyle = "bold";
-              }
-            },
-          });
-
-          y = doc.lastAutoTable.finalY + 5;
-
-          // ── Detail table ──────────────────────────────────────────────────
-          const detailRows = receiversData.map((r) => [
-            r.bookingRef,
-            r.rglBookingNumber,
-            r.senderName,
-            r.receiverName,
-            r.category,
-            r.subcategory,
-            r.type,
-            r.pod,
-            r.pol,
-          ]);
-
-          doc.autoTable({
-            head: [
-              [
-                "Order No",
-                "RGSL",
-                "Sender",
-                "Receiver",
-                "Category",
-                "Sub Category",
-                "Type",
-                "Pod",
-                "Pol",
-              ],
+        doc.autoTable({
+          head: [
+            [
+              "S.NO",
+              "ORDER NO",
+              "SENDER",
+              "RECEIVER",
+              "MARKS & NOS",
+              "PKGS",
+              "WEIGHT\n(KGS)",
+              "COMMODITY",
             ],
-            body: detailRows,
-            startY: y,
-            styles: {
-              fontSize: 8,
-              cellPadding: 2,
-              overflow: "linebreak",
-              valign: "top",
-              lineWidth: 0.1,
-              lineColor: [200, 200, 200],
-            },
-            headStyles: {
-              fillColor: brandPrimary,
-              textColor: [255, 255, 255],
-              fontStyle: "bold",
-              fontSize: 9,
-            },
-            columnStyles: {
-              0: { cellWidth: 19 },
-              1: { cellWidth: 19 },
-              2: { cellWidth: 26 },
-              3: { cellWidth: 26 },
-              4: { cellWidth: 21 },
-              5: { cellWidth: 18 },
-              6: { cellWidth: 15 },
-              7: { cellWidth: 20 },
-              8: { cellWidth: 20 },
-            },
-            margin: { left: margin, right: margin },
-            didParseCell(data) {
-              if (data.section === "body") {
-                data.cell.styles.fillColor =
-                  data.row.index % 2 === 0 ? [245, 245, 245] : [255, 255, 255];
-              }
-            },
-          });
+          ],
+          body: detailRows,
+          startY: y,
+          styles: {
+            fontSize: 8,
+            cellPadding: 2.5,
+            overflow: "linebreak",
+            valign: "top",
+            lineWidth: 0.2,
+            lineColor: borderGrey,
+          },
+          headStyles: {
+            fillColor: [255, 255, 255],
+            textColor: [50, 50, 50],
+            fontStyle: "bold",
+            fontSize: 8,
+            lineWidth: 0.2,
+            lineColor: borderGrey,
+          },
+          bodyStyles: { fillColor: [255, 255, 255], textColor: [30, 30, 30] },
+          columnStyles: {
+            0: { cellWidth: 10, halign: "center" },
+            1: { cellWidth: 26 },
+            2: { cellWidth: 30 },
+            3: { cellWidth: 30 },
+            4: { cellWidth: 20, halign: "center" },
+            5: { cellWidth: 14, halign: "center" },
+            6: { cellWidth: 18, halign: "center" },
+            7: { cellWidth: 35 },
+          },
+          margin: { left: margin, right: margin },
+          tableLineWidth: 0.2,
+          tableLineColor: borderGrey,
+          didParseCell(data) {
+            if (data.section === "body" && data.row.index % 2 === 1) {
+              data.cell.styles.fillColor = lightGrey;
+            }
+          },
+        });
 
-          y = doc.lastAutoTable.finalY + 12;
-        } else {
-          // No receiver data for this consignment
-          doc.setFont("helvetica", "italic").setFontSize(9);
-          doc.setTextColor(150, 0, 0);
+        y = doc.lastAutoTable.finalY + 10;
+
+        // ── Per-page footer ───────────────────────────────────────────────────
+        const totalPages = doc.internal.getNumberOfPages();
+        for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
+          doc.setPage(pageNum);
+          const footerY = 285;
+          drawDivider(footerY - 3, teal);
+          doc.setFont("helvetica", "normal").setFontSize(7.5);
+          doc.setTextColor(120, 120, 120);
           doc.text(
-            "No receiver details found for this consignment.",
-            margin,
-            y,
+            "Generated by Royal Gulf Shipping Management System",
+            pageWidth / 2,
+            footerY + 2,
+            { align: "center" },
           );
-          y += 10;
+          doc.text(
+            `Date: ${new Date().toLocaleDateString()} | Time: ${new Date().toLocaleTimeString()}`,
+            pageWidth / 2,
+            footerY + 6,
+            { align: "center" },
+          );
+          doc.text(
+            `Page ${pageNum} of ${totalPages}`,
+            pageWidth - margin,
+            footerY + 2,
+            { align: "right" },
+          );
         }
-
-        // Add a divider line between consignments (except after the last one)
-        if (ci < consignmentGroups.length - 1) {
-          if (y > 250) {
-            doc.addPage();
-            y = 20;
-          } else {
-            doc.setDrawColor(180, 180, 180);
-            doc.setLineWidth(0.3);
-            doc.line(margin, y - 4, pageWidth - margin, y - 4);
-          }
-        }
-      }
-
-      // ── Footer on every page ──────────────────────────────────────────────
-      const totalPages = doc.internal.getNumberOfPages();
-      for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
-        doc.setPage(pageNum);
-        const footerY = 285;
-        doc.setFont("helvetica", "normal").setFontSize(8);
-        doc.setTextColor(100, 100, 100);
-        doc.text(`Container: ${matchedContainerNumber}`, margin, footerY);
-        doc.text(
-          `Page ${pageNum} of ${totalPages}`,
-          pageWidth - margin,
-          footerY,
-          { align: "right" },
-        );
-        doc.text(
-          `Generated: ${new Date().toLocaleString()}`,
-          pageWidth / 2,
-          footerY,
-          { align: "center" },
-        );
       }
 
       const fileName = `Container_Manifest_${new Date().toISOString().split("T")[0]}.pdf`;
@@ -1222,6 +1267,7 @@ Orders: ${consignmentOrderIds.length}`;
     pol,
     pod,
     linkedOrders,
+    consignmentDate, // ← new param
   ) => {
     console.log("Printing single job:", jobNo);
 
@@ -1249,7 +1295,9 @@ Orders: ${consignmentOrderIds.length}`;
       });
 
       doc.setFont("helvetica", "normal").setFontSize(12);
-      doc.text(`Job: ${jobNo}`, pageWidth - margin, 18, { align: "right" });
+      doc.text(`Consignment: ${jobNo}`, pageWidth - margin, 18, {
+        align: "right",
+      });
 
       const firstEvent = jobEvents[0];
       const jobStartDate = jobEvents[jobEvents.length - 1]?.eventTime || "N/A";
@@ -1261,6 +1309,7 @@ Orders: ${consignmentOrderIds.length}`;
         ["Place Of Loading", getPlaceName(pol) || "N/A"],
         ["Place Of Delivery", getPlaceName(pod) || "N/A"],
         ["Linked Orders", linkedOrders || "N/A"],
+        ["Consignment Date", consignmentDate || "N/A"],
         [
           "Job Start Date",
           jobStartDate ? new Date(jobStartDate).toLocaleDateString() : "N/A",
@@ -1391,7 +1440,7 @@ Orders: ${consignmentOrderIds.length}`;
   };
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // JOB DETAIL MANIFEST PDF (unchanged)
+  // JOB DETAIL MANIFEST PDF — matches CONSOLIDATION MANIFEST design
   // ─────────────────────────────────────────────────────────────────────────────
   const generateJobDetailManifestPDF = async (
     jobNo,
@@ -1402,12 +1451,15 @@ Orders: ${consignmentOrderIds.length}`;
     consignmentNo,
     consignmentDate,
   ) => {
-    console.log("Generating detailed manifest for job:", jobNo);
-
     if (!linkedOrders) {
       showToast("No linked orders found for this job", "warning");
       return;
     }
+
+    const firstEvent = jobEvents?.[0] || {};
+
+    const shipperName = firstEvent.shipperName || "N/A";
+    const consigneeName = firstEvent.consigneeName || "N/A";
 
     setGeneratingPDF(true);
     try {
@@ -1453,15 +1505,7 @@ Orders: ${consignmentOrderIds.length}`;
         }
       }
 
-      const doc = new jsPDF("p", "mm", "a4");
-      const pageWidth = doc.internal.pageSize.getWidth();
-      const margin = 14;
-      const brandPrimary = [13, 108, 106];
-      const brandLight = [220, 245, 243];
-      let y = 30;
-
-      // Find container number
-      let matchedContainerNumber = "Not Found";
+      let matchedContainerNumber = "N/A";
       outer2: for (const receiver of allReceivers) {
         for (const item of receiver.shippingDetails || []) {
           for (const containerDetail of item.containerDetails || []) {
@@ -1473,7 +1517,7 @@ Orders: ${consignmentOrderIds.length}`;
           }
         }
       }
-      if (matchedContainerNumber === "Not Found") {
+      if (matchedContainerNumber === "N/A") {
         for (const order of allOrdersData) {
           const match = (order.data.assignmentHistory || []).find(
             (a) => a.cid === historyCid,
@@ -1485,74 +1529,115 @@ Orders: ${consignmentOrderIds.length}`;
         }
       }
 
-      const logoBase64 = await loadImageAsBase64("./logo-2.png");
-      if (logoBase64) doc.addImage(logoBase64, "PNG", margin, 4, 60, 12);
+      let containerSize = "N/A";
+      try {
+        const containerRes = await api.get(`/api/containers/${historyCid}`);
+        containerSize = containerRes.data?.container_size || "N/A";
+        if (matchedContainerNumber === "N/A") {
+          matchedContainerNumber = containerRes.data?.container_number || "N/A";
+        }
+      } catch (err) {
+        console.error("Error fetching container details for size:", err);
+      }
 
-      doc.setFont("helvetica", "bold").setFontSize(16);
-      doc.setTextColor(...brandPrimary);
-      doc.text("JOB MANIFEST", pageWidth - margin, 10, { align: "right" });
+      const doc = new jsPDF("p", "mm", "a4");
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const margin = 14;
+      const teal = [13, 108, 106];
+      const orange = [245, 130, 32];
+      const lightGrey = [245, 245, 245];
+      const borderGrey = [210, 210, 210];
 
-      doc.setFont("helvetica", "normal").setFontSize(12);
-      doc.text(`Job: ${jobNo}`, pageWidth - margin, 18, { align: "right" });
+      const drawSectionHeader = (text, y) => {
+        doc.setFillColor(...teal);
+        doc.rect(margin, y, 3, 5, "F");
+        doc.setFont("helvetica", "bold").setFontSize(10);
+        doc.setTextColor(...teal);
+        doc.text(text, margin + 6, y + 4);
+        return y + 9;
+      };
 
-      const resolvedConsignmentNo =
-        consignmentNo ||
-        jobEvents.find((e) => e.consignmentNo)?.consignmentNo ||
-        "N/A";
-      const resolvedConsignmentDate =
-        consignmentDate ||
-        jobEvents.find((e) => e.consignmentDate)?.consignmentDate ||
-        "N/A";
-
-      const cards = [
-        ["Job Number", jobNo],
-        ["Consignment No", resolvedConsignmentNo],
-        ["Consignment Date", resolvedConsignmentDate],
-        ["Place Of Loading", getPlaceName(pol) || "N/A"],
-        ["Place Of Delivery", getPlaceName(pod) || "N/A"],
-        ["Linked Orders", cleanedOrderIds.join(", ")],
-        ["Total Orders in Job", allOrdersData.length.toString()],
-        ["Generated On", new Date().toLocaleDateString()],
-      ];
-
-      const cardWidth = (pageWidth - margin * 2 - 12) / 2;
-      const cardHeight = 16;
-
-      cards.forEach((item, i) => {
-        const col = i % 2;
-        const row = Math.floor(i / 2);
-        const x = margin + col * (cardWidth + 12);
-        const cardY = y + row * (cardHeight + 3);
-
-        doc.setDrawColor(220, 220, 220);
-        doc.setFillColor(...brandLight);
-        doc.roundedRect(x, cardY, cardWidth, cardHeight, 3, 3, "FD");
-
-        doc.setFillColor(...brandPrimary);
-        doc.rect(x, cardY, cardWidth, 5, "F");
+      const drawLabelValue = (label, value, x, y, labelWidth = 28) => {
         doc.setFont("helvetica", "bold").setFontSize(9);
-        doc.setTextColor(255, 255, 255);
-        doc.text(item[0], x + 3, cardY + 4);
+        doc.setTextColor(80, 80, 80);
+        doc.text(label + ":", x, y);
+        doc.setFont("helvetica", "normal").setFontSize(9);
+        doc.setTextColor(30, 30, 30);
+        doc.text(String(value || "N/A"), x + labelWidth, y);
+      };
 
-        doc.setFont("helvetica", "normal");
-        doc.setTextColor(50, 50, 50);
-        const lines = doc.splitTextToSize(
-          String(item[1] || "Not Found"),
-          cardWidth - 6,
-        );
-        doc.text(lines, x + 3, cardY + 11);
+      const drawDivider = (y, color = borderGrey) => {
+        doc.setDrawColor(...color);
+        doc.setLineWidth(0.3);
+        doc.line(margin, y, pageWidth - margin, y);
+      };
+
+      // ── Page header ───────────────────────────────────────────────────────────
+      const logoBase64 = await loadImageAsBase64("./logo-2.png");
+      if (logoBase64) doc.addImage(logoBase64, "PNG", margin, 5, 55, 12);
+
+      const resolvedConsignmentNo = consignmentNo || jobNo;
+      const polName = getPlaceName(pol);
+      const podName = getPlaceName(pod);
+
+      doc.setFont("helvetica", "bold").setFontSize(10);
+      doc.setTextColor(...orange);
+      doc.text(`Consignment: ${resolvedConsignmentNo}`, pageWidth - margin, 8, {
+        align: "right",
       });
 
-      y += 4 * (cardHeight + 3) + 10;
+      doc.setFont("helvetica", "normal").setFontSize(8);
+      doc.setTextColor(60, 60, 60);
+      [
+        `Total Containers: 1`,
+        `POL: ${polName}`,
+        `POD: ${podName}`,
+        `ETA: ${consignmentDate || "N/A"}`,
+        `Generated: ${new Date().toLocaleString()}`,
+      ].forEach((line, i) => {
+        doc.text(line, pageWidth - margin, 13 + i * 4, { align: "right" });
+      });
 
-      // Per-consignment breakdown from usageHistory
+      doc.setFont("helvetica", "bold").setFontSize(13);
+      doc.setTextColor(...teal);
+      doc.text("ROYAL GULF SHIPPING & LOGISTICS LLC", margin, 22);
+
+      doc.setFont("helvetica", "normal").setFontSize(7.5);
+      doc.setTextColor(120, 120, 120);
+      doc.text("Dubai • London • Karachi • Shenzhen", margin, 26);
+
+      doc.setFont("helvetica", "bold").setFontSize(14);
+      doc.setTextColor(...teal);
+      doc.text("CONSOLIDATION MANIFEST - CONTAINER LEVEL", margin, 33);
+
+      doc.setDrawColor(...teal);
+      doc.setLineWidth(0.6);
+      doc.line(margin, 36, pageWidth - margin, 36);
+
+      let y = 42;
+
+      // ── Shipper / Consignee ───────────────────────────────────────────────────
+      drawLabelValue("Shipper", shipperName, margin, y, 22);
+
+      y += 6;
+
+      drawLabelValue("Consignee", consigneeName, margin, y, 22);
+      y += 8;
+      drawDivider(y);
+      y += 5;
+
+      // ── Per-consignment sections ──────────────────────────────────────────────
       const consignmentGroupsForJob = usageHistory.filter(
-        (c) => c.orders && c.orders.length > 0,
+        (c) => c.orders && c.orders.length > 0 && c.consignmentNo === jobNo,
       );
 
-      for (let ci = 0; ci < consignmentGroupsForJob.length; ci++) {
-        const consignment = consignmentGroupsForJob[ci];
+      const groupsToRender =
+        consignmentGroupsForJob.length > 0
+          ? consignmentGroupsForJob
+          : [{ consignmentNo: resolvedConsignmentNo, orders: jobEvents || [] }];
 
+      for (let ci = 0; ci < groupsToRender.length; ci++) {
+        const consignment = groupsToRender[ci];
         const consignmentOrderIds = [
           ...new Set(
             (consignment.orders || [])
@@ -1561,239 +1646,293 @@ Orders: ${consignmentOrderIds.length}`;
           ),
         ];
 
-        const consignmentOrders = allOrdersData.filter((o) =>
-          consignmentOrderIds.includes(o.orderId.toString()),
-        );
-        const consignmentReceivers = allReceivers.filter((r) =>
-          consignmentOrderIds.includes(r.sourceOrderId?.toString()),
+        const consignmentReceivers = allReceivers.filter(
+          (r) =>
+            consignmentOrderIds.length === 0 ||
+            consignmentOrderIds.includes(r.sourceOrderId?.toString()),
         );
 
-        const cConsignmentNo =
-          consignment.consignmentNo ||
-          consignment.orders[0]?.consignmentNo ||
-          `Booking: ${consignment.bookingRef || "N/A"}`;
-        const cDate =
-          consignment.consignmentDate ||
-          consignment.orders[0]?.consignmentDate ||
-          consignment.orders[0]?.loadedAt ||
-          "N/A";
-        const cPol = getPlaceName(consignment.pol);
-        const cPod = getPlaceName(consignment.pod);
+        const receiversData = [];
+        consignmentReceivers.forEach((receiver) => {
+          (receiver.shippingDetails || []).forEach((detail) => {
+            const orderData = receiver.sourceOrderData || {};
+            receiversData.push({
+              receiverName: receiver.receiver_name || "N/A",
+              category: detail.category || "N/A",
+              subcategory: detail.subcategory || "N/A",
+              type: detail.type || "N/A",
+              totalNumber: Number(detail.totalNumber || 0),
+              weight: Number(detail.weight || 0),
+              bookingRef: orderData.booking_ref || "N/A",
+              rglBookingNumber: orderData.rgl_booking_number || "N/A",
+              senderName: orderData.sender_name || "N/A",
+            });
+          });
+        });
+
+        // Fallback if no receivers: use job events rows
+        const hasData = receiversData.length > 0;
 
         if (y > 220) {
           doc.addPage();
           y = 20;
         }
 
-        doc.setFillColor(...brandPrimary);
-        doc.rect(margin, y, pageWidth - 2 * margin, 8, "F");
-        doc.setFont("helvetica", "bold").setFontSize(10);
-        doc.setTextColor(255, 255, 255);
+        // Container block header
+        doc.setDrawColor(...teal);
+        doc.setLineWidth(0.4);
+        doc.rect(margin, y, pageWidth - 2 * margin, 7, "S");
+        doc.setFont("helvetica", "bold").setFontSize(9);
+        doc.setTextColor(...teal);
         doc.text(
-          `Consignment ${ci + 1}: ${cConsignmentNo}   |   Date: ${cDate}   |   Route: ${cPol} → ${cPod}`,
+          `CONTAINER ${ci + 1}: ${matchedContainerNumber} | SIZE: ${containerSize}`,
           margin + 3,
-          y + 5.5,
+          y + 5,
         );
         y += 12;
 
-        const consignmentReceiversData = [];
-        consignmentReceivers.forEach((receiver) => {
-          const receiverOrderId = receiver.sourceOrderId?.toString();
-          if (
-            receiverOrderId &&
-            consignmentOrderIds.includes(receiverOrderId)
-          ) {
-            (receiver.shippingDetails || []).forEach((detail) => {
-              const orderData = receiver.sourceOrderData || {};
-              consignmentReceiversData.push({
-                receiverName: receiver.receiver_name || "N/A",
-                category: detail.category || "N/A",
-                subcategory: detail.subcategory || "N/A",
-                type: detail.type || "N/A",
-                totalNumber: detail.totalNumber || 0,
-                weight: detail.weight || 0,
-                bookingRef: orderData.booking_ref || "N/A",
-                rglBookingNumber: orderData.rgl_booking_number || "N/A",
-                senderName: orderData.sender_name || "N/A",
-                pod: detail.deliveryAddress || "N/A",
-                pol: detail.pickupLocation || "N/A",
-              });
-            });
-          }
-        });
+        if (hasData) {
+          const totalPkgs = receiversData.reduce(
+            (s, r) => s + r.totalNumber,
+            0,
+          );
+          const totalWt = receiversData.reduce((s, r) => s + r.weight, 0);
 
-        if (consignmentReceiversData.length > 0) {
-          const catSummary = {};
-          consignmentReceiversData.forEach((r) => {
-            const key = `${r.category}|${r.subcategory}|${r.type}`;
-            if (!catSummary[key])
-              catSummary[key] = {
+          // CONTAINER SUMMARY
+          y = drawSectionHeader(
+            `CONTAINER SUMMARY - ${matchedContainerNumber}`,
+            y,
+          );
+          doc.autoTable({
+            head: [
+              [
+                "ORDERS IN CONTAINER",
+                "TOTAL PACKAGES",
+                "TOTAL WEIGHT (KGS)",
+                "GROSS WEIGHT (APPROX.)",
+              ],
+            ],
+            body: [
+              [
+                (consignmentOrderIds.length || allOrdersData.length).toString(),
+                totalPkgs.toString(),
+                totalWt.toFixed(2),
+                (totalWt * 1.15).toFixed(2),
+              ],
+            ],
+            startY: y,
+            styles: {
+              fontSize: 9,
+              cellPadding: 3,
+              halign: "center",
+              lineWidth: 0.2,
+              lineColor: borderGrey,
+            },
+            headStyles: {
+              fillColor: [255, 255, 255],
+              textColor: [50, 50, 50],
+              fontStyle: "bold",
+              fontSize: 8,
+              lineWidth: 0.2,
+              lineColor: borderGrey,
+            },
+            bodyStyles: { fillColor: [255, 255, 255] },
+            margin: { left: margin, right: margin },
+            tableLineWidth: 0.2,
+            tableLineColor: borderGrey,
+          });
+          y = doc.lastAutoTable.finalY + 8;
+
+          // COMMODITY SUMMARY
+          y = drawSectionHeader(
+            `CONTAINER COMMODITY SUMMARY - ${matchedContainerNumber}`,
+            y,
+          );
+          doc.setFont("helvetica", "italic").setFontSize(8);
+          doc.setTextColor(120, 120, 120);
+          doc.text(
+            "Commodity-wise breakdown for this container",
+            margin,
+            y + 1,
+          );
+          y += 6;
+
+          const catMap = {};
+          receiversData.forEach((r) => {
+            const key = r.category;
+            if (!catMap[key])
+              catMap[key] = {
                 category: r.category,
-                subcategory: r.subcategory,
-                type: r.type,
+                orders: new Set(),
                 totalNumber: 0,
                 weight: 0,
               };
-            catSummary[key].totalNumber += Number(r.totalNumber || 0);
-            catSummary[key].weight += Number(r.weight || 0);
+            catMap[key].totalNumber += r.totalNumber;
+            catMap[key].weight += r.weight;
+            catMap[key].orders.add(r.bookingRef);
           });
 
-          const catTableData = Object.values(catSummary).map((item) => [
+          const catRows = Object.values(catMap).map((item) => [
             item.category,
-            item.subcategory,
-            item.type,
+            item.orders.size.toString(),
             item.totalNumber.toString(),
-            item.weight.toString(),
+            item.weight.toFixed(2),
           ]);
-          const catTotal = Object.values(catSummary).reduce(
+          const catTotal = Object.values(catMap).reduce(
             (s, i) => ({ q: s.q + i.totalNumber, w: s.w + i.weight }),
             { q: 0, w: 0 },
           );
-          catTableData.push([
-            {
-              content: "TOTAL",
-              colSpan: 3,
-              styles: {
-                halign: "center",
-                fontStyle: "bold",
-                textColor: [...brandPrimary],
-              },
-            },
+          catRows.push([
+            { content: "TOTAL", styles: { fontStyle: "bold" } },
+            { content: "", styles: {} },
             { content: catTotal.q.toString(), styles: { fontStyle: "bold" } },
-            { content: catTotal.w.toString(), styles: { fontStyle: "bold" } },
+            { content: catTotal.w.toFixed(2), styles: { fontStyle: "bold" } },
           ]);
 
           doc.autoTable({
-            head: [["Category", "Subcategory", "Type", "Qty", "Weight"]],
-            body: catTableData,
+            head: [
+              ["COMMODITY", "TOTAL ORDERS", "TOTAL PKGS", "TOTAL WEIGHT (KGS)"],
+            ],
+            body: catRows,
             startY: y,
             styles: {
-              fontSize: 8,
-              cellPadding: 2,
-              overflow: "linebreak",
-              valign: "top",
-              lineWidth: 0.1,
-              lineColor: [200, 200, 200],
+              fontSize: 9,
+              cellPadding: 3,
+              lineWidth: 0.2,
+              lineColor: borderGrey,
             },
             headStyles: {
-              fillColor: brandPrimary,
-              textColor: [255, 255, 255],
+              fillColor: [255, 255, 255],
+              textColor: [50, 50, 50],
               fontStyle: "bold",
-              fontSize: 9,
+              fontSize: 8,
+              lineWidth: 0.2,
+              lineColor: borderGrey,
             },
-            columnStyles: {
-              0: { cellWidth: 50 },
-              1: { cellWidth: 40 },
-              2: { cellWidth: 40 },
-              3: { cellWidth: 27 },
-              4: { cellWidth: 27 },
-            },
+            bodyStyles: { fillColor: [255, 255, 255] },
             margin: { left: margin, right: margin },
-            didParseCell(data) {
-              if (data.section === "body") {
-                data.cell.styles.fillColor =
-                  data.row.index % 2 === 0 ? [245, 245, 245] : [255, 255, 255];
-                if (data.row.index === catTableData.length - 1)
-                  data.cell.styles.fontStyle = "bold";
-              }
-            },
+            tableLineWidth: 0.2,
+            tableLineColor: borderGrey,
           });
+          y = doc.lastAutoTable.finalY + 8;
 
-          y = doc.lastAutoTable.finalY + 5;
-
-          const detailBody = consignmentReceiversData.map((r) => [
+          // DETAILED MANIFEST
+          y = drawSectionHeader(
+            `DETAILED MANIFEST - ${matchedContainerNumber}`,
+            y,
+          );
+          const detailRows = receiversData.map((r, i) => [
+            (i + 1).toString(),
             r.bookingRef,
-            r.rglBookingNumber,
             r.senderName,
             r.receiverName,
-            r.category,
-            r.subcategory,
-            r.type,
-            r.pod,
-            r.pol,
+            "N/A",
+            r.totalNumber.toString(),
+            r.weight.toFixed(2),
+            r.category + (r.subcategory !== "N/A" ? ` - ${r.subcategory}` : ""),
+          ]);
+          detailRows.push([
+            {
+              content: "TOTAL:",
+              colSpan: 5,
+              styles: { halign: "right", fontStyle: "bold" },
+            },
+            { content: totalPkgs.toString(), styles: { fontStyle: "bold" } },
+            { content: totalWt.toFixed(2), styles: { fontStyle: "bold" } },
+            { content: "" },
           ]);
 
           doc.autoTable({
             head: [
               [
-                "Order No",
-                "RGSL",
-                "Sender",
-                "Receiver",
-                "Category",
-                "Sub Category",
-                "Type",
-                "Pod",
-                "Pol",
+                "S.NO",
+                "ORDER NO",
+                "SENDER",
+                "RECEIVER",
+                "MARKS & NOS",
+                "PKGS",
+                "WEIGHT\n(KGS)",
+                "COMMODITY",
               ],
             ],
-            body: detailBody,
+            body: detailRows,
             startY: y,
             styles: {
               fontSize: 8,
-              cellPadding: 2,
+              cellPadding: 2.5,
               overflow: "linebreak",
               valign: "top",
-              lineWidth: 0.1,
-              lineColor: [200, 200, 200],
+              lineWidth: 0.2,
+              lineColor: borderGrey,
             },
             headStyles: {
-              fillColor: brandPrimary,
-              textColor: [255, 255, 255],
+              fillColor: [255, 255, 255],
+              textColor: [50, 50, 50],
               fontStyle: "bold",
-              fontSize: 9,
+              fontSize: 8,
+              lineWidth: 0.2,
+              lineColor: borderGrey,
             },
+            bodyStyles: { fillColor: [255, 255, 255], textColor: [30, 30, 30] },
             columnStyles: {
-              0: { cellWidth: 19 },
-              1: { cellWidth: 19 },
-              2: { cellWidth: 26 },
-              3: { cellWidth: 26 },
-              4: { cellWidth: 21 },
-              5: { cellWidth: 18 },
-              6: { cellWidth: 15 },
-              7: { cellWidth: 20 },
-              8: { cellWidth: 20 },
+              0: { cellWidth: 10, halign: "center" },
+              1: { cellWidth: 26 },
+              2: { cellWidth: 30 },
+              3: { cellWidth: 30 },
+              4: { cellWidth: 20, halign: "center" },
+              5: { cellWidth: 14, halign: "center" },
+              6: { cellWidth: 18, halign: "center" },
+              7: { cellWidth: 35 },
             },
             margin: { left: margin, right: margin },
+            tableLineWidth: 0.2,
+            tableLineColor: borderGrey,
             didParseCell(data) {
-              if (data.section === "body") {
-                data.cell.styles.fillColor =
-                  data.row.index % 2 === 0 ? [245, 245, 245] : [255, 255, 255];
+              if (data.section === "body" && data.row.index % 2 === 1) {
+                data.cell.styles.fillColor = lightGrey;
               }
             },
           });
-
           y = doc.lastAutoTable.finalY + 10;
         } else {
           doc.setFont("helvetica", "italic").setFontSize(9);
           doc.setTextColor(150, 0, 0);
-          doc.text("No receiver details found for this consignment", margin, y);
-          y += 8;
+          doc.text(
+            "No receiver details found for this consignment.",
+            margin,
+            y,
+          );
+          y += 10;
         }
       }
 
+      // ── Footers ───────────────────────────────────────────────────────────────
       const totalPages = doc.internal.getNumberOfPages();
       for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
         doc.setPage(pageNum);
-        const footerY = doc.internal.pageSize.getHeight() - 10;
-        doc.setFont("helvetica", "normal").setFontSize(8);
-        doc.setTextColor(100, 100, 100);
+        const footerY = 285;
+        doc.setDrawColor(...teal);
+        doc.setLineWidth(0.3);
+        doc.line(margin, footerY - 3, pageWidth - margin, footerY - 3);
+        doc.setFont("helvetica", "normal").setFontSize(7.5);
+        doc.setTextColor(120, 120, 120);
         doc.text(
-          `Container: ${matchedContainerNumber} | Job: ${jobNo}`,
-          margin,
-          footerY,
+          "Generated by Royal Gulf Shipping Management System",
+          pageWidth / 2,
+          footerY + 2,
+          { align: "center" },
+        );
+        doc.text(
+          `Date: ${new Date().toLocaleDateString()} | Time: ${new Date().toLocaleTimeString()}`,
+          pageWidth / 2,
+          footerY + 6,
+          { align: "center" },
         );
         doc.text(
           `Page ${pageNum} of ${totalPages}`,
           pageWidth - margin,
-          footerY,
+          footerY + 2,
           { align: "right" },
-        );
-        doc.text(
-          `Generated: ${new Date().toLocaleString()}`,
-          pageWidth / 2,
-          footerY,
-          { align: "center" },
         );
       }
 
@@ -2209,6 +2348,7 @@ Orders: ${consignmentOrderIds.length}`;
                     "Ownership",
                     "Status",
                     "Location",
+                    "Consignment",
                     "Last Used",
                     "Actions",
                   ].map((h) => (
@@ -2362,6 +2502,9 @@ Orders: ${consignmentOrderIds.length}`;
                           ) : (
                             currentLocation
                           )}
+                        </TableCell>
+                        <TableCell>
+                          {container.consignment_number || "N/A"}
                         </TableCell>
                         <TableCell>
                           {container.created_time
@@ -2962,354 +3105,597 @@ Orders: ${consignmentOrderIds.length}`;
                 </Button>
               </Box>
             </Box>
-            <Divider sx={{ mb: 3 }} />
-
-            {loadingHistory ? (
-              <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
-                <CircularProgress />
-                <Typography variant="body2" sx={{ ml: 1 }}>
-                  Loading history...
-                </Typography>
-              </Box>
-            ) : (
-              <Box>
-                {!Array.isArray(usageHistory) || usageHistory.length === 0 ? (
-                  <Typography
-                    variant="body2"
-                    align="center"
-                    sx={{ py: 4, color: "text.secondary" }}
-                  >
-                    No assignment history available
-                  </Typography>
-                ) : (
-                  usageHistory
-                    .filter(
-                      (consignment) =>
-                        consignment?.orders &&
-                        Array.isArray(consignment.orders) &&
-                        consignment.orders.length > 0,
-                    )
-                    .map((consignment, groupIndex) => {
-                      const filteredGroup = consignment.orders || [];
-                      if (filteredGroup.length === 0) return null;
-
-                      const firstEvent = filteredGroup[0];
-                      const jobNo =
-                        consignment.consignmentNo ||
-                        firstEvent?.bookingRef ||
-                        `Consignment ${groupIndex + 1}`;
-                      const pol = firstEvent.pol || "N/A";
-                      const pod = firstEvent.pod || "N/A";
-                      const linkedOrders = firstEvent.linkedOrders || "N/A";
-
-                      const sortedEvents = [...consignment.orders].sort(
-                        (a, b) => new Date(b.eventTime) - new Date(a.eventTime),
-                      );
-                      const earliestEvent =
-                        sortedEvents[sortedEvents.length - 1] || {};
-
-                      return (
-                        <Box
-                          key={jobNo || `group-${groupIndex}`}
-                          sx={{
-                            mb: 2,
-                            border: "0.5px solid",
-                            borderColor: "divider",
-                            borderRadius: 2,
-                            overflow: "hidden",
-                            bgcolor: "background.paper",
-                          }}
-                        >
-                          {/* Trip Header */}
-                          <Box
+            <>
+              <Box sx={{ borderBottom: 1, borderColor: "divider", mb: 2 }}>
+                <Tabs
+                  value={activeHistoryTab}
+                  onChange={(_, v) => setActiveHistoryTab(v)}
+                  textColor="inherit"
+                  TabIndicatorProps={{ style: { backgroundColor: "#0d6c6a" } }}
+                >
+                  <Tab
+                    label={
+                      <Box
+                        sx={{ display: "flex", alignItems: "center", gap: 1 }}
+                      >
+                        Consignment History
+                        {usageHistory.length > 0 && (
+                          <Chip
+                            label={
+                              usageHistory.filter((c) => c.orders?.length > 0)
+                                .length
+                            }
+                            size="small"
                             sx={{
-                              px: 2,
-                              py: 1.5,
-                              display: "flex",
-                              alignItems: "center",
-                              flexWrap: "wrap",
-                              gap: 1.5,
-                              borderBottom: "0.5px solid",
+                              height: 18,
+                              fontSize: 11,
+                              bgcolor: "#e6f4f3",
+                              color: "#0d6c6a",
+                            }}
+                          />
+                        )}
+                      </Box>
+                    }
+                    sx={{ textTransform: "none", fontWeight: 600 }}
+                  />
+                  <Tab
+                    label={
+                      <Box
+                        sx={{ display: "flex", alignItems: "center", gap: 1 }}
+                      >
+                        Unassigned Orders
+                        {unassignedOrders.length > 0 && (
+                          <Chip
+                            label={unassignedOrders.length}
+                            size="small"
+                            sx={{
+                              height: 18,
+                              fontSize: 11,
+                              bgcolor: "#fff3e0",
+                              color: "#e65100",
+                            }}
+                          />
+                        )}
+                      </Box>
+                    }
+                    sx={{ textTransform: "none", fontWeight: 600 }}
+                  />
+                </Tabs>
+              </Box>
+
+              {activeHistoryTab === 0 && (
+                <>
+                  {loadingHistory ? (
+                    <Box
+                      sx={{ display: "flex", justifyContent: "center", py: 4 }}
+                    >
+                      <CircularProgress />
+                      <Typography variant="body2" sx={{ ml: 1 }}>
+                        Loading history...
+                      </Typography>
+                    </Box>
+                  ) : !Array.isArray(usageHistory) ||
+                    usageHistory.length === 0 ? (
+                    <Typography
+                      variant="body2"
+                      align="center"
+                      sx={{ py: 4, color: "text.secondary" }}
+                    >
+                      No assignment history available
+                    </Typography>
+                  ) : (
+                    usageHistory
+                      .filter((consignment) => {
+                        if (!consignment?.orders?.length) return false;
+                        const netQty = consignment.orders.reduce(
+                          (sum, o) => sum + (o.assignedQty || 0),
+                          0,
+                        );
+                        return netQty > 0;
+                      })
+                      .map((consignment, groupIndex) => {
+                        const filteredGroup = consignment.orders || [];
+                        if (filteredGroup.length === 0) return null;
+
+                        const firstEvent = filteredGroup[0];
+                        const jobNo =
+                          consignment.consignmentNo ||
+                          firstEvent?.bookingRef ||
+                          `Consignment ${groupIndex + 1}`;
+                        const pol = firstEvent.pol || "N/A";
+                        const pod = firstEvent.pod || "N/A";
+                        const linkedOrders = firstEvent.linkedOrders || "N/A";
+                        const shipperName = firstEvent.shipperName || "N/A";
+                        const consigneeName = firstEvent.consigneeName || "N/A";
+
+                        const sortedEvents = [...consignment.orders].sort(
+                          (a, b) =>
+                            new Date(b.eventTime) - new Date(a.eventTime),
+                        );
+                        const earliestEvent =
+                          sortedEvents[sortedEvents.length - 1] || {};
+
+                        return (
+                          <Box
+                            key={jobNo || `group-${groupIndex}`}
+                            sx={{
+                              mb: 2,
+                              border: "0.5px solid",
                               borderColor: "divider",
+                              borderRadius: 2,
+                              overflow: "hidden",
+                              bgcolor: "background.paper",
                             }}
                           >
-                            <Typography
-                              variant="body2"
-                              sx={{
-                                color: "text.secondary",
-                                minWidth: 20,
-                                fontWeight: 500,
-                              }}
-                            >
-                              {groupIndex + 1}.
-                            </Typography>
-
+                            {/* Trip Header */}
                             <Box
                               sx={{
+                                px: 2,
+                                py: 1.5,
                                 display: "flex",
                                 alignItems: "center",
-                                gap: 0.5,
-                                bgcolor: "#e6f4f3",
-                                color: "#0d6c6a",
-                                fontSize: 16,
-                                fontWeight: "bold",
-                                px: 1.5,
-                                py: 0.4,
-                                borderRadius: 10,
-                                whiteSpace: "nowrap",
-                              }}
-                            >
-                              Consignment:{" "}
-                              {firstEvent.consignmentNo ||
-                                consignment.consignmentNo ||
-                                "N/A"}
-                            </Box>
-
-                            <Box
-                              sx={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 0.5,
-                                py: 0.5,
-                                px: 1,
-                                bgcolor: "lightBlue",
-                                borderRadius: 4,
+                                flexWrap: "wrap",
+                                gap: 1.5,
+                                borderBottom: "0.5px solid",
+                                borderColor: "divider",
                               }}
                             >
                               <Typography
                                 variant="body2"
-                                sx={{ color: "text.primary", fontSize: 13 }}
-                              >
-                                Date:{" "}
-                                {firstEvent.loadedAt ||
-                                  earliestEvent.startDate ||
-                                  "N/A"}
-                              </Typography>
-                            </Box>
-
-                            <Typography
-                              variant="body2"
-                              sx={{ fontSize: 14, color: "text.secondary" }}
-                            >
-                              <Box
-                                component="span"
                                 sx={{
+                                  color: "text.secondary",
+                                  minWidth: 20,
+                                  fontWeight: 500,
+                                }}
+                              >
+                                {groupIndex + 1}.
+                              </Typography>
+
+                              <Box
+                                sx={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 0.5,
+                                  bgcolor: "#e6f4f3",
+                                  color: "#0d6c6a",
+                                  fontSize: 16,
                                   fontWeight: "bold",
-                                  color: "text.primary",
+                                  px: 1.5,
+                                  py: 0.4,
+                                  borderRadius: 10,
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                Consignment:{" "}
+                                {firstEvent.consignmentNo ||
+                                  consignment.consignmentNo ||
+                                  "N/A"}
+                              </Box>
+
+                              <Box
+                                sx={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 0.5,
                                   py: 0.5,
                                   px: 1,
-                                  bgcolor: "#99A1FF",
+                                  bgcolor: "lightBlue",
                                   borderRadius: 4,
                                 }}
                               >
-                                Trip: {getPlaceName(pol)} &rarr;{" "}
-                                {getPlaceName(pod)}
+                                <Typography
+                                  variant="body2"
+                                  sx={{ color: "text.primary", fontSize: 13 }}
+                                >
+                                  Date:{" "}
+                                  {firstEvent.loadedAt ||
+                                    earliestEvent.startDate ||
+                                    "N/A"}
+                                </Typography>
                               </Box>
-                            </Typography>
 
-                            <Box
-                              sx={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 1,
-                                ml: "auto",
-                              }}
-                            >
+                              <Typography
+                                variant="body2"
+                                sx={{ fontSize: 14, color: "text.secondary" }}
+                              >
+                                <Box
+                                  component="span"
+                                  sx={{
+                                    fontWeight: "bold",
+                                    color: "text.primary",
+                                    py: 0.5,
+                                    px: 1,
+                                    bgcolor: "#99A1FF",
+                                    borderRadius: 4,
+                                  }}
+                                >
+                                  Trip: {getPlaceName(pol)} &rarr;{" "}
+                                  {getPlaceName(pod)}
+                                </Box>
+                              </Typography>
                               <Chip
-                                label={`Events: ${consignment.orders.length}`}
+                                label={`Status: ${firstEvent.consignmentStatus || "N/A"}`}
                                 size="small"
                                 sx={{
-                                  bgcolor: "#e6f4f3",
-                                  color: "#0d6c6a",
-                                  fontSize: 11,
-                                  height: 22,
+                                  bgcolor: "#e8f5e9",
+                                  color: "#2e7d32",
+                                  fontWeight: 600,
+                                  height: 24,
+                                  ml: 1,
                                 }}
                               />
 
-                              <Tooltip title="Download job summary">
-                                <IconButton
+                              <Box
+                                sx={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 1,
+                                  ml: "auto",
+                                }}
+                              >
+                                <Chip
+                                  label={`Events: ${consignment.orders.length}`}
                                   size="small"
-                                  onClick={() =>
-                                    generateSingleJobManifestPDF(
-                                      consignment.orders,
-                                      selectedContainerNo,
-                                      jobNo,
-                                      pol,
-                                      pod,
-                                      linkedOrders,
-                                    )
-                                  }
-                                  disabled={generatingPDF}
                                   sx={{
-                                    border: "0.5px solid",
-                                    borderColor: "divider",
-                                    borderRadius: 1,
-                                    p: 0.6,
+                                    bgcolor: "#e6f4f3",
                                     color: "#0d6c6a",
+                                    fontSize: 11,
+                                    height: 22,
                                   }}
-                                >
-                                  {generatingPDF ? (
-                                    <CircularProgress size={16} />
-                                  ) : (
-                                    <DownloadIcon sx={{ fontSize: 16 }} />
-                                  )}
-                                </IconButton>
-                              </Tooltip>
+                                />
 
-                              <Tooltip title="Print detailed manifest">
-                                <Button
-                                  variant="outlined"
-                                  size="small"
-                                  startIcon={<DownloadIcon />}
-                                  onClick={() =>
-                                    generateJobDetailManifestPDF(
-                                      jobNo,
-                                      pol,
-                                      pod,
-                                      linkedOrders,
-                                      consignment.orders,
-                                      consignment.consignmentNo ||
-                                        firstEvent.consignmentNo,
-                                      consignment.consignmentDate ||
-                                        firstEvent.consignmentDate,
-                                    )
-                                  }
-                                  disabled={generatingPDF}
-                                  sx={{
-                                    borderColor: "#f58220",
-                                    color: "#f58220",
-                                    fontSize: 12,
-                                    py: 0.4,
-                                    px: 1.5,
-                                    "&:hover": {
-                                      bgcolor: "#fff8f3",
+                                <Tooltip title="Download job summary">
+                                  <IconButton
+                                    size="small"
+                                    onClick={() =>
+                                      generateSingleJobManifestPDF(
+                                        consignment.orders,
+                                        selectedContainerNo,
+                                        jobNo,
+                                        pol,
+                                        pod,
+                                        linkedOrders,
+                                        [...consignment.orders].sort(
+                                          (a, b) =>
+                                            new Date(a.eventTime) -
+                                            new Date(b.eventTime),
+                                        )[0]?.eventTime || "N/A",
+                                      )
+                                    }
+                                    disabled={generatingPDF}
+                                    sx={{
+                                      border: "0.5px solid",
+                                      borderColor: "divider",
+                                      borderRadius: 1,
+                                      p: 0.6,
+                                      color: "#0d6c6a",
+                                    }}
+                                  >
+                                    {generatingPDF ? (
+                                      <CircularProgress size={16} />
+                                    ) : (
+                                      <DownloadIcon sx={{ fontSize: 16 }} />
+                                    )}
+                                  </IconButton>
+                                </Tooltip>
+
+                                <Tooltip title="Print detailed manifest">
+                                  <Button
+                                    variant="outlined"
+                                    size="small"
+                                    startIcon={<DownloadIcon />}
+                                    onClick={() =>
+                                      generateJobDetailManifestPDF(
+                                        jobNo,
+                                        pol,
+                                        pod,
+                                        linkedOrders,
+                                        consignment.orders,
+                                        consignment.consignmentNo ||
+                                          firstEvent.consignmentNo,
+                                        [...consignment.orders].sort(
+                                          (a, b) =>
+                                            new Date(a.eventTime) -
+                                            new Date(b.eventTime),
+                                        )[0]?.eventTime
+                                          ? new Date(
+                                              [...consignment.orders].sort(
+                                                (a, b) =>
+                                                  new Date(a.eventTime) -
+                                                  new Date(b.eventTime),
+                                              )[0].eventTime,
+                                            ).toLocaleDateString("en-GB")
+                                          : "N/A",
+                                      )
+                                    }
+                                    disabled={generatingPDF}
+                                    sx={{
                                       borderColor: "#f58220",
-                                    },
-                                  }}
-                                >
-                                  Manifest
-                                </Button>
-                              </Tooltip>
+                                      color: "#f58220",
+                                      fontSize: 12,
+                                      py: 0.4,
+                                      px: 1.5,
+                                      "&:hover": {
+                                        bgcolor: "#fff8f3",
+                                        borderColor: "#f58220",
+                                      },
+                                    }}
+                                  >
+                                    Manifest
+                                  </Button>
+                                </Tooltip>
+                              </Box>
                             </Box>
-                          </Box>
 
-                          {/* Orders Table */}
-                          <TableContainer
-                            component={Paper}
-                            sx={{ boxShadow: 1, borderRadius: 1 }}
-                          >
-                            <Table size="small">
-                              <TableHead>
-                                <TableRow sx={{ bgcolor: "#0d6c6a" }}>
-                                  {[
-                                    "Booking Ref",
-                                    "Form No",
-                                    "Summary",
-                                    "Qty",
-                                    "Weight",
-                                    "Updated By",
-                                    "Type",
-                                  ].map((h) => (
-                                    <TableCell
-                                      key={h}
-                                      sx={{
-                                        color: "white",
-                                        fontWeight: "bold",
-                                        py: 1,
-                                      }}
-                                    >
-                                      {h}
-                                    </TableCell>
-                                  ))}
-                                </TableRow>
-                              </TableHead>
-                              <TableBody>
-                                {sortedEvents.length === 0 ? (
-                                  <TableRow>
-                                    <TableCell
-                                      colSpan={7}
-                                      align="center"
-                                      sx={{
-                                        py: 3,
-                                        color: "text.secondary",
-                                        fontSize: 13,
-                                      }}
-                                    >
-                                      No assignment events in this group
-                                    </TableCell>
-                                  </TableRow>
-                                ) : (
-                                  sortedEvents.map((event, eventIndex) => (
-                                    <TableRow
-                                      key={`${jobNo}-${event.eventTime}-${eventIndex}`}
-                                      sx={{
-                                        "&:last-child td": { border: 0 },
-                                        "&:hover": { bgcolor: "action.hover" },
-                                      }}
-                                    >
+                            {/* Orders Table */}
+                            <TableContainer
+                              component={Paper}
+                              sx={{ boxShadow: 1, borderRadius: 1 }}
+                            >
+                              <Table size="small">
+                                <TableHead>
+                                  <TableRow sx={{ bgcolor: "#0d6c6a" }}>
+                                    {[
+                                      "Booking Ref",
+                                      "Form No",
+                                      "Summary",
+                                      "Qty",
+                                      "Weight",
+                                      "Updated By",
+                                      "Assigned At",
+                                      "Type",
+                                    ].map((h) => (
                                       <TableCell
+                                        key={h}
                                         sx={{
-                                          fontWeight: 500,
-                                          color: "#0d6c6a",
+                                          color: "white",
+                                          fontWeight: "bold",
+                                          py: 1,
+                                        }}
+                                      >
+                                        {h}
+                                      </TableCell>
+                                    ))}
+                                  </TableRow>
+                                </TableHead>
+                                <TableBody>
+                                  {sortedEvents.length === 0 ? (
+                                    <TableRow>
+                                      <TableCell
+                                        colSpan={7}
+                                        align="center"
+                                        sx={{
+                                          py: 3,
+                                          color: "text.secondary",
                                           fontSize: 13,
                                         }}
                                       >
-                                        {event.bookingRef ||
-                                          event.orderId ||
-                                          "N/A"}
-                                      </TableCell>
-                                      <TableCell sx={{ fontSize: 13 }}>
-                                        {event.formNo || "N/A"}
-                                      </TableCell>
-                                      <TableCell sx={{ fontSize: 13 }}>
-                                        {event.eventSummary || "N/A"}
-                                      </TableCell>
-                                      <TableCell sx={{ fontSize: 13 }}>
-                                        {event.assignedQty ?? "—"}
-                                      </TableCell>
-                                      <TableCell sx={{ fontSize: 13 }}>
-                                        {event.assignedWeightKg != null
-                                          ? `${event.assignedWeightKg} KG`
-                                          : "—"}
-                                      </TableCell>
-                                      <TableCell
-                                        sx={{
-                                          fontSize: 12,
-                                          color: "text.secondary",
-                                        }}
-                                      >
-                                        {event.changedBy || "System"}
-                                      </TableCell>
-                                      <TableCell>
-                                        <Chip
-                                          label={event.eventType}
-                                          size="small"
-                                          sx={{
-                                            fontSize: 11,
-                                            height: 20,
-                                            bgcolor:
-                                              event.eventType === "ASSIGNMENT"
-                                                ? "#e6f4f3"
-                                                : "#e8f4ff",
-                                            color:
-                                              event.eventType === "ASSIGNMENT"
-                                                ? "#0d6c6a"
-                                                : "#1a5fa8",
-                                          }}
-                                        />
+                                        No assignment events in this group
                                       </TableCell>
                                     </TableRow>
-                                  ))
-                                )}
-                              </TableBody>
-                            </Table>
-                          </TableContainer>
-                        </Box>
-                      );
-                    })
-                )}
-              </Box>
-            )}
+                                  ) : (
+                                    sortedEvents.map((event, eventIndex) => (
+                                      <TableRow
+                                        key={`${jobNo}-${event.eventTime}-${eventIndex}`}
+                                        sx={{
+                                          "&:last-child td": { border: 0 },
+                                          "&:hover": {
+                                            bgcolor: "action.hover",
+                                          },
+                                        }}
+                                      >
+                                        <TableCell
+                                          sx={{
+                                            fontWeight: 500,
+                                            color: "#0d6c6a",
+                                            fontSize: 13,
+                                          }}
+                                        >
+                                          {event.bookingRef ||
+                                            event.orderId ||
+                                            "N/A"}
+                                        </TableCell>
+                                        <TableCell sx={{ fontSize: 13 }}>
+                                          {event.formNo || "N/A"}
+                                        </TableCell>
+                                        <TableCell sx={{ fontSize: 13 }}>
+                                          {event.eventSummary || "N/A"}
+                                        </TableCell>
+                                        <TableCell sx={{ fontSize: 13 }}>
+                                          {event.assignedQty ?? "—"}
+                                        </TableCell>
+                                        <TableCell sx={{ fontSize: 13 }}>
+                                          {event.assignedWeightKg != null
+                                            ? `${event.assignedWeightKg} KG`
+                                            : "—"}
+                                        </TableCell>
+                                        <TableCell
+                                          sx={{
+                                            fontSize: 12,
+                                            color: "text.secondary",
+                                          }}
+                                        >
+                                          {event.changedBy || "System"}
+                                        </TableCell>
+                                        <TableCell sx={{ fontSize: 13 }}>
+                                          {event.loadedAt != null
+                                            ? `${event.loadedAt}`
+                                            : "-- Proceeded via Batch --"}
+                                        </TableCell>
+                                        <TableCell>
+                                          <Chip
+                                            label={event.eventType}
+                                            size="small"
+                                            sx={{
+                                              fontSize: 11,
+                                              height: 20,
+                                              bgcolor:
+                                                event.eventType === "ASSIGNMENT"
+                                                  ? "#e6f4f3"
+                                                  : "#e8f4ff",
+                                              color:
+                                                event.eventType === "ASSIGNMENT"
+                                                  ? "#0d6c6a"
+                                                  : "#1a5fa8",
+                                            }}
+                                          />
+                                        </TableCell>
+                                      </TableRow>
+                                    ))
+                                  )}
+                                </TableBody>
+                              </Table>
+                            </TableContainer>
+                          </Box>
+                        );
+                      })
+                  )}
+                </>
+              )}
+
+              {activeHistoryTab === 1 && (
+                <>
+                  {loadingUnassigned ? (
+                    <Box
+                      sx={{ display: "flex", justifyContent: "center", py: 4 }}
+                    >
+                      <CircularProgress />
+                      <Typography variant="body2" sx={{ ml: 1 }}>
+                        Loading unassigned orders...
+                      </Typography>
+                    </Box>
+                  ) : unassignedOrders.length === 0 ? (
+                    <Typography
+                      variant="body2"
+                      align="center"
+                      sx={{ py: 4, color: "text.secondary" }}
+                    >
+                      No orders without a consignment found for this container.
+                    </Typography>
+                  ) : (
+                    <Box>
+                      {/* summary banner */}
+                      <Box
+                        sx={{
+                          mb: 2,
+                          px: 2,
+                          py: 1,
+                          borderRadius: 2,
+                          bgcolor: "#fff8f0",
+                          border: "1px solid #ffe0b2",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 1,
+                        }}
+                      >
+                        <Typography
+                          variant="body2"
+                          sx={{ color: "#e65100", fontWeight: 600 }}
+                        >
+                          {unassignedOrders.length} assignment event
+                          {unassignedOrders.length !== 1 ? "s" : ""} with no
+                          consignment linked
+                        </Typography>
+                      </Box>
+
+                      <TableContainer
+                        component={Paper}
+                        sx={{ boxShadow: 1, borderRadius: 1 }}
+                      >
+                        <Table size="small">
+                          <TableHead>
+                            <TableRow sx={{ bgcolor: "#e65100" }}>
+                              {[
+                                "#",
+                                "Date",
+                                "Booking Ref",
+                                "Form No",
+                                "Summary",
+                                "Qty",
+                                "Weight",
+                                "Updated By",
+                                "Type",
+                              ].map((h) => (
+                                <TableCell
+                                  key={h}
+                                  sx={{
+                                    color: "white",
+                                    fontWeight: "bold",
+                                    py: 1,
+                                  }}
+                                >
+                                  {h}
+                                </TableCell>
+                              ))}
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {unassignedOrders.map((event, idx) => (
+                              <TableRow
+                                key={`unassigned-${idx}`}
+                                sx={{
+                                  bgcolor: idx % 2 === 0 ? "#fff8f0" : "white",
+                                  "&:hover": { bgcolor: "#ffe0b2" },
+                                }}
+                              >
+                                <TableCell
+                                  sx={{ fontSize: 12, color: "text.secondary" }}
+                                >
+                                  {idx + 1}
+                                </TableCell>
+                                <TableCell sx={{ fontSize: 13 }}>
+                                  {event.eventTime || "—"}
+                                </TableCell>
+                                <TableCell
+                                  sx={{
+                                    fontWeight: 500,
+                                    color: "#0d6c6a",
+                                    fontSize: 13,
+                                  }}
+                                >
+                                  {event.bookingRef || event.orderId || "N/A"}
+                                </TableCell>
+                                <TableCell sx={{ fontSize: 13 }}>
+                                  {event.formNo || "N/A"}
+                                </TableCell>
+                                <TableCell sx={{ fontSize: 13, maxWidth: 200 }}>
+                                  {event.eventSummary || "N/A"}
+                                </TableCell>
+                                <TableCell sx={{ fontSize: 13 }}>
+                                  {event.assignedQty ?? "—"}
+                                </TableCell>
+                                <TableCell sx={{ fontSize: 13 }}>
+                                  {event.assignedWeightKg != null
+                                    ? `${event.assignedWeightKg} KG`
+                                    : "—"}
+                                </TableCell>
+                                <TableCell
+                                  sx={{ fontSize: 12, color: "text.secondary" }}
+                                >
+                                  {event.changedBy || "System"}
+                                </TableCell>
+                                <TableCell>
+                                  <Chip
+                                    label={event.actionType || event.eventType}
+                                    size="small"
+                                    sx={{
+                                      fontSize: 11,
+                                      height: 20,
+                                      bgcolor: "#fff3e0",
+                                      color: "#e65100",
+                                    }}
+                                  />
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    </Box>
+                  )}
+                </>
+              )}
+            </>
 
             <Box sx={{ mt: 3, display: "flex", justifyContent: "center" }}>
               <Button

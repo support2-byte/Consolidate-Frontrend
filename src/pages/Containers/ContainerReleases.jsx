@@ -20,11 +20,12 @@ import {
   TextField,
   TablePagination,
   Chip,
+  Tooltip,
 } from "@mui/material";
 import { styled } from "@mui/material/styles";
 import dayjs from "dayjs";
 import { api } from "../../api";
-import { AuthContext, useAuth } from "../../context/AuthContext";
+import { useAuth } from "../../context/AuthContext";
 import { data } from "react-router-dom";
 
 const StyledTableRow = styled(TableRow)(({ theme }) => ({
@@ -158,6 +159,19 @@ export default function ContainerReleases() {
     page * rowsPerPage + rowsPerPage,
   );
 
+  const StyledTableHeadCell = styled(TableCell)(({ theme }) => ({
+    backgroundColor: "#0d6c6a",
+    color: "#fff",
+    fontWeight: 500,
+    whiteSpace: "normal",
+    wordBreak: "break-word",
+  }));
+
+  const StyledTableCell = styled(TableCell)({
+    whiteSpace: "normal",
+    wordBreak: "break-word",
+  });
+
   return (
     <Paper
       sx={{
@@ -199,7 +213,7 @@ export default function ContainerReleases() {
       <TableContainer
         sx={{
           borderRadius: 2,
-          maxHeight: 600,
+          width: "100%",
         }}
       >
         <Table stickyHeader>
@@ -210,9 +224,8 @@ export default function ContainerReleases() {
               <StyledTableHeadCell>Assigned At</StyledTableHeadCell>
               <StyledTableHeadCell>Created At</StyledTableHeadCell>
               <StyledTableHeadCell>Created By</StyledTableHeadCell>
-              <StyledTableHeadCell>Modified At</StyledTableHeadCell>
-              <StyledTableHeadCell>Modified By</StyledTableHeadCell>
               <StyledTableHeadCell>Released At</StyledTableHeadCell>
+              <StyledTableHeadCell>Released By</StyledTableHeadCell>
               <StyledTableHeadCell>Status</StyledTableHeadCell>
               <StyledTableHeadCell align="center">Action</StyledTableHeadCell>
             </TableRow>
@@ -238,25 +251,36 @@ export default function ContainerReleases() {
 
                   <TableCell>{row.consignment_number}</TableCell>
 
-                  <TableCell>
+                  <TableCell sx={{ whiteSpace: "nowrap" }}>
                     {dayjs(row.assigned_at).format("DD-MMM-YYYY")}
                   </TableCell>
 
-                  <TableCell>
+                  <TableCell sx={{ whiteSpace: "nowrap" }}>
                     {dayjs(row.created_at).format("DD-MMM-YYYY")}
                   </TableCell>
-                  <TableCell>{row.created_by}</TableCell>
                   <TableCell>
-                    {row.modified_at
-                      ? dayjs(row.modified_at).format("DD-MMM-YYYY")
-                      : "-"}
+                    <Tooltip title={row.created_by || ""}>
+                      <span>
+                        {row.created_by?.length > 22
+                          ? `${row.created_by.substring(0, 22)}...`
+                          : row.created_by}
+                      </span>
+                    </Tooltip>
                   </TableCell>
 
-                  <TableCell>{row.modified_by || "-"}</TableCell>
-                  <TableCell>
+                  <TableCell sx={{ whiteSpace: "nowrap" }}>
                     {row.released_at
                       ? dayjs(row.released_at).format("DD-MMM-YYYY")
                       : "-"}
+                  </TableCell>
+                  <TableCell>
+                    <Tooltip title={row.released_by || ""}>
+                      <span>
+                        {row.released_by?.length > 22
+                          ? `${row.released_by.substring(0, 22)}...`
+                          : row.released_by || "-"}
+                      </span>
+                    </Tooltip>
                   </TableCell>
                   <TableCell>
                     <Chip

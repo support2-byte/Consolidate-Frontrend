@@ -36,7 +36,7 @@ import AddCircleIcon from "@mui/icons-material/AddCircle";
 import EditIcon from "@mui/icons-material/Edit";
 import HistoryIcon from "@mui/icons-material/History";
 import CloseIcon from "@mui/icons-material/Close";
-import { api } from "../../api"; // Assuming api is configured with baseURL
+import { api } from "../../api";
 import SaveIcon from "@mui/icons-material/Save";
 const modalStyle = {
   position: "absolute",

@@ -1265,6 +1265,9 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
             page: 1,
             limit: 1000,
             container_id: addedContainerIds.join(","),
+            ...(mode === "edit" && effectiveConsignmentId
+              ? { consignment_id: effectiveConsignmentId }
+              : {}),
           },
         });
         console.log("Fetched orders response:", response.data);
@@ -1681,6 +1684,11 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     setValues((prev) => ({ ...prev, [name]: value }));
     if (touched[name]) validateField(name, value);
   };
+
+  const handleNumberFocus = (e) => {
+    e.target.select();
+  };
+
   const handleNumberChange = (e) => {
     const { name, value } = e.target;
     setValues((prev) => ({ ...prev, [name]: parseFloat(value) || 0 }));
@@ -1823,6 +1831,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     setValues((prev) => ({ ...prev, containers: newContainers }));
     markArrayTouched("containers");
   };
+
   const advanceStatus = async () => {
     try {
       setLoading(true);
@@ -5420,6 +5429,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                             value={values.consignment_value}
                             onChange={handleNumberChange}
                             onBlur={handleBlur}
+                            onFocus={handleNumberFocus}
                             label="Consignment Value"
                             type="number"
                             required

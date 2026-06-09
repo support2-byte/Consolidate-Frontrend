@@ -47,6 +47,18 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import html2canvas from "html2canvas";
 import logoPic from "../../../public/logo-2.png";
+
+const statuses = [
+  "Ready for Loading",
+  "Loaded Into container",
+  "Shipment Processing",
+  "Shipment In Transit",
+  "Under Processing",
+  "Arrived at Sort Facility",
+  "Ready for Delivery",
+  "Shipment Delivered",
+];
+
 // Custom TextField with error support
 const CustomTextField = ({ disabled, ...props }) => (
   <TextField
@@ -185,6 +197,7 @@ const OrderForm = () => {
     totalNumber: "",
     weight: "",
     remainingItems: "",
+    status: "Order Created",
   };
   const initialSenderObject = {
     senderName: "",
@@ -194,7 +207,7 @@ const OrderForm = () => {
     eta: "",
     etd: "",
     shippingLine: "",
-    shippingDetails: [],
+    shippingDetails: [{ ...initialShippingDetail }],
     fullPartial: "",
     qtyDelivered: "",
     status: "",
@@ -208,7 +221,7 @@ const OrderForm = () => {
     eta: "",
     etd: "",
     shippingLine: "",
-    shippingDetails: [],
+    shippingDetails: [{ ...initialShippingDetail }],
     fullPartial: "",
     qtyDelivered: "",
     status: "Created",
@@ -251,7 +264,7 @@ const OrderForm = () => {
         eta: "",
         etd: "",
         shippingLine: "",
-        shippingDetails: [],
+        shippingDetails: [{ ...initialShippingDetail }],
         fullPartial: "",
         qtyDelivered: "",
         status: "Created",
@@ -1198,7 +1211,11 @@ const OrderForm = () => {
       ...prev,
       receivers: [
         ...prev.receivers,
-        { ...initialReceiver, shippingDetails: [], isNew: true },
+        {
+          ...initialReceiver,
+          shippingDetails: [{ ...initialShippingDetail }],
+          isNew: true,
+        },
       ],
     }));
   };
@@ -2339,16 +2356,6 @@ const OrderForm = () => {
     }
   }, [isEditMode]);
 
-  const statuses = [
-    "Ready for Loading",
-    "Loaded Into container",
-    "Shipment Processing",
-    "Shipment In Transit",
-    "Under Processing",
-    "Arrived at Sort Facility",
-    "Ready for Delivery",
-    "Shipment Delivered",
-  ];
   const getStatusColors = (status) => {
     // Extend your existing getStatusColors function to handle new statuses
     const colorMap = {
@@ -2379,7 +2386,10 @@ const OrderForm = () => {
       ...prev,
       senders: [
         ...prev.senders,
-        { ...initialSenderObject, shippingDetails: [] },
+        {
+          ...initialSenderObject,
+          shippingDetails: [{ ...initialShippingDetail }],
+        },
       ],
     }));
   }, []);

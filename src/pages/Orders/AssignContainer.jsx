@@ -67,6 +67,7 @@ import ExpandMore from "@mui/icons-material/ExpandMore";
 import ExpandLess from "@mui/icons-material/ExpandLess";
 import { api } from "../../api";
 import AssignmentForm from "./AssignForm";
+import dayjs from "dayjs";
 
 // You can keep these if you use them:
 // import StatusChip from './StatusChip';
@@ -110,7 +111,7 @@ const AssignModal = ({
   const [selectedContainersPerDetail, setSelectedContainersPerDetail] =
     useState({});
 
-  const [loadingDate, setLoadingDate] = useState("");
+  const [loadingDate, setLoadingDate] = useState(dayjs().format("YYYY-MM-DD"));
 
   const loadingDateRef = useRef(loadingDate);
   useEffect(() => {
