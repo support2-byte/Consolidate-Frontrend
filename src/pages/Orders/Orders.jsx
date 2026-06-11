@@ -206,7 +206,7 @@ const OrdersList = () => {
       );
       setSnackbar({
         open: true,
-        message: `Status updated to "${selectedStatus}" for "${selectedReceiverForUpdate.receivername}" successfully! Notifications sent as per rules.`,
+        message: `Status updated to "${selectedStatus}" for "${selectedReceiverForUpdate.receiverName}" successfully! Notifications sent as per rules.`,
         severity: "success",
       });
       fetchOrders(); // Refresh the list to update overall status
@@ -981,7 +981,6 @@ const OrdersList = () => {
       }
 
       // Assign selected container to first available target
-      const target = targets[0];
 
       const containerId =
         directSelectedContainers.cid ||
@@ -991,15 +990,13 @@ const OrdersList = () => {
         throw new Error("Selected container is invalid");
       }
 
-      const assignmentList = [
-        {
-          orderId: target.orderId,
-          receiverId: target.receiverId,
-          detailIndex: target.detailIndex,
-          containerId: String(containerId),
-          qty: target.remainingQty,
-        },
-      ];
+      const assignmentList = targets.map((target) => ({
+        orderId: target.orderId,
+        receiverId: target.receiverId,
+        detailIndex: target.detailIndex,
+        containerId: String(containerId),
+        qty: target.remainingQty,
+      }));
 
       const payload = {
         assignments: assignmentList,
@@ -4737,7 +4734,7 @@ applicable law provides otherwise
             <div><strong>SHIPPING LINE:</strong> ${getSafeValue(safeOrder.shipping_line)}</div>
 
             <div><strong>Dest:</strong> ${getPlaceName(getSafeValue(safeOrder.final_destination))}</div>
-            <div><strong>Shipper:</strong> ${getSafeValue(firstReceiver.receivername)}</div>
+            <div><strong>Shipper:</strong> ${getSafeValue(firstReceiver.receiverName)}</div>
             <div><strong>BOOKING NO:</strong> ${getSafeValue(safeOrder.rgl_booking_number)}</div>
 
             <div><strong>Comm:</strong> ${getCommodities() || "N/A"}</div>
@@ -4833,13 +4830,13 @@ applicable law provides otherwise
       orderData.receivers && orderData.receivers[0]
         ? orderData.receivers[0]
         : {};
-    const receiverName = receiver.receivername || "N/A"; // Fixed: receivername
-    const receiverContact = receiver.receivercontact || "N/A"; // Fixed: receivercontact
-    const receiverAddress = receiver.receiveraddress || "N/A"; // Fixed: receiveraddress
-    const receiverEmail = receiver.receiveremail || "N/A"; // Fixed: receiveremail
+    const receiverName = receiver.receiverName || "N/A";
+    const receiverContact = receiver.receiverContact || "N/A";
+    const receiverAddress = receiver.receiverAddress || "N/A";
+    const receiverEmail = receiver.receiverEmail || "N/A";
 
     // Get shipping details
-    const shippingDetails = receiver.shippingdetails || []; // Fixed: shippingdetails
+    const shippingDetails = receiver.shippingdetails || [];
 
     // Calculate totals
     let totalQty = 0;
@@ -5282,10 +5279,10 @@ applicable law provides otherwise
       orderData.receivers && orderData.receivers[0]
         ? orderData.receivers[0]
         : {};
-    const receiverName = receiver.receivername || "";
-    const receiverContact = receiver.receivercontact || "";
-    const receiverAddress = receiver.receiveraddress || "";
-    const receiverEmail = receiver.receiveremail || "";
+    const receiverName = receiver.receiverName || "";
+    const receiverContact = receiver.receiverContact || "";
+    const receiverAddress = receiver.receiverAddress || "";
+    const receiverEmail = receiver.receiverEmail || "";
 
     // Get shipping details
     const shippingDetails = receiver.shippingdetails || [];
@@ -5635,10 +5632,10 @@ applicable law provides otherwise
       orderData.receivers && orderData.receivers[0]
         ? orderData.receivers[0]
         : {};
-    const receiverName = receiver.receivername || "";
-    const receiverContact = receiver.receivercontact || "";
-    const receiverAddress = receiver.receiveraddress || "";
-    const receiverEmail = receiver.receiveremail || "";
+    const receiverName = receiver.receiverName || "";
+    const receiverContact = receiver.receiverContact || "";
+    const receiverAddress = receiver.receiverAddress || "";
+    const receiverEmail = receiver.receiverEmail || "";
 
     // Get shipping details
     const shippingDetails = receiver.shippingdetails || [];
@@ -5988,7 +5985,7 @@ applicable law provides otherwise
       orderData.receivers && orderData.receivers[0]
         ? orderData.receivers[0]
         : {};
-    const receiverName = receiver.receivername || "";
+    const receiverName = receiver.receiverName || "";
     const receiverContact = receiver.receivercontact || "";
     const receiverAddress = receiver.receiveraddress || "";
     const receiverEmail = receiver.receiveremail || "";
@@ -6306,7 +6303,7 @@ applicable law provides otherwise
       orderData.receivers && orderData.receivers[0]
         ? orderData.receivers[0]
         : {};
-    const receiverName = getValue(receiver.receivername);
+    const receiverName = getValue(receiver.receiverName);
     const receiverContact = getValue(receiver.receivercontact);
     const receiverAddress = getValue(receiver.receiveraddress);
 
@@ -6696,7 +6693,7 @@ applicable law provides otherwise
       orderData.receivers && orderData.receivers[0]
         ? orderData.receivers[0]
         : {};
-    const receiverName = getValue(receiver.receivername);
+    const receiverName = getValue(receiver.receiverName);
     const receiverContact = getValue(receiver.receivercontact);
     const receiverAddress = getValue(receiver.receiveraddress);
 
@@ -7086,7 +7083,7 @@ applicable law provides otherwise
       orderData.receivers && orderData.receivers[0]
         ? orderData.receivers[0]
         : {};
-    const receiverName = getValue(receiver.receivername);
+    const receiverName = getValue(receiver.receiverName);
     const receiverContact = getValue(receiver.receivercontact);
     const receiverAddress = getValue(receiver.receiveraddress);
 
@@ -7296,7 +7293,7 @@ applicable law provides otherwise
       orderData.receivers && orderData.receivers[0]
         ? orderData.receivers[0]
         : {};
-    const receiverName = getValue(receiver.receivername);
+    const receiverName = getValue(receiver.receiverName);
     const receiverContact = getValue(receiver.receivercontact);
     const receiverAddress = getValue(receiver.receiveraddress);
 
@@ -7506,7 +7503,7 @@ applicable law provides otherwise
       orderData.receivers && orderData.receivers[0]
         ? orderData.receivers[0]
         : {};
-    const receiverName = getValue(receiver.receivername);
+    const receiverName = getValue(receiver.receiverName);
     const receiverContact = getValue(receiver.receivercontact);
     const receiverAddress = getValue(receiver.receiveraddress);
 
@@ -7542,6 +7539,8 @@ applicable law provides otherwise
       });
       return rows;
     };
+
+    console.log();
 
     // Calculate total packages
     const totalPkgs = shippingDetails.reduce((sum, detail) => {
@@ -8750,7 +8749,7 @@ applicable law provides otherwise
               >
                 {selectedOrderForUpdate?.receivers?.map((rec) => (
                   <MenuItem key={rec.id} value={rec.id}>
-                    {rec.receivername} (Current: {rec.status})
+                    {rec.receiverName} | (Current: {rec.status})
                   </MenuItem>
                 ))}
               </Select>

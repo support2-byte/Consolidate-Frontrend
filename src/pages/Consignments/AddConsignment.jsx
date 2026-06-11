@@ -1267,7 +1267,14 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
             container_id: addedContainerIds.join(","),
             ...(mode === "edit" && effectiveConsignmentId
               ? { consignment_id: effectiveConsignmentId }
-              : {}),
+              : {
+                  ...(values.origin && {
+                    pol: values.origin,
+                  }),
+                  ...(values.destination && {
+                    pod: values.destination,
+                  }),
+                }),
           },
         });
         console.log("Fetched orders response:", response.data);
@@ -1312,6 +1319,8 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     orderPage,
     orderRowsPerPage,
     api,
+    values.origin,
+    values.destination,
     // setSnackbar,
     // setOrders,
     // setOrderTotal,
@@ -1326,44 +1335,62 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     return orders.flatMap((order) =>
       (order.receivers || []).flatMap((receiver) =>
         (receiver.shippingdetails || []).flatMap((detail) =>
-          (detail.containerDetails || []).map(
-            (containerDetail) => (
-              console.log("details", detail),
-              {
-                // Order level
-                orderId: order.id,
-                bookingRef: order.booking_ref || "-",
-                formNo: order.rgl_booking_number || "-",
-                pol: getPlaceName?.(order.place_of_loading) || "-",
-                pod: getPlaceName?.(order.place_of_delivery) || "-",
-                sender: order.sender_name || "-",
-                // Receiver level
-                receiverName: receiver.receivername || "-",
-                // Shipping detail / product level
-                category: detail.category || "Unknown",
-                subcategory: detail.subcategory || "",
-                type: detail.type || "Package",
-                totalItems: Number(
-                  detail.totalNumber || detail.total_number || 0,
-                ),
-                weight: Number(detail.weight || 0),
-                itemRef: detail.itemRef || "",
-                remainingItems: Number(detail.remainingItems || 0),
-                receiverStatus: receiver.status,
-                // Single container
-                containerNumber:
-                  containerDetail.container?.container_number?.trim() || "-",
-                containerCid: containerDetail.container?.cid,
-                containerStatus: containerDetail.status || "-",
-                assignWeight: containerDetail.assign_weight || "-",
-                assignBoxes: containerDetail.assign_total_box || "-",
-              }
-            ),
-          ),
+          (detail.containerDetails || []).map((containerDetail) => ({
+            // Order level
+            orderId: order.id,
+            receiverId: receiver.id,
+            shippingDetailId: detail.id,
+            containerCid: containerDetail.container?.cid,
+            bookingRef: order.booking_ref || "-",
+            formNo: order.rgl_booking_number || "-",
+            pol: getPlaceName?.(order.place_of_loading) || "-",
+            pod: getPlaceName?.(order.place_of_delivery) || "-",
+            sender: order.sender_name || "-",
+            // Receiver level
+            receiverName: receiver.receivername || "-",
+            // Shipping detail / product level
+            category: detail.category || "Unknown",
+            subcategory: detail.subcategory || "",
+            type: detail.type || "Package",
+            totalItems: Number(detail.totalNumber || detail.total_number || 0),
+            weight: Number(detail.weight || 0),
+            itemRef: detail.itemRef || "",
+            remainingItems: Number(detail.remainingItems || 0),
+            receiverStatus: receiver.status,
+            // Single container
+            containerNumber:
+              containerDetail.container?.container_number?.trim() || "-",
+            // containerCid: containerDetail.container?.cid,
+            containerStatus: containerDetail.status || "-",
+            assignWeight: containerDetail.assign_weight || "-",
+            assignBoxes: containerDetail.assign_total_box || "-",
+          })),
         ),
       ),
     );
   }, [orders]);
+
+  const handleRemoveShipment = (shipment) => {
+    setOrders((prev) =>
+      prev.map((order) => ({
+        ...order,
+        receivers: (order.receivers || []).map((receiver) => ({
+          ...receiver,
+          shippingdetails: (receiver.shippingdetails || []).map((detail) => ({
+            ...detail,
+            containerDetails: (detail.containerDetails || []).filter(
+              (cd) =>
+                !(
+                  order.id === shipment.orderId &&
+                  detail.id === shipment.shippingDetailId &&
+                  cd.container?.cid === shipment.containerCid
+                ),
+            ),
+          })),
+        })),
+      })),
+    );
+  };
 
   const PrettyList = ({ receivers, title }) => {
     console.log("receiversss", receivers);
@@ -1778,11 +1805,14 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       setValues((prev) => ({ ...prev, bankName: "" }));
     }
   };
+
   const handleLocationChange = (e) => {
     const { name, value } = e.target;
     handleChange(e);
+
     let optionsKey = [];
     let nameField = "";
+
     if (name === "origin") {
       optionsKey = options.originOptions;
       nameField = "originName";
@@ -1800,6 +1830,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       setValues((prev) => ({ ...prev, [nameField]: "" }));
     }
   };
+
   const updateArrayField = (arrayName, index, fieldName, value) => {
     const newArray = [...(values[arrayName] || [])];
     console.log("yyye", newArray);
@@ -2005,6 +2036,10 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
 
         origin: values.originName || values.origin || null,
         destination: values.destinationName || values.destination || null,
+        place_of_loading_id: parseInt(values.place_of_loading, 10) || null,
+        place_of_loading: values.place_of_loading_name?.trim() || null,
+        place_of_delivery_id: parseInt(values.place_of_delivery, 10) || null,
+        place_of_delivery: values.place_of_delivery_name?.trim() || null,
 
         eform: values.eform?.trim() || null,
         eform_date: values.eform_date
@@ -6248,6 +6283,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                               Assign Weight & Items
                             </TableCell>
                             <TableCell
+                              align="center"
                               sx={{
                                 bgcolor: "#0d6c6a",
                                 color: "#fff",
@@ -6257,9 +6293,16 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                               Status
                             </TableCell>
 
-                            {/* <TableCell align="right"sx={{ bgcolor: '#0d6c6a' , color: '#fff', fontWeight: 'Bold' }}>
-                  Actions
-                </TableCell> */}
+                            <TableCell
+                              align="center"
+                              sx={{
+                                bgcolor: "#0d6c6a",
+                                color: "#fff",
+                                fontWeight: "Bold",
+                              }}
+                            >
+                              Actions
+                            </TableCell>
                           </TableRow>
                         </TableHead>
 
@@ -6281,7 +6324,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                             </TableRow>
                           ) : (
                             flatShipments.map((shipment, index) => (
-                              // console.log('shipments', shipment),
                               <TableRow
                                 key={`${shipment.orderId}-${shipment.containerNumber}-${index}`}
                               >
@@ -6345,26 +6387,17 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                                   />
                                 </TableCell>
 
-                                {/* <TableCell align="right">
-                      <Stack direction="row" spacing={1} justifyContent="flex-end">
-                        <Tooltip title="View order">
-                          <IconButton
-                            size="small"
-                            onClick={() => handleView?.(shipment.orderId)}
-                          >
-                            <VisibilityIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title="Edit order">
-                          <IconButton
-                            size="small"
-                            onClick={() => handleEdit?.(shipment.orderId)}
-                          >
-                            <EditIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      </Stack>
-                    </TableCell> */}
+                                <TableCell>
+                                  <Button
+                                    color="error"
+                                    variant="contained"
+                                    onClick={() =>
+                                      handleRemoveShipment(shipment)
+                                    }
+                                  >
+                                    Remove
+                                  </Button>
+                                </TableCell>
                               </TableRow>
                             ))
                           )}
