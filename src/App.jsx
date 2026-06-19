@@ -37,6 +37,7 @@ import UsersManagement from "./pages/Admin/UserModule";
 import PermissionEditor from "./pages/Admin/PermissionEditor";
 import NotificationSettings from "./pages/SystemData/NotificationSetting";
 import ContainerReleases from "./pages/Containers/ContainerReleases";
+import StatusesPage, { SortableRow } from "./pages/SystemData/NewEtaSetup";
 
 // ────────────────────────────────────────────────────────────────
 // Protected Route Wrapper (checks auth + optional permission)
@@ -180,7 +181,7 @@ export default function App() {
               <Route path="banks" element={<Banks />} />
               <Route path="third-parties" element={<ThirdParties />} />
               <Route path="barcode-print" element={<BarcodePrintTest />} />
-              <Route path="eta-setup" element={<EtaSetupPage />} />
+              <Route path="eta-setup" element={<StatusesPage />} />
             </Route>
           </Route>
 

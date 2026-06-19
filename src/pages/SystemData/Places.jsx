@@ -26,6 +26,8 @@ import {
   Divider,
 } from "@mui/material";
 import { api } from "../../api";
+import { useContext } from "react";
+import { AppContext } from "../../context/AppContext";
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -47,7 +49,7 @@ const Places = () => {
     latitude: "",
     longitude: "",
   });
-  const [places, setPlaces] = useState([]);
+  const { places, fetchPlaces, placesLoading } = useContext(AppContext);
   const [loading, setLoading] = useState(true);
   const [dialogLoading, setDialogLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -59,10 +61,6 @@ const Places = () => {
   const [suggestions, setSuggestions] = useState([]); // For autocomplete options
   const [inputValue, setInputValue] = useState(""); // Debounced input
   const timeoutRef = useRef(null);
-
-  useEffect(() => {
-    fetchPlaces();
-  }, []);
 
   // Safe inputValue for MUI (always string)
   const safeInputValue = inputValue || "";
@@ -121,27 +119,6 @@ const Places = () => {
     } else if (typeof option === "string") {
       setFormData((prev) => ({ ...prev, name: option }));
       setInputValue(option);
-    }
-  };
-
-  const fetchPlaces = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const response = await api.get("api/options/places/crud");
-      const data = response.data.places || [];
-      console.log("Fetched places:", data);
-      setPlaces(data);
-    } catch (err) {
-      console.error("Error fetching places:", err);
-      setError(err.message);
-      setSnackbar({
-        open: true,
-        message: "Failed to load places. Please try again.",
-        severity: "error",
-      });
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -348,7 +325,7 @@ const Places = () => {
       </Box>
 
       <Paper sx={{ p: 2, overflowX: "auto", position: "relative" }}>
-        {loading && (
+        {placesLoading && (
           <Box
             sx={{
               position: "absolute",
@@ -395,7 +372,7 @@ const Places = () => {
             </TableRow>
           </TableHead>
           <TableBody>
-            {places.length === 0 && !loading
+            {places.length === 0 && !placesLoading
               ? renderEmptyState()
               : places.map((place) => (
                   <TableRow

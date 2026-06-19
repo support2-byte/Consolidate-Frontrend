@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useContext } from "react";
+import { AppContext } from "../../context/AppContext";
 import {
   TextField,
   Select,
@@ -14,7 +15,7 @@ import {
   Typography,
   CardContent,
   IconButton,
-  Box
+  Box,
 } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
 import { api } from "../../api"; // Adjust path
@@ -27,6 +28,7 @@ import DeleteIcon from "@mui/icons-material/Delete";
 export default function CustomerForm({ mode = "add" }) {
   const navigate = useNavigate();
   const { id } = useParams();
+  const { setCustomers } = useContext(AppContext);
   const [form, setForm] = useState({
     contact_name: "",
     email: "",
@@ -47,41 +49,49 @@ export default function CustomerForm({ mode = "add" }) {
   const [file, setFile] = useState(null);
   const fileInputRef = useRef(null);
   useEffect(() => {
-    setUsers([{ id: "1", name: "Admin" }, { id: "2", name: "Manager" }, { id: "3", name: "Staff" },]);
+    setUsers([
+      { id: "1", name: "Admin" },
+      { id: "2", name: "Manager" },
+      { id: "3", name: "Staff" },
+    ]);
   }, [id, mode]);
 
   // Other useEffect for fetchCustomer (unchanged, omitting documents)
   useEffect(() => {
-    if (mode === 'edit' && id) {
+    if (mode === "edit" && id) {
       const fetchCustomer = async () => {
         try {
           const res = await api.get(`/api/customers/${id}`);
-          console.log('Customer data:', res.data);
+          console.log("Customer data:", res.data);
           const c = res.data;
           setForm({
-            contact_name: c.contact_name || '',
-            email: c.email || '',
-            associated_by: c.associated_by || '',
-            zoho_notes: c.zoho_notes || '',
-            address: c.address || '',
-            system_notes: c.system_notes || '',
-            type: c.type || 'sender',
+            contact_name: c.contact_name || "",
+            email: c.email || "",
+            associated_by: c.associated_by || "",
+            zoho_notes: c.zoho_notes || "",
+            address: c.address || "",
+            system_notes: c.system_notes || "",
+            type: c.type || "sender",
           });
           setContacts(
             (c.contact_persons || []).map((cp) => ({
               id: cp.id || cp.contact_person_id,
-              name: cp.name || `${cp.first_name || ''} ${cp.last_name || ''}`.trim(),
-              phone: cp.phone || '',
-              email: cp.email || '',
+              name:
+                cp.name ||
+                `${cp.first_name || ""} ${cp.last_name || ""}`.trim(),
+              phone: cp.phone || "",
+              email: cp.email || "",
               isNew: false,
-            }))
+            })),
           );
           setDocuments(
-            (c.documents || []).filter(doc => doc.document_id && typeof doc.document_id === 'string')
+            (c.documents || []).filter(
+              (doc) => doc.document_id && typeof doc.document_id === "string",
+            ),
           );
         } catch (err) {
-          console.error('Failed to fetch customer:', err);
-          showToast('Failed to fetch customer data', 'error');
+          console.error("Failed to fetch customer:", err);
+          showToast("Failed to fetch customer data", "error");
         }
       };
       fetchCustomer();
@@ -123,15 +133,19 @@ export default function CustomerForm({ mode = "add" }) {
         return;
       }
       console.log("Saving contacts:", { zoho_id: id, contacts });
-      const res = await api.post(`/api/customers/${id}/contacts`, { zoho_id: id, contacts });
+      const res = await api.post(`/api/customers/${id}/contacts`, {
+        zoho_id: id,
+        contacts,
+      });
       setContacts(
         res.data.map((cp) => ({
           id: cp.id || cp.contact_person_id,
-          name: cp.name || `${cp.first_name || ''} ${cp.last_name || ''}`.trim(),
+          name:
+            cp.name || `${cp.first_name || ""} ${cp.last_name || ""}`.trim(),
           phone: cp.phone || "",
           email: cp.email || "",
           isNew: false,
-        }))
+        })),
       );
       showToast("Contacts saved successfully!", "success");
     } catch (err) {
@@ -143,12 +157,12 @@ export default function CustomerForm({ mode = "add" }) {
       if (err.response?.data?.error.includes("trial account restrictions")) {
         showToast(
           "Contact person creation is disabled due to Zoho Books trial restrictions. Please create contacts manually in Zoho Books.",
-          "error"
+          "error",
         );
       } else {
         showToast(
           err.response?.data?.error || "Failed to save contacts",
-          "error"
+          "error",
         );
       }
     }
@@ -163,7 +177,9 @@ export default function CustomerForm({ mode = "add" }) {
         return;
       }
       // Create a new File object to avoid mutations
-      const fileCopy = new File([selectedFile], selectedFile.name, { type: selectedFile.type });
+      const fileCopy = new File([selectedFile], selectedFile.name, {
+        type: selectedFile.type,
+      });
       console.log("File selected:", {
         name: fileCopy.name,
         size: fileCopy.size,
@@ -180,16 +196,16 @@ export default function CustomerForm({ mode = "add" }) {
 
   const handleAddDocument = async () => {
     if (!id) {
-      showToast('Cannot upload document: Customer ID is missing', 'error');
+      showToast("Cannot upload document: Customer ID is missing", "error");
       return;
     }
     if (!file || !(file instanceof File)) {
-      console.error('Invalid file state:', file);
-      showToast('Please select a valid file to upload', 'error');
+      console.error("Invalid file state:", file);
+      showToast("Please select a valid file to upload", "error");
       return;
     }
 
-    console.log('File before FormData append:', {
+    console.log("File before FormData append:", {
       name: file.name,
       size: file.size,
       type: file.type,
@@ -198,44 +214,52 @@ export default function CustomerForm({ mode = "add" }) {
 
     try {
       const formData = new FormData();
-      formData.append('file', file);
-      formData.append('zoho_id', id);
+      formData.append("file", file);
+      formData.append("zoho_id", id);
 
-      console.log('FormData fields:', [...formData.entries()].map(([key, value]) => ({ key, value: value.name || value })));
-      console.log('Current documents state:', documents);
+      console.log(
+        "FormData fields:",
+        [...formData.entries()].map(([key, value]) => ({
+          key,
+          value: value.name || value,
+        })),
+      );
+      console.log("Current documents state:", documents);
 
       const res = await api.post(`/api/customers/${id}/documents`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+        headers: { "Content-Type": "multipart/form-data" },
       });
-      console.log('Document upload response:', res.data);
+      console.log("Document upload response:", res.data);
 
       if (!res.data.document_id) {
-        console.error('Response missing document_id:', res.data);
-        showToast('Invalid document response from server', 'error');
+        console.error("Response missing document_id:", res.data);
+        showToast("Invalid document response from server", "error");
         return;
       }
 
       setDocuments((prev) => {
-        const validDocs = prev.filter((doc) => doc.document_id && typeof doc.document_id === 'string');
+        const validDocs = prev.filter(
+          (doc) => doc.document_id && typeof doc.document_id === "string",
+        );
         const existingIds = new Set(validDocs.map((doc) => doc.document_id));
         if (existingIds.has(res.data.document_id)) {
-          console.error('Duplicate document ID:', res.data.document_id);
-          showToast('Document with this ID already exists', 'error');
+          console.error("Duplicate document ID:", res.data.document_id);
+          showToast("Document with this ID already exists", "error");
           return validDocs;
         }
         const updatedDocs = [...validDocs, res.data];
-        console.log('Updated documents state:', updatedDocs);
+        console.log("Updated documents state:", updatedDocs);
         return updatedDocs;
       });
 
       setFile(null);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      showToast('Document uploaded successfully!', 'success');
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      showToast("Document uploaded successfully!", "success");
     } catch (err) {
-      console.error('Upload error:', err.response?.data || err.message);
+      console.error("Upload error:", err.response?.data || err.message);
       showToast(
-        err.response?.data?.error || 'Failed to upload document',
-        'error'
+        err.response?.data?.error || "Failed to upload document",
+        "error",
       );
     }
   };
@@ -243,13 +267,18 @@ export default function CustomerForm({ mode = "add" }) {
   const handleDeleteDocument = async (document_id) => {
     try {
       await api.delete(`/api/customers/${id}/documents/${document_id}`);
-      setDocuments((prev) => prev.filter((doc) => doc.document_id !== document_id));
-      showToast('Document deleted successfully!', 'success');
+      setDocuments((prev) =>
+        prev.filter((doc) => doc.document_id !== document_id),
+      );
+      showToast("Document deleted successfully!", "success");
     } catch (err) {
-      console.error('Delete document error:', err.response?.data || err.message);
+      console.error(
+        "Delete document error:",
+        err.response?.data || err.message,
+      );
       showToast(
-        err.response?.data?.error || 'Failed to delete document',
-        'error'
+        err.response?.data?.error || "Failed to delete document",
+        "error",
       );
     }
   };
@@ -273,7 +302,6 @@ export default function CustomerForm({ mode = "add" }) {
     }
   };
 
-
   const handleSaveCustomer = async () => {
     if (!form.contact_name || !form.email) {
       showToast("Customer name and email are required", "error");
@@ -281,11 +309,17 @@ export default function CustomerForm({ mode = "add" }) {
     }
     try {
       if (mode === "edit") {
-        await api.put(`/api/customers/${id}`, form);
+        const res = await api.put(`/api/customers/${id}`, form);
+        setCustomers((prev) =>
+          prev.map((c) =>
+            c.zoho_id === id ? { ...c, ...form, ...res.data } : c,
+          ),
+        );
         showToast("Customer updated successfully!", "success");
       } else {
         const res = await api.post("/api/customers", form);
         console.log("New customer created:", res.data);
+        setCustomers((prev) => [{ ...form, ...res.data }, ...prev]);
         navigate(`/customers/${res.data.zoho_id}/edit`);
         showToast("Customer created successfully!", "success");
       }
@@ -297,26 +331,30 @@ export default function CustomerForm({ mode = "add" }) {
 
   const docColumns = [
     {
-      field: 'file_name',
-      headerName: 'File Name',
+      field: "file_name",
+      headerName: "File Name",
       flex: 1,
       renderCell: (params) => (
         <a
           href={`/api/customers/${id}/documents/${params.row.document_id}/download`}
           download={params.value}
-          style={{ color: '#1976d2', textDecoration: 'underline', cursor: 'pointer' }}
+          style={{
+            color: "#1976d2",
+            textDecoration: "underline",
+            cursor: "pointer",
+          }}
         >
           {params.value}
         </a>
       ),
     },
-    { field: 'file_type', headerName: 'File Type', flex: 1 },
-    { field: 'file_size_formatted', headerName: 'Size', flex: 1 },
-    { field: 'uploaded_on_date_formatted', headerName: 'Uploaded On', flex: 1 },
-    { field: 'uploaded_by', headerName: 'Uploaded By', flex: 1 },
+    { field: "file_type", headerName: "File Type", flex: 1 },
+    { field: "file_size_formatted", headerName: "Size", flex: 1 },
+    { field: "uploaded_on_date_formatted", headerName: "Uploaded On", flex: 1 },
+    { field: "uploaded_by", headerName: "Uploaded By", flex: 1 },
     {
-      field: 'actions',
-      headerName: 'Actions',
+      field: "actions",
+      headerName: "Actions",
       flex: 1,
       renderCell: (params) => (
         <IconButton
@@ -357,88 +395,90 @@ export default function CustomerForm({ mode = "add" }) {
             Customer Info
           </Typography>
         </Grid>
-            <Box sx={{ display: "flex", gap: 2 }}>
+        <Box sx={{ display: "flex", gap: 2 }}>
+          <TextField
+            fullWidth
+            required
+            label="Customer Name"
+            name="contact_name"
+            value={form.contact_name}
+            onChange={handleChange}
+            error={!form.contact_name}
+            helperText={!form.contact_name ? "Customer name is required" : ""}
+          />
 
-            <TextField
-              fullWidth
-              required
-              label="Customer Name"
-              name="contact_name"
-              value={form.contact_name}
+          <TextField
+            fullWidth
+            required
+            label="Email"
+            name="email"
+            type="email"
+            value={form.email}
+            onChange={handleChange}
+            error={!form.email}
+            helperText={!form.email ? "Email is required" : ""}
+          />
+        </Box>
+        <Box sx={{ display: "flex", gap: 2, mt: 2 }}>
+          <FormControl fullWidth>
+            <InputLabel id="associated_by-label">Associated By</InputLabel>
+            <Select
+              label="Associated By"
+              labelId="associated_by-label"
+              name="associated_by"
+              value={form.associated_by}
               onChange={handleChange}
-              error={!form.contact_name}
-              helperText={!form.contact_name ? "Customer name is required" : ""}
-            />
+            >
+              {users.map((u) => (
+                <MenuItem key={u.id} value={u.id}>
+                  {u.name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
 
-            <TextField
-              fullWidth
-              required
-              label="Email"
-              name="email"
-              type="email"
-              value={form.email}
-              onChange={handleChange}
-              error={!form.email}
-              helperText={!form.email ? "Email is required" : ""}
-            />
+          <TextField
+            fullWidth
+            label="Zoho Notes"
+            name="zoho_notes"
+            value={form.zoho_notes}
+            onChange={handleChange}
+          />
+        </Box>
+        <Box sx={{ display: "flex", gap: 2, mt: 2 }}>
+          <TextField
+            fullWidth
+            label="Address"
+            name="address"
+            value={form.address}
+            onChange={handleChange}
+          />
 
-</Box>
-            <Box sx={{ display: "flex", gap: 2, mt: 2 }}> 
-            <FormControl fullWidth>
-              <InputLabel id="associated_by-label">Associated By</InputLabel>
-              <Select
-label="Associated By"
-                labelId="associated_by-label"
-                name="associated_by"
-                value={form.associated_by}
-                onChange={handleChange}
-              >
-                {users.map((u) => (
-                  <MenuItem key={u.id} value={u.id}>
-                    {u.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-
-  
- 
-
-
-            <TextField
-              fullWidth
-              label="Zoho Notes"
-              name="zoho_notes"
-              value={form.zoho_notes}
-              onChange={handleChange}
-            />
- 
-      
-</Box>
-            <Box sx={{ display: "flex", gap: 2, mt: 2 }}> 
-
-            <TextField
-              fullWidth
-              label="Address"
-              name="address"
-              value={form.address}
-              onChange={handleChange}
-            />
-
-            <TextField
-              fullWidth
-              label="System Notes"
-              name="system_notes"
-              value={form.system_notes}
-              onChange={handleChange}
-            />
-      
-</Box>
+          <TextField
+            fullWidth
+            label="System Notes"
+            name="system_notes"
+            value={form.system_notes}
+            onChange={handleChange}
+          />
+        </Box>
         <Grid item xs={12}>
           <RadioGroup row name="type" value={form.type} onChange={handleChange}>
-            <FormControlLabel value="sender" control={<Radio />} label="Only Sender" />
-            <FormControlLabel value="receiver" control={<Radio />} label="Only Receiver" />
-            <FormControlLabel value="both" control={<Radio />} label="Sender or Receiver" />
+            <FormControlLabel
+              value="sender"
+              control={<Radio />}
+              label="Only Sender"
+            />
+            <FormControlLabel
+              value="receiver"
+              control={<Radio />}
+              label="Only Receiver"
+            />
+            <FormControlLabel
+              value="both"
+              control={<Radio />}
+              label="Sender or Receiver"
+            />
           </RadioGroup>
         </Grid>
         <Button
@@ -470,8 +510,8 @@ label="Associated By"
                       onChange={(e) =>
                         setContacts((prev) =>
                           prev.map((c, i) =>
-                            i === index ? { ...c, name: e.target.value } : c
-                          )
+                            i === index ? { ...c, name: e.target.value } : c,
+                          ),
                         )
                       }
                       error={!contact.name}
@@ -486,8 +526,8 @@ label="Associated By"
                       onChange={(e) =>
                         setContacts((prev) =>
                           prev.map((c, i) =>
-                            i === index ? { ...c, phone: e.target.value } : c
-                          )
+                            i === index ? { ...c, phone: e.target.value } : c,
+                          ),
                         )
                       }
                     />
@@ -501,8 +541,8 @@ label="Associated By"
                       onChange={(e) =>
                         setContacts((prev) =>
                           prev.map((c, i) =>
-                            i === index ? { ...c, email: e.target.value } : c
-                          )
+                            i === index ? { ...c, email: e.target.value } : c,
+                          ),
                         )
                       }
                     />
@@ -510,7 +550,9 @@ label="Associated By"
                   <Grid item xs={12} sm={1}>
                     <IconButton
                       color="error"
-                      onClick={() => handleDeleteContact(contact.id, contact.isNew)}
+                      onClick={() =>
+                        handleDeleteContact(contact.id, contact.isNew)
+                      }
                     >
                       <DeleteIcon />
                     </IconButton>
@@ -543,7 +585,6 @@ label="Associated By"
               </Button>
             </Grid>
           </CardContent>
-
 
           <div style={{ height: 250, width: "100%" }}>
             <DataGrid
@@ -588,9 +629,7 @@ label="Associated By"
                 ref={fileInputRef}
               />
             </Button>
-
           </Grid>
-          
         </Paper>
       )}
     </Paper>

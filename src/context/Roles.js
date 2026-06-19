@@ -1,10 +1,10 @@
 // src/config/roles.js   or   src/constants/roles.js
 
 export const ROLES = {
-  ADMIN:    "admin",
-  MANAGER:  "manager",
-  STAFF:    "staff",
-  VIEWER:   "viewer",
+  ADMIN: "admin",
+  MANAGER: "manager",
+  STAFF: "staff",
+  VIEWER: "viewer",
 };
 
 export const ROLE_MODULES = {
@@ -16,8 +16,8 @@ export const ROLE_MODULES = {
     "orders",
     "consignments",
     "tracking",
-    "users",                  // manage users
-    "settings",               // full settings
+    "users", // manage users
+    "settings", // full settings
     "payment-types",
     "notifications",
     "categories",
@@ -37,18 +37,16 @@ export const ROLE_MODULES = {
     "orders",
     "consignments",
     "tracking",
-    "users",                  // can see / maybe limited edit
+    "users", // can see / maybe limited edit
   ],
 
-  [ROLES.STAFF]: [
-    "dashboard",
-    "orders",
-    "consignments",
-    "tracking",
-  ],
+  [ROLES.STAFF]: ["dashboard", "orders", "consignments", "tracking"],
 
   [ROLES.VIEWER]: [
     "dashboard",
-    "tracking",               // read-only
+    "tracking",
+    "containers",
+    "orders",
+    "consignments",
   ],
 };

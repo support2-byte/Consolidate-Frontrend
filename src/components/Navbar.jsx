@@ -48,9 +48,10 @@ export default function Navbar() {
       position="static"
       elevation={2}
       sx={{
-        background: mode === "dark"
-          ? "linear-gradient(90deg, #0f172a 0%, #1e293b 100%)"
-          : "linear-gradient(90deg, #ffffff 0%, #f8fafc 100%)",
+        background:
+          mode === "dark"
+            ? "linear-gradient(90deg, #0f172a 0%, #1e293b 100%)"
+            : "linear-gradient(90deg, #ffffff 0%, #f8fafc 100%)",
         color: mode === "dark" ? "#e2e8f0" : "#1e293b",
         borderBottom: `1px solid ${mode === "dark" ? "#334155" : "#e2e8f0"}`,
       }}
@@ -88,7 +89,9 @@ export default function Navbar() {
         {/* Right: Theme toggle + User menu */}
         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
           {/* Theme Toggle */}
-          <Tooltip title={`Switch to ${mode === "dark" ? "Light" : "Dark"} Mode`}>
+          <Tooltip
+            title={`Switch to ${mode === "dark" ? "Light" : "Dark"} Mode`}
+          >
             <IconButton
               onClick={toggleTheme}
               color="inherit"
@@ -110,11 +113,7 @@ export default function Navbar() {
           {user && (
             <>
               <Tooltip title={user.email}>
-                <IconButton
-                  onClick={handleMenu}
-                  size="large"
-                  sx={{ p: 0 }}
-                >
+                <IconButton onClick={handleMenu} size="large" sx={{ p: 0 }}>
                   <Avatar
                     sx={{
                       bgcolor: "#f58220",
@@ -130,79 +129,88 @@ export default function Navbar() {
                 </IconButton>
               </Tooltip>
 
-<Menu
-  anchorEl={profileAnchorEl}
-  open={open}
-  onClose={handleProfileClose}
-  disablePortal                 // ← Fixes aria-hidden + focus warning
-  anchorOrigin={{
-    vertical: "bottom",
-    horizontal: "right",
-  }}
-  transformOrigin={{
-    vertical: "top",
-    horizontal: "right",
-  }}
-  PaperProps={{
-    elevation: 4,
-    sx: {
-      mt: 1.5,
-      minWidth: 200,
-      borderRadius: 2,
-      overflow: "hidden",
-      boxShadow: mode === "dark" 
-        ? "0 10px 30px rgba(0,0,0,0.6)" 
-        : "0 10px 30px rgba(0,0,0,0.15)",
-    },
-  }}
-  TransitionComponent={Fade}
-  TransitionProps={{ timeout: 300 }}
->
-  {/* Role Badge */}
-  <MenuItem disabled sx={{ 
-    fontWeight: "bold", 
-    color: user.role === "admin" ? "#4caf50" : "#f58220",
-    justifyContent: "center",
-    py: 1.5,
-    borderBottom: `1px solid ${mode === "dark" ? "#334155" : "#e0e0e0"}`
-  }}>
-    {user.role?.toUpperCase() || "User"}
-  </MenuItem>
+              <Menu
+                anchorEl={profileAnchorEl}
+                open={open}
+                onClose={handleProfileClose}
+                disablePortal // ← Fixes aria-hidden + focus warning
+                anchorOrigin={{
+                  vertical: "bottom",
+                  horizontal: "right",
+                }}
+                transformOrigin={{
+                  vertical: "top",
+                  horizontal: "right",
+                }}
+                PaperProps={{
+                  elevation: 4,
+                  sx: {
+                    mt: 1.5,
+                    minWidth: 200,
+                    borderRadius: 2,
+                    overflow: "hidden",
+                    boxShadow:
+                      mode === "dark"
+                        ? "0 10px 30px rgba(0,0,0,0.6)"
+                        : "0 10px 30px rgba(0,0,0,0.15)",
+                  },
+                }}
+                TransitionComponent={Fade}
+                TransitionProps={{ timeout: 300 }}
+              >
+                {/* Role Badge */}
+                <MenuItem
+                  disabled
+                  sx={{
+                    fontWeight: "bold",
+                    color: user.role === "admin" ? "#4caf50" : "#f58220",
+                    justifyContent: "center",
+                    py: 1.5,
+                    borderBottom: `1px solid ${mode === "dark" ? "#334155" : "#e0e0e0"}`,
+                  }}
+                >
+                  {user.role?.toUpperCase() || "User"}
+                </MenuItem>
 
-  {/* Email */}
-  <MenuItem disabled sx={{ 
-    fontSize: "0.875rem", 
-    color: "text.secondary",
-    justifyContent: "center",
-    py: 1
-  }}>
-    {user.email}
-  </MenuItem>
+                {/* Email */}
+                <MenuItem
+                  disabled
+                  sx={{
+                    fontSize: "0.875rem",
+                    color: "text.secondary",
+                    justifyContent: "center",
+                    py: 1,
+                  }}
+                >
+                  {user.email}
+                </MenuItem>
 
-  <Divider />
+                <Divider />
 
-  {/* Profile (optional – add later) */}
-  <MenuItem onClick={() => {
-    handleProfileClose();
-    navigate("/profile"); // or wherever your profile page is
-  }}>
-    <PersonIcon fontSize="small" sx={{ mr: 1.5 }} />
-    Profile
-  </MenuItem>
+                {/* Profile (optional – add later) */}
+                <MenuItem
+                  onClick={() => {
+                    handleProfileClose();
+                    navigate("/profile"); // or wherever your profile page is
+                  }}
+                >
+                  <PersonIcon fontSize="small" sx={{ mr: 1.5 }} />
+                  Profile
+                </MenuItem>
 
-  {/* Logout */}
-  <MenuItem 
-    onClick={handleLogoutClick}
-    sx={{ 
-      color: "error.main",
-      fontWeight: 500,
-      "&:hover": { bgcolor: "error.light" }
-    }}
-  >
-    <LogoutIcon fontSize="small" sx={{ mr: 1.5 }} />
-    Logout
-  </MenuItem>
-</Menu>
+                {/* Logout */}
+                <MenuItem
+                  onClick={handleLogoutClick}
+                  sx={{
+                    color: "error.main",
+                    fontWeight: 500,
+                    "&:hover": { bgcolor: "error.light" },
+                  }}
+                >
+                  <LogoutIcon fontSize="small" sx={{ mr: 1.5 }} />
+                  Logout
+                </MenuItem>
+              </Menu>
             </>
           )}
         </Box>
