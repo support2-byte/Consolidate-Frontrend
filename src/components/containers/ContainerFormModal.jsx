@@ -84,7 +84,14 @@ const ContainerFormModal = ({
             label="Container Number"
             name="containerNo"
             value={formData.containerNo}
-            onChange={onChange}
+            onChange={(e) => {
+              onChange({
+                target: {
+                  name: "containerNo",
+                  value: e.target.value.toUpperCase(),
+                },
+              });
+            }}
             required
             disabled={isEditing}
             helperText="Format: 4 letters + 7 digits (e.g., RGSLU1234567)"

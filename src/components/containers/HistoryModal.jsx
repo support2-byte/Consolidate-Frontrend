@@ -45,6 +45,7 @@ const HistoryModal = ({
   onPrintFullManifest,
   onSingleJobPDF,
   onDetailManifestPDF,
+  onGenerateUnassignedManifest,
 }) => (
   <Modal open={open} onClose={onClose}>
     <Box sx={modalStyle}>
@@ -166,6 +167,8 @@ const HistoryModal = ({
         <UnassignedOrdersTab
           unassignedOrders={unassignedOrders}
           loadingUnassigned={loadingUnassigned}
+          generatingPDF={generatingPDF}
+          onGenerateManifest={onGenerateUnassignedManifest}
         />
       )}
 

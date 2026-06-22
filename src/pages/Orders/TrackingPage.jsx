@@ -220,10 +220,9 @@ const TrackingPage = () => {
 
   return (
     <Box sx={{ minHeight: "100vh", bgcolor: "#f8f9fa", pb: 8 }}>
-      {/* Hero / Search Section - common for all layouts */}
       <Box
         sx={{
-          background: "linear-gradient(90deg, #f58220 0%, #16a34a 100%)",
+          backgroundColor: "#0d6c6a",
           color: "white",
           borderRadius: { xs: 0, md: 3 },
           p: { xs: 4, md: 6 },
@@ -236,14 +235,14 @@ const TrackingPage = () => {
           Track Your Shipment
         </Typography>
 
-        <Paper sx={{ p: 3, maxWidth: 700, mx: "auto", borderRadius: 3, mt: 4 }}>
+        <Paper sx={{ p: 3, maxWidth: 800, mx: "auto", borderRadius: 3, mt: 4 }}>
           <form onSubmit={handleSearch}>
             <Stack
               direction={{ xs: "column", sm: "row" }}
               spacing={2}
               alignItems="center"
             >
-              <FormControl sx={{ minWidth: 180 }}>
+              <FormControl sx={{ minWidth: 200 }}>
                 <InputLabel>Track by</InputLabel>
                 <Select
                   value={trackType}
@@ -253,7 +252,7 @@ const TrackingPage = () => {
                   disabled={loading}
                 >
                   <MenuItem value="item_ref">Item Reference</MenuItem>
-                  <MenuItem value="order_id">Order ID</MenuItem>
+                  <MenuItem value="order_id">Booking Ref Number</MenuItem>
                   <MenuItem value="rglBookingNo">Form No</MenuItem>
                   <MenuItem value="consignment_no">Consignment No</MenuItem>
                 </Select>
@@ -263,12 +262,12 @@ const TrackingPage = () => {
                 fullWidth
                 placeholder={
                   trackType === "item_ref"
-                    ? "e.g. RGSL-ITEM-ABC123"
+                    ? "e.g. ORDER-ITEM-REF-1-1-1096xxxxx"
                     : trackType === "order_id"
-                      ? "e.g. ORD-987654"
+                      ? "e.g. RGSL-178xx-xxx"
                       : trackType === "consignment_no"
-                        ? "e.g. RGSL-17676-327"
-                        : "e.g. CN-4567890123"
+                        ? "e.g. 24xxxx"
+                        : "e.g. 24xxxx"
                 }
                 value={value}
                 onChange={(e) => setValue(e.target.value.trim())}
@@ -287,9 +286,6 @@ const TrackingPage = () => {
                 sx={{
                   minWidth: 140,
                   py: 2.5,
-                  background:
-                    "linear-gradient(90deg, #f58220 0%, #16a34a 100%)",
-                  "&:hover": { background: "#e64a19" },
                   color: "#fff",
                   fontWeight: "bold",
                 }}
@@ -305,9 +301,6 @@ const TrackingPage = () => {
         </Paper>
       </Box>
 
-      {/* ────────────────────────────────────────────────
-          RESULTS - Different layouts based on trackType
-      ──────────────────────────────────────────────── */}
       {loading && (
         <Box sx={{ textAlign: "center", mt: 10 }}>
           <CircularProgress size={60} />
@@ -426,7 +419,7 @@ const ItemRefLayout = ({ trackingData, places, timelineSteps }) => {
         sx={{
           p: { xs: 5, md: 6 },
           borderRadius: 3,
-          background: "linear-gradient(135deg, #0d6c6a 0%, #1b263b 100%)",
+          backgroundColor: "#0d6c6a",
           mb: 5,
           boxShadow: "0 8px 32px rgba(0,0,0,0.08)",
         }}
@@ -613,7 +606,7 @@ const ItemRefLayout = ({ trackingData, places, timelineSteps }) => {
                           position: "absolute",
                           top: "50%",
                           left: "50%",
-                          transform: "translate(50%, 17%)",
+                          transform: "translate(50%, 17%) scaleX(-1)",
                           fontSize: 28,
                         }}
                       >
@@ -634,7 +627,11 @@ const ItemRefLayout = ({ trackingData, places, timelineSteps }) => {
                     variant="body2"
                     fontWeight={isCurrent ? 400 : isCompleted ? 400 : 400}
                     color={
-                      isCurrent ? "#f58220" : isCompleted ? "#16a34a" : "#fff"
+                      isCurrent
+                        ? "#FF8A00"
+                        : isCompleted
+                          ? "#FFFFFF"
+                          : "rgba(255,255,255,0.65)"
                     }
                     sx={{ fontSize: "14px", mt: 10 }}
                   >
@@ -832,8 +829,6 @@ const ItemRefLayout = ({ trackingData, places, timelineSteps }) => {
           size="large"
           startIcon={<PhoneIcon />}
           sx={{
-            background: "linear-gradient(90deg, #f58220 0%, #16a34a 100%)",
-            "&:hover": { bgcolor: "#e66918" },
             px: 6,
             py: 1.8,
             fontSize: "1.1rem",

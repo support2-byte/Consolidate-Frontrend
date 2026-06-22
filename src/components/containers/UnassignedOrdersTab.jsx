@@ -11,10 +11,17 @@ import {
   TableRow,
   Paper,
   Chip,
+  Button,
 } from "@mui/material";
 import { UNASSIGNED_TABLE_HEADERS } from "../../constants/containers";
+import { DownloadIcon } from "lucide-react";
 
-const UnassignedOrdersTab = ({ unassignedOrders, loadingUnassigned }) => {
+const UnassignedOrdersTab = ({
+  unassignedOrders,
+  loadingUnassigned,
+  generatingPDF,
+  onGenerateManifest,
+}) => {
   if (loadingUnassigned) {
     return (
       <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
@@ -40,6 +47,7 @@ const UnassignedOrdersTab = ({ unassignedOrders, loadingUnassigned }) => {
 
   return (
     <Box>
+      {/* Summary banner with generate button */}
       <Box
         sx={{
           mb: 2,
@@ -50,6 +58,7 @@ const UnassignedOrdersTab = ({ unassignedOrders, loadingUnassigned }) => {
           border: "1px solid #ffe0b2",
           display: "flex",
           alignItems: "center",
+          justifyContent: "space-between",
           gap: 1,
         }}
       >
@@ -57,12 +66,32 @@ const UnassignedOrdersTab = ({ unassignedOrders, loadingUnassigned }) => {
           {unassignedOrders.length} assignment event
           {unassignedOrders.length !== 1 ? "s" : ""} with no consignment linked
         </Typography>
+        <Button
+          variant="outlined"
+          size="small"
+          startIcon={
+            generatingPDF ? <CircularProgress size={14} /> : <DownloadIcon />
+          }
+          onClick={onGenerateManifest}
+          disabled={generatingPDF}
+          sx={{
+            borderColor: "#e65100",
+            color: "#e65100",
+            fontSize: 12,
+            py: 0.4,
+            px: 1.5,
+            whiteSpace: "nowrap",
+            "&:hover": { bgcolor: "#fff3e0", borderColor: "#e65100" },
+          }}
+        >
+          {generatingPDF ? "Generating..." : "Generate Manifest"}
+        </Button>
       </Box>
 
       <TableContainer component={Paper} sx={{ boxShadow: 1, borderRadius: 1 }}>
         <Table size="small">
           <TableHead>
-            <TableRow>
+            <TableRow sx={{ bgcolor: "#e65100" }}>
               {UNASSIGNED_TABLE_HEADERS.map((h) => (
                 <TableCell
                   key={h}

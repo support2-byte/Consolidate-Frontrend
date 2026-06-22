@@ -4,7 +4,7 @@ import { BRAND } from "../constants/containers";
 
 applyPlugin(jsPDF);
 
-export const validateContainerNumber = (val) => /^[A-Z]{4}\d{7}$/.test(val);
+export const validateContainerNumber = (val) => /^[A-Za-z]{4}\d{7}$/.test(val);
 
 export const validateDate = (d) => {
   const date = new Date(d);
@@ -126,7 +126,7 @@ export const pdfDrawSectionHeader = (doc, text, y, margin) => {
   doc.rect(margin, y, 3, 5, "F");
   doc.setFont("helvetica", "bold").setFontSize(10);
   doc.setTextColor(...teal);
-  doc.text(text, margin + 6, y + 4);
+  doc.text(text, margin + 6, y + 6);
   return y + 9;
 };
 
@@ -199,7 +199,6 @@ export const pdfManifestHeader = async (
 
   doc.setFont("helvetica", "normal").setFontSize(8).setTextColor(60, 60, 60);
   [
-    `Total Containers: ${totalContainers}`,
     `POL: ${pol}`,
     `POD: ${pod}`,
     `Generated: ${new Date().toLocaleString()}`,
@@ -211,22 +210,22 @@ export const pdfManifestHeader = async (
     .setFont("helvetica", "bold")
     .setFontSize(13)
     .setTextColor(...teal);
-  doc.text("ROYAL GULF SHIPPING & LOGISTICS LLC", margin, 22);
+  doc.text("ROYAL GULF SHIPPING & LOGISTICS LLC", margin, 24);
   doc
     .setFont("helvetica", "normal")
     .setFontSize(7.5)
     .setTextColor(120, 120, 120);
-  doc.text("Dubai • London • Karachi • Shenzhen", margin, 26);
+  doc.text("Dubai • London • Karachi • Shenzhen", margin, 27.5);
 
   doc
     .setFont("helvetica", "bold")
     .setFontSize(14)
     .setTextColor(...teal);
-  doc.text("CONSOLIDATION MANIFEST - CONTAINER LEVEL", margin, 33);
+  doc.text("CONTAINER MANIFEST - CONTAINER LEVEL", margin, 34);
   doc
     .setDrawColor(...teal)
     .setLineWidth(0.6)
-    .line(margin, 36, pageWidth - margin, 36);
+    .line(margin, 37, pageWidth - margin, 37);
 
   return 40;
 };
@@ -246,6 +245,7 @@ export const buildReceiversData = (consignmentOrderIds, allOrdersMap) => {
           weight: Number(detail.weight || 0),
           bookingRef: orderData.booking_ref || "N/A",
           senderName: orderData.sender_name || "N/A",
+          receiverMarksNumber: receiver.receiverMarksNumber || "51431",
         });
       });
     });

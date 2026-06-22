@@ -24,7 +24,6 @@ export const usePDFGenerators = ({
   showToast,
   setGeneratingPDF,
 }) => {
-  // ─── Shared manifest section renderer ────────────────────────────────────
   const renderManifestSection = (
     doc,
     {
@@ -39,7 +38,6 @@ export const usePDFGenerators = ({
     const { teal, lightGrey, borderGrey } = BRAND;
     let y = doc.lastAutoTable?.finalY || 50;
 
-    // Container block header
     doc.setDrawColor(...teal).setLineWidth(0.4);
     doc.rect(margin, y, pageWidth - 2 * margin, 7, "S");
     doc
@@ -62,7 +60,6 @@ export const usePDFGenerators = ({
     const totalPkgs = receiversData.reduce((s, r) => s + r.totalNumber, 0);
     const totalWt = receiversData.reduce((s, r) => s + r.weight, 0);
 
-    // Summary table
     y = pdfDrawSectionHeader(
       doc,
       `CONTAINER SUMMARY - ${matchedContainerNumber}`,
@@ -93,7 +90,6 @@ export const usePDFGenerators = ({
     });
     y = doc.lastAutoTable.finalY + 8;
 
-    // Commodity table
     y = pdfDrawSectionHeader(
       doc,
       `CONTAINER COMMODITY SUMMARY - ${matchedContainerNumber}`,
@@ -117,26 +113,27 @@ export const usePDFGenerators = ({
     });
     y = doc.lastAutoTable.finalY + 8;
 
-    // Detailed manifest table
     y = pdfDrawSectionHeader(
       doc,
-      `DETAILED MANIFEST - ${matchedContainerNumber}`,
+      `ORDER DETAILS - ${matchedContainerNumber}`,
       y,
       margin,
     );
+    console.log("[RECEIVER]:", receiversData);
+
     const detailRows = receiversData.map((r, i) => [
       (i + 1).toString(),
       r.bookingRef,
       r.senderName,
       r.receiverName,
-      "N/A",
+
       r.totalNumber.toString(),
       r.weight.toFixed(2),
       r.category + (r.subcategory !== "N/A" ? ` - ${r.subcategory}` : ""),
     ]);
     detailRows.push([
       {
-        content: "TOTAL:",
+        content: "TOTAL",
         colSpan: 5,
         styles: { halign: "right", fontStyle: "bold" },
       },
@@ -154,7 +151,7 @@ export const usePDFGenerators = ({
           "RECEIVER",
           "MARKS & NOS",
           "PKGS",
-          "WEIGHT\n(KGS)",
+          "WEIGHT\n(KG)",
           "COMMODITY",
         ],
       ],
@@ -170,14 +167,14 @@ export const usePDFGenerators = ({
       },
       bodyStyles: { fillColor: [255, 255, 255], textColor: [30, 30, 30] },
       columnStyles: {
-        0: { cellWidth: 10, halign: "center" },
-        1: { cellWidth: 26 },
+        0: { cellWidth: 14, halign: "center" },
+        1: { cellWidth: 28 },
         2: { cellWidth: 30 },
         3: { cellWidth: 30 },
-        4: { cellWidth: 20, halign: "center" },
+        4: { cellWidth: 18, halign: "center" },
         5: { cellWidth: 14, halign: "center" },
-        6: { cellWidth: 18, halign: "center" },
-        7: { cellWidth: 35 },
+        6: { cellWidth: 16, halign: "center" },
+        7: { cellWidth: 32 },
       },
       margin: { left: margin, right: margin },
       didParseCell(data) {
@@ -189,7 +186,6 @@ export const usePDFGenerators = ({
     return doc.lastAutoTable.finalY + 10;
   };
 
-  // ─── Fetch container number and size ─────────────────────────────────────
   const fetchContainerMeta = async (cid, allOrdersMap) => {
     let matchedContainerNumber = selectedContainerNo || "N/A";
 
@@ -219,7 +215,6 @@ export const usePDFGenerators = ({
     return { matchedContainerNumber, containerSize };
   };
 
-  // ─── Full manifest PDF ────────────────────────────────────────────────────
   const generateFullManifestPDF = async () => {
     const consignmentGroups = (usageHistory || []).filter(
       (c) => c.orders?.length > 0,
@@ -310,7 +305,6 @@ export const usePDFGenerators = ({
         pdfDrawDivider(doc, y, pageWidth, margin);
         y += 5;
 
-        // Manually set lastAutoTable.finalY so renderManifestSection can pick it up
         doc.lastAutoTable = { finalY: y };
         renderManifestSection(doc, {
           matchedContainerNumber,
@@ -337,7 +331,6 @@ export const usePDFGenerators = ({
     }
   };
 
-  // ─── Job detail manifest PDF ──────────────────────────────────────────────
   const generateJobDetailManifestPDF = async (
     jobNo,
     pol,
@@ -397,7 +390,6 @@ export const usePDFGenerators = ({
       const doc = new jsPDF("p", "mm", "a4");
       const pageWidth = doc.internal.pageSize.getWidth();
       const margin = 14;
-      const { teal, borderGrey } = BRAND;
 
       const firstEvent = jobEvents?.[0] || {};
       const resolvedConsignmentNo = consignmentNo || jobNo;
@@ -411,7 +403,6 @@ export const usePDFGenerators = ({
         margin,
       });
 
-      // Extra ETA line
       doc
         .setFont("helvetica", "normal")
         .setFontSize(8)
@@ -442,7 +433,6 @@ export const usePDFGenerators = ({
       pdfDrawDivider(doc, y, pageWidth, margin);
       y += 5;
 
-      // Use usageHistory groups filtered to this job, or fallback to all receivers
       const consignmentGroupsForJob = usageHistory.filter(
         (c) => c.orders?.length && c.consignmentNo === jobNo,
       );
@@ -597,16 +587,6 @@ export const usePDFGenerators = ({
 
       y += (cards.length / 2) * (cardHeight + 3) + 10;
 
-      const tableData = jobEvents.map((event, idx) => [
-        idx + 1,
-        event.eventTime ? new Date(event.eventTime).toLocaleString() : "N/A",
-        event.eventType || "N/A",
-        event.eventSummary || "N/A",
-        event.changedBy || "System",
-        event.orderId || "N/A",
-        event.receiverId || "N/A",
-      ]);
-
       doc.autoTable({
         head: [
           [
@@ -619,7 +599,15 @@ export const usePDFGenerators = ({
             "Receiver",
           ],
         ],
-        body: tableData,
+        body: jobEvents.map((event, idx) => [
+          idx + 1,
+          event.eventTime ? new Date(event.eventTime).toLocaleString() : "N/A",
+          event.eventType || "N/A",
+          event.eventSummary || "N/A",
+          event.changedBy || "System",
+          event.orderId || "N/A",
+          event.receiverId || "N/A",
+        ]),
         startY: y,
         styles: {
           fontSize: 8,
@@ -773,7 +761,6 @@ export const usePDFGenerators = ({
 
       y += (summaryCards.length / 2) * (cardHeight + 3) + 5;
 
-      // Timeline
       const chronological = [...statusHistory].sort(
         (a, b) => new Date(a.createdTime) - new Date(b.createdTime),
       );
@@ -826,7 +813,6 @@ export const usePDFGenerators = ({
       }
       y += rows * rowHeight;
 
-      // Detailed table
       doc
         .setFont("helvetica", "bold")
         .setFontSize(12)
@@ -919,10 +905,196 @@ export const usePDFGenerators = ({
     }
   };
 
+  const generateUnassignedManifestPDF = async (
+    unassignedOrders,
+    containerNumber,
+  ) => {
+    if (!unassignedOrders?.length) {
+      showToast("No unassigned orders to print", "warning");
+      return;
+    }
+
+    setGeneratingPDF(true);
+    try {
+      const uniqueOrderIds = [
+        ...new Set(
+          unassignedOrders.map((e) => e.orderId?.toString()).filter(Boolean),
+        ),
+      ];
+      const allOrdersMap = {};
+      for (const id of uniqueOrderIds) {
+        try {
+          const res = await api.get(`/api/orders/${id}`, {
+            params: { includeOrders: true },
+          });
+          if (res.data) allOrdersMap[id] = res.data;
+        } catch {}
+      }
+
+      const { matchedContainerNumber, containerSize } =
+        await fetchContainerMeta(historyCid, allOrdersMap);
+      const displayContainerNo =
+        containerNumber ||
+        matchedContainerNumber ||
+        selectedContainerNo ||
+        "N/A";
+
+      const receiversData = [];
+      unassignedOrders.forEach((event) => {
+        const orderData = event.orderId
+          ? allOrdersMap[event.orderId.toString()]
+          : null;
+        if (orderData) {
+          (orderData.receivers || []).forEach((receiver) => {
+            (receiver.shippingDetails || []).forEach((detail) => {
+              receiversData.push({
+                receiverName: receiver.receiver_name || "N/A",
+                category: detail.category || "N/A",
+                subcategory: detail.subcategory || "N/A",
+                totalNumber: Number(detail.totalNumber || 0),
+                weight: Number(detail.weight || 0),
+                bookingRef: orderData.booking_ref || event.bookingRef || "N/A",
+                senderName: orderData.sender_name || "N/A",
+                receiverMarksNumber: receiver.receiverMarksNumber || "51431",
+              });
+            });
+          });
+        } else {
+          receiversData.push({
+            receiverName: "N/A",
+            category: "N/A",
+            subcategory: "N/A",
+            totalNumber: event.assignedQty || 0,
+            weight: event.assignedWeightKg || 0,
+            bookingRef: event.bookingRef || event.orderId || "N/A",
+            senderName: "N/A",
+          });
+        }
+      });
+
+      const doc = new jsPDF("p", "mm", "a4");
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const margin = 14;
+      const { teal, orange, lightGrey, borderGrey } = BRAND;
+
+      const logoBase64 = await loadImageAsBase64("./logo-2.png");
+      if (logoBase64) doc.addImage(logoBase64, "PNG", margin, 5, 55, 12);
+
+      doc
+        .setFont("helvetica", "bold")
+        .setFontSize(10)
+        .setTextColor(...orange);
+      doc.text("UNASSIGNED ORDERS MANIFEST", pageWidth - margin, 8, {
+        align: "right",
+      });
+
+      doc
+        .setFont("helvetica", "normal")
+        .setFontSize(8)
+        .setTextColor(60, 60, 60);
+      [
+        `Container: ${displayContainerNo}`,
+        `Size: ${containerSize}`,
+        `Total Events: ${unassignedOrders.length}`,
+        `Generated: ${new Date().toLocaleString()}`,
+      ].forEach((line, i) =>
+        doc.text(line, pageWidth - margin, 13 + i * 4, { align: "right" }),
+      );
+
+      doc
+        .setFont("helvetica", "bold")
+        .setFontSize(13)
+        .setTextColor(...teal);
+      doc.text("ROYAL GULF SHIPPING & LOGISTICS LLC", margin, 24);
+      doc
+        .setFont("helvetica", "normal")
+        .setFontSize(7.5)
+        .setTextColor(120, 120, 120);
+      doc.text("Dubai - London - Karachi - Shenzhen", margin, 27.5);
+
+      doc
+        .setFont("helvetica", "bold")
+        .setFontSize(14)
+        .setTextColor(...teal);
+      doc.text("UNASSIGNED ORDERS - PENDING CONSIGNMENT", margin, 34);
+      doc
+        .setDrawColor(...teal)
+        .setLineWidth(0.6)
+        .line(margin, 37, pageWidth - margin, 37);
+
+      let y = 44;
+
+      y = pdfDrawSectionHeader(
+        doc,
+        `CONTAINER SUMMARY - ${displayContainerNo}`,
+        y,
+        margin,
+      );
+
+      const totalPkgs = receiversData.reduce((s, r) => s + r.totalNumber, 0);
+      const totalWt = receiversData.reduce((s, r) => s + r.weight, 0);
+
+      doc.autoTable({
+        head: [
+          [
+            "CONTAINER",
+            "SIZE",
+            "UNASSIGNED EVENTS",
+            "TOTAL PACKAGES",
+            "TOTAL WEIGHT (KGS)",
+          ],
+        ],
+        body: [
+          [
+            displayContainerNo,
+            containerSize,
+            unassignedOrders.length.toString(),
+            totalPkgs.toString(),
+            totalWt.toFixed(2),
+          ],
+        ],
+        startY: y,
+        ...manifestTableStyles,
+        styles: { ...manifestTableStyles.styles, halign: "center" },
+        margin: { left: margin, right: margin },
+      });
+      y = doc.lastAutoTable.finalY + 8;
+
+      doc.lastAutoTable = { finalY: y };
+      renderManifestSection(doc, {
+        matchedContainerNumber: displayContainerNo,
+        containerSize,
+        receiversData,
+        margin,
+        pageWidth,
+        containerIndex: 0,
+      });
+
+      pdfAddFooters(
+        doc,
+        pageWidth,
+        margin,
+        `Container: ${displayContainerNo} | Unassigned Events: ${unassignedOrders.length}`,
+      );
+      doc.save(
+        `Unassigned_Manifest_${displayContainerNo}_${new Date().toISOString().split("T")[0]}.pdf`,
+      );
+      showToast(
+        `Unassigned orders manifest generated! (${unassignedOrders.length} events)`,
+        "success",
+      );
+    } catch (err) {
+      showToast("Error generating PDF: " + err.message, "error");
+    } finally {
+      setGeneratingPDF(false);
+    }
+  };
+
   return {
     generateFullManifestPDF,
     generateJobDetailManifestPDF,
     generateSingleJobManifestPDF,
     generateStatusHistoryPDF,
+    generateUnassignedManifestPDF,
   };
 };

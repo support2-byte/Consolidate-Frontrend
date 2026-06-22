@@ -1494,6 +1494,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     const selectedData = (selectedContainers || [])
       .map((id) => (containers || []).find((c) => c.cid === id))
       .filter(Boolean);
+
     if (selectedData.length === 0) {
       setSnackbar({
         open: true,
@@ -5101,7 +5102,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                         <Box sx={{ flex: 1, minWidth: 250 }}>
                           <CustomSelect
                             name="origin"
-                            value={values.origin}
+                            value={values.origin || values.originName}
                             onChange={handleLocationChange} // FIXED: Use custom handler for name population
                             onBlur={() => handleSelectBlur("origin")}
                             label="Origin"
@@ -5119,7 +5120,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                         <Box sx={{ flex: 1, minWidth: 250 }}>
                           <CustomSelect
                             name="destination"
-                            value={values.destination}
+                            value={values.destination || values.destinationName}
                             onChange={handleLocationChange} // FIXED: Use custom handler
                             onBlur={() => handleSelectBlur("destination")}
                             label="Destination"

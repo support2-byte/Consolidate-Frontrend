@@ -904,6 +904,12 @@ const OrderForm = () => {
       camelData.deliveryDate = camelData.deliveryDate || "";
       camelData.plateNo = orderData.plate_no || "";
 
+      camelData.placeOfLoading = orderData.place_of_loading?.toString() || "";
+      camelData.placeOfDelivery = orderData.place_of_delivery?.toString() || "";
+      camelData.pointOfOrigin = orderData.point_of_origin?.toString() || "";
+      camelData.finalDestination =
+        orderData.final_destination?.toString() || "";
+
       // Owner fields (sender or receiver)
       const ownerPrefix =
         camelData.senderType === "sender" ? "sender" : "receiver";

@@ -455,6 +455,7 @@ const AssignModal = ({
 
       try {
         const payload = { [rec.orderId]: { [rec.id]: { full: true } } };
+
         const res = await api.post("/api/orders/remove-assign-container", {
           assignments: payload,
         });
@@ -705,7 +706,6 @@ const AssignModal = ({
       rec.orderId,
       rec.id,
     ]);
-    console.log("full rec", fullRec, fullOrder);
     return (
       <>
         <TableRow hover>

@@ -35,6 +35,7 @@ const ContainerModule = ({ propContainers = [] }) => {
     generateJobDetailManifestPDF,
     generateSingleJobManifestPDF,
     generateStatusHistoryPDF,
+    generateUnassignedManifestPDF,
   } = usePDFGenerators({
     historyCid: state.historyCid,
     selectedContainerNo: state.selectedContainerNo,
@@ -45,7 +46,6 @@ const ContainerModule = ({ propContainers = [] }) => {
   });
 
   const {
-    // Data
     filters,
     containers,
     totalCount,
@@ -69,7 +69,6 @@ const ContainerModule = ({ propContainers = [] }) => {
     activeHistoryTab,
     setActiveHistoryTab,
     jobStatusOptions,
-    // Loading
     loadingContainers,
     loadingForm,
     loadingReturned,
@@ -77,11 +76,9 @@ const ContainerModule = ({ propContainers = [] }) => {
     loadingHistory,
     loadingUnassigned,
     generatingPDF,
-    // Feedback
     error,
     snackbar,
     handleSnackbarClose,
-    // Handlers
     handleFilterChange,
     handleFormChange,
     handleFormSubmit,
@@ -116,7 +113,6 @@ const ContainerModule = ({ propContainers = [] }) => {
           overflow: "hidden",
         }}
       >
-        {/* Header */}
         <Box
           sx={{
             display: "flex",
@@ -153,7 +149,6 @@ const ContainerModule = ({ propContainers = [] }) => {
         </Box>
         <Divider sx={{ mb: 3 }} />
 
-        {/* Filter bar */}
         <Box sx={{ mb: 2 }}>
           <TextField
             label="Container No."
@@ -166,7 +161,6 @@ const ContainerModule = ({ propContainers = [] }) => {
           />
         </Box>
 
-        {/* Table */}
         <Box
           sx={{
             flex: 1,
@@ -306,6 +300,9 @@ const ContainerModule = ({ propContainers = [] }) => {
           onPrintFullManifest={generateFullManifestPDF}
           onSingleJobPDF={generateSingleJobManifestPDF}
           onDetailManifestPDF={generateJobDetailManifestPDF}
+          onGenerateUnassignedManifest={() =>
+            generateUnassignedManifestPDF(unassignedOrders, selectedContainerNo)
+          }
         />
 
         <Snackbar

@@ -20,6 +20,8 @@ export const StyledTextField = ({
   disabled,
   helperText,
   sx = {},
+  InputLabelProps,
+  ...rest
 }) => (
   <TextField
     label={label}
@@ -33,6 +35,11 @@ export const StyledTextField = ({
     fullWidth
     variant="outlined"
     sx={{ ...fieldSx, ...sx }}
+    InputLabelProps={{
+      shrink: type === "date" || !!value,
+      ...InputLabelProps,
+    }}
+    {...rest}
   />
 );
 
