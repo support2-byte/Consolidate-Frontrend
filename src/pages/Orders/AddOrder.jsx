@@ -200,6 +200,20 @@ const OrderForm = () => {
     (a, b) => a.sorting_number - b.sorting_number,
   )[0];
 
+  useEffect(() => {
+    if (!isEditMode && firstStatus?.days_offset != null) {
+      const eta = new Date();
+      eta.setDate(eta.getDate() + firstStatus.days_offset);
+      const etaStr = eta.toISOString().split("T")[0];
+
+      setFormData((prev) => ({
+        ...prev,
+        receivers: prev.receivers.map((rec) => ({ ...rec, eta: etaStr })),
+        senders: prev.senders.map((s) => ({ ...s, eta: etaStr })),
+      }));
+    }
+  }, [firstStatus?.id]);
+
   const [snackbar, setSnackbar] = useState({
     open: false,
     message: "",
@@ -2288,24 +2302,6 @@ const OrderForm = () => {
     }
   }, [isEditMode]);
 
-  const getStatusColors = (status) => {
-    const colorMap = {
-      "Ready for Loading": { bg: "#f3e5f5", text: "#7b1fa2" },
-      "Loaded Into Container": { bg: "#e0f2f1", text: "#00695c" },
-      "Shipment Processing": { bg: "#fff3e0", text: "#ef6c00" },
-      "In Transit": { bg: "#e1f5fe", text: "#0277bd" },
-      "Under Processing": { bg: "#fff3e0", text: "#f57c00" },
-      "Arrived at Sort Facility": { bg: "#f1f8e9", text: "#689f38" },
-      "Ready for Delivery": { bg: "#fce4ec", text: "#c2185b" },
-      "Shipment Delivered": { bg: "#e8f5e8", text: "#2e7d32" },
-      Loaded: { bg: "#e8f5e8", text: "#2e7d32" },
-      "Shipment In Transit": { bg: "#e1f5fe", text: "#0277bd" },
-      default: { bg: "#f5f5f5", text: "#666" },
-    };
-    return colorMap[status] || colorMap.default;
-  };
-
-  // Sender handlers (similar)
   const addSender = useCallback(() => {
     setFormData((prev) => ({
       ...prev,
