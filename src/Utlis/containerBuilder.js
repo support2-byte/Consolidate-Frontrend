@@ -245,7 +245,6 @@ export const buildReceiversData = (consignmentOrderIds, allOrdersMap) => {
           weight: Number(detail.weight || 0),
           bookingRef: orderData.booking_ref || "N/A",
           senderName: orderData.sender_name || "N/A",
-          receiverMarksNumber: receiver.receiverMarksNumber || "51431",
         });
       });
     });

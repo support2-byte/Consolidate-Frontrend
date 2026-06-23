@@ -119,18 +119,21 @@ export const usePDFGenerators = ({
       y,
       margin,
     );
-    console.log("[RECEIVER]:", receiversData);
 
+    // FIX: data rows now have all 8 values matching the 8-column header:
+    // S.NO | ORDER NO | SENDER | RECEIVER | MARKS & NOS | PKGS | WEIGHT | COMMODITY
     const detailRows = receiversData.map((r, i) => [
       (i + 1).toString(),
       r.bookingRef,
       r.senderName,
       r.receiverName,
-
+      (i + 1).toString(), // Marks & Nos — sequential mark number per line
       r.totalNumber.toString(),
       r.weight.toFixed(2),
       r.category + (r.subcategory !== "N/A" ? ` - ${r.subcategory}` : ""),
     ]);
+
+    // TOTAL row: colSpan 5 covers S.NO → MARKS & NOS, then PKGS, WEIGHT, COMMODITY(blank)
     detailRows.push([
       {
         content: "TOTAL",
@@ -955,7 +958,6 @@ export const usePDFGenerators = ({
                 weight: Number(detail.weight || 0),
                 bookingRef: orderData.booking_ref || event.bookingRef || "N/A",
                 senderName: orderData.sender_name || "N/A",
-                receiverMarksNumber: receiver.receiverMarksNumber || "51431",
               });
             });
           });

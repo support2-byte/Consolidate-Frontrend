@@ -1237,11 +1237,10 @@ const OrderDetailedLayout = ({ trackingData }) => {
           size="large"
           startIcon={<PhoneIcon />}
           sx={{
-            background: "linear-gradient(90deg, #f58220 0%, #16a34a 100%)",
-            "&:hover": { bgcolor: "#e66918" },
             px: 6,
             py: 1.8,
             fontSize: "1.1rem",
+            color: "#fff",
             fontWeight: 600,
             borderRadius: 50,
           }}
@@ -1855,10 +1854,12 @@ const ConsignmentLayout = ({ trackingData }) => {
           size="large"
           startIcon={<PhoneIcon />}
           sx={{
-            bgcolor: "#f58220",
-            "&:hover": { bgcolor: "#e66918" },
             px: 6,
             py: 1.8,
+            fontSize: "1.1rem",
+            color: "#fff",
+            fontWeight: 600,
+            borderRadius: 50,
           }}
         >
           Call Now: +971 555 658321

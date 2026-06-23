@@ -4752,7 +4752,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
           {snackbar.message}
         </Alert>
       </Snackbar>
-      <Box sx={{ p: 3, backgroundColor: "#f5f7fa", minHeight: "100vh" }}>
+      <Box sx={{ backgroundColor: "#f5f7fa", minHeight: "100vh" }}>
         <Slide in timeout={1000}>
           <Card sx={{ boxShadow: 4, borderRadius: 3, overflow: "hidden" }}>
             <form onSubmit={mode === "edit" ? handleEditCon : handleCreate}>

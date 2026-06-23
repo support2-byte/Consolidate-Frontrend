@@ -89,15 +89,13 @@ const ShipmentTimeline = ({
   const effectiveIndex = currentIndex;
 
   return (
-    <Paper
-      elevation={3}
+    <Box
       sx={{
         borderRadius: 3,
         mt: 5,
         py: 10,
         bgcolor: "#ffffff",
-        border: "1px solid #e0e7ff",
-        boxShadow: "0 8px 32px rgba(0,0,0,0.08)",
+        border: "none",
       }}
     >
       <Typography
@@ -185,7 +183,7 @@ const ShipmentTimeline = ({
           </Box>
         </Box>
       )}
-    </Paper>
+    </Box>
   );
 };
 

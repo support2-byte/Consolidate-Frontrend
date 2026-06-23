@@ -2798,13 +2798,13 @@ const OrderForm = () => {
             alignItems="center"
             mb={3}
             className="MuiStack-root css-twoet5"
-            sx={{
-              position: "sticky",
-              zIndex: 9999,
-              top: 63,
-              background: "white",
-              p: 2,
-            }}
+            // sx={{
+            //   position: "sticky",
+            //   zIndex: 9999,
+            //   top: 63,
+            //   background: "white",
+            //   p: 2,
+            // }}
           >
             <Typography variant="h4" fontWeight="bold" color="#f58220">
               {isEditMode ? "Edit" : "New"} Order Details
@@ -4098,6 +4098,8 @@ const OrderForm = () => {
                         }
                       };
                       const calculateSumAssignTotalBox = (sd) => {
+                        console.log({ sd });
+
                         return (sd.containerDetails || []).reduce(
                           (sum, cd) =>
                             sum + (parseInt(cd.assignTotalBox || 0) || 0),
