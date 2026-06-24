@@ -535,7 +535,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       // setMode('edit');
       const res = await api.get(`/api/consignments/${id}?autoUpdate=false`);
       const { data } = res.data || {};
-
       const mappedData = {
         ...data,
         shipper: data?.shipper_id?.toString() || "",
@@ -561,12 +560,17 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         eform_date: data?.eform_date ? dayjs(data.eform_date) : "",
         eta: data?.eta ? dayjs(data.eta) : "",
         containers: (data?.containers || []).map((c) => ({
-          location: c?.location || "",
-          containerNo: c?.containerNo || "",
-          size: c?.size || "",
-          ownership: c?.ownership || "",
-          containerType: c?.containerType || "",
-          status: c?.status || "Pending",
+          location: c?.location || c?.container_location || "",
+          containerNo: c?.containerNo || c?.container_number || "",
+          size: c?.size || c?.container_size || "",
+          ownership:
+            c?.ownership === "soc"
+              ? "Own"
+              : c?.ownership === "coc"
+                ? "Hired"
+                : c?.ownership || "",
+          containerType: c?.containerType || c?.container_type || "",
+          status: c?.status || c?.current_status || "Pending",
           id: c?.id || c?.cid,
         })),
       };
@@ -1710,6 +1714,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     setValues((prev) => ({ ...prev, [arrayName]: newArray }));
     if (touched[arrayName]) validateArray(arrayName);
   };
+
   const validateArray = async (arrayName) => {
     try {
       await validationSchema.fields[arrayName]?.validate(
@@ -1720,6 +1725,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       setErrors((prev) => ({ ...prev, [arrayName]: error.message }));
     }
   };
+
   const markArrayTouched = (arrayName) => {
     if (!touched[arrayName]) {
       setTouched((prev) => ({ ...prev, [arrayName]: true }));
@@ -1728,11 +1734,10 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
   };
 
   const removeContainer = (index) => {
-    const newContainers = (values.containers || []).filter(
-      (_, i) => i !== index,
-    );
-    setValues((prev) => ({ ...prev, containers: newContainers }));
-    markArrayTouched("containers");
+    setValues((prev) => ({
+      ...prev,
+      containers: prev.containers.filter((_, i) => i !== index),
+    }));
   };
 
   const advanceStatus = async () => {
@@ -5378,7 +5383,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                         </Box>
 
                         {/* Gross Weight - Auto & Disabled */}
-                        <Box sx={{ flex: 1, minWidth: 300 }}>
+                        {/* <Box sx={{ flex: 1, minWidth: 300 }}>
                           <CustomTextField
                             name="gross_weight"
                             value={values.gross_weight || 0}
@@ -5409,7 +5414,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                               },
                             }}
                           />
-                        </Box>
+                        </Box> */}
                       </Box>
 
                       {/* Optional: Show summary when orders selected */}
@@ -5423,8 +5428,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                           Based on <strong>{selectedOrders.length}</strong>{" "}
                           selected order(s):{" "}
                           <strong>{calculatedTotals.netWeight} KGS</strong> net
-                          → <strong>{calculatedTotals.grossWeight} KGS</strong>{" "}
-                          gross (estimated)
                         </Alert>
                       )}
                     </Box>
@@ -5632,7 +5635,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                           </TableRow>
                         ) : (
                           (values.containers || []).map((container, index) => {
-                            const rowErrors = getContainerError(index);
                             return (
                               <Fade
                                 in
@@ -5648,126 +5650,55 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                                       size="small"
                                       fullWidth
                                       value={container.containerNo || ""}
-                                      onChange={(e) => {
-                                        const newValue = e.target.value;
-                                        updateArrayField(
-                                          "containers",
-                                          index,
-                                          "containerNo",
-                                          newValue,
-                                        );
-                                        // Validate duplicate on change
-                                        if (
-                                          newValue &&
-                                          rowErrors.containerNo?.includes(
-                                            "already exists",
-                                          )
-                                        ) {
-                                          setContainerError(
-                                            `containers[${index}].containerNo`,
-                                            rowErrors.containerNo,
-                                          );
-                                        } else {
-                                          setContainerError(
-                                            `containers[${index}].containerNo`,
-                                            "",
-                                          );
-                                        }
-                                      }}
-                                      onBlur={() => {
-                                        markArrayTouched("containers");
-                                        // Re-validate on blur
-                                        const updatedErrors =
-                                          getContainerError(index);
-                                        setContainerError(
-                                          `containers[${index}].containerNo`,
-                                          updatedErrors.containerNo || "",
-                                        );
-                                      }}
-                                      error={Boolean(rowErrors.containerNo)}
-                                      helperText={rowErrors.containerNo}
+                                      disabled
                                     />
                                   </TableCell>
+
                                   <TableCell>
                                     <TextField
                                       size="small"
                                       fullWidth
                                       value={container.location || ""}
-                                      onChange={(e) =>
-                                        updateArrayField(
-                                          "containers",
-                                          index,
-                                          "location",
-                                          e.target.value,
-                                        )
-                                      }
+                                      disabled
                                     />
                                   </TableCell>
+
                                   <TableCell>
                                     <TextField
                                       size="small"
                                       fullWidth
                                       value={container.size || ""}
-                                      onChange={(e) =>
-                                        updateArrayField(
-                                          "containers",
-                                          index,
-                                          "size",
-                                          e.target.value,
-                                        )
-                                      }
-                                      onBlur={() =>
-                                        markArrayTouched("containers")
-                                      }
-                                      error={Boolean(rowErrors.size)}
-                                      helperText={rowErrors.size}
+                                      disabled
                                     />
                                   </TableCell>
+
                                   <TableCell>
                                     <TextField
                                       size="small"
                                       fullWidth
                                       value={container.containerType || ""}
-                                      onChange={(e) =>
-                                        updateArrayField(
-                                          "containers",
-                                          index,
-                                          "containerType",
-                                          e.target.value,
-                                        )
-                                      }
+                                      disabled
                                     />
                                   </TableCell>
+
                                   <TableCell>
                                     <TextField
                                       size="small"
                                       fullWidth
                                       value={container.ownership || ""}
-                                      onChange={(e) =>
-                                        updateArrayField(
-                                          "containers",
-                                          index,
-                                          "ownership",
-                                          e.target.value,
-                                        )
-                                      }
+                                      disabled
                                     />
                                   </TableCell>
+
                                   <TableCell>
                                     <TextField
                                       size="small"
                                       fullWidth
                                       value={container.status || "Available"}
-                                      onChange={(e) =>
-                                        updateArrayField(
-                                          "containers",
-                                          index,
-                                          "status",
-                                          e.target.value,
-                                        )
-                                      }
+                                      disabled
                                     />
                                   </TableCell>
+
                                   <TableCell>
                                     <IconButton
                                       onClick={() => removeContainer(index)}

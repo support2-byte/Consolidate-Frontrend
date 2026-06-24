@@ -26,6 +26,7 @@ export const ROLE_MODULES = {
     "banks",
     "third-parties",
     "eta-setup",
+    "bug-report",
     "barcode-print",
   ],
 

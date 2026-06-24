@@ -59,7 +59,6 @@ export default function CrudPage({
     try {
       setInternalLoading(true);
       const response = await api.get(endpoint);
-      console.log("Fetched data:", response.data);
       setInternalRows(response.data);
     } catch (err) {
       console.error("Failed to load data", err);
@@ -88,7 +87,6 @@ export default function CrudPage({
       const response = await axios.get(
         "https://consolidate.onrender.com/api/customerPanals?search=All&limit=5000&",
       );
-      console.log("Fetched Zoho sync data:", response.data);
       showToast("Zoho customers synced successfully!", "success");
     } catch (err) {
       console.error("Failed to sync Zoho data:", err);

@@ -55,6 +55,7 @@ import { Link as RouterLink } from "react-router-dom";
 import { useThemeContext } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
 import AdminResetPasswordDialog from "./ForgetPassword";
+import { BugIcon } from "lucide-react";
 
 const expandedWidth = 260;
 const collapsedWidth = 80;
@@ -195,6 +196,12 @@ export default function DashboardLayout() {
       icon: <PeopleIcon />,
       path: "/admin/third-parties",
       module: "third-parties",
+    },
+    {
+      text: "Bug Report",
+      icon: <BugIcon />,
+      path: "/admin/bug-report",
+      module: "bug-report",
     },
     {
       text: "Barcode Print",

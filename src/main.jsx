@@ -44,6 +44,7 @@ import NotificationSettings from "./pages/SystemData/NotificationSetting";
 import ContainerReleases from "./pages/Containers/ContainerReleases";
 import { AppProvider } from "./context/AppContext";
 import StatusesPage from "./pages/SystemData/NewEtaSetup";
+import BugReportPage from "./pages/SystemData/BugReport";
 
 // ────────────────────────────────────────────────────────────────
 // Router Configuration
@@ -252,6 +253,7 @@ const router = createBrowserRouter([
           { path: "third-parties", element: <ThirdParties /> },
           { path: "barcode-print", element: <BarcodePrintTest /> },
           { path: "eta-setup", element: <StatusesPage /> },
+          { path: "bug-report", element: <BugReportPage /> },
         ],
       },
 

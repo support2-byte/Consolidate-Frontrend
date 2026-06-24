@@ -417,17 +417,6 @@ const OrderForm = () => {
       }));
 
       const ownerId = c.zoho_id || c.id;
-      api
-        .get(`/api/customers/${ownerId}`)
-        .then((res) => {
-          const phone = res?.data?.contact_persons?.[0]?.phone;
-          if (!phone) return;
-          setFormData((prev) => {
-            if (prev.selectedSenderOwner !== ownerId) return prev;
-            return { ...prev, [`${fieldPrefix}Contact`]: phone };
-          });
-        })
-        .catch((err) => console.error("Error fetching owner phone:", err));
     } else {
       setFormData((prev) => ({
         ...prev,
@@ -3104,11 +3093,10 @@ const OrderForm = () => {
                       if (value && typeof value !== "string") {
                         const fieldMap = {
                           [ownerNameKey]: value.contact_name || "",
-                          [ownerContactKey]: value.contact || "",
-                          [ownerAddressKey]:
-                            value.address || value.zoho_notes || "",
+                          [ownerContactKey]: value.phone_number || "",
+                          [ownerAddressKey]: value.address || "",
                           [ownerEmailKey]: value.email || "",
-                          [ownerRefKey]: value.zoho_id || value.ref || "",
+                          [ownerRefKey]: value.zoho_id || "",
                           [ownerRemarksKey]:
                             value.system_notes || value.zoho_notes || "",
                         };
@@ -3126,22 +3114,6 @@ const OrderForm = () => {
                             value: ownerId,
                           },
                         });
-
-                        api
-                          .get(`/api/customers/${ownerId}`)
-                          .then((res) => {
-                            const phone =
-                              res?.data?.contact_persons?.[0]?.phone;
-                            if (!phone) return;
-                            setFormData((prev) => {
-                              if (prev.selectedSenderOwner !== ownerId)
-                                return prev;
-                              return { ...prev, [ownerContactKey]: phone };
-                            });
-                          })
-                          .catch((err) =>
-                            console.error("Error fetching owner phone:", err),
-                          );
                       }
                     };
 
@@ -4093,33 +4065,6 @@ const OrderForm = () => {
                           const refField = isSenderMode
                             ? "senderRef"
                             : "receiverRef";
-
-                          api
-                            .get(`/api/customers/${ownerId}`)
-                            .then((res) => {
-                              const phone =
-                                res?.data?.contact_persons?.[0]?.phone;
-                              if (!phone) return;
-                              setFormData((prev) => {
-                                const item = prev[listKey][i];
-                                if (!item || item[refField] !== ownerId)
-                                  return prev; // selection changed
-                                return {
-                                  ...prev,
-                                  [listKey]: prev[listKey].map((it, ii) =>
-                                    ii === i
-                                      ? { ...it, [contactField]: phone }
-                                      : it,
-                                  ),
-                                };
-                              });
-                            })
-                            .catch((err) =>
-                              console.error(
-                                "Error fetching contact phone:",
-                                err,
-                              ),
-                            );
                         }
                       };
                       const calculateSumAssignTotalBox = (sd) => {
@@ -5011,6 +4956,7 @@ const OrderForm = () => {
                                         renderValue={(selected) =>
                                           selected || "Select Status"
                                         }
+                                        disabled={isEditMode}
                                       >
                                         <MenuItem value="">
                                           Select Status
