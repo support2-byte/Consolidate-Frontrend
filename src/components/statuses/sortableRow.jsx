@@ -35,7 +35,7 @@ export function SortableRow({ row, onEdit, onToggle, onDelete }) {
         background: isDragging ? TEAL_LIGHT : "inherit",
       }}
     >
-      <TableCell sx={{ width: 40 }}>
+      <TableCell align="center" sx={{ width: 60 }}>
         <IconButton
           size="small"
           {...attributes}
@@ -46,7 +46,7 @@ export function SortableRow({ row, onEdit, onToggle, onDelete }) {
           <DragIndicator fontSize="small" />
         </IconButton>
       </TableCell>
-      <TableCell sx={{ color: "#555", fontWeight: 500 }}>
+      <TableCell align="center" sx={{ color: "#555", fontWeight: 500 }}>
         {row.sorting_number}
       </TableCell>
       <TableCell sx={{ fontWeight: 500 }}>{row.order_status}</TableCell>

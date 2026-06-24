@@ -253,8 +253,14 @@ export default function StatusesPage() {
             <Table size="small">
               <TableHead>
                 <TableRow sx={{ bgcolor: TEAL }}>
-                  <TableCell sx={{ width: 40, color: "white", py: 1.5 }} />
-                  <TableCell sx={{ color: "white", fontWeight: 600, py: 1.5 }}>
+                  <TableCell
+                    align="center"
+                    sx={{ width: 60, color: "white", py: 1.5 }}
+                  />
+                  <TableCell
+                    align="center"
+                    sx={{ color: "white", fontWeight: 600, py: 1.5 }}
+                  >
                     Sorting Number
                   </TableCell>
                   <TableCell sx={{ color: "white", fontWeight: 600 }}>
