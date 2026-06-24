@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useContext } from "react";
 import {
   Box,
   Button,
@@ -18,6 +18,7 @@ import {
   LOCATION_OPTIONS,
 } from "../../constants/containers";
 import { StyledTextField, StyledSelect, FieldRow } from "./FormFields";
+import { AppContext } from "../../context/AppContext";
 
 const modalStyle = {
   position: "absolute",
@@ -48,6 +49,11 @@ const ContainerFormModal = ({
 }) => {
   const isSoc = formData.ownership === "soc";
   const isCoc = formData.ownership === "coc";
+
+  const { places } = useContext(AppContext);
+
+  const loadingPlaces = places?.filter((p) => p.is_loading) || [];
+  const destinationPlaces = places?.filter((p) => p.is_destination) || [];
 
   return (
     <Modal open={open} onClose={onClose}>
@@ -267,20 +273,33 @@ const ContainerFormModal = ({
               />
             </FieldRow>
             <FieldRow>
-              <StyledTextField
+              <StyledSelect
                 label="Place of Loading"
                 name="placeOfLoading"
-                value={formData.placeOfLoading}
+                value={formData.placeOfLoading || ""}
                 onChange={onChange}
                 required
-              />
-              <StyledTextField
+              >
+                {loadingPlaces.map((place) => (
+                  <MenuItem key={place.id} value={place.name}>
+                    {place.name}
+                  </MenuItem>
+                ))}
+              </StyledSelect>
+
+              <StyledSelect
                 label="Place of Delivery"
                 name="placeOfDelivery"
-                value={formData.placeOfDelivery}
+                value={formData.placeOfDelivery || ""}
                 onChange={onChange}
                 required
-              />
+              >
+                {destinationPlaces.map((place) => (
+                  <MenuItem key={place.id} value={place.name}>
+                    {place.name}
+                  </MenuItem>
+                ))}
+              </StyledSelect>
               <StyledTextField
                 label="Free Days"
                 name="freeDays"

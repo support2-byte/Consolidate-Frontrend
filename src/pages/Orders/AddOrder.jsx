@@ -358,6 +358,31 @@ const OrderForm = () => {
     "senders[].fullPartial",
     "senders[].qtyDelivered",
     "senders[].shippingDetails[].totalNumber",
+    "orderRemarks",
+    "receivers[].receiverName",
+    "receivers[].receiverContact",
+    "receivers[].receiverAddress",
+    "receivers[].receiverEmail",
+    "receivers[].remarks",
+    "receivers[].eta",
+    "receivers[].etd",
+    "receivers[].shippingLine",
+    "receivers[].shippingDetails[].pickupLocation",
+    "receivers[].shippingDetails[].category",
+    "receivers[].shippingDetails[].subcategory",
+    "receivers[].shippingDetails[].type",
+    "receivers[].shippingDetails[].weight",
+    "receivers[].shippingDetails[].deliveryAddress",
+    "receivers[].shippingDetails[].status",
+    "receivers[].receiverMarksNumber",
+    "senders[].senderMarksNumber",
+    "senders[].senderName",
+    "senders[].senderContact",
+    "senders[].senderAddress",
+    "senders[].senderEmail",
+    "senders[].remarks",
+    "senders[].eta",
+    "senders[].etd",
   ];
 
   const requiredFields = [
@@ -4098,18 +4123,25 @@ const OrderForm = () => {
                         }
                       };
                       const calculateSumAssignTotalBox = (sd) => {
-                        console.log({ sd });
-
                         return (sd.containerDetails || []).reduce(
                           (sum, cd) =>
-                            sum + (parseInt(cd.assignTotalBox || 0) || 0),
+                            sum +
+                            Number(
+                              cd.assign_total_box ??
+                                cd.assignTotalBox ??
+                                cd.total_number ??
+                                cd.totalNumber ??
+                                0,
+                            ),
                           0,
                         );
                       };
+
                       const calculateSumAssignWeight = (sd) => {
                         return (sd.containerDetails || []).reduce(
                           (sum, cd) =>
-                            sum + (parseFloat(cd.assignWeight || 0) || 0),
+                            sum +
+                            Number(cd.assign_weight ?? cd.assignWeight ?? 0),
                           0,
                         );
                       };

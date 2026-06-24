@@ -28,7 +28,7 @@ import HistoryModal from "../../components/containers/HistoryModal";
 import { TABLE_HEADERS } from "../../constants/containers";
 
 const ContainerModule = ({ propContainers = [] }) => {
-  const state = useContainerData();
+  const state = useContainerData(propContainers);
 
   const {
     generateFullManifestPDF,
@@ -98,7 +98,6 @@ const ContainerModule = ({ propContainers = [] }) => {
     <Box
       sx={{
         p: { xs: 2, md: 3 },
-        bgcolor: "#f5f5f5",
         height: "100vh",
         display: "flex",
         flexDirection: "column",
@@ -106,7 +105,6 @@ const ContainerModule = ({ propContainers = [] }) => {
     >
       <Box
         sx={{
-          maxWidth: 1450,
           flex: 1,
           display: "flex",
           flexDirection: "column",
@@ -157,7 +155,7 @@ const ContainerModule = ({ propContainers = [] }) => {
             onChange={handleFilterChange}
             size="small"
             variant="outlined"
-            sx={{ minWidth: 150, bgcolor: "white" }}
+            sx={{ minWidth: 200, backgroundColor: "white", borderRadius: 2 }}
           />
         </Box>
 
