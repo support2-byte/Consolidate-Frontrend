@@ -40,6 +40,7 @@ import {
   AccordionSummary,
   AccordionDetails,
   Divider,
+  Grid,
 } from "@mui/material";
 import {
   Add as AddIcon,
@@ -131,38 +132,28 @@ export default function UsersManagement() {
       if (res.data?.success) {
         setUsers(res.data.users || []);
         setTotal(res.data.pagination?.total || 0);
+        setAvailableRoles(res.data.roles || []);
       }
     } catch (err) {
       console.error("Failed to fetch users:", err);
-      setSnackbar({ open: true, message: "Could not load users", severity: "error" });
+      setSnackbar({
+        open: true,
+        message: "Could not load users",
+        severity: "error",
+      });
     } finally {
       setTableLoading(false);
     }
-  }, [page, rowsPerPage, orderBy, order, searchTerm, roleFilter, activeFilter, can]);
-
-  const fetchRoles = useCallback(async () => {
-    try {
-      const res = await api.get("/auth/roles");
-      if (res.data?.success && Array.isArray(res.data.roles)) {
-        setAvailableRoles(res.data.roles);
-      } else {
-        setAvailableRoles([
-          { id: 1, name: "admin" },
-          { id: 2, name: "manager" },
-          { id: 3, name: "staff" },
-          { id: 4, name: "viewer" },
-        ]);
-      }
-    } catch (err) {
-      console.warn("Failed to load roles:", err);
-      setAvailableRoles([
-        { id: 1, name: "admin" },
-        { id: 2, name: "manager" },
-        { id: 3, name: "staff" },
-        { id: 4, name: "viewer" },
-      ]);
-    }
-  }, []);
+  }, [
+    page,
+    rowsPerPage,
+    orderBy,
+    order,
+    searchTerm,
+    roleFilter,
+    activeFilter,
+    can,
+  ]);
 
   const fetchCatalog = useCallback(async () => {
     try {
@@ -173,20 +164,37 @@ export default function UsersManagement() {
       }
     } catch (err) {
       console.error("Failed to load catalog:", err);
-      setSnackbar({ open: true, message: "Failed to load permission catalog", severity: "warning" });
+      setSnackbar({
+        open: true,
+        message: "Failed to load permission catalog",
+        severity: "warning",
+      });
     }
   }, []);
 
   useEffect(() => {
-    fetchRoles();
-    fetchCatalog();
     fetchUsers();
-  }, [fetchRoles, fetchCatalog, fetchUsers]);
+  }, []);
 
-  const debouncedSearch = useCallback(debounce((value) => {
-    setSearchTerm(value);
-    setPage(0);
-  }, 500), []);
+  useEffect(() => {
+    if (
+      dialogOpen &&
+      currentUser &&
+      isAdmin() &&
+      tabValue === 1 &&
+      catalogModules.length === 0
+    ) {
+      fetchCatalog();
+    }
+  }, [dialogOpen, currentUser, tabValue, isAdmin, catalogModules.length]);
+
+  const debouncedSearch = useCallback(
+    debounce((value) => {
+      setSearchTerm(value);
+      setPage(0);
+    }, 500),
+    [],
+  );
 
   // ────────────────────────────────────────────────────────────────
   // Load permissions when editing user
@@ -199,13 +207,19 @@ export default function UsersManagement() {
       .get(`/auth/admin/users/${currentUser.id}/permissions`)
       .then((res) => {
         if (res.data?.success) {
+          console.log("[Permission]", res.data);
+
           setRolePermissions(res.data.rolePermissions || {});
           setOverrides(res.data.overrides || {});
         }
       })
       .catch((err) => {
         console.error("Failed to load permissions:", err);
-        setSnackbar({ open: true, message: "Failed to load permissions", severity: "error" });
+        setSnackbar({
+          open: true,
+          message: "Failed to load permissions",
+          severity: "error",
+        });
       })
       .finally(() => setLoading(false));
   }, [dialogOpen, currentUser, isAdmin]);
@@ -219,13 +233,15 @@ export default function UsersManagement() {
         setFormName(currentUser.name || "");
         setFormEmail(currentUser.email || "");
 
-        const selectedRole = availableRoles.find(r => r.name === currentUser.role);
+        const selectedRole = availableRoles.find(
+          (r) => r.name === currentUser.role,
+        );
         setFormRole(selectedRole?.id || "");
 
         setFormActive(currentUser.active ?? true);
         setFormPassword("");
       } else {
-        const defaultRole = availableRoles.find(r => r.name === "viewer");
+        const defaultRole = availableRoles.find((r) => r.name === "viewer");
         setFormName("");
         setFormEmail("");
         setFormRole(defaultRole?.id || "");
@@ -253,13 +269,20 @@ export default function UsersManagement() {
   };
 
   const toggleActive = async (user) => {
-    if (!can("users", "edit")) return setSnackbar({ open: true, message: "No permission", severity: "warning" });
+    if (!can("users", "edit"))
+      return setSnackbar({
+        open: true,
+        message: "No permission",
+        severity: "warning",
+      });
 
     const newActive = !user.active;
     const userId = user.id;
 
     setActionLoading((prev) => ({ ...prev, [userId]: true }));
-    setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, active: newActive } : u)));
+    setUsers((prev) =>
+      prev.map((u) => (u.id === userId ? { ...u, active: newActive } : u)),
+    );
 
     try {
       await api.put(`/auth/users/${userId}`, { active: newActive });
@@ -269,15 +292,26 @@ export default function UsersManagement() {
         severity: "success",
       });
     } catch (err) {
-      setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, active: !newActive } : u)));
-      setSnackbar({ open: true, message: "Failed to update status", severity: "error" });
+      setUsers((prev) =>
+        prev.map((u) => (u.id === userId ? { ...u, active: !newActive } : u)),
+      );
+      setSnackbar({
+        open: true,
+        message: "Failed to update status",
+        severity: "error",
+      });
     } finally {
       setActionLoading((prev) => ({ ...prev, [userId]: false }));
     }
   };
 
   const handleDelete = (user) => {
-    if (!can("users", "delete")) return setSnackbar({ open: true, message: "No permission", severity: "warning" });
+    if (!can("users", "delete"))
+      return setSnackbar({
+        open: true,
+        message: "No permission",
+        severity: "warning",
+      });
     setUserToDelete(user);
     setDeleteDialogOpen(true);
   };
@@ -288,7 +322,11 @@ export default function UsersManagement() {
       setSnackbar({ open: true, message: "User deleted", severity: "success" });
       fetchUsers();
     } catch (err) {
-      setSnackbar({ open: true, message: "Failed to delete user", severity: "error" });
+      setSnackbar({
+        open: true,
+        message: "Failed to delete user",
+        severity: "error",
+      });
     } finally {
       setDeleteDialogOpen(false);
       setUserToDelete(null);
@@ -296,8 +334,18 @@ export default function UsersManagement() {
   };
 
   const handleOpenDialog = (user = null) => {
-    if (user && !can("users", "edit")) return setSnackbar({ open: true, message: "No edit permission", severity: "warning" });
-    if (!user && !can("users", "create")) return setSnackbar({ open: true, message: "No create permission", severity: "warning" });
+    if (user && !can("users", "edit"))
+      return setSnackbar({
+        open: true,
+        message: "No edit permission",
+        severity: "warning",
+      });
+    if (!user && !can("users", "create"))
+      return setSnackbar({
+        open: true,
+        message: "No create permission",
+        severity: "warning",
+      });
 
     setCurrentUser(user);
     setDialogOpen(true);
@@ -312,9 +360,24 @@ export default function UsersManagement() {
   const handleSaveUser = async (e) => {
     e.preventDefault();
 
-    if (!formName.trim()) return setSnackbar({ open: true, message: "Name required", severity: "error" });
-    if (!formEmail.includes("@")) return setSnackbar({ open: true, message: "Valid email required", severity: "error" });
-    if (!currentUser && formPassword.length < 8) return setSnackbar({ open: true, message: "Password min 8 chars", severity: "error" });
+    if (!formName.trim())
+      return setSnackbar({
+        open: true,
+        message: "Name required",
+        severity: "error",
+      });
+    if (!formEmail.includes("@"))
+      return setSnackbar({
+        open: true,
+        message: "Valid email required",
+        severity: "error",
+      });
+    if (!currentUser && formPassword.length < 8)
+      return setSnackbar({
+        open: true,
+        message: "Password min 8 chars",
+        severity: "error",
+      });
 
     setFormSubmitting(true);
 
@@ -330,10 +393,18 @@ export default function UsersManagement() {
     try {
       if (currentUser) {
         await api.put(`/auth/users/${currentUser.id}`, payload);
-        setSnackbar({ open: true, message: "User updated", severity: "success" });
+        setSnackbar({
+          open: true,
+          message: "User updated",
+          severity: "success",
+        });
       } else {
         await api.post("/auth/users", payload);
-        setSnackbar({ open: true, message: "User created", severity: "success" });
+        setSnackbar({
+          open: true,
+          message: "User created",
+          severity: "success",
+        });
       }
       fetchUsers();
       handleCloseDialog();
@@ -364,7 +435,9 @@ export default function UsersManagement() {
         granted: newGranted,
       });
 
-      const res = await api.get(`/auth/admin/users/${currentUser.id}/permissions`);
+      const res = await api.get(
+        `/auth/admin/users/${currentUser.id}/permissions`,
+      );
       if (res.data?.success) {
         setRolePermissions(res.data.rolePermissions || {});
         setOverrides(res.data.overrides || {});
@@ -399,36 +472,63 @@ export default function UsersManagement() {
       }
     } catch (err) {
       console.error("Failed to load view permissions:", err);
-      setSnackbar({ open: true, message: "Failed to load permissions", severity: "error" });
+      setSnackbar({
+        open: true,
+        message: "Failed to load permissions",
+        severity: "error",
+      });
     } finally {
       setViewLoading(false);
     }
   };
 
-  const handleSnackbarClose = () => setSnackbar((prev) => ({ ...prev, open: false }));
+  const handleSnackbarClose = () =>
+    setSnackbar((prev) => ({ ...prev, open: false }));
 
   return (
     <Box sx={{ p: { xs: 2, md: 3 } }}>
       <Card elevation={4} sx={{ borderRadius: 3, overflow: "hidden" }}>
         <CardContent sx={{ p: 3 }}>
-          <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems="center" spacing={2} sx={{ mb: 4 }}>
+          <Stack
+            direction={{ xs: "column", sm: "row" }}
+            justifyContent="space-between"
+            alignItems="center"
+            spacing={2}
+            sx={{ mb: 4 }}
+          >
             <Typography variant="h5" fontWeight={600}>
               User Management
             </Typography>
 
-            <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
+            <Stack
+              direction="row"
+              spacing={2}
+              alignItems="center"
+              flexWrap="wrap"
+            >
               <TextField
                 size="small"
                 placeholder="Search..."
                 value={searchTerm}
                 onChange={(e) => debouncedSearch(e.target.value)}
-                InputProps={{ startAdornment: <SearchIcon sx={{ color: "action.active", mr: 1 }} /> }}
+                InputProps={{
+                  startAdornment: (
+                    <SearchIcon sx={{ color: "action.active", mr: 1 }} />
+                  ),
+                }}
                 sx={{ width: { xs: "100%", sm: 280 } }}
               />
 
               <FormControl size="small" sx={{ minWidth: 140 }}>
                 <InputLabel>Role</InputLabel>
-                <Select value={roleFilter} label="Role" onChange={(e) => { setRoleFilter(e.target.value); setPage(0); }}>
+                <Select
+                  value={roleFilter}
+                  label="Role"
+                  onChange={(e) => {
+                    setRoleFilter(e.target.value);
+                    setPage(0);
+                  }}
+                >
                   <MenuItem value="">All Roles</MenuItem>
                   {availableRoles.map((r) => (
                     <MenuItem key={r.id} value={r.id}>
@@ -440,7 +540,14 @@ export default function UsersManagement() {
 
               <FormControl size="small" sx={{ minWidth: 140 }}>
                 <InputLabel>Status</InputLabel>
-                <Select value={activeFilter} label="Status" onChange={(e) => { setActiveFilter(e.target.value); setPage(0); }}>
+                <Select
+                  value={activeFilter}
+                  label="Status"
+                  onChange={(e) => {
+                    setActiveFilter(e.target.value);
+                    setPage(0);
+                  }}
+                >
                   <MenuItem value="">All</MenuItem>
                   <MenuItem value="true">Active</MenuItem>
                   <MenuItem value="false">Inactive</MenuItem>
@@ -448,7 +555,11 @@ export default function UsersManagement() {
               </FormControl>
 
               {can("users", "create") && (
-                <Button variant="contained" startIcon={<AddIcon />} onClick={() => handleOpenDialog()}>
+                <Button
+                  variant="contained"
+                  startIcon={<AddIcon />}
+                  onClick={() => handleOpenDialog()}
+                >
                   Add User
                 </Button>
               )}
@@ -483,8 +594,12 @@ export default function UsersManagement() {
                       </TableCell>
                       <TableCell sx={{ color: "white" }}>Email</TableCell>
                       <TableCell sx={{ color: "white" }}>Role</TableCell>
-                      <TableCell sx={{ color: "white" }} align="center">Status</TableCell>
-                      <TableCell sx={{ color: "white" }} align="right">Actions</TableCell>
+                      <TableCell sx={{ color: "white" }} align="center">
+                        Status
+                      </TableCell>
+                      <TableCell sx={{ color: "white" }} align="right">
+                        Actions
+                      </TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -492,7 +607,9 @@ export default function UsersManagement() {
                       <TableRow key={user.id} hover>
                         <TableCell>
                           <Avatar sx={{ bgcolor: "primary.main" }}>
-                            {(user.name || user.email)?.charAt(0) || <PersonIcon />}
+                            {(user.name || user.email)?.charAt(0) || (
+                              <PersonIcon />
+                            )}
                           </Avatar>
                         </TableCell>
                         <TableCell>{user.name || "—"}</TableCell>
@@ -502,7 +619,8 @@ export default function UsersManagement() {
                             label={
                               user.role
                                 ? typeof user.role === "string"
-                                  ? user.role.charAt(0).toUpperCase() + user.role.slice(1)
+                                  ? user.role.charAt(0).toUpperCase() +
+                                    user.role.slice(1)
                                   : user.role
                                 : "—"
                             }
@@ -520,19 +638,28 @@ export default function UsersManagement() {
                         </TableCell>
                         <TableCell align="right">
                           <Tooltip title="View Permissions">
-                            <IconButton onClick={() => handleViewPermissions(user)}>
-                              <VisibilityIcon fontSize="small" color="primary" />
+                            <IconButton
+                              onClick={() => handleViewPermissions(user)}
+                            >
+                              <VisibilityIcon
+                                fontSize="small"
+                                color="primary"
+                              />
                             </IconButton>
                           </Tooltip>
                           {can("users", "edit") && (
                             <Tooltip title="Edit">
-                              <IconButton onClick={() => handleOpenDialog(user)}>
+                              <IconButton
+                                onClick={() => handleOpenDialog(user)}
+                              >
                                 <EditIcon fontSize="small" />
                               </IconButton>
                             </Tooltip>
                           )}
                           {can("users", "edit") && (
-                            <Tooltip title={user.active ? "Deactivate" : "Activate"}>
+                            <Tooltip
+                              title={user.active ? "Deactivate" : "Activate"}
+                            >
                               <Checkbox
                                 checked={user.active ?? false}
                                 onChange={() => toggleActive(user)}
@@ -544,7 +671,10 @@ export default function UsersManagement() {
                           )}
                           {can("users", "delete") && (
                             <Tooltip title="Delete">
-                              <IconButton color="error" onClick={() => handleDelete(user)}>
+                              <IconButton
+                                color="error"
+                                onClick={() => handleDelete(user)}
+                              >
                                 <DeleteIcon fontSize="small" />
                               </IconButton>
                             </Tooltip>
@@ -583,7 +713,12 @@ export default function UsersManagement() {
         </DialogTitle>
 
         {currentUser && isAdmin() && (
-          <Tabs value={tabValue} onChange={(_, v) => setTabValue(v)} centered sx={{ bgcolor: "#f5f5f5" }}>
+          <Tabs
+            value={tabValue}
+            onChange={(_, v) => setTabValue(v)}
+            centered
+            sx={{ bgcolor: "#f5f5f5" }}
+          >
             <Tab label="Basic Info" />
             <Tab label="Permissions" />
           </Tabs>
@@ -671,16 +806,27 @@ export default function UsersManagement() {
               </Stack>
             ) : (
               <Box>
-                <Typography variant="subtitle1" gutterBottom sx={{ mb: 3, fontWeight: 600 }}>
+                <Typography
+                  variant="subtitle1"
+                  gutterBottom
+                  sx={{ mb: 3, fontWeight: 600 }}
+                >
                   Custom Overrides & Effective Permissions
                 </Typography>
 
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 4 }}>
-                  Toggle permissions below to override the user's role defaults. Changes are saved instantly.
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{ mb: 4 }}
+                >
+                  Toggle permissions below to override the user's role defaults.
+                  Changes are saved instantly.
                 </Typography>
 
                 {loading ? (
-                  <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
+                  <Box
+                    sx={{ display: "flex", justifyContent: "center", py: 8 }}
+                  >
                     <CircularProgress />
                   </Box>
                 ) : catalogModules.length === 0 ? (
@@ -694,13 +840,15 @@ export default function UsersManagement() {
                       const roleActs = rolePermissions[moduleCode] || [];
                       const overrideMap = overrides[moduleCode] || {};
 
-                      const grantedActions = catalogActions.filter(act => {
+                      const grantedActions = catalogActions.filter((act) => {
                         const hasRole = roleActs.includes(act);
                         const ovr = overrideMap[act];
                         return ovr !== undefined ? ovr : hasRole;
                       });
 
-                      const deniedActions = catalogActions.filter(act => !grantedActions.includes(act));
+                      const deniedActions = catalogActions.filter(
+                        (act) => !grantedActions.includes(act),
+                      );
 
                       return (
                         <Accordion
@@ -729,15 +877,33 @@ export default function UsersManagement() {
                           <AccordionDetails sx={{ p: 3 }}>
                             {grantedActions.length > 0 && (
                               <Box sx={{ mb: 3 }}>
-                                <Typography variant="subtitle2" color="success.main" gutterBottom sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                                  <CheckIcon fontSize="small" /> Granted Permissions
+                                <Typography
+                                  variant="subtitle2"
+                                  color="success.main"
+                                  gutterBottom
+                                  sx={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 1,
+                                  }}
+                                >
+                                  <CheckIcon fontSize="small" /> Granted
+                                  Permissions
                                 </Typography>
 
-                                <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+                                <Box
+                                  sx={{
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    gap: 1.5,
+                                  }}
+                                >
                                   {grantedActions.map((act) => {
-                                    const hasRoleDefault = roleActs.includes(act);
+                                    const hasRoleDefault =
+                                      roleActs.includes(act);
                                     const overrideValue = overrideMap[act];
-                                    const isOverridden = overrideValue !== undefined;
+                                    const isOverridden =
+                                      overrideValue !== undefined;
 
                                     return (
                                       <FormControlLabel
@@ -745,17 +911,35 @@ export default function UsersManagement() {
                                         control={
                                           <Checkbox
                                             checked={true}
-                                            onChange={() => handlePermissionToggle(moduleCode, act, false)}
+                                            onChange={() =>
+                                              handlePermissionToggle(
+                                                moduleCode,
+                                                act,
+                                                false,
+                                              )
+                                            }
                                             color="success"
                                             sx={{
-                                              color: isOverridden ? "success.main" : "grey.500",
-                                              "&.Mui-checked": { color: "success.main" },
+                                              color: isOverridden
+                                                ? "success.main"
+                                                : "grey.500",
+                                              "&.Mui-checked": {
+                                                color: "success.main",
+                                              },
                                             }}
                                           />
                                         }
                                         label={
-                                          <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
-                                            <Typography fontWeight={500}>{act}</Typography>
+                                          <Box
+                                            sx={{
+                                              display: "flex",
+                                              alignItems: "center",
+                                              gap: 1.5,
+                                            }}
+                                          >
+                                            <Typography fontWeight={500}>
+                                              {act}
+                                            </Typography>
                                             {isOverridden ? (
                                               <Chip
                                                 size="small"
@@ -782,15 +966,33 @@ export default function UsersManagement() {
 
                             {deniedActions.length > 0 && (
                               <Box>
-                                <Typography variant="subtitle2" color="error.main" gutterBottom sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                                  <CancelIcon fontSize="small" /> Denied Permissions
+                                <Typography
+                                  variant="subtitle2"
+                                  color="error.main"
+                                  gutterBottom
+                                  sx={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 1,
+                                  }}
+                                >
+                                  <CancelIcon fontSize="small" /> Denied
+                                  Permissions
                                 </Typography>
 
-                                <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+                                <Box
+                                  sx={{
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    gap: 1.5,
+                                  }}
+                                >
                                   {deniedActions.map((act) => {
-                                    const hasRoleDefault = roleActs.includes(act);
+                                    const hasRoleDefault =
+                                      roleActs.includes(act);
                                     const overrideValue = overrideMap[act];
-                                    const isOverridden = overrideValue !== undefined;
+                                    const isOverridden =
+                                      overrideValue !== undefined;
 
                                     return (
                                       <FormControlLabel
@@ -798,17 +1000,38 @@ export default function UsersManagement() {
                                         control={
                                           <Checkbox
                                             checked={false}
-                                            onChange={() => handlePermissionToggle(moduleCode, act, true)}
+                                            onChange={() =>
+                                              handlePermissionToggle(
+                                                moduleCode,
+                                                act,
+                                                true,
+                                              )
+                                            }
                                             color="error"
                                             sx={{
-                                              color: isOverridden ? "error.main" : "grey.500",
-                                              "&.Mui-checked": { color: "error.main" },
+                                              color: isOverridden
+                                                ? "error.main"
+                                                : "grey.500",
+                                              "&.Mui-checked": {
+                                                color: "error.main",
+                                              },
                                             }}
                                           />
                                         }
                                         label={
-                                          <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
-                                            <Typography fontWeight={500} color="text.secondary">{act}</Typography>
+                                          <Box
+                                            sx={{
+                                              display: "flex",
+                                              alignItems: "center",
+                                              gap: 1.5,
+                                            }}
+                                          >
+                                            <Typography
+                                              fontWeight={500}
+                                              color="text.secondary"
+                                            >
+                                              {act}
+                                            </Typography>
                                             {isOverridden ? (
                                               <Chip
                                                 size="small"
@@ -833,11 +1056,16 @@ export default function UsersManagement() {
                               </Box>
                             )}
 
-                            {grantedActions.length === 0 && deniedActions.length === 0 && (
-                              <Typography color="text.secondary" align="center" sx={{ py: 4 }}>
-                                No actions available for this module
-                              </Typography>
-                            )}
+                            {grantedActions.length === 0 &&
+                              deniedActions.length === 0 && (
+                                <Typography
+                                  color="text.secondary"
+                                  align="center"
+                                  sx={{ py: 4 }}
+                                >
+                                  No actions available for this module
+                                </Typography>
+                              )}
                           </AccordionDetails>
                         </Accordion>
                       );
@@ -853,8 +1081,18 @@ export default function UsersManagement() {
               Cancel
             </Button>
             {tabValue === 0 && (
-              <Button type="submit" variant="contained" disabled={formSubmitting}>
-                {formSubmitting ? (currentUser ? "Updating..." : "Creating...") : currentUser ? "Update" : "Create"}
+              <Button
+                type="submit"
+                variant="contained"
+                disabled={formSubmitting}
+              >
+                {formSubmitting
+                  ? currentUser
+                    ? "Updating..."
+                    : "Creating..."
+                  : currentUser
+                    ? "Update"
+                    : "Create"}
               </Button>
             )}
           </DialogActions>
@@ -865,113 +1103,323 @@ export default function UsersManagement() {
       <Dialog
         open={viewDialogOpen}
         onClose={() => setViewDialogOpen(false)}
-        maxWidth="md"
+        maxWidth="lg"
         fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            minHeight: "80vh",
+          },
+        }}
       >
-        <DialogTitle sx={{ bgcolor: "primary.main", color: "white", py: 2 }}>
-          Permissions for {viewUser?.email || "User"}
+        <DialogTitle
+          sx={{
+            bgcolor: "primary.main",
+            color: "white",
+            py: 3,
+          }}
+        >
+          <Stack spacing={1}>
+            <Typography variant="h5" fontWeight={700}>
+              User Permissions
+            </Typography>
+
+            <Typography variant="body2" sx={{ opacity: 0.9 }}>
+              {viewUser?.name}
+            </Typography>
+
+            <Typography variant="body2" sx={{ opacity: 0.8 }}>
+              {viewUser?.email}
+            </Typography>
+          </Stack>
         </DialogTitle>
 
-        <DialogContent dividers sx={{ minHeight: 400 }}>
+        <DialogContent
+          dividers
+          sx={{
+            p: { xs: 2, md: 3 },
+            bgcolor: "grey.50",
+            minHeight: 500,
+          }}
+        >
           {viewLoading ? (
-            <Box sx={{ display: "flex", justifyContent: "center", py: 10 }}>
+            <Box
+              sx={{
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                minHeight: 400,
+              }}
+            >
               <CircularProgress />
             </Box>
           ) : (
-            <Box>
-              <Typography variant="subtitle1" gutterBottom sx={{ mb: 2 }}>
-                Role: <strong>{viewRoleName}</strong>
-              </Typography>
+            <Stack spacing={3}>
+              {/* Summary Cards */}
+              <Grid container spacing={2}>
+                <Grid item xs={12} md={4}>
+                  <Paper
+                    elevation={0}
+                    sx={{
+                      p: 3,
+                      borderRadius: 3,
+                      border: "1px solid",
+                      borderColor: "divider",
+                      height: "100%",
+                    }}
+                  >
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      gutterBottom
+                    >
+                      Role
+                    </Typography>
 
-              <Divider sx={{ my: 3 }} />
+                    <Typography variant="h6" fontWeight={700}>
+                      {viewRoleName}
+                    </Typography>
+                  </Paper>
+                </Grid>
 
-              <Typography variant="h6" gutterBottom>
-                Role-based Permissions
-              </Typography>
+                <Grid item xs={12} md={4}>
+                  <Paper
+                    elevation={0}
+                    sx={{
+                      p: 3,
+                      borderRadius: 3,
+                      border: "1px solid",
+                      borderColor: "divider",
+                      height: "100%",
+                    }}
+                  >
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      gutterBottom
+                    >
+                      Effective Permissions
+                    </Typography>
 
-              {Object.keys(viewRolePermissions).length === 0 ? (
-                <Typography color="text.secondary" sx={{ py: 3 }}>
-                  No role permissions assigned.
+                    <Typography variant="h4" fontWeight={700}>
+                      {Object.values(viewEffective).flat().length}
+                    </Typography>
+                  </Paper>
+                </Grid>
+
+                <Grid item xs={12} md={4}>
+                  <Paper
+                    elevation={0}
+                    sx={{
+                      p: 3,
+                      borderRadius: 3,
+                      border: "1px solid",
+                      borderColor: "divider",
+                      height: "100%",
+                    }}
+                  >
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      gutterBottom
+                    >
+                      Custom Overrides
+                    </Typography>
+
+                    <Typography variant="h4" fontWeight={700}>
+                      {Object.values(viewOverrides).reduce(
+                        (acc, obj) => acc + Object.keys(obj).length,
+                        0,
+                      )}
+                    </Typography>
+                  </Paper>
+                </Grid>
+              </Grid>
+
+              <Paper
+                elevation={0}
+                sx={{
+                  p: 3,
+                  borderRadius: 3,
+                  border: "1px solid",
+                  borderColor: "divider",
+                }}
+              >
+                <Typography variant="h6" fontWeight={700} gutterBottom>
+                  Effective Permissions
                 </Typography>
-              ) : (
-                <Stack spacing={2} sx={{ mb: 5 }}>
-                  {Object.entries(viewRolePermissions).map(([mod, acts]) => (
-                    <Accordion key={mod}>
-                      <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                        <Typography variant="subtitle1">{mod}</Typography>
-                      </AccordionSummary>
-                      <AccordionDetails>
-                        <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
-                          {acts.map((act) => (
-                            <Chip key={act} label={act} color="success" size="small" />
-                          ))}
-                        </Box>
-                      </AccordionDetails>
-                    </Accordion>
-                  ))}
-                </Stack>
-              )}
 
-              <Divider sx={{ my: 4 }} />
-
-              <Typography variant="h6" gutterBottom>
-                Custom Overrides
-              </Typography>
-
-              {Object.keys(viewOverrides).length === 0 ? (
-                <Typography color="text.secondary" sx={{ py: 3 }}>
-                  No custom overrides set for this user.
-                </Typography>
-              ) : (
                 <Stack spacing={2}>
-                  {Object.entries(viewOverrides).map(([mod, ovr]) => (
-                    <Box key={mod}>
-                      <Typography variant="subtitle1" gutterBottom>
-                        {mod}
+                  {Object.entries(viewEffective).map(([module, acts]) => (
+                    <Box key={module}>
+                      <Typography
+                        variant="subtitle2"
+                        sx={{
+                          mb: 1,
+                          textTransform: "uppercase",
+                          fontWeight: 700,
+                        }}
+                      >
+                        {module}
                       </Typography>
-                      <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
-                        {Object.entries(ovr).map(([act, granted]) => (
+
+                      <Box
+                        sx={{
+                          display: "flex",
+                          flexWrap: "wrap",
+                          gap: 1,
+                        }}
+                      >
+                        {acts.map((act) => (
                           <Chip
                             key={act}
-                            label={`${act}: ${granted ? "YES" : "NO"}`}
-                            color={granted ? "success" : "error"}
+                            label={act}
+                            color="primary"
                             size="small"
-                            variant="outlined"
                           />
                         ))}
                       </Box>
                     </Box>
                   ))}
                 </Stack>
-              )}
+              </Paper>
 
-              <Divider sx={{ my: 4 }} />
-
-              <Typography variant="h6" gutterBottom>
-                Effective Permissions (What the user actually has)
-              </Typography>
-
-              {Object.keys(viewEffective).length === 0 ? (
-                <Typography color="text.secondary" sx={{ py: 3 }}>
-                  No effective permissions (check role and overrides).
+              <Paper
+                elevation={0}
+                sx={{
+                  p: 3,
+                  borderRadius: 3,
+                  border: "1px solid",
+                  borderColor: "divider",
+                }}
+              >
+                <Typography variant="h6" fontWeight={700} gutterBottom>
+                  Role Permissions
                 </Typography>
-              ) : (
+
                 <Stack spacing={2}>
-                  {Object.entries(viewEffective).map(([mod, acts]) => (
-                    <Box key={mod}>
-                      <Typography variant="subtitle1" gutterBottom>
-                        {mod}
-                      </Typography>
-                      <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
-                        {acts.map((act) => (
-                          <Chip key={act} label={act} color="primary" size="small" />
-                        ))}
-                      </Box>
-                    </Box>
-                  ))}
+                  {Object.keys(viewRolePermissions || {}).length === 0 ? (
+                    <Typography color="text.secondary">
+                      No role permissions assigned.
+                    </Typography>
+                  ) : (
+                    <Stack spacing={2}>
+                      {Object.entries(viewRolePermissions).map(
+                        ([module, acts]) => (
+                          <Box
+                            key={module}
+                            sx={{
+                              display: "flex",
+                              flexDirection: { xs: "column", md: "row" },
+                              gap: 2,
+                              py: 1.5,
+                              borderBottom: "1px solid",
+                              borderColor: "divider",
+                              "&:last-child": {
+                                borderBottom: "none",
+                                pb: 0,
+                              },
+                            }}
+                          >
+                            <Typography
+                              sx={{
+                                minWidth: 180,
+                                fontWeight: 600,
+                                textTransform: "capitalize",
+                              }}
+                            >
+                              {module}
+                            </Typography>
+
+                            <Box
+                              sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}
+                            >
+                              {acts.map((act) => (
+                                <Chip
+                                  key={act}
+                                  label={act}
+                                  color="success"
+                                  size="small"
+                                />
+                              ))}
+                            </Box>
+                          </Box>
+                        ),
+                      )}
+                    </Stack>
+                  )}
                 </Stack>
-              )}
-            </Box>
+              </Paper>
+              <Paper
+                elevation={0}
+                sx={{
+                  p: 3,
+                  borderRadius: 3,
+                  border: "1px solid",
+                  borderColor: "divider",
+                }}
+              >
+                <Typography variant="h6" fontWeight={700} gutterBottom>
+                  Custom Overrides
+                </Typography>
+
+                <Stack spacing={2}>
+                  {Object.keys(viewOverrides || {}).length === 0 ? (
+                    <Typography color="text.secondary">
+                      No custom overrides configured.
+                    </Typography>
+                  ) : (
+                    <Stack spacing={2}>
+                      {Object.entries(viewOverrides).map(
+                        ([module, overrides]) => (
+                          <Box
+                            key={module}
+                            sx={{
+                              display: "flex",
+                              flexDirection: { xs: "column", md: "row" },
+                              gap: 2,
+                              py: 1.5,
+                              borderBottom: "1px solid",
+                              borderColor: "divider",
+                              "&:last-child": {
+                                borderBottom: "none",
+                                pb: 0,
+                              },
+                            }}
+                          >
+                            <Typography
+                              sx={{
+                                minWidth: 180,
+                                fontWeight: 600,
+                                textTransform: "capitalize",
+                              }}
+                            >
+                              {module}
+                            </Typography>
+
+                            <Box
+                              sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}
+                            >
+                              {Object.entries(overrides).map(
+                                ([action, granted]) => (
+                                  <Chip
+                                    key={action}
+                                    label={action}
+                                    color={granted ? "success" : "error"}
+                                    variant={granted ? "filled" : "outlined"}
+                                    size="small"
+                                  />
+                                ),
+                              )}
+                            </Box>
+                          </Box>
+                        ),
+                      )}
+                    </Stack>
+                  )}
+                </Stack>
+              </Paper>
+            </Stack>
           )}
         </DialogContent>
 
@@ -983,11 +1431,15 @@ export default function UsersManagement() {
       </Dialog>
 
       {/* Delete Dialog */}
-      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={() => setDeleteDialogOpen(false)}
+      >
         <DialogTitle>Confirm Delete</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            Are you sure you want to delete {userToDelete?.name || userToDelete?.email}?
+            Are you sure you want to delete{" "}
+            {userToDelete?.name || userToDelete?.email}?
           </DialogContentText>
         </DialogContent>
         <DialogActions>
@@ -1005,7 +1457,11 @@ export default function UsersManagement() {
         onClose={handleSnackbarClose}
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
       >
-        <Alert onClose={handleSnackbarClose} severity={snackbar.severity} sx={{ width: "100%" }}>
+        <Alert
+          onClose={handleSnackbarClose}
+          severity={snackbar.severity}
+          sx={{ width: "100%" }}
+        >
           {snackbar.message}
         </Alert>
       </Snackbar>

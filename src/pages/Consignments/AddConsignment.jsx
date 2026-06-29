@@ -4,6 +4,7 @@ import React, {
   useMemo,
   useRef,
   useCallback,
+  useContext,
 } from "react";
 import {
   Box,
@@ -90,7 +91,11 @@ import autoTable from "jspdf-autotable";
 import { applyPlugin } from "jspdf-autotable";
 import logoPic from "../../../public/logo-2.png";
 import { useAuth } from "../../context/AuthContext";
+import { AppContext } from "../../context/AppContext";
+import { getStatusColors } from "../../Utlis/statusColors";
+
 applyPlugin(jsPDF);
+
 const CustomTextField = ({
   name,
   value,
@@ -132,7 +137,7 @@ const CustomTextField = ({
     />
   </TooltipMui>
 );
-// Custom Select Component
+
 const CustomSelect = ({
   name,
   value,
@@ -146,14 +151,18 @@ const CustomSelect = ({
   helperText,
   ...props
 }) => {
-  const labelId = `${name}-label`; // Unique ID per field (e.g., "paymentType-label")
-  // Ensure valid value to avoid MUI warnings
+  const labelId = `${name}-label`;
+
   const getSafeValue = (opt) =>
     typeof opt === "object" ? (opt.value ?? opt.label ?? opt.name ?? "") : opt;
+
   const validValue =
     options.length > 0 && options.some((opt) => getSafeValue(opt) === value)
       ? (value ?? name)
-      : "";
+      : options.length === 0 && value
+        ? value
+        : "";
+
   return (
     <TooltipMui title={tooltip || ""}>
       <FormControl fullWidth error={error}>
@@ -163,8 +172,8 @@ const CustomSelect = ({
           value={validValue}
           onChange={onChange}
           onBlur={onBlur}
-          labelId={labelId} // Link to InputLabel's id
-          label={`${label}${required ? "*" : ""}`} // Keep for shrink behavior
+          labelId={labelId}
+          label={`${label}${required ? "*" : ""}`}
           {...props}
         >
           {options?.map((opt, index) => {
@@ -225,6 +234,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
   const context = useAuth();
   const user_id = context.user.id;
   const currentDate = dayjs();
+  const { places, statuses } = useContext(AppContext);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const { consignmentId: urlConsignmentId } = useParams();
@@ -244,9 +254,9 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
   });
   const [initialValues, setInitialValues] = useState(null);
   const [values, setValues] = useState({
-    id: "", // Add id for edit
+    id: "",
     consignment_number: "",
-    status: "",
+    status: "Draft",
     remarks: "",
     shipper: "",
     shipperName: "",
@@ -318,45 +328,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     setContainerErrors((prev) => ({ ...prev, [path]: message }));
   };
 
-  const CONSIGNMENT_TO_ETA_STATUS = {
-    "Drafts Cleared": "Ready for Loading", // → 12 days
-    "Submitted On Vessel": "Shipment Processing", // → 7 days
-    "Customs Cleared": "Shipment Processing", // → 7 days
-    Submitted: "Shipment Processing", // → 7 days
-    "Under Shipment Processing": "Shipment Processing", // → 7 days
-    "In Transit": "Shipment In Transit", // → 4 days
-    "In Transit On Vessel": "Shipment In Transit", // → 4 days
-    "Arrived at Facility": "Arrived at Sort Facility", // → 1 day
-    "Ready for Delivery": "Ready for Delivery", // → 0 days
-    "Arrived at Destination": "Under Processing", // → 2 days
-    Delivered: "Shipment Delivered", // → 0 days
-    HOLD: "Shipment Delivered",
-    "HOLD for Delivery": "Ready for Delivery",
-    Cancelled: "Shipment Delivered",
-  };
-
-  // === Status Colors (Client-side only) ===
-  const getStatusColor = (status) => {
-    if (!status || typeof status !== "string") return "#E0E0E0";
-
-    const statusColors = {
-      HOLD: "#FF9800",
-      Cancelled: "#F44336",
-      "Drafts Cleared": "#E0E0E0",
-      "Submitted On Vessel": "#9C27B0",
-      "Customs Cleared": "#4CAF50",
-      Submitted: "#FFEB3B",
-      "Under Shipment Processing": "#FF9800",
-      "In Transit": "#4CAF50",
-      "Arrived at Facility": "#795548",
-      "Ready for Delivery": "#FFEB3B",
-      "Arrived at Destination": "#FFEB3B",
-      Delivered: "#2196F3",
-    };
-
-    return statusColors[status] || "#9E9E9E";
-  };
-
   const getPlaceName = (placeId) => {
     if (!placeId) return "-";
     const place = options.destinationOptions.find(
@@ -381,7 +352,10 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     setEtaLoading(true);
 
     try {
-      const receiverStatus = CONSIGNMENT_TO_ETA_STATUS[newStatus] || newStatus;
+      const matchedStatus = (statuses || []).find(
+        (s) => s.consignment_status === newStatus,
+      );
+      const receiverStatus = matchedStatus?.order_status || newStatus;
       const offsetDays = statusOffsets[receiverStatus] ?? 0;
 
       const today = dayjs(); // Today is January 08, 2026
@@ -394,10 +368,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         setEta(suggestedEta);
         setValues((prev) => ({ ...prev, eta: suggestedEta }));
       }
-
-      // console.log(
-      //   `Consignment Status: "${newStatus}" → Receiver Status: "${receiverStatus}" → +${offsetDays} days → Suggested ETA: ${suggestedEta}`
-      // );
     } catch (err) {
       console.warn("ETA suggestion failed:", err);
       setEtaSuggestion(null);
@@ -414,28 +384,18 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
 
         const [
           thirdPartiesRes,
-          originsRes,
-          destinationsRes,
           banksRes,
           paymentTypesRes,
           vesselsRes,
           shippingLinesRes,
           currenciesRes,
-          statusesRes,
-          containerStatusesRes,
-          etaConfigRes,
         ] = await Promise.all([
           api.get("api/options/thirdParty/crud"),
-          api.get("api/options/places/crud"),
-          api.get("api/options/places/crud"),
           api.get("api/options/banks/crud"),
           api.get("api/options/payment-types/crud"),
           api.get("api/options/vessels/crud"),
           api.get("api/options/shipping-lines"),
           api.get("api/options/currencies"),
-          api.get("api/consignments/statuses"),
-          api.get("api/options/container-statuses"),
-          api.get("api/options/eta-configs"),
         ]);
 
         // Process options...
@@ -448,10 +408,11 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
             label: item[labelKey] || item.label || item[valueKey] || "",
           }));
 
-        const filteredDestinations = (
-          destinationsRes?.data?.places || []
-        ).filter((place) => place.is_destination === true);
-        const filteredOrigins = (destinationsRes?.data?.places || []).filter(
+        const filteredDestinations = places.filter(
+          (place) => place.is_destination === true,
+        );
+
+        const filteredOrigins = places.filter(
           (place) => place.is_destination === true || place.is_origin === true,
         );
 
@@ -499,30 +460,30 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
             "code",
             "name",
           ),
-          statusOptions:
-            statusesRes?.data?.statusOptions ||
-            mapOptions(statusesRes?.data?.statuses || [], "value", "label"),
-          containerStatusOptions:
-            containerStatusesRes?.data?.containerStatusOptions || [],
+          statusOptions: (statuses || [])
+            .filter((s) => s.consignment_status)
+            .sort((a, b) => a.sorting_number - b.sorting_number)
+            .map((s) => ({
+              value: s.consignment_status,
+              label: s.consignment_status,
+            })),
+          containerStatusOptions: (statuses || [])
+            .filter((s) => s.container_status)
+            .sort((a, b) => a.sorting_number - b.sorting_number)
+            .map((s) => ({
+              value: s.container_status,
+              label: s.container_status,
+            })),
         });
 
-        // === Load ETA Offsets from DB ===
-        const offsets =
-          etaConfigRes?.data?.reduce((acc, row) => {
-            acc[row.status] = row.days_offset;
-            return acc;
-          }, {}) || {};
-        console.log("Loaded ETA offsets:", offsets);
+        const offsets = (statuses || []).reduce((acc, row) => {
+          if (row.order_status) acc[row.order_status] = row.days_offset;
+          return acc;
+        }, {});
         setStatusOffsets(offsets);
 
-        // === Set Defaults for Add Mode ===
         if (mode === "add") {
-          const defaultStatus =
-            (statusesRes?.data?.statusOptions || []).find(
-              (opt) => opt.value === "Drafts Cleared",
-            )?.value ||
-            (statusesRes?.data?.statusOptions || [])[0]?.value ||
-            "";
+          const defaultStatus = "Draft";
 
           const defaultPaymentType =
             (paymentTypesRes?.data?.paymentTypes || [])[0]?.value || "";
@@ -574,7 +535,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       // setMode('edit');
       const res = await api.get(`/api/consignments/${id}?autoUpdate=false`);
       const { data } = res.data || {};
-      console.log("Loaded consignment data:", res);
       const mappedData = {
         ...data,
         shipper: data?.shipper_id?.toString() || "",
@@ -600,20 +560,21 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         eform_date: data?.eform_date ? dayjs(data.eform_date) : "",
         eta: data?.eta ? dayjs(data.eta) : "",
         containers: (data?.containers || []).map((c) => ({
-          location: c?.location || "",
-          containerNo: c?.containerNo || "",
-          size: c?.size || "",
-          ownership: c?.ownership || "",
-          containerType: c?.containerType || "",
-          status: c?.status || "Pending",
+          location: c?.location || c?.container_location || "",
+          containerNo: c?.containerNo || c?.container_number || "",
+          size: c?.size || c?.container_size || "",
+          ownership:
+            c?.ownership === "soc"
+              ? "Own"
+              : c?.ownership === "coc"
+                ? "Hired"
+                : c?.ownership || "",
+          containerType: c?.containerType || c?.container_type || "",
+          status: c?.status || c?.current_status || "Pending",
           id: c?.id || c?.cid,
         })),
       };
-      console.log("Mapped data (focus: vessel/payment/status):", {
-        vessel: mappedData.vessel,
-        paymentType: mappedData.paymentType,
-        status: mappedData.status,
-      });
+
       setValues(mappedData);
       if (data?.orders && data.orders.length > 0) {
         setSelectedOrders(data.orders.map((o) => o.id));
@@ -679,7 +640,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
             "";
         }
         hasUpdate = true;
-        console.log("Found shipper match:", selected);
       } else {
         console.warn("No shipper match found for:", values.shipperName);
       }
@@ -705,7 +665,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
             "";
         }
         hasUpdate = true;
-        console.log("Found consignee match:", selected);
       } else {
         console.warn("No consignee match found for:", values.consigneeName);
       }
@@ -719,7 +678,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       if (selected) {
         updates.bank = selected.id.toString();
         hasUpdate = true;
-        console.log("Found bank match:", selected);
       } else {
         console.warn("No bank match found for:", values.bankName);
       }
@@ -735,7 +693,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       if (selected) {
         updates.origin = selected.value;
         hasUpdate = true;
-        console.log("Found origin match:", selected);
       } else {
         console.warn("No origin match found for:", values.originName);
       }
@@ -751,7 +708,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       if (selected) {
         updates.destination = selected.value;
         hasUpdate = true;
-        console.log("Found destination match:", selected);
       } else {
         console.warn("No destination match found for:", values.destinationName);
       }
@@ -759,31 +715,8 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     if (hasUpdate) {
       setValues((prev) => {
         const newValues = { ...prev, ...updates };
-        console.log("Post-lookup values:", {
-          shipper: newValues.shipper,
-          shipperLabel: options.shipperOptions?.find(
-            (opt) => opt.value === newValues.shipper,
-          )?.label,
-          consignee: newValues.consignee,
-          consigneeLabel: options.consigneeOptions?.find(
-            (opt) => opt.value === newValues.consignee,
-          )?.label,
-          bank: newValues.bank,
-          bankLabel: options.bankOptions?.find(
-            (opt) => opt.value === newValues.bank,
-          )?.label,
-          origin: newValues.origin,
-          originLabel: options.originOptions?.find(
-            (opt) => opt.value === newValues.origin,
-          )?.label,
-          destination: newValues.destination,
-          destinationLabel: options.destinationOptions?.find(
-            (opt) => opt.value === newValues.destination,
-          )?.label,
-        });
         return newValues;
       });
-      console.log("Fallback IDs & addresses set:", updates);
     }
   };
   useEffect(() => {
@@ -910,13 +843,11 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     setErrors({});
     setTouched({});
     setSelectedOrders([]);
-    setInitialValues(null); // Reset initial snapshot to avoid false dirty state after reset
+    setInitialValues(null);
   };
 
-  // Added deps if needed
   const isSelected = (id) => (selectedOrders || []).indexOf(id) !== -1;
   const handleOrderToggle = (orderId) => () => {
-    // console.log('toggle order', orderId);
     const currentIndex = (selectedOrders || []).indexOf(orderId);
     const newSelected = [...(selectedOrders || [])];
     if (currentIndex === -1) {
@@ -1011,31 +942,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     setOrderPage(0);
   };
   const numSelected = (orders || []).filter((o) => isSelected(o.id)).length;
-  // const rowCount = (orders || []).length;
-  const getStatusColors = (status) => {
-    console.log("stautssssss", status);
-    // Extend your existing getStatusColors function to handle new statuses
-    const colorMap = {
-      "Ready for Loading": { bg: "#f3e5f5", text: "#7b1fa2" },
-      "Loaded Into Container": { bg: "#e0f2f1", text: "#00695c" },
-      "Shipment Processing": { bg: "#fff3e0", text: "#ef6c00" },
-      "In Transit": { bg: "#e1f5fe", text: "#0277bd" },
-      "Under Processing": { bg: "#fff3e0", text: "#f57c00" },
-      "Arrived at Sort Facility": { bg: "#f1f8e9", text: "#689f38" },
-      "Ready for Delivery": { bg: "#fce4ec", text: "#c2185b" },
-      "Shipment Delivered": { bg: "#e8f5e8", text: "#2e7d32" },
-      Loaded: { bg: "#e8f5e8", text: "#2e7d32" },
-      // 'Shipment Processing': { bg: '#fff3e0', text: '#ef6c00' },
-      "Shipment In Transit": { bg: "#e1f5fe", text: "#0277bd" },
-      "Assigned to Job": { bg: "#fff3e0", text: "#f57c00" },
-      // 'Arrived at Sort Facility': { bg: '#f1f8e9', text: '#689f38' },
-      // 'Ready for Delivery': { bg: '#fce4ec', text: '#c2185b' },
-      // 'Shipment Delivered': { bg: '#e8f5e8', text: '#2e7d32' },
-      // Fallback for unknown
-      default: { bg: "#f5f5f5", text: "#666" },
-    };
-    return colorMap[status] || colorMap.default;
-  };
 
   // Sync missing options for vessel, paymentType, status
   useEffect(() => {
@@ -1050,15 +956,13 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
           const newOpt = { value, label: value };
           updatedOptions[optKey] = [...(updatedOptions[optKey] || []), newOpt];
           hasUpdate = true;
-          console.log(`Appended missing ${optKey}:`, newOpt);
         }
       };
       appendIfMissing("vesselOptions", values.vessel);
       appendIfMissing("paymentTypeOptions", values.paymentType);
-      appendIfMissing("statusOptions", values.status);
+      // statusOptions now comes from AppContext, no need to append
       if (hasUpdate) {
         setOptions(updatedOptions);
-        console.log("Synced options with form values.");
       }
     };
     if (
@@ -1077,23 +981,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     values.status,
     options.vesselOptions?.length,
   ]);
-  // Debug render log
-  useEffect(() => {
-    console.log("Render - Current values for dropdowns:", {
-      shipper: values.shipper,
-      consignee: values.consignee,
-      bank: values.bank,
-      origin: values.origin,
-      destination: values.destination,
-    });
-  }, [
-    values.shipper,
-    values.consignee,
-    values.bank,
-    values.origin,
-    values.destination,
-  ]);
-  // Helper to load images as Base64
 
   const validateField = async (name, value) => {
     try {
@@ -1191,9 +1078,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         // console.warn('No valid numeric container IDs for filtering');
         return [];
       }
-
-      console.log("Filtering orders for container CIDs:", [...selectedCidsSet]);
-      // console.log('Original orders count:', orders);
       return orders
         .map((order) => {
           const filteredReceivers = (order.receivers || [])
@@ -1245,7 +1129,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       }
 
       setOrdersLoading(true);
-      console.log("Fetching orders...", addedContainerIds);
       try {
         // const params = {
         //   page:  1,
@@ -1257,8 +1140,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         //   includeReceivers: true,
         //   includeShippingDetails: true,
         // };
-
-        // console.log('Fetching orders with params:', params);
 
         const response = await api.get("/api/orders/consignmentsOrders", {
           params: {
@@ -1277,7 +1158,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                 }),
           },
         });
-        console.log("Fetched orders response:", response.data);
 
         const fetchedOrders = response.data?.data || [];
         const fetchedTotal = response.data?.pagination?.total || 0;
@@ -1287,8 +1167,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
           fetchedOrders,
           addedContainerIds,
         );
-
-        console.log("After client-side container filtering:", fetchedOrders);
 
         setOrders(fetchedOrders);
         setOrderTotal(fetchedTotal);
@@ -1393,7 +1271,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
   };
 
   const PrettyList = ({ receivers, title }) => {
-    console.log("receiversss", receivers);
     return (
       <Card
         variant="outlined"
@@ -1621,6 +1498,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     const selectedData = (selectedContainers || [])
       .map((id) => (containers || []).find((c) => c.cid === id))
       .filter(Boolean);
+
     if (selectedData.length === 0) {
       setSnackbar({
         open: true,
@@ -1640,7 +1518,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
           : container.owner_type === "coc"
             ? "Hired"
             : container.owner_type,
-      status: container.status || container.derived_status || "Available",
+      status: container.status || container.current_status || "Available",
       id: container.cid,
     }));
     setValues((prev) => ({
@@ -1706,7 +1584,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       .optional(),
   });
   const handleChange = (e) => {
-    console.log("handleee", e);
     const { name, value } = e.target;
     setValues((prev) => ({ ...prev, [name]: value }));
     if (touched[name]) validateField(name, value);
@@ -1833,11 +1710,11 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
 
   const updateArrayField = (arrayName, index, fieldName, value) => {
     const newArray = [...(values[arrayName] || [])];
-    console.log("yyye", newArray);
     newArray[index][fieldName] = value;
     setValues((prev) => ({ ...prev, [arrayName]: newArray }));
     if (touched[arrayName]) validateArray(arrayName);
   };
+
   const validateArray = async (arrayName) => {
     try {
       await validationSchema.fields[arrayName]?.validate(
@@ -1848,6 +1725,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       setErrors((prev) => ({ ...prev, [arrayName]: error.message }));
     }
   };
+
   const markArrayTouched = (arrayName) => {
     if (!touched[arrayName]) {
       setTouched((prev) => ({ ...prev, [arrayName]: true }));
@@ -1856,11 +1734,10 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
   };
 
   const removeContainer = (index) => {
-    const newContainers = (values.containers || []).filter(
-      (_, i) => i !== index,
-    );
-    setValues((prev) => ({ ...prev, containers: newContainers }));
-    markArrayTouched("containers");
+    setValues((prev) => ({
+      ...prev,
+      containers: prev.containers.filter((_, i) => i !== index),
+    }));
   };
 
   const advanceStatus = async () => {
@@ -1870,7 +1747,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         `/api/consignments/${effectiveConsignmentId}/next`,
       );
       const { message } = res.data || {};
-      console.log("Status advanced:", res);
       loadConsignment(effectiveConsignmentId);
       setLoading(false);
 
@@ -1897,31 +1773,49 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     reason = "",
   ) => {
     try {
+      const statusRow = statuses.find(
+        (s) => s.consignment_status === values.status,
+      );
+
+      const days_offset = statusRow?.days_offset || 0;
+
       const res = await api.put(
         `/api/consignments/${effectiveConsignmentId}/status`,
-        { newStatus: values.status, reason },
+        {
+          newStatus: values.status,
+          reason,
+          days_offset,
+        },
       );
+
       const { message } = res.data || {};
-      console.log("Status updated:", res);
-      loadConsignment(effectiveConsignmentId);
-      setLoading(false);
+
+      const newEta = dayjs().add(days_offset, "day");
+
+      setValues((prev) => ({
+        ...prev,
+        eta: dayjs(newEta),
+      }));
+
+      setEta(newEta);
+      setEtaSuggestion(newEta.format("YYYY-MM-DD"));
 
       setSnackbar({
         open: true,
-        message: message || "Status advanced successfully!",
+        message: message || "Status updated successfully!",
         severity: "success",
       });
     } catch (err) {
-      setLoading(false);
+      console.error("Error updating status:", err);
 
-      console.error("Error advancing status:", err);
       setSnackbar({
         open: true,
-        message: "Failed to advance status.",
+        message: "Failed to update status.",
         severity: "error",
       });
     }
   };
+
   useEffect(() => {
     if (orders && orders.length > 0) {
       const allOrderIds = orders.map((order) => order.id);
@@ -2056,29 +1950,21 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
 
         eta: values.eta ? dayjs(values.eta).format("YYYY-MM-DD") : null,
 
-        // ───────────────────────────────────────
-        // NEW: Data from UI / flatShipments
-        // ───────────────────────────────────────
         containers: uniqueContainers,
         orders: uniqueOrderIds,
-        assignments: assignments, // ← very useful if backend supports it
+        assignments: assignments,
         total_assigned_weight: calculatedTotals.totalAssignedWeight || 0,
 
         user_id,
       };
-
-      console.log("Prepared submitData:", JSON.stringify(submitData, null, 2));
-
       return submitData;
     } catch (err) {
-      // Handle Yup validation errors
       if (err.name === "ValidationError") {
         const fieldErrors = {};
         err.inner.forEach((e) => {
           fieldErrors[e.path] = e.message;
         });
         setErrors(fieldErrors);
-        console.log("error fieldsss", fieldErrors);
         setSnackbar({
           open: true,
           message: "Please fix the highlighted fields.",
@@ -2113,7 +1999,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
 
     try {
       const res = await api.post("/api/consignments", submitData);
-      console.log("responsee", res);
+
       const { data: responseData, message } = res.data || {};
 
       setSnackbar({
@@ -2122,9 +2008,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         severity: "success",
       });
 
-      console.log("New Consignment ID:", responseData);
-
-      // Reset or redirect
       navigate("/consignments");
     } catch (err) {
       console.error("[handleCreate] Error:", err);
@@ -2164,7 +2047,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     }
   };
   const handleEditCon = async (e) => {
-    console.log("Editing consignment", e);
     if (e) e.preventDefault();
     if (!values.id) {
       setSnackbar({
@@ -2181,7 +2063,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     submitData.id = values.id;
     try {
       const res = await api.put(`/api/consignments/${values.id}`, submitData);
-      console.log("[handleEdit] Success response:", res.data);
       const { data: responseData, message } = res.data || {};
       setSnackbar({
         open: true,
@@ -2253,25 +2134,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
   };
   const hasErrors = Object.values(errors).some(Boolean);
   if (loading) return <div>Loading...</div>;
-  const statuses = [
-    "Created",
-    "Received for Shipment",
-    "Waiting for Authentication",
-    "Shipper Authentication Confirmed",
-    "Waiting for Consignee Authentication",
-    "Waiting for Shipper Authentication (if applicable)",
-    "Consignee Authentication Confirmed",
-    "In Process",
-    "Ready for Loading",
-    "Loaded into Container",
-    "Departed for Port",
-    "Offloaded at Port",
-    "Clearance Completed",
-    "Containers Returned (Internal only)",
-    "Hold",
-    "Cancelled",
-    "Delivered",
-  ];
+
   const StyledTooltip = styled(Tooltip)(({ theme }) => ({
     [`& .MuiTooltip-tooltip`]: {
       backgroundColor: theme.palette.common.white,
@@ -2357,24 +2220,12 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       img.onerror = () => resolve(null);
     });
 
-  // Assuming getPlaceName is defined elsewhere; if not, define it (e.g., a function mapping IDs to names)
-  const getPlaceNamePdf = (id) => {
-    // Example mapping; replace with actual logic
-    const places = { 2: "Karachi", 5: "Dubai" }; // Add more as needed
-    return places[id] || "N/A";
-  };
-
   const handleFilterText = (e) => {
     const { name, value } = e.target;
-    console.log("Filter change:", name, value);
-
     setFilters((prev) => ({ ...prev, [name]: value }));
-
-    // Very important: reset to first page on every filter change
     setPage(0);
   };
 
-  // 3. Handler for status dropdown (also reset page)
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
     setFilters((prev) => ({ ...prev, [name]: value }));
@@ -2386,9 +2237,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     allReceivers,
     selectedOrderObjects = includedOrders,
   ) => {
-    console.log("Consignment Data:", data);
-    console.log("All Receivers:", allReceivers);
-
     if (!data.consignment_number) {
       setSnackbar({
         open: true,
@@ -2398,9 +2246,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       return;
     }
 
-    // ==============================================
-    // CALCULATE TOTAL BOXES FROM ALL ORDERS
-    // ==============================================
     let total_assign_boxes_all = 0;
 
     allReceivers.forEach((order) => {
@@ -2417,11 +2262,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       });
     });
 
-    console.log(`Total Assign Boxes (All Orders): ${total_assign_boxes_all}`);
-
-    // ==============================================
-    // GET UNIQUE COMMODITIES (CATEGORIES) WITH ACCUMULATED DATA
-    // ==============================================
     const uniqueCommoditiesMap = new Map();
 
     allReceivers.forEach((order) => {
@@ -2436,29 +2276,25 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
               commodity: commodityKey,
               totalBoxes: 0,
               totalWeight: 0,
-              orders: new Set(), // To track unique order IDs
+              orders: new Set(),
             });
           }
 
           const commodityData = uniqueCommoditiesMap.get(commodityKey);
 
-          // Add boxes
           let assignBoxes = 0;
           detail.containerDetails?.forEach((container) => {
             assignBoxes += Number(container.assign_total_box) || 0;
           });
           commodityData.totalBoxes += assignBoxes;
 
-          // Add weight
           commodityData.totalWeight += detail.weight || 0;
 
-          // Add order ID
           commodityData.orders.add(order.id);
         });
       });
     });
 
-    // Convert Map to Array and calculate total orders per commodity
     const uniqueCommodities = Array.from(uniqueCommoditiesMap.values()).map(
       (item) => ({
         commodity: item.commodity,
@@ -2468,26 +2304,17 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       }),
     );
 
-    console.log("Unique Commodities:", uniqueCommodities);
-
-    // ==============================================
-    // PREPARE MANIFEST DATA WITH UNIQUE ENTRIES
-    // ==============================================
     let manifestData = [];
     let serialNo = 1;
-    const processedOrders = new Set(); // To avoid duplicate entries
+    const processedOrders = new Set();
 
     allReceivers.forEach((order) => {
-      // Check if order already processed
       if (processedOrders.has(order.id)) return;
       processedOrders.add(order.id);
-
-      // Get booking ID from order - booking_ref se
       const bookingNumber = order.booking_ref || "N/A";
 
       order.receivers.forEach((receiver) => {
         receiver.shippingdetails?.forEach((detail) => {
-          // Get container number
           let containerNo = "";
           if (detail.containerDetails && detail.containerDetails.length > 0) {
             containerNo =
@@ -2533,7 +2360,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       });
     });
 
-    // Calculate manifest totals
     const manifestTotals = manifestData.reduce(
       (total, item) => {
         total.totalPkgs += item.pkgs;
@@ -2543,12 +2369,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       { totalPkgs: 0, totalWeight: 0 },
     );
 
-    console.log("Manifest Data:", manifestData);
-    console.log("Manifest Totals:", manifestTotals);
-
-    // ==============================================
-    // VESSEL AND CONTAINER INFO
-    // ==============================================
     const getVesselName = (vesselId) => {
       if (!vesselId) return "N/A";
       const vesselOption = options.vesselOptions?.find(
@@ -2575,20 +2395,8 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         ? data.containers[0].containerType
         : "N/A";
 
-    console.log("Container Info:", {
-      containerNo,
-      containerSize,
-      containerType,
-    });
-    console.log(
-      "Booking IDs from orders:",
-      allReceivers.map((order) => order.booking_ref),
-    );
-
-    // Load logo as base64
     const logoBase64 = await loadImageAsBase64(logoPic);
 
-    // Create a temporary div element
     const tempElement = document.createElement("div");
     tempElement.style.width = "210mm";
     tempElement.style.padding = "4mm";
@@ -2775,7 +2583,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
             <div><strong>Comm:</strong> ${uniqueCommodities.length > 0 ? uniqueCommodities.map((c) => c.commodity).join(", ") : "N/A"}</div>
             <div><strong>Origin:</strong> ${data.originName || "N/A"}</div>
             <div>
-                <strong>GROSS Wt:</strong> <span class="underline">${data.gross_weight || "0"} KGS</span><br>
                 <strong>NET Wt:</strong> <span class="underline">${data.net_weight || "0"} KGS</span>
             </div>
 
@@ -2794,7 +2601,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         <div class="summary-bar">
             <div class="summary-box">${containerNo} ${containerSize}${containerType}</div>
             <div class="summary-text">
-                PKGS: ${Number(total_assign_boxes_all).toLocaleString()} &nbsp; GROSS WT: ${data.gross_weight || "0"} KGS &nbsp; NET WT: ${data.net_weight || "0"} KGS
+                PKGS: ${Number(total_assign_boxes_all).toLocaleString()} &nbsp; NET WT: ${data.net_weight || "0"} KGS
             </div>
         </div>
 
@@ -2903,24 +2710,12 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     }
 
     pdf.save(`Manifest_${data.consignment_number}_Detailed_${Date.now()}.pdf`);
-
-    console.log("PDF generation completed successfully!");
-    console.log("Final Summary:", {
-      consignmentNumber: data.consignment_number,
-      totalOrders: allReceivers.length,
-      totalBoxes: total_assign_boxes_all,
-      container: containerNo,
-      vessel: vesselName,
-      uniqueCommodities: uniqueCommodities.length,
-      bookingNumbers: allReceivers.map((order) => order.booking_ref),
-    });
   };
   const generateshipmentsAndOrdersPDFWithCanvas = async (
     data,
     allReceivers,
     selectedOrderObjects = includedOrders,
   ) => {
-    console.log("data for canvas data", data);
     if (!data.consignment_number) {
       setSnackbar({
         open: true,
@@ -2929,14 +2724,8 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       });
       return;
     }
-
-    // DEBUG: Check what data we have
-    console.log("All Receivers:", allReceivers);
-
-    // 1. GROUP BY RECEIVER (NOT CONTAINER)
     const receiverGroups = [];
 
-    // Sab receivers ko collect karo
     if (allReceivers && allReceivers.length > 0) {
       allReceivers.forEach((order) => {
         if (order.receivers && order.receivers.length > 0) {
@@ -2955,9 +2744,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       });
     }
 
-    console.log(`Total Receivers/Drop-offs: ${receiverGroups.length}`);
-
-    // Helper functions
     const formatDateForPDF = (dateStr) => {
       if (!dateStr) return "N/A";
       const date = new Date(dateStr);
@@ -3374,10 +3160,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     allReceivers,
     selectedOrderObjects = includedOrders,
   ) => {
-    console.log("data for canvas data", data);
-    console.log("data for Receiver", allReceivers);
-    console.log("All Data", includedOrders);
-
     if (!data.consignment_number) {
       setSnackbar({
         open: true,
@@ -3411,13 +3193,8 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       });
     });
 
-    console.log(`Total Assign Boxes (All Orders): ${total_assign_boxes_all}`);
-    console.log(`Total Assign Weight (All Orders): ${total_assign_weight_all}`);
-
-    // Load logo as base64
     const logoBase64 = await loadImageAsBase64(logoPic);
 
-    // Create a temporary div element to render content
     const tempElement = document.createElement("div");
     tempElement.style.width = "210mm";
     tempElement.style.padding = "4mm";
@@ -3426,7 +3203,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       '"Helvetica Neue", Helvetica, Arial, sans-serif';
     tempElement.style.boxSizing = "border-box";
 
-    // Commodity-wise data group karein with assign_total_box AND assign_weight
     const commoditySummary = allReceivers.reduce((summary, order) => {
       order.receivers.forEach((receiver) => {
         receiver.shippingdetails?.forEach((detail) => {
@@ -4161,7 +3937,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     allReceivers,
     selectedOrderObjects = includedOrders,
   ) => {
-    console.log("data for canvas data", data);
     if (!data.consignment_number) {
       setSnackbar({
         open: true,
@@ -4171,14 +3946,8 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       return;
     }
 
-    // DEBUG: Check what data we have
-    console.log("All Receivers:", allReceivers);
-    console.log("Data Containers:", data.containers);
-
-    // 1. GROUP ORDERS BY CONTAINER - CORRECT WAY
     const containerOrdersMap = {};
 
-    // Pehle har container ke liye empty array bana lo
     if (data.containers && data.containers.length > 0) {
       data.containers.forEach((container) => {
         containerOrdersMap[container.containerNo] = {
@@ -4199,15 +3968,10 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       };
     }
 
-    // 2. CORRECT METHOD TO ASSIGN ORDERS TO CONTAINERS
-    // Using shippingdetails.containerDetails[0].container.container_number
     if (allReceivers && allReceivers.length > 0) {
-      console.log("Processing", allReceivers.length, "orders");
-
       allReceivers.forEach((order) => {
         let assignedContainerNo = null;
 
-        // Method 1: Check shippingdetails.containerDetails
         if (order.receivers && order.receivers.length > 0) {
           order.receivers.forEach((receiver) => {
             if (
@@ -4252,40 +4016,17 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
           }
         }
 
-        // Assign order to container
         if (assignedContainerNo && containerOrdersMap[assignedContainerNo]) {
           containerOrdersMap[assignedContainerNo].orders.push(order);
-          console.log(
-            `Order ${order.id} assigned to container ${assignedContainerNo}`,
-          );
         } else {
-          // If no container found, put in first container
           const firstKey = Object.keys(containerOrdersMap)[0];
           if (firstKey) {
             containerOrdersMap[firstKey].orders.push(order);
-            console.log(
-              `Order ${order.id} assigned to default container ${firstKey}`,
-            );
           }
         }
       });
     }
 
-    // DEBUG: Check distribution
-    console.log("Container Orders Distribution:");
-    Object.keys(containerOrdersMap).forEach((key) => {
-      console.log(
-        `Container ${key}: ${containerOrdersMap[key].orders.length} orders`,
-      );
-      if (containerOrdersMap[key].orders.length > 0) {
-        console.log(
-          "Order IDs:",
-          containerOrdersMap[key].orders.map((o) => o.id),
-        );
-      }
-    });
-
-    // Helper functions
     const formatDate = (dateStr) => {
       if (!dateStr) return "N/A";
       return new Date(dateStr).toLocaleDateString("en-US", {
@@ -4295,8 +4036,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       });
     };
 
-    // 3. FUNCTION TO CALCULATE STATISTICS FOR A SINGLE CONTAINER
-    // 3. FUNCTION TO CALCULATE STATISTICS FOR A SINGLE CONTAINER
     const calculateContainerStats = (orders) => {
       if (!orders || orders.length === 0) {
         return {
@@ -5002,7 +4741,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       `Manifest_${data.consignment_number}_Containers_${Date.now()}.pdf`,
     );
   };
-  // console.log('Rendering Add/Edit Consignment form in', eta,etaSuggestion);
   return (
     <LocalizationProvider dateAdapter={AdapterDayjs}>
       <Snackbar
@@ -5018,7 +4756,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
           {snackbar.message}
         </Alert>
       </Snackbar>
-      <Box sx={{ p: 3, backgroundColor: "#f5f7fa", minHeight: "100vh" }}>
+      <Box sx={{ backgroundColor: "#f5f7fa", minHeight: "100vh" }}>
         <Slide in timeout={1000}>
           <Card sx={{ boxShadow: 4, borderRadius: 3, overflow: "hidden" }}>
             <form onSubmit={mode === "edit" ? handleEditCon : handleCreate}>
@@ -5127,17 +4865,32 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                           <CustomSelect
                             name="status"
                             value={values.status}
-                            onChange={handleStatusChange} // Now client-side
+                            onChange={handleStatusChange}
                             label="Status"
-                            options={options.statusOptions || []}
-                            // disabled={mode === 'edit'}
+                            options={
+                              mode === "add"
+                                ? [{ value: "Draft", label: "Draft" }]
+                                : values.status &&
+                                    !(options.statusOptions || []).some(
+                                      (o) => o.value === values.status,
+                                    )
+                                  ? [
+                                      {
+                                        value: values.status,
+                                        label: values.status,
+                                      },
+                                      ...(options.statusOptions || []),
+                                    ]
+                                  : options.statusOptions || []
+                            }
+                            disabled={mode === "add"}
                             error={touched.status && Boolean(errors.status)}
                             helperText={
                               touched.status && errors.status
                                 ? errors.status
                                 : ""
                             }
-                            loading={etaLoading} // Brief spinner (optional, since instant)
+                            loading={etaLoading}
                           />
                           {mode === "edit" && (
                             <Box
@@ -5353,7 +5106,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                         <Box sx={{ flex: 1, minWidth: 250 }}>
                           <CustomSelect
                             name="origin"
-                            value={values.origin}
+                            value={values.origin || values.originName}
                             onChange={handleLocationChange} // FIXED: Use custom handler for name population
                             onBlur={() => handleSelectBlur("origin")}
                             label="Origin"
@@ -5371,7 +5124,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                         <Box sx={{ flex: 1, minWidth: 250 }}>
                           <CustomSelect
                             name="destination"
-                            value={values.destination}
+                            value={values.destination || values.destinationName}
                             onChange={handleLocationChange} // FIXED: Use custom handler
                             onBlur={() => handleSelectBlur("destination")}
                             label="Destination"
@@ -5414,10 +5167,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                               // Updated onChange for MUI Select using your custom state (setValues, touched, validateField)
                               onChange={(e) => {
                                 const newValue = e.target.value || "";
-                                console.log(
-                                  "Selected paymentType (enum):",
-                                  newValue,
-                                ); // e.g., 'Collect'
                                 setValues((prev) => ({
                                   ...prev,
                                   paymentType: newValue,
@@ -5543,7 +5292,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                         <Box sx={{ flex: 1, minWidth: 250 }}>
                           <CustomSelect
                             name="vessel"
-                            value={values.vessel ?? ""} // Use ?? to handle null as empty string for display
+                            value={values.vessel ?? ""}
                             onChange={handleChange}
                             onBlur={() => handleSelectBlur("vessel")}
                             label="Vessel"
@@ -5583,7 +5332,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                         </Box>
                       </Box>
                       {/* Counts & Seal Row */}
-                      {/* Counts & Seal Row - UPDATED WITH AUTO WEIGHTS */}
                       <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
                         <Box sx={{ flex: 1, minWidth: 250 }}>
                           <CustomTextField
@@ -5632,40 +5380,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                             }}
                           />
                         </Box>
-
-                        {/* Gross Weight - Auto & Disabled */}
-                        <Box sx={{ flex: 1, minWidth: 300 }}>
-                          <CustomTextField
-                            name="gross_weight"
-                            value={values.gross_weight || 0}
-                            label="Gross Weight"
-                            type="number"
-                            required
-                            disabled
-                            InputProps={{ readOnly: true }}
-                            startAdornment={
-                              <LocalShippingIcon
-                                sx={{ mr: 1, color: "#f58220" }}
-                              />
-                            }
-                            endAdornment={
-                              <Typography
-                                variant="body2"
-                                color="text.secondary"
-                              >
-                                KGS
-                              </Typography>
-                            }
-                            helperText="Net + 15% (packaging estimate)"
-                            sx={{
-                              "& .MuiInputBase-input.Mui-disabled": {
-                                WebkitTextFillColor: "#000000",
-                                color: "#000000",
-                                fontWeight: "bold",
-                              },
-                            }}
-                          />
-                        </Box>
                       </Box>
 
                       {/* Optional: Show summary when orders selected */}
@@ -5679,8 +5393,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                           Based on <strong>{selectedOrders.length}</strong>{" "}
                           selected order(s):{" "}
                           <strong>{calculatedTotals.netWeight} KGS</strong> net
-                          → <strong>{calculatedTotals.grossWeight} KGS</strong>{" "}
-                          gross (estimated)
                         </Alert>
                       )}
                     </Box>
@@ -5888,9 +5600,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                           </TableRow>
                         ) : (
                           (values.containers || []).map((container, index) => {
-                            // Get error for this specific row
-                            // console.log('derived_status', container)
-                            const rowErrors = getContainerError(index);
                             return (
                               <Fade
                                 in
@@ -5906,126 +5615,55 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                                       size="small"
                                       fullWidth
                                       value={container.containerNo || ""}
-                                      onChange={(e) => {
-                                        const newValue = e.target.value;
-                                        updateArrayField(
-                                          "containers",
-                                          index,
-                                          "containerNo",
-                                          newValue,
-                                        );
-                                        // Validate duplicate on change
-                                        if (
-                                          newValue &&
-                                          rowErrors.containerNo?.includes(
-                                            "already exists",
-                                          )
-                                        ) {
-                                          setContainerError(
-                                            `containers[${index}].containerNo`,
-                                            rowErrors.containerNo,
-                                          );
-                                        } else {
-                                          setContainerError(
-                                            `containers[${index}].containerNo`,
-                                            "",
-                                          );
-                                        }
-                                      }}
-                                      onBlur={() => {
-                                        markArrayTouched("containers");
-                                        // Re-validate on blur
-                                        const updatedErrors =
-                                          getContainerError(index);
-                                        setContainerError(
-                                          `containers[${index}].containerNo`,
-                                          updatedErrors.containerNo || "",
-                                        );
-                                      }}
-                                      error={Boolean(rowErrors.containerNo)}
-                                      helperText={rowErrors.containerNo}
+                                      disabled
                                     />
                                   </TableCell>
+
                                   <TableCell>
                                     <TextField
                                       size="small"
                                       fullWidth
                                       value={container.location || ""}
-                                      onChange={(e) =>
-                                        updateArrayField(
-                                          "containers",
-                                          index,
-                                          "location",
-                                          e.target.value,
-                                        )
-                                      }
+                                      disabled
                                     />
                                   </TableCell>
+
                                   <TableCell>
                                     <TextField
                                       size="small"
                                       fullWidth
                                       value={container.size || ""}
-                                      onChange={(e) =>
-                                        updateArrayField(
-                                          "containers",
-                                          index,
-                                          "size",
-                                          e.target.value,
-                                        )
-                                      }
-                                      onBlur={() =>
-                                        markArrayTouched("containers")
-                                      }
-                                      error={Boolean(rowErrors.size)}
-                                      helperText={rowErrors.size}
+                                      disabled
                                     />
                                   </TableCell>
+
                                   <TableCell>
                                     <TextField
                                       size="small"
                                       fullWidth
                                       value={container.containerType || ""}
-                                      onChange={(e) =>
-                                        updateArrayField(
-                                          "containers",
-                                          index,
-                                          "containerType",
-                                          e.target.value,
-                                        )
-                                      }
+                                      disabled
                                     />
                                   </TableCell>
+
                                   <TableCell>
                                     <TextField
                                       size="small"
                                       fullWidth
                                       value={container.ownership || ""}
-                                      onChange={(e) =>
-                                        updateArrayField(
-                                          "containers",
-                                          index,
-                                          "ownership",
-                                          e.target.value,
-                                        )
-                                      }
+                                      disabled
                                     />
                                   </TableCell>
+
                                   <TableCell>
                                     <TextField
                                       size="small"
                                       fullWidth
                                       value={container.status || "Available"}
-                                      onChange={(e) =>
-                                        updateArrayField(
-                                          "containers",
-                                          index,
-                                          "status",
-                                          e.target.value,
-                                        )
-                                      }
+                                      disabled
                                     />
                                   </TableCell>
+
                                   <TableCell>
                                     <IconButton
                                       onClick={() => removeContainer(index)}

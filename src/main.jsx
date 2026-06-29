@@ -42,6 +42,9 @@ import PermissionEditor from "./pages/Admin/PermissionEditor";
 import Unauthorized from "./pages/Unauthorized";
 import NotificationSettings from "./pages/SystemData/NotificationSetting";
 import ContainerReleases from "./pages/Containers/ContainerReleases";
+import { AppProvider } from "./context/AppContext";
+import StatusesPage from "./pages/SystemData/NewEtaSetup";
+import BugReportPage from "./pages/SystemData/BugReport";
 
 // ────────────────────────────────────────────────────────────────
 // Router Configuration
@@ -249,7 +252,8 @@ const router = createBrowserRouter([
           { path: "banks", element: <Banks /> },
           { path: "third-parties", element: <ThirdParties /> },
           { path: "barcode-print", element: <BarcodePrintTest /> },
-          { path: "eta-setup", element: <EtaSetupPage /> },
+          { path: "eta-setup", element: <StatusesPage /> },
+          { path: "bug-report", element: <BugReportPage /> },
         ],
       },
 
@@ -269,9 +273,11 @@ const router = createBrowserRouter([
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <AuthProvider>
-      <ThemeProvider>
-        <RouterProvider router={router} />
-      </ThemeProvider>
+      <AppProvider>
+        <ThemeProvider>
+          <RouterProvider router={router} />
+        </ThemeProvider>
+      </AppProvider>
     </AuthProvider>
   </React.StrictMode>,
 );

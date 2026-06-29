@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useContext } from "react";
 import {
   Box,
   Paper,
@@ -31,7 +31,6 @@ import {
 } from "@mui/material";
 import Dialog from "@mui/material/Dialog";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
-// import { Delete } from "@mui/icons-material";
 import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogActions from "@mui/material/DialogActions";
@@ -40,26 +39,15 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import DownloadIcon from "@mui/icons-material/Download";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
-import CopyIcon from "@mui/icons-material/ContentCopy"; // For duplicate button
+import CopyIcon from "@mui/icons-material/ContentCopy";
 import { useNavigate, useLocation } from "react-router-dom";
 import { api } from "../../api";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import html2canvas from "html2canvas";
 import logoPic from "../../../public/logo-2.png";
+import { AppContext } from "../../context/AppContext";
 
-const statuses = [
-  "Ready for Loading",
-  "Loaded Into container",
-  "Shipment Processing",
-  "Shipment In Transit",
-  "Under Processing",
-  "Arrived at Sort Facility",
-  "Ready for Delivery",
-  "Shipment Delivered",
-];
-
-// Custom TextField with error support
 const CustomTextField = ({ disabled, ...props }) => (
   <TextField
     {...props}
@@ -158,35 +146,80 @@ const CustomSelect = ({
   </FormControl>
 );
 const OrderForm = () => {
+  const { places, customers, statuses: rawStatuses } = useContext(AppContext);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewSrc, setPreviewSrc] = useState("");
   const location = useLocation();
   const navigate = useNavigate();
   const [expanded, setExpanded] = useState(new Set(["panel1"]));
-  const [containers, setContainers] = useState([]); // For selectedContainers multi-select
+  const [containers, setContainers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadingContainers, setLoadingContainers] = useState(false);
   const [categories, setCategories] = useState([]);
   const [categorySubMap, setCategorySubMap] = useState({});
   const [types, setTypes] = useState([]);
-  // const [statuses, setStatuses] = useState([]);
-  const [places, setPlaces] = useState([]);
+  const [filterPlaces, setFilterPlaces] = useState([]);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [previewSd, setPreviewSd] = useState({});
   const [companies, setCompanies] = useState([]);
   const orderId = location.state?.orderId;
   const [isEditMode, setIsEditMode] = useState(!!orderId);
   const containerOptions = location.state?.containers || [];
-  // const getStatusColors = location.state?.getStatusColors || (() => ({}));
-  // const ownerName = location.state?.ownerName || '';
-  // console.log('Order ID from state:', orderId);
-  // Snackbar state for error/success messages
+
+  const [searchTerm, setSearchTerm] = useState("");
+  const [searchTerm3, setSearchTerm3] = useState("");
+
+  const options2 = useMemo(() => {
+    if (!searchTerm) return customers;
+    const lower = searchTerm.toLowerCase();
+    return customers.filter(
+      (c) =>
+        (c.contact_name || "").toLowerCase().includes(lower) ||
+        (c.email || "").toLowerCase().includes(lower) ||
+        (c.primary_phone || "").toLowerCase().includes(lower),
+    );
+  }, [customers, searchTerm]);
+
+  const options3 = useMemo(() => {
+    if (!searchTerm3) return customers;
+    const lower = searchTerm3.toLowerCase();
+    return customers.filter(
+      (c) =>
+        (c.contact_name || "").toLowerCase().includes(lower) ||
+        (c.email || "").toLowerCase().includes(lower) ||
+        (c.primary_phone || "").toLowerCase().includes(lower),
+    );
+  }, [customers, searchTerm3]);
+
+  const statuses = useMemo(
+    () => [...rawStatuses].sort((a, b) => a.sorting_number - b.sorting_number),
+    [rawStatuses],
+  );
+
+  const firstStatus = [...statuses].sort(
+    (a, b) => a.sorting_number - b.sorting_number,
+  )[0];
+
+  useEffect(() => {
+    if (!isEditMode && firstStatus?.days_offset != null) {
+      const eta = new Date();
+      eta.setDate(eta.getDate() + firstStatus.days_offset);
+      const etaStr = eta.toISOString().split("T")[0];
+
+      setFormData((prev) => ({
+        ...prev,
+        receivers: prev.receivers.map((rec) => ({ ...rec, eta: etaStr })),
+        senders: prev.senders.map((s) => ({ ...s, eta: etaStr })),
+      }));
+    }
+  }, [firstStatus?.id]);
+
   const [snackbar, setSnackbar] = useState({
     open: false,
     message: "",
     severity: "info",
   });
-  // Validation errors state
+
   const [errors, setErrors] = useState({});
   const initialShippingDetail = {
     pickupLocation: "",
@@ -197,7 +230,7 @@ const OrderForm = () => {
     totalNumber: "",
     weight: "",
     remainingItems: "",
-    status: "Order Created",
+    status: firstStatus?.order_status,
   };
   const initialSenderObject = {
     senderName: "",
@@ -230,7 +263,6 @@ const OrderForm = () => {
   };
 
   const [formData, setFormData] = useState({
-    // Core orders fields
     bookingRef: "",
     rglBookingNumber: "",
     placeOfLoading: "",
@@ -239,7 +271,6 @@ const OrderForm = () => {
     placeOfDelivery: "",
     orderRemarks: "",
     attachments: [],
-    // Owner fields (both sender and receiver)
     senderName: "",
     senderContact: "",
     senderAddress: "",
@@ -252,9 +283,7 @@ const OrderForm = () => {
     receiverEmail: "",
     receiverRef: "",
     receiverRemarks: "",
-    // Senders array
     senders: [],
-    // Receivers array with nested shippingDetails
     receivers: [
       {
         receiverName: "",
@@ -272,10 +301,8 @@ const OrderForm = () => {
         isNew: false,
       },
     ],
-    // Computed globals
     globalTotalItems: 0,
     globalRemainingItems: 0,
-    // Transport fields
     transportType: "",
     thirdPartyTransport: "",
     driverName: "",
@@ -291,8 +318,8 @@ const OrderForm = () => {
     dropDate: "",
     collectionMethod: "",
     collection_scope: "Partial",
-    fullPartial: "", // Deprecated
-    qtyDelivered: "", // Deprecated
+    fullPartial: "",
+    qtyDelivered: "",
     clientReceiverName: "",
     clientReceiverId: "",
     clientReceiverMobile: "",
@@ -300,12 +327,10 @@ const OrderForm = () => {
     gatepass: [],
     senderType: "sender",
     selectedSenderOwner: "",
-    // New fields for receiver-specific drop-off
     selectedReceiver: "",
-    dropOffDetails: {}, // Object: { [receiverIndex]: [{dropMethod: "...", ...}, ...] }
+    dropOffDetails: {},
   });
 
-  // Editable fields in edit mode
   const editableInEdit = [
     "transportType",
     "dropMethod",
@@ -327,15 +352,39 @@ const OrderForm = () => {
     "driverNic",
     "driverPickupLocation",
     "truckNumber",
-    // Per-receiver partials and shipping
     "receivers[].fullPartial",
     "receivers[].qtyDelivered",
     "receivers[].shippingDetails[].totalNumber",
     "senders[].fullPartial",
     "senders[].qtyDelivered",
     "senders[].shippingDetails[].totalNumber",
+    "orderRemarks",
+    "receivers[].receiverName",
+    "receivers[].receiverContact",
+    "receivers[].receiverAddress",
+    "receivers[].receiverEmail",
+    "receivers[].remarks",
+    "receivers[].eta",
+    "receivers[].etd",
+    "receivers[].shippingLine",
+    "receivers[].shippingDetails[].pickupLocation",
+    "receivers[].shippingDetails[].category",
+    "receivers[].shippingDetails[].subcategory",
+    "receivers[].shippingDetails[].type",
+    "receivers[].shippingDetails[].weight",
+    "receivers[].shippingDetails[].deliveryAddress",
+    "receivers[].shippingDetails[].status",
+    "receivers[].receiverMarksNumber",
+    "senders[].senderMarksNumber",
+    "senders[].senderName",
+    "senders[].senderContact",
+    "senders[].senderAddress",
+    "senders[].senderEmail",
+    "senders[].remarks",
+    "senders[].eta",
+    "senders[].etd",
   ];
-  // Required fields validation
+
   const requiredFields = [
     "rglBookingNumber",
     "pointOfOrigin",
@@ -344,100 +393,41 @@ const OrderForm = () => {
     "placeOfDelivery",
   ];
 
-  const [options2, setOptions2] = useState([]);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [options3, setOptions3] = useState([]);
-  const [searchTerm3, setSearchTerm3] = useState("");
-
-  // Fetch customers on mount or search change
-  useEffect(() => {
-    const fetchCustomers = async () => {
-      // setLoading(true);
-      try {
-        const params = new URLSearchParams({
-          search: searchTerm3 ? searchTerm3 : "All",
-          limit: 5000,
-        });
-        const response = await api.get(`/api/customers?${params}`); // Adjust endpoint as needed
-        //   const data = await response.json();
-        setOptions3(response.data);
-      } catch (error) {
-        console.error("Error fetching customers:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (searchTerm3.length >= 2 || options3.length === 0) {
-      // Debounce: search after 2 chars or initial load
-      fetchCustomers();
-    }
-  }, [searchTerm3]);
-
-  // Fetch customers on mount or search change
-  useEffect(() => {
-    const fetchCustomers = async () => {
-      // setLoading(true);
-      try {
-        const params = new URLSearchParams({
-          search: searchTerm ? searchTerm : "All",
-          limit: 5000,
-        });
-        const response = await api.get(`/api/customers?${params}`); // Adjust endpoint as needed
-        console.log("Fetched customers for options2:", response.data);
-        setOptions2(response.data);
-      } catch (err) {
-        console.error("Error fetching customers:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (searchTerm.length >= 2 || options2.length === 0) {
-      // Debounce: search after 2 chars or initial load
-      fetchCustomers();
-    }
-  }, [searchTerm]);
-
   const typePrefix = formData.senderType === "receiver" ? "Receiver" : "Sender";
   const fieldPrefix = formData.senderType === "sender" ? "sender" : "receiver";
 
-  const handleSelectOwner = async (event, value) => {
-    console.log("Selected customer value:", value);
-    //   const fetchCustomer = async () => {
-    try {
-      const res = await api.get(`/api/customers/${value.zoho_id || value.id}`);
-      console.log("Customer data:", res);
+  const handleSelectOwner = (event, value) => {
+    const lookupId = value?.zoho_id || value?.id;
+    const c = lookupId
+      ? customers.find(
+          (cust) => cust.zoho_id === lookupId || cust.id === lookupId,
+        )
+      : null;
 
-      if (res && res.data.contact_persons) {
-        const c = res.data;
-        setFormData((prev) => ({
-          ...prev,
-          //   [`${fieldPrefix}Name`]: res.data.name || '',
-          [`${fieldPrefix}Contact`]:
-            c.contact_persons[0].phone || c.contact || "", // Assume primary_phone or fallback
-          [`${fieldPrefix}Address`]:
-            c.contact_persons[0].name || c.billing_address || "",
-          [`${fieldPrefix}Email`]: c.email || "",
-          [`${fieldPrefix}Ref`]: c.zoho_id || "", // Or custom ref field
-          [`${fieldPrefix}Remarks`]: c.zoho_notes || c.system_notes || "",
-          selectedSenderOwner: c.zoho_id || c.id, // Use unique ID
-        }));
-      } else {
-        // Clear on deselect
-        setFormData((prev) => ({
-          ...prev,
-          //   [`${fieldPrefix}Name`]: '',
-          [`${fieldPrefix}Contact`]: "",
-          [`${fieldPrefix}Address`]: "",
-          [`${fieldPrefix}Email`]: "",
-          [`${fieldPrefix}Ref`]: "",
-          [`${fieldPrefix}Remarks`]: "",
-          selectedSenderOwner: "",
-        }));
-      }
-    } catch (error) {
-      console.error("Error fetching customer details:", error);
+    if (c) {
+      setFormData((prev) => ({
+        ...prev,
+        [`${fieldPrefix}Name`]: c.contact_name || "",
+        [`${fieldPrefix}Contact`]: c.contact || "",
+        [`${fieldPrefix}Address`]: c.address || c.zoho_notes || "",
+        [`${fieldPrefix}Email`]: c.email || "",
+        [`${fieldPrefix}Ref`]: c.zoho_id || "",
+        [`${fieldPrefix}Remarks`]: c.system_notes || c.zoho_notes || "",
+        selectedSenderOwner: c.zoho_id || c.id,
+      }));
+
+      const ownerId = c.zoho_id || c.id;
+    } else {
+      setFormData((prev) => ({
+        ...prev,
+        [`${fieldPrefix}Name`]: "",
+        [`${fieldPrefix}Contact`]: "",
+        [`${fieldPrefix}Address`]: "",
+        [`${fieldPrefix}Email`]: "",
+        [`${fieldPrefix}Ref`]: "",
+        [`${fieldPrefix}Remarks`]: "",
+        selectedSenderOwner: "",
+      }));
     }
   };
 
@@ -650,7 +640,6 @@ const OrderForm = () => {
       ) {
         newErrors.selectedReceiver = "Invalid receiver selection";
       } else {
-        // Validate dropOffDetails for the selected receiver
         const selectedIdx = formData.selectedReceiver;
         const receiverDropOffs = formData.dropOffDetails?.[selectedIdx] || [];
         if (receiverDropOffs.length === 0) {
@@ -688,60 +677,46 @@ const OrderForm = () => {
         }
       }
     }
-    // Dynamic validation for panel2
+
     const isSenderMode = formData.senderType === "receiver";
     const items = isSenderMode ? formData.senders : formData.receivers;
     const itemsKey = isSenderMode ? "senders" : "receivers";
     const itemPrefix = isSenderMode ? "Sender" : "Receiver";
-    // Transport validations
+
     if (!formData.transportType) {
       newErrors.transportType = "Transport Type is required";
     }
+
     if (formData.transportType === "Drop Off" && !formData.dropMethod?.trim()) {
       newErrors.dropMethod = "Drop Method is required";
     }
-    // All other transport fields are optional - no additional validations
-    // Email and mobile validations
+
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     const ownerEmailKey =
       formData.senderType === "sender" ? "senderEmail" : "receiverEmail";
+
     if (formData[ownerEmailKey] && !emailRegex.test(formData[ownerEmailKey])) {
       newErrors[ownerEmailKey] = "Invalid owner email format";
     }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
-  // Fetch options on mount (replaces dummies)
+
   const fetchOptions = async () => {
     try {
       setLoading(true);
-      const [
-        placesRes,
-        companiesRes,
-        categoriesRes,
-        subcategoriesRes,
-        statusesRes,
-      ] = await Promise.all([
-        api.get("api/options/places/crud"),
-        api.get("api/options/thirdParty/crud"),
-        api.get("api/options/categories/crud"), // Assumed endpoint; adjust if different
-        api.get("api/options/subcategories/crud"), // For subcategories
-        api.get("api/options/statuses"),
-      ]);
-      // Places: assume data.places = [{id, name, is_destination, ...}]
-      console.log(
-        "optionssss",
-        placesRes,
-        companiesRes,
-        categoriesRes,
-        subcategoriesRes,
-        statusesRes,
+      const [companiesRes, categoriesRes, subcategoriesRes] = await Promise.all(
+        [
+          api.get("api/options/thirdParty/crud"),
+          api.get("api/options/categories/crud"),
+          api.get("api/options/subcategories/crud"),
+        ],
       );
-      const allPlaces = placesRes?.data?.places || [];
-      setPlaces(
-        allPlaces.map((p) => ({ value: p.id.toString(), label: p.name })),
+
+      setFilterPlaces(
+        places.map((p) => ({ value: p.id.toString(), label: p.name })),
       );
-      // Companies: third_parties for transport (filter if needed, e.g., type === 'transport')
       const thirdParties = companiesRes?.data?.third_parties || [];
       setCompanies(
         thirdParties.map((c) => ({
@@ -749,29 +724,17 @@ const OrderForm = () => {
           label: c.company_name,
         })),
       );
-      // Categories: assume data.categories = [{id, name}]
       const fetchedCategories = categoriesRes?.data?.categories || [];
       setCategories(fetchedCategories.map((c) => c.name));
-      console.log("Fetched Categories:", fetchedCategories);
-      // Subcategories: assume data.subcategories = [{id, name, category_id}]
       const fetchedSubcategories = subcategoriesRes?.data?.subcategories || [];
-      console.log("Fetched Subcategories:", fetchedSubcategories);
-      // Build subMap by grouping subcategories by category_id
       const subMap = {};
       fetchedCategories.forEach((cat) => {
-        console.log("Processing category:", cat);
         subMap[cat.name] = fetchedSubcategories
           .filter((s) => s.category_id === cat.id)
           .map((s) => s.name);
-        console.log(`Subcats for ${cat.name}:`, subMap[cat.name]);
       });
       setCategorySubMap(subMap);
       setTypes(["Package", "Box", "Bags"]);
-      // Types: assuming a separate endpoint is needed; for now, use fallback or adjust
-      // If types are from another endpoint, replace with api.get('api/options/types/crud')
-      // setTypes([]); // Or fetch properly
-      // Statuses: use statusOptions or statuses
-      // setStatuses(statusesRes?.data?.statusOptions || statusesRes?.data?.statuses || []);
     } catch (error) {
       console.error("Error fetching options:", error);
       setSnackbar({
@@ -791,11 +754,6 @@ const OrderForm = () => {
       });
       setTypes(["Package", "Box", "Bags"]);
       setStatuses(["Created", "In Transit", "Delivered", "Cancelled"]);
-      setPlaces([
-        { value: "", label: "Select Place" },
-        { value: "Singapore", label: "Singapore" },
-        { value: "Dubai", label: "Dubai" },
-      ]); // Minimal fallback
       setCompanies([
         { value: "", label: "Select 3rd party company" },
         { value: "Company A", label: "Company A" },
@@ -912,8 +870,6 @@ const OrderForm = () => {
 
       if (!response.data) throw new Error("Invalid response data");
 
-      console.log("[fetchOrder] Raw response received");
-
       // The actual response is FLAT (as per your example)
       const orderData = response.data; // ← No .order wrapper in GET
 
@@ -975,6 +931,12 @@ const OrderForm = () => {
       camelData.collectionMethod = orderData.collection_method || "";
       camelData.deliveryDate = camelData.deliveryDate || "";
       camelData.plateNo = orderData.plate_no || "";
+
+      camelData.placeOfLoading = orderData.place_of_loading?.toString() || "";
+      camelData.placeOfDelivery = orderData.place_of_delivery?.toString() || "";
+      camelData.pointOfOrigin = orderData.point_of_origin?.toString() || "";
+      camelData.finalDestination =
+        orderData.final_destination?.toString() || "";
 
       // Owner fields (sender or receiver)
       const ownerPrefix =
@@ -1109,16 +1071,6 @@ const OrderForm = () => {
           Object.keys(dropOffDetailsObj)[0];
       }
 
-      // ── Final Set ─────────────────────────────────────────────────
-      console.log(
-        "[fetchOrder] Final formData ready. Receivers count:",
-        mappedReceivers.length,
-      );
-      console.log(
-        "[fetchOrder] dropOffDetails keys:",
-        Object.keys(camelData.dropOffDetails || {}),
-      );
-
       setFormData(camelData);
     } catch (err) {
       console.error("[fetchOrder] Error:", err);
@@ -1220,7 +1172,6 @@ const OrderForm = () => {
     }));
   };
   const removeReceiver = async (order) => {
-    console.log("Removing receiver:", order, "from order:", orderId);
     try {
       const response = await api.delete(
         `/api/orders/${orderId}/receivers/${order.id}`,
@@ -1531,13 +1482,13 @@ const OrderForm = () => {
   const getPlaceName = (placeId) => {
     if (!placeId) return "N/A";
     const idStr = placeId.toString();
-    const place = places.find((p) => p.value === idStr || p.id === placeId);
+    const place = filterPlaces.find(
+      (p) => p.value === idStr || p.id === placeId,
+    );
     return place ? place.label : `ID: ${placeId}`;
   };
   const generateReceiptPDF = async (order) => {
-    console.log("orders pdf ", order);
     if (!order) return;
-    console.log("Generating PDF for order:", order);
 
     try {
       // Check libraries
@@ -1592,8 +1543,6 @@ const OrderForm = () => {
       // Save PDF
       const fileName = `Receipt_${order.booking_ref || order.id || "order"}_${new Date().toLocaleDateString("en-GB").replace(/\//g, "-")}.pdf`;
       pdf.save(fileName);
-
-      console.log("Receipt PDF generated successfully");
     } catch (error) {
       console.error("Error generating PDF:", error);
       throw error;
@@ -2065,9 +2014,21 @@ const OrderForm = () => {
       if (field === "category" && value !== oldSd.category) {
         updatedSd.subcategory = "";
       }
+      let updatedReceivers = prev.receivers;
+      if (field === "status") {
+        const matched = rawStatuses.find((s) => s.order_status === value);
+        if (matched?.days_offset != null) {
+          const eta = new Date();
+          eta.setDate(eta.getDate() + matched.days_offset);
+          const etaStr = eta.toISOString().split("T")[0];
+          updatedReceivers = prev.receivers.map((r, i) =>
+            i === index ? { ...r, eta: etaStr } : r,
+          );
+        }
+      }
       return {
         ...prev,
-        receivers: prev.receivers.map((r, i) =>
+        receivers: updatedReceivers.map((r, i) =>
           i === index
             ? {
                 ...r,
@@ -2349,38 +2310,12 @@ const OrderForm = () => {
     return isValid;
   };
 
-  // Add this useEffect to auto-select "Drop Off" as default for transportType (place it near other useEffects, e.g., after form initialization)
   useEffect(() => {
     if (!isEditMode && !formData.transportType) {
       setFormData((prev) => ({ ...prev, transportType: "Drop Off" }));
     }
   }, [isEditMode]);
 
-  const getStatusColors = (status) => {
-    // Extend your existing getStatusColors function to handle new statuses
-    const colorMap = {
-      "Ready for Loading": { bg: "#f3e5f5", text: "#7b1fa2" },
-      "Loaded Into Container": { bg: "#e0f2f1", text: "#00695c" },
-      "Shipment Processing": { bg: "#fff3e0", text: "#ef6c00" },
-      "In Transit": { bg: "#e1f5fe", text: "#0277bd" },
-      "Under Processing": { bg: "#fff3e0", text: "#f57c00" },
-      "Arrived at Sort Facility": { bg: "#f1f8e9", text: "#689f38" },
-      "Ready for Delivery": { bg: "#fce4ec", text: "#c2185b" },
-      "Shipment Delivered": { bg: "#e8f5e8", text: "#2e7d32" },
-      Loaded: { bg: "#e8f5e8", text: "#2e7d32" },
-      "Shipment Processing": { bg: "#fff3e0", text: "#ef6c00" },
-      "Shipment In Transit": { bg: "#e1f5fe", text: "#0277bd" },
-      "Assigned to Job": { bg: "#fff3e0", text: "#f57c00" },
-      "Arrived at Sort Facility": { bg: "#f1f8e9", text: "#689f38" },
-      "Ready for Delivery": { bg: "#fce4ec", text: "#c2185b" },
-      "Shipment Delivered": { bg: "#e8f5e8", text: "#2e7d32" },
-      // Fallback for unknown
-      default: { bg: "#f5f5f5", text: "#666" },
-    };
-    return colorMap[status] || colorMap.default;
-  };
-
-  // Sender handlers (similar)
   const addSender = useCallback(() => {
     setFormData((prev) => ({
       ...prev,
@@ -2439,9 +2374,8 @@ const OrderForm = () => {
   const handleSenderShippingChange = useCallback(
     (index, j, field) => (event) => {
       const value = event.target.value;
-      setFormData((prev) => ({
-        ...prev,
-        senders: prev.senders.map((item, i) =>
+      setFormData((prev) => {
+        let updatedSenders = prev.senders.map((item, i) =>
           i === index
             ? {
                 ...item,
@@ -2450,14 +2384,26 @@ const OrderForm = () => {
                 ),
               }
             : item,
-        ),
-      }));
+        );
+        if (field === "status") {
+          const matched = rawStatuses.find((s) => s.order_status === value);
+          if (matched?.days_offset != null) {
+            const eta = new Date();
+            eta.setDate(eta.getDate() + matched.days_offset);
+            const etaStr = eta.toISOString().split("T")[0];
+            updatedSenders = updatedSenders.map((r, i) =>
+              i === index ? { ...r, eta: etaStr } : r,
+            );
+          }
+        }
+        return { ...prev, senders: updatedSenders };
+      });
       const errorKey = `senders[${index}].shippingDetails[${j}].${field}`;
       if (errors[errorKey]) {
         setErrors((prev) => ({ ...prev, [errorKey]: "" }));
       }
     },
-    [errors],
+    [errors, rawStatuses],
   );
   const handleSenderPartialChange = useCallback(
     (index, field) => (event) => {
@@ -2558,7 +2504,6 @@ const OrderForm = () => {
   };
 
   const handleSave = async () => {
-    console.log("Submitting form data...");
     setLoading(true);
 
     const formDataToSend = new FormData();
@@ -2639,7 +2584,7 @@ const OrderForm = () => {
       shipping_line: item.shippingLine || "",
       full_partial: item.fullPartial || "Full",
       qty_delivered: item.qtyDelivered || "",
-      status: item.status || "Order Created",
+      status: item.status || firstStatus?.order_status,
       remarks: item.remarks || "",
       containers: Array.isArray(item.containers) ? item.containers.flat() : [],
     }));
@@ -2716,11 +2661,6 @@ const OrderForm = () => {
         const entries = formData.dropOffDetails[receiverIndex];
         if (Array.isArray(entries) && entries.length > 0) {
           entries.forEach((detail) => {
-            console.log(
-              "Processing drop-off detail for receiver index",
-              receiverIndex,
-              detail,
-            );
             flattenedDropOffDetails.push({
               receiver_index: receiverIndex,
               drop_method: detail.dropMethod || null,
@@ -2762,24 +2702,16 @@ const OrderForm = () => {
       }
     });
 
-    // ── 8. Final Submit ──────────────────────────────────────────
     try {
       const endpoint = isEditMode ? `/api/orders/${orderId}` : "/api/orders";
       const method = isEditMode ? "put" : "post";
-
-      console.log(
-        "Sending FormData with keys:",
-        Array.from(formDataToSend.keys()),
-      );
 
       const response = await api[method](endpoint, formDataToSend, {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
-      console.log("Save response:", response.data);
-
       if (isEditMode) {
-        await fetchOrder(orderId); // Refresh data after update
+        await fetchOrder(orderId);
       } else {
         navigate("/orders");
       }
@@ -2880,13 +2812,13 @@ const OrderForm = () => {
             alignItems="center"
             mb={3}
             className="MuiStack-root css-twoet5"
-            sx={{
-              position: "sticky",
-              zIndex: 9999,
-              top: 63,
-              background: "white",
-              p: 2,
-            }}
+            // sx={{
+            //   position: "sticky",
+            //   zIndex: 9999,
+            //   top: 63,
+            //   background: "white",
+            //   p: 2,
+            // }}
           >
             <Typography variant="h4" fontWeight="bold" color="#f58220">
               {isEditMode ? "Edit" : "New"} Order Details
@@ -2973,17 +2905,18 @@ const OrderForm = () => {
                 name="pointOfOrigin"
                 value={
                   formData.pointOfOrigin ||
-                  places.find((p) => p.label === "Karachi")?.value ||
+                  filterPlaces.find((p) => p.label === "Karachi")?.value ||
                   ""
                 }
                 onChange={handleChange}
                 error={!!errors.pointOfOrigin}
                 required
                 renderValue={(selected) =>
-                  places.find((p) => p.value === selected)?.label || "Karachi"
+                  filterPlaces.find((p) => p.value === selected)?.label ||
+                  "Karachi"
                 }
               >
-                {places.map((p) => (
+                {filterPlaces.map((p) => (
                   <MenuItem key={p.value} value={p.value}>
                     {p.label}
                   </MenuItem>
@@ -2997,11 +2930,11 @@ const OrderForm = () => {
                 error={!!errors.placeOfLoading}
                 required
                 renderValue={(selected) =>
-                  places.find((p) => p.value === selected)?.label ||
+                  filterPlaces.find((p) => p.value === selected)?.label ||
                   "Select Place of Loading"
                 }
               >
-                {places.map((p) => (
+                {filterPlaces.map((p) => (
                   <MenuItem key={p.value} value={p.value}>
                     {p.label}
                   </MenuItem>
@@ -3024,11 +2957,11 @@ const OrderForm = () => {
                 error={!!errors.placeOfDelivery}
                 required
                 renderValue={(selected) =>
-                  places.find((p) => p.value === selected)?.label ||
+                  filterPlaces.find((p) => p.value === selected)?.label ||
                   "Select Place of Delivery"
                 }
               >
-                {places.map((p) => (
+                {filterPlaces.map((p) => (
                   <MenuItem key={p.value} value={p.value}>
                     {p.label}
                   </MenuItem>
@@ -3039,17 +2972,18 @@ const OrderForm = () => {
                 name="finalDestination"
                 value={
                   formData.finalDestination ||
-                  places.find((p) => p.label === "Dubai")?.value ||
+                  filterPlaces.find((p) => p.label === "Dubai")?.value ||
                   ""
                 }
                 onChange={handleChange}
                 error={!!errors.finalDestination}
                 required
                 renderValue={(selected) =>
-                  places.find((p) => p.value === selected)?.label || "Dubai"
+                  filterPlaces.find((p) => p.value === selected)?.label ||
+                  "Dubai"
                 }
               >
-                {places.map((p) => (
+                {filterPlaces.map((p) => (
                   <MenuItem key={p.value} value={p.value}>
                     {p.label}
                   </MenuItem>
@@ -3155,56 +3089,31 @@ const OrderForm = () => {
                       }
                     };
 
-                    const handleSelectOwner = async (event, value) => {
+                    const handleSelectOwner = (event, value) => {
                       if (value && typeof value !== "string") {
-                        try {
-                          const res = await api.get(
-                            `/api/customers/${value.zoho_id || value.id}`,
-                          );
-
-                          if (res && res.data) {
-                            const fieldMap = {
-                              [ownerNameKey]:
-                                res.data.contact_name ||
-                                res.data.contact_persons[0].name ||
-                                "",
-                              [ownerContactKey]:
-                                res.data.primary_phone ||
-                                res.data.contact_persons[0].phone ||
-                                "",
-                              [ownerAddressKey]:
-                                res.data.zoho_notes ||
-                                res.data.billing_address ||
-                                "",
-                              [ownerEmailKey]:
-                                res.data.email ||
-                                res.data.contact_persons[0].email ||
-                                "",
-                              [ownerRefKey]:
-                                res.data.zoho_id || res.data.ref || "",
-                              [ownerRemarksKey]:
-                                res.data.zoho_notes ||
-                                res.data.system_notes ||
-                                "",
-                            };
-                            Object.entries(fieldMap).forEach(
-                              ([formKey, dbValue]) => {
-                                handleChange({
-                                  target: { name: formKey, value: dbValue },
-                                });
-                              },
-                            );
-                            // Set unique ID for reference
+                        const fieldMap = {
+                          [ownerNameKey]: value.contact_name || "",
+                          [ownerContactKey]: value.phone_number || "",
+                          [ownerAddressKey]: value.address || "",
+                          [ownerEmailKey]: value.email || "",
+                          [ownerRefKey]: value.zoho_id || "",
+                          [ownerRemarksKey]:
+                            value.system_notes || value.zoho_notes || "",
+                        };
+                        Object.entries(fieldMap).forEach(
+                          ([formKey, dbValue]) => {
                             handleChange({
-                              target: {
-                                name: "selectedSenderOwner",
-                                value: res.data.zoho_id || res.data.id,
-                              },
+                              target: { name: formKey, value: dbValue },
                             });
-                          }
-                        } catch (error) {
-                          console.error("Error fetching owner details:", error);
-                        }
+                          },
+                        );
+                        const ownerId = value.zoho_id || value.id;
+                        handleChange({
+                          target: {
+                            name: "selectedSenderOwner",
+                            value: ownerId,
+                          },
+                        });
                       }
                     };
 
@@ -3256,6 +3165,7 @@ const OrderForm = () => {
                               alignItems: "stretch",
                             }}
                           >
+                            {/* ── Panel 1 owner autocomplete (uses options2 from context) ── */}
                             <Autocomplete
                               options={options2}
                               loading={loading}
@@ -3289,14 +3199,12 @@ const OrderForm = () => {
                                   error={
                                     !!errors[ownerNameKey] ||
                                     !!errors.selectedSenderOwner
-                                  } // Add name-specific error
+                                  }
                                   helperText={
                                     errors[ownerNameKey] ||
                                     errors.selectedSenderOwner ||
                                     (loading ? "Loading..." : "")
                                   }
-                                  // required (if needed)
-
                                   disabled={isFieldDisabled(
                                     "selectedSenderOwner",
                                   )}
@@ -3587,8 +3495,6 @@ const OrderForm = () => {
                       }));
                     };
                     // 1. handleSenderContainerDetailChange
-                    // Parameters: index (receiver/sender index i), shippingIndex (j), containerIndex (k), field ('assignTotalBox', 'assignWeight', 'container', 'status')
-                    // Returns: a function that takes event or value and updates the state
                     const handleSenderContainerDetailChange =
                       (index, shippingIndex, containerIndex, field) =>
                       (eventOrValue) => {
@@ -3600,11 +3506,9 @@ const OrderForm = () => {
                           field,
                           value,
                           true,
-                        ); // true for sender
+                        );
                       };
                     // 2. handleReceiverContainerDetailChange
-                    // Parameters: index (receiver/sender index i), shippingIndex (j), containerIndex (k), field ('assignTotalBox', 'assignWeight', 'container', 'status')
-                    // Returns: a function that takes event or value and updates the state
                     const handleReceiverContainerDetailChange =
                       (index, shippingIndex, containerIndex, field) =>
                       (eventOrValue) => {
@@ -3616,18 +3520,10 @@ const OrderForm = () => {
                           field,
                           value,
                           false,
-                        ); // false for receiver
+                        );
                       };
                     // 3. addSenderContainerDetail
-                    // Parameters: index (i), shippingIndex (j)
-                    // Adds a new empty container detail to the specified shippingDetails in senders
                     const addSenderContainerDetail = (index, shippingIndex) => {
-                      console.log(
-                        "Adding sender container detail for sender index:",
-                        index,
-                        "shipping index:",
-                        shippingIndex,
-                      );
                       setFormData((prev) => ({
                         ...prev,
                         senders: prev.senders.map((sender, ii) => {
@@ -3656,18 +3552,10 @@ const OrderForm = () => {
                       }));
                     };
                     // 4. addReceiverContainerDetail
-                    // Parameters: index (i), shippingIndex (j)
-                    // Adds a new empty container detail to the specified shippingDetails in receivers
                     const addReceiverContainerDetail = (
                       index,
                       shippingIndex,
                     ) => {
-                      console.log(
-                        "Adding receiver container detail for receiver index:",
-                        index,
-                        "shipping index:",
-                        shippingIndex,
-                      );
                       setFormData((prev) => ({
                         ...prev,
                         receivers: prev.receivers.map((receiver, ii) => {
@@ -3763,8 +3651,6 @@ const OrderForm = () => {
                       }
                     };
                     // 5. removeSenderContainerDetail
-                    // Parameters: index (i), shippingIndex (j), containerIndex (k)
-                    // Removes the container detail at the specified indices from senders
                     const removeSenderContainerDetail = async (
                       index,
                       shippingIndex,
@@ -3817,8 +3703,6 @@ const OrderForm = () => {
                       }
                     };
                     // 6. removeReceiverContainerDetail
-                    // Parameters: index (i), shippingIndex (j), containerIndex (k)
-                    // Removes the container detail at the specified indices from receivers
                     const removeReceiverContainerDetail = async (
                       index,
                       shippingIndex,
@@ -3870,9 +3754,7 @@ const OrderForm = () => {
                         });
                       }
                     };
-                    // 7. duplicateSenderContainerDetail (optional, for completeness)
-                    // Parameters: index (i), shippingIndex (j), containerIndex (k)
-                    // Duplicates the container detail at the specified indices in senders
+                    // 7. duplicateSenderContainerDetail
                     const duplicateSenderContainerDetail = (
                       index,
                       shippingIndex,
@@ -3906,9 +3788,7 @@ const OrderForm = () => {
                         }),
                       }));
                     };
-                    // 8. duplicateReceiverContainerDetail (optional, for completeness)
-                    // Parameters: index (i), shippingIndex (j), containerIndex (k)
-                    // Duplicates the container detail at the specified indices in receivers
+                    // 8. duplicateReceiverContainerDetail
                     const duplicateReceiverContainerDetail = (
                       index,
                       shippingIndex,
@@ -3942,20 +3822,7 @@ const OrderForm = () => {
                         }),
                       }));
                     };
-                    // Valid shipment statuses (from backend validation)
-                    const validShipmentStatuses = [
-                      "Order Created",
-                      "Ready for Loading",
-                      "Loaded Into Container",
-                      "Shipment Processing",
-                      "Shipment In Transit",
-                      "Under Processing",
-                      "Arrived at Sort Facility",
-                      "Ready for Delivery",
-                      "Shipment Delivered",
-                    ];
-                    // Assume containerOptions is fetched elsewhere (e.g., useEffect with api.get('/api/containers/available'))
-                    // Example: const [containerOptions, setContainerOptions] = useState([]); // [{cid: 1, container_number: 'CONT001', location: 'Depot'}, ...]
+
                     const renderRecForm = (rec, i) => {
                       const recErrorsPrefix = isSenderMode
                         ? `senders[${i}]`
@@ -3972,33 +3839,16 @@ const OrderForm = () => {
                         weight: "",
                         totalNumber: "",
                         deliveryAddress: "",
-                        status: "", // NEW: Add status to emptySd
-                        containerDetails: [], // FIXED: Empty array, no initial blank
+                        status: "",
+                        containerDetails: [],
                         itemRef: `ORDER-ITEM-REF-${i + 1}-${Date.now()}`,
                       };
-                      // NEW: Unified add shipping with values for preview
                       const addShippingWithValues = (
                         recIndex,
                         sdFields,
                         containerFields = null,
                       ) => {
-                        console.log(
-                          "Adding shipping detail with values for",
-                          isSenderMode ? "sender" : "receiver",
-                          "index:",
-                          recIndex,
-                          "sdFields:",
-                          sdFields,
-                          "containerFields:",
-                          containerFields,
-                        );
                         const key = listKey;
-                        console.log(
-                          "Current formData for",
-                          key,
-                          ":",
-                          formData[key],
-                        );
                         setFormData((prev) => ({
                           ...prev,
                           [key]: prev[key].map((item, ii) => {
@@ -4028,22 +3878,14 @@ const OrderForm = () => {
                       };
 
                       const handlePreviewChange = (e) => {
-                        console.log("value:", e.target.value);
                         setPreviewSd(e.target.value);
-                        // addShippingWithValues(i, previewSd);
                       };
-
-                      //   const handleAdd = () => {
-                      //     addShippingWithValues(i, previewSd); // Now add with all filled values
-                      //   };
 
                       const handleEmptySdChange = (field, value) => {
                         const sdFields = { [field]: value };
                         let containerFields = null;
-                        // FIXED: Removed auto-fill for totalNumber and weight
                         addShippingWithValues(i, sdFields, containerFields);
                       };
-                      // NEW: Handler for shipping change with auto container fill
                       const handleShippingChangeWithAutoFill =
                         (recIndex, shipIndex, field) => (e) => {
                           if (field !== "totalNumber" && field !== "weight") {
@@ -4056,7 +3898,6 @@ const OrderForm = () => {
                           }
                           const value = e.target.value;
                           const key = listKey;
-                          // FIXED: Removed auto-fill for containerField
                           setFormData((prev) => ({
                             ...prev,
                             [key]: prev[key].map((item, ii) => {
@@ -4076,7 +3917,6 @@ const OrderForm = () => {
                             }),
                           }));
                         };
-                      // NEW: Handlers for container details
                       const addContainerDetail = (shippingIndex) => {
                         const addFn = isSenderMode
                           ? addSenderContainerDetail
@@ -4117,7 +3957,6 @@ const OrderForm = () => {
                       const nameField = isSenderMode
                         ? "senderName"
                         : "receiverName";
-                      // FIXED: Compute global selected container CIDs with null check
                       const getCid = (cont) =>
                         cont
                           ? typeof cont === "object"
@@ -4131,11 +3970,9 @@ const OrderForm = () => {
                             .filter(Boolean),
                         ),
                       );
-                      // FIXED: availableContainers now computed per shipping (but will be overridden per CD below for display)
                       const availableContainersBase = containers.filter(
                         (c) => !globalSelectedCids.includes(c.cid),
                       );
-                      // FIXED: Equality function for Autocomplete (handles both object and primitive value)
                       const autocompleteEquality = (option, value) => {
                         const valueCid = value
                           ? typeof value === "object"
@@ -4183,99 +4020,76 @@ const OrderForm = () => {
                           )({ target: { value: "" } });
                         }
                       };
-                      const handleSelect = async (event, value) => {
+                      const handleSelect = (event, value) => {
                         if (value && typeof value !== "string") {
-                          try {
-                            const res = await api.get(
-                              `/api/customers/${value.zoho_id || value.id}`,
-                            );
-                            if (res && res.data) {
-                              const fieldMap = isSenderMode
-                                ? {
-                                    senderName:
-                                      res.data.contact_name ||
-                                      res.data.contact_persons[0].name ||
-                                      "",
-                                    senderContact:
-                                      res.data.primary_phone ||
-                                      res.data.contact_persons[0].phone ||
-                                      "",
-                                    senderAddress:
-                                      res.data.zoho_notes ||
-                                      res.data.billing_address ||
-                                      "",
-                                    senderEmail: res.data.email || "",
-                                    senderRef:
-                                      res.data.zoho_id || res.data.ref || "",
-                                    senderRemarks:
-                                      res.data.zoho_notes ||
-                                      res.data.system_notes ||
-                                      "",
-                                  }
-                                : {
-                                    receiverName:
-                                      res.data.contact_name ||
-                                      res.data.contact_persons[0].name ||
-                                      "",
-                                    receiverContact:
-                                      res.data.primary_phone ||
-                                      res.data.contact_persons[0].phone ||
-                                      "",
-                                    receiverAddress:
-                                      res.data.zoho_notes ||
-                                      res.data.contact_persons[0].name ||
-                                      "",
-                                    receiverEmail:
-                                      res.data.email ||
-                                      res.data.contact_persons[0].email ||
-                                      "",
-                                    receiverRef:
-                                      res.data.zoho_id || res.data.ref || "",
-                                    receiverRemarks:
-                                      res.data.zoho_notes ||
-                                      res.data.system_notes ||
-                                      "",
-                                  };
-                              Object.entries(fieldMap).forEach(
-                                ([formKey, dbValue]) => {
-                                  const updateFn = handleChangeFn(i, formKey);
-                                  updateFn({ target: { value: dbValue } });
-                                },
-                              );
+                          const fieldMap = isSenderMode
+                            ? {
+                                senderName: value.contact_name || "",
+                                senderContact: value.contact || "",
+                                senderAddress:
+                                  value.address || value.zoho_notes || "",
+                                senderEmail: value.email || "",
+                                senderRef: value.zoho_id || value.ref || "",
+                                senderRemarks:
+                                  value.system_notes || value.zoho_notes || "",
+                              }
+                            : {
+                                receiverName: value.contact_name || "",
+                                receiverContact: value.contact || "",
+                                receiverAddress:
+                                  value.address || value.zoho_notes || "",
+                                receiverEmail: value.email || "",
+                                receiverRef: value.zoho_id || value.ref || "",
+                                receiverRemarks:
+                                  value.system_notes || value.zoho_notes || "",
+                              };
+                          Object.entries(fieldMap).forEach(
+                            ([formKey, dbValue]) => {
                               handleChangeFn(
                                 i,
-                                "selectedSenderOwner",
-                              )({
-                                target: {
-                                  value: res.data.zoho_id || res.data.id,
-                                },
-                              });
-                            }
-                          } catch (error) {
-                            console.error(
-                              "Error fetching customer details:",
-                              error,
-                            );
-                          }
+                                formKey,
+                              )({ target: { value: dbValue } });
+                            },
+                          );
+                          const ownerId = value.zoho_id || value.id;
+                          handleChangeFn(
+                            i,
+                            "selectedSenderOwner",
+                          )({
+                            target: { value: ownerId },
+                          });
+
+                          const contactField = isSenderMode
+                            ? "senderContact"
+                            : "receiverContact";
+                          const refField = isSenderMode
+                            ? "senderRef"
+                            : "receiverRef";
                         }
                       };
-                      // Helper to calculate sum of assignTotalBox for a shipping detail
                       const calculateSumAssignTotalBox = (sd) => {
                         return (sd.containerDetails || []).reduce(
                           (sum, cd) =>
-                            sum + (parseInt(cd.assignTotalBox || 0) || 0),
+                            sum +
+                            Number(
+                              cd.assign_total_box ??
+                                cd.assignTotalBox ??
+                                cd.total_number ??
+                                cd.totalNumber ??
+                                0,
+                            ),
                           0,
                         );
                       };
-                      // Helper to calculate sum of assignWeight for a shipping detail
+
                       const calculateSumAssignWeight = (sd) => {
                         return (sd.containerDetails || []).reduce(
                           (sum, cd) =>
-                            sum + (parseFloat(cd.assignWeight || 0) || 0),
+                            sum +
+                            Number(cd.assign_weight ?? cd.assignWeight ?? 0),
                           0,
                         );
                       };
-                      // Helper to render empty container detail row for a specific shipping (always show one row)
                       const renderEmptyContainerDetail = (shippingIndex) => {
                         const emptyCd = {
                           assignTotalBox: "",
@@ -4283,7 +4097,6 @@ const OrderForm = () => {
                           container: null,
                           status: "",
                         };
-                        // FIXED: Compute displayValue for preview consistency (handles object or primitive)
                         const currentContainerPreview = emptyCd.container;
                         const currentCidPreview =
                           typeof currentContainerPreview === "object"
@@ -4341,7 +4154,6 @@ const OrderForm = () => {
                                 </IconButton>
                               </Stack>
                             </Stack>
-                            {/* NEW: Split into two rows for better layout with four fields */}
                             <Stack spacing={1.5}>
                               <Box
                                 sx={{
@@ -4454,8 +4266,8 @@ const OrderForm = () => {
                                 >
                                   <MenuItem value="">Select Status</MenuItem>
                                   {statuses.map((s) => (
-                                    <MenuItem key={s} value={s}>
-                                      {s}
+                                    <MenuItem key={s.id} value={s.order_status}>
+                                      {s.order_status}
                                     </MenuItem>
                                   ))}
                                 </CustomSelect>
@@ -4756,7 +4568,6 @@ const OrderForm = () => {
                                     )}
                                   />
                                 </Box>
-                                {/* NEW: Status field for shipping detail under Total Number */}
                                 <Box
                                   sx={{
                                     display: "flex",
@@ -4793,8 +4604,11 @@ const OrderForm = () => {
                                   >
                                     <MenuItem value="">Select Status</MenuItem>
                                     {statuses.map((s) => (
-                                      <MenuItem key={s} value={s}>
-                                        {s}
+                                      <MenuItem
+                                        key={s.id}
+                                        value={s.order_status}
+                                      >
+                                        {s.order_status}
                                       </MenuItem>
                                     ))}
                                   </CustomSelect>
@@ -4837,7 +4651,6 @@ const OrderForm = () => {
                                     disabled={true}
                                   />
                                 </Box>
-                                {/* FIXED: Add button for container instead of section */}
                                 <Typography
                                   variant="body2"
                                   color="primary"
@@ -4851,9 +4664,6 @@ const OrderForm = () => {
                             </Box>
                           ) : (
                             (rec.shippingDetails || []).map((sd, j) => {
-                              console.log("statussssss", j);
-                              // FIXED: No per-SD available; compute per-CD below
-                              // NEW: Always render at least one empty container row if none exist
                               const hasContainers =
                                 (sd.containerDetails || []).length > 0;
                               return (
@@ -5112,7 +4922,6 @@ const OrderForm = () => {
                                         }
                                       />
                                     </Box>
-                                    {/* NEW: Status field for shipping detail under Total Number - FIXED: Use 'status' consistently */}
                                     <Box
                                       sx={{
                                         display: "flex",
@@ -5126,7 +4935,7 @@ const OrderForm = () => {
                                     >
                                       <CustomSelect
                                         label="Shippment Status"
-                                        value={rec.status || ""}
+                                        value={sd.status || ""}
                                         onChange={(e) =>
                                           handleShippingChangeFn(
                                             i,
@@ -5147,13 +4956,17 @@ const OrderForm = () => {
                                         renderValue={(selected) =>
                                           selected || "Select Status"
                                         }
+                                        disabled={isEditMode}
                                       >
                                         <MenuItem value="">
                                           Select Status
                                         </MenuItem>
                                         {statuses.map((s) => (
-                                          <MenuItem key={s} value={s}>
-                                            {s}
+                                          <MenuItem
+                                            key={s.id}
+                                            value={s.order_status}
+                                          >
+                                            {s.order_status}
                                           </MenuItem>
                                         ))}
                                       </CustomSelect>
@@ -5223,7 +5036,6 @@ const OrderForm = () => {
                                           </Typography>
                                           {(sd.containerDetails || []).map(
                                             (cd, k) => {
-                                              // FIXED: Per-CD availability (exclude others, include current for display); handles object or primitive
                                               const currentContainer =
                                                 cd.container;
                                               const currentCid =
@@ -5280,7 +5092,6 @@ const OrderForm = () => {
                                                       Container {k + 1}
                                                     </Typography>
                                                   </Stack>
-                                                  {/* NEW: Split into two rows for better layout */}
                                                   <Stack spacing={1.5}>
                                                     <Box
                                                       sx={{
@@ -5293,7 +5104,6 @@ const OrderForm = () => {
                                                         alignItems: "stretch",
                                                       }}
                                                     >
-                                                      {/* FIXED: Changed label and field to assignTotalBox */}
                                                       <CustomTextField
                                                         label="Assign Total Box"
                                                         value={
@@ -5325,7 +5135,6 @@ const OrderForm = () => {
                                                         }}
                                                         disabled={true}
                                                       />
-                                                      {/* NEW: Assign Weight Field */}
                                                       <CustomTextField
                                                         label="Assign Weight"
                                                         value={
@@ -5368,9 +5177,7 @@ const OrderForm = () => {
                                                         alignItems: "stretch",
                                                       }}
                                                     >
-                                                      {/* FIXED: Proper Autocomplete for Container; now sets full object */}
                                                       <Autocomplete
-                                                        // FIXED: Use per-CD options and displayValue; updated equality; set full object
                                                         options={
                                                           availableContainersForCd
                                                         }
@@ -5379,7 +5186,6 @@ const OrderForm = () => {
                                                           e,
                                                           newValue,
                                                         ) => {
-                                                          // FIXED: Set to full object or null on clear
                                                           handleContainerDetailChange(
                                                             j,
                                                             k,
@@ -5410,7 +5216,6 @@ const OrderForm = () => {
                                                           },
                                                         }}
                                                         disabled
-                                                        // fullWidth
                                                       />
                                                       <CustomSelect
                                                         label="Status"
@@ -5451,10 +5256,12 @@ const OrderForm = () => {
                                                         </MenuItem>
                                                         {statuses.map((s) => (
                                                           <MenuItem
-                                                            key={s}
-                                                            value={s}
+                                                            key={s.id}
+                                                            value={
+                                                              s.order_status
+                                                            }
                                                           >
-                                                            {s}
+                                                            {s.order_status}
                                                           </MenuItem>
                                                         ))}
                                                       </CustomSelect>
@@ -5464,17 +5271,6 @@ const OrderForm = () => {
                                               );
                                             },
                                           )}
-                                          {/* <Button
-                                            variant="outlined"
-                                            startIcon={<AddIcon />}
-                                            onClick={() =>
-                                              addContainerDetail(j)
-                                            }
-                                            size="small"
-                                          >
-                                            Add Container
-                                          </Button> */}
-                                          {/* NEW: Total Assign Summary Row (always appears, uses current sd for sum) */}
                                           <Box
                                             sx={{
                                               p: 1,
@@ -5588,6 +5384,7 @@ const OrderForm = () => {
                               alignItems: "stretch",
                             }}
                           >
+                            {/* ── Panel 2 receiver/sender autocomplete (uses options3 from context) ── */}
                             <Autocomplete
                               options={options3}
                               loading={loading}
@@ -5846,7 +5643,6 @@ const OrderForm = () => {
                       shippingDetails: [],
                     };
                     if (currentList.length === 0) {
-                      // Render empty receiver/sender form
                       const emptyI = 0;
                       return renderRecForm(emptyRec, emptyI);
                     } else {
@@ -5944,7 +5740,7 @@ const OrderForm = () => {
                               selectedReceiverForDropOff: idx,
                               dropOffDetails: {
                                 ...prev.dropOffDetails,
-                                [idx]: prev.dropOffDetails?.[idx] || [{}], // Ensure at least one empty entry
+                                [idx]: prev.dropOffDetails?.[idx] || [{}],
                               },
                             }));
                           }}
@@ -6323,8 +6119,9 @@ const OrderForm = () => {
                       Point of Origin:
                     </Typography>
                     <Typography variant="body1">
-                      {places.find((p) => p.value === formData.pointOfOrigin)
-                        ?.label || "-"}
+                      {filterPlaces.find(
+                        (p) => p.value === formData.pointOfOrigin,
+                      )?.label || "-"}
                     </Typography>
                   </Stack>
                   <Stack
@@ -6336,8 +6133,9 @@ const OrderForm = () => {
                       Place of Loading:
                     </Typography>
                     <Typography variant="body1">
-                      {places.find((p) => p.value === formData.placeOfLoading)
-                        ?.label || "-"}
+                      {filterPlaces.find(
+                        (p) => p.value === formData.placeOfLoading,
+                      )?.label || "-"}
                     </Typography>
                   </Stack>
                   <Stack
@@ -6349,8 +6147,9 @@ const OrderForm = () => {
                       Final Destination:
                     </Typography>
                     <Typography variant="body1">
-                      {places.find((p) => p.value === formData.finalDestination)
-                        ?.label || "-"}
+                      {filterPlaces.find(
+                        (p) => p.value === formData.finalDestination,
+                      )?.label || "-"}
                     </Typography>
                   </Stack>
                   <Stack
@@ -6405,42 +6204,31 @@ const OrderForm = () => {
                   </Stack>
                   {formData.receivers.some(
                     (rec) => rec.containers && rec.containers.length > 0,
-                  ) &&
-                    (console.log(
-                      "Rendering Assigned Containers section",
-                      formData.receivers,
-                    ),
-                    (
-                      <Stack spacing={1}>
-                        <Typography variant="body1" fontWeight="medium">
-                          Assigned Containers:
-                        </Typography>
-                        {formData.receivers
-                          ?.flatMap((rec) => rec.containers || [])
-                          .map((cont, i) => (
-                            <Stack
-                              direction="row"
-                              justifyContent="space-between"
-                              alignItems="center"
-                              key={i}
-                            >
-                              <Chip
-                                sx={{ p: 2 }}
-                                label={cont}
-                                color="info"
-                                size="small"
-                                variant="outlined"
-                              />
-                            </Stack>
-                          ))}
-                        {console.log(
-                          "Assigned Containers Data:",
-                          formData.receivers?.flatMap(
-                            (rec) => rec.containers || [],
-                          ),
-                        )}
-                      </Stack>
-                    ))}
+                  ) && (
+                    <Stack spacing={1}>
+                      <Typography variant="body1" fontWeight="medium">
+                        Assigned Containers:
+                      </Typography>
+                      {formData.receivers
+                        ?.flatMap((rec) => rec.containers || [])
+                        .map((cont, i) => (
+                          <Stack
+                            direction="row"
+                            justifyContent="space-between"
+                            alignItems="center"
+                            key={i}
+                          >
+                            <Chip
+                              sx={{ p: 2 }}
+                              label={cont}
+                              color="info"
+                              size="small"
+                              variant="outlined"
+                            />
+                          </Stack>
+                        ))}
+                    </Stack>
+                  )}
                   {/* New: Global Totals */}
                   <Divider />
                   <Stack
@@ -6461,12 +6249,6 @@ const OrderForm = () => {
                       color="success"
                     />
                   </Stack>
-                  {/* {formData.globalRemainingItems < formData.globalTotalItems && (
-                                        <Stack direction="row" justifyContent="space-between" alignItems="center">
-                                            <Typography variant="body1" fontWeight="medium">Remaining Items (Partials):</Typography>
-                                            <Chip label={formData.globalRemainingItems} variant="filled" color="warning" />
-                                        </Stack>
-                                    )} */}
                   <Stack
                     direction="row"
                     justifyContent="space-between"
@@ -6558,41 +6340,33 @@ const OrderForm = () => {
                         gap={1}
                       >
                         {formData.attachments.map((attachment, i) => {
-                          // ────────────────────────────────────────────────────────────────
-                          // Determine display label & preview source
-                          // ────────────────────────────────────────────────────────────────
                           let label = "File";
                           let previewSrc;
 
                           if (typeof attachment === "string") {
-                            // Legacy string path (old local uploads)
                             label = attachment.split("/").pop() || "File";
                             previewSrc = attachment.startsWith("http")
                               ? attachment
                               : `${import.meta.env.VITE_API_URL || ""}${attachment}`;
                           } else if (attachment?.url) {
-                            // Cloudinary / uploaded attachment object ← this is your current format
                             label =
                               attachment.originalname ||
                               attachment.filename ||
                               "File";
-                            previewSrc = attachment.url; // ← use this directly
+                            previewSrc = attachment.url;
                           } else if (
                             attachment instanceof File ||
                             attachment?.previewUrl
                           ) {
-                            // Local file preview (before upload) – only in this case use createObjectURL
                             previewSrc =
                               attachment.previewUrl ||
                               URL.createObjectURL(attachment);
                             label = attachment.name || "File";
                           } else {
-                            // Fallback for unknown format
                             label = "Unknown";
                             previewSrc = null;
                           }
 
-                          // Determine if it's likely an image for chip icon
                           const isImage =
                             previewSrc?.match(/\.(jpg|jpeg|png|gif|webp)$/i) ||
                             attachment?.mimetype?.startsWith("image/");
@@ -6604,7 +6378,6 @@ const OrderForm = () => {
                               color="secondary"
                               size="small"
                               variant="outlined"
-                              //   icon={isImage ? <ImageIcon fontSize="small" /> : <AttachFileIcon fontSize="small" />}
                               onClick={() => {
                                 if (previewSrc) {
                                   setPreviewSrc(previewSrc);
@@ -6617,12 +6390,10 @@ const OrderForm = () => {
                                 }
                               }}
                               onDelete={() => {
-                                // Only revoke if it's a local blob preview URL
                                 if (attachment.previewUrl) {
                                   URL.revokeObjectURL(attachment.previewUrl);
                                 }
 
-                                // Remove from state
                                 const newAttachments =
                                   formData.attachments.filter(
                                     (_, index) => index !== i,
@@ -6713,7 +6484,6 @@ const OrderForm = () => {
           }}
         >
           {previewSrc ? (
-            // ── Image preview ────────────────────────────────────────
             previewSrc.match(/\.(jpg|jpeg|png|gif|webp)$/i) ||
             previewSrc.includes("image/upload") ? (
               <img
@@ -6727,9 +6497,8 @@ const OrderForm = () => {
                   boxShadow: "0 8px 32px rgba(0,0,0,0.15)",
                   background: "#f8f9fa",
                 }}
-                onLoad={() => console.log("Image preview loaded:", previewSrc)}
                 onError={(e) => {
-                  e.target.src = "/fallback-image.png"; // or some placeholder
+                  e.target.src = "/fallback-image.png";
                   e.target.style.objectFit = "contain";
                   setSnackbar({
                     open: true,
@@ -6738,8 +6507,7 @@ const OrderForm = () => {
                   });
                 }}
               />
-            ) : // ── PDF preview with iframe ──────────────────────────────
-            previewSrc.toLowerCase().endsWith(".pdf") ||
+            ) : previewSrc.toLowerCase().endsWith(".pdf") ||
               previewSrc.includes("application/pdf") ? (
               <Box
                 sx={{
@@ -6767,7 +6535,6 @@ const OrderForm = () => {
                 />
               </Box>
             ) : (
-              // ── Other file types (fallback) ──────────────────────────
               <Box
                 sx={{
                   textAlign: "center",

@@ -55,12 +55,11 @@ import { Link as RouterLink } from "react-router-dom";
 import { useThemeContext } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
 import AdminResetPasswordDialog from "./ForgetPassword";
+import { BugIcon } from "lucide-react";
 
-// Constants
 const expandedWidth = 260;
 const collapsedWidth = 80;
-const layoutHeight = "95vh"; // 90% of viewport height
-const layoutWidth = "83vw"; // 90% of viewport width (desktop)
+const layoutHeight = "95vh";
 
 export default function DashboardLayout() {
   const location = useLocation();
@@ -91,7 +90,6 @@ export default function DashboardLayout() {
     navigate("/login");
   };
 
-  // Navigation items (unchanged)
   const navItems = [
     {
       label: "Dashboard",
@@ -200,6 +198,12 @@ export default function DashboardLayout() {
       module: "third-parties",
     },
     {
+      text: "Bug Report",
+      icon: <BugIcon />,
+      path: "/admin/bug-report",
+      module: "bug-report",
+    },
+    {
       text: "Barcode Print",
       icon: <PrintIcon />,
       path: "/admin/barcode-print",
@@ -207,165 +211,191 @@ export default function DashboardLayout() {
     },
   ].filter((item) => !item.module || can(item.module, "view"));
 
+  const drawerWidth = collapsed ? 80 : 260;
   const drawerContent = (
     <Box
       sx={{
+        height: "100%",
         display: "flex",
         flexDirection: "column",
-        height: "100%",
-        width: "100%",
       }}
     >
-      {/* Logo / Header */}
       <Toolbar
         sx={{
-          minHeight: 22,
-          justifyContent: collapsed ? "center" : "flex-start",
+          minHeight: 72,
           px: collapsed ? 0 : 2,
+          justifyContent: collapsed ? "center" : "flex-start",
         }}
       >
         <Box
           component="img"
           src={mode === "dark" ? "/logo-dark.png" : "/logo.png"}
-          alt="Logo"
+          alt="logo"
           sx={{
-            height: 50,
-            width: collapsed ? 50 : 180,
+            width: collapsed ? 48 : 180,
+            height: 48,
             objectFit: "contain",
+            transition: "all .3s ease",
           }}
         />
       </Toolbar>
 
       <Divider />
 
-      {/* Navigation */}
-      <List sx={{ flexGrow: 1, py: 1, px: collapsed ? 0 : 1 }}>
-        {navItems.map((item) => (
-          <Tooltip
-            key={item.path}
-            title={collapsed ? item.label : ""}
-            placement="right"
-            arrow
-          >
-            <ListItemButton
-              component={RouterLink}
-              to={item.path}
-              selected={location.pathname === item.path}
-              sx={{
-                justifyContent: collapsed ? "center" : "flex-start",
-                borderRadius: 2,
-                my: 0.5,
-                minHeight: 48,
-                "&.Mui-selected": {
-                  backgroundColor: "#f58220",
-                  color: "white",
-                },
-                "&:hover": {
-                  backgroundColor: mode === "dark" ? "#334155" : "#f0f9ff",
-                  color: "#f58220",
-                },
-              }}
+      <Box
+        sx={{
+          flex: 1,
+          overflowY: "auto",
+          overflowX: "hidden",
+          px: collapsed ? 0 : 1,
+          py: 1,
+        }}
+      >
+        <List>
+          {navItems.map((item) => (
+            <Tooltip
+              key={item.path}
+              title={collapsed ? item.label : ""}
+              placement="right"
+              arrow
             >
-              <ListItemIcon
-                sx={{
-                  minWidth: collapsed ? 0 : 40,
-                  color: "inherit",
-                  justifyContent: collapsed ? "center" : "flex-start",
-                }}
-              >
-                {item.icon}
-              </ListItemIcon>
-              {!collapsed && (
-                <ListItemText
-                  primary={item.label}
-                  primaryTypographyProps={{
-                    fontSize: "0.95rem",
-                    fontWeight: 500,
-                  }}
-                />
-              )}
-            </ListItemButton>
-          </Tooltip>
-        ))}
-
-        {/* Admin Settings */}
-        {(can("settings", "view") || user?.role === "admin") &&
-          adminSubItems.length > 0 && (
-            <>
               <ListItemButton
-                onClick={() => setOpenAdmin(!openAdmin)}
+                component={RouterLink}
+                to={item.path}
+                selected={location.pathname === item.path}
                 sx={{
-                  mt: 2,
-                  borderRadius: 2,
-                  backgroundColor: openAdmin
-                    ? "rgba(245,130,32,0.12)"
-                    : "transparent",
                   minHeight: 48,
+                  borderRadius: 2,
+                  mb: 0.5,
+                  justifyContent: collapsed ? "center" : "flex-start",
+                  "&.Mui-selected": {
+                    background: "#f58220",
+                    color: "#fff",
+                    "&:hover": {
+                      background: "#ff9940",
+                    },
+                  },
+
+                  "&:hover": {
+                    background: mode === "dark" ? "#1e293b" : "#ffca89",
+                  },
                 }}
               >
-                <ListItemIcon sx={{ color: "#f58220" }}>
-                  <SettingsIcon />
+                <ListItemIcon
+                  sx={{
+                    minWidth: collapsed ? 0 : 40,
+                    color: "inherit",
+                    justifyContent: "center",
+                  }}
+                >
+                  {item.icon}
                 </ListItemIcon>
+
                 {!collapsed && (
-                  <>
-                    <ListItemText
-                      primary="Admin Settings"
-                      primaryTypographyProps={{
-                        fontSize: "0.95rem",
-                        fontWeight: 500,
-                      }}
-                    />
-                    {openAdmin ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                  </>
+                  <ListItemText
+                    primary={item.label}
+                    primaryTypographyProps={{
+                      fontSize: 14,
+                      fontWeight: 600,
+                    }}
+                  />
                 )}
               </ListItemButton>
+            </Tooltip>
+          ))}
 
-              <Collapse in={openAdmin && !collapsed}>
-                <List component="div" disablePadding>
-                  {adminSubItems.map((item) => (
-                    <Tooltip
-                      key={item.path}
-                      title={collapsed ? item.text : ""}
-                      placement="right"
-                      arrow
-                    >
+          {(can("settings", "view") || user?.role === "admin") &&
+            adminSubItems.length > 0 && (
+              <>
+                <ListItemButton
+                  onClick={() => setOpenAdmin(!openAdmin)}
+                  sx={{
+                    mt: 2,
+                    minHeight: 48,
+                    borderRadius: 2,
+                    color: "#f58220",
+                    justifyContent: collapsed ? "center" : "flex-start",
+                  }}
+                >
+                  <ListItemIcon
+                    sx={{
+                      minWidth: collapsed ? 0 : 40,
+                      color: "#f58220",
+                    }}
+                  >
+                    <SettingsIcon />
+                  </ListItemIcon>
+
+                  {!collapsed && (
+                    <>
+                      <ListItemText
+                        primary="Admin Settings"
+                        primaryTypographyProps={{
+                          fontWeight: 600,
+                          fontSize: 14,
+                        }}
+                      />
+
+                      {openAdmin ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                    </>
+                  )}
+                </ListItemButton>
+
+                <Collapse in={openAdmin && !collapsed}>
+                  <List disablePadding>
+                    {adminSubItems.map((item) => (
                       <ListItemButton
+                        key={item.path}
                         component={RouterLink}
                         to={item.path}
                         selected={location.pathname === item.path}
-                        sx={{ pl: 4, minHeight: 42 }}
+                        sx={{
+                          pl: 4,
+                          minHeight: 42,
+                          borderRadius: 2,
+                        }}
                       >
-                        <ListItemIcon sx={{ minWidth: 40, color: "inherit" }}>
+                        <ListItemIcon
+                          sx={{
+                            minWidth: 40,
+                          }}
+                        >
                           {item.icon}
                         </ListItemIcon>
+
                         <ListItemText
                           primary={item.text}
-                          primaryTypographyProps={{ fontSize: "0.9rem" }}
+                          primaryTypographyProps={{
+                            fontSize: 13,
+                          }}
                         />
                       </ListItemButton>
-                    </Tooltip>
-                  ))}
-                </List>
-              </Collapse>
-            </>
-          )}
-      </List>
-
-      {/* Bottom controls */}
-      <Divider />
-      <Box sx={{ p: 2, display: "flex", justifyContent: "center", gap: 2 }}>
-        <Tooltip title="Toggle Theme">
-          <IconButton onClick={toggleTheme} size="medium">
-            {mode === "dark" ? (
-              <Brightness7Icon sx={{ color: "#fbbf24" }} />
-            ) : (
-              <Brightness4Icon sx={{ color: "#f58220" }} />
+                    ))}
+                  </List>
+                </Collapse>
+              </>
             )}
+        </List>
+      </Box>
+
+      <Divider />
+
+      <Box
+        sx={{
+          p: 1.5,
+          display: "flex",
+          justifyContent: collapsed ? "center" : "space-around",
+          alignItems: "center",
+        }}
+      >
+        <Tooltip title="Theme">
+          <IconButton onClick={toggleTheme}>
+            {mode === "dark" ? <Brightness7Icon /> : <Brightness4Icon />}
           </IconButton>
         </Tooltip>
 
-        <Tooltip title={collapsed ? "Expand Sidebar" : "Collapse Sidebar"}>
-          <IconButton onClick={() => setCollapsed(!collapsed)} size="medium">
+        <Tooltip title={collapsed ? "Expand" : "Collapse"}>
+          <IconButton onClick={() => setCollapsed(!collapsed)}>
             {collapsed ? <ChevronRightIcon /> : <ChevronLeftIcon />}
           </IconButton>
         </Tooltip>
@@ -385,7 +415,6 @@ export default function DashboardLayout() {
     >
       <CssBaseline />
 
-      {/* Top App Bar */}
       <AppBar
         position="fixed"
         elevation={0}
@@ -397,8 +426,13 @@ export default function DashboardLayout() {
               : "linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)",
           color: mode === "dark" ? "#e2e8f0" : "#1e293b",
           borderBottom: `1px solid ${mode === "dark" ? "#334155" : "#e2e8f0"}`,
-          width: { xs: "100%", md: layoutWidth },
-          // ml: { md: `calc((100vw - ${layoutWidth}) / 2)` },
+          left: {
+            md: collapsed ? 80 : 260,
+          },
+          width: {
+            xs: "100%",
+            md: `calc(100% - ${collapsed ? 80 : 260}px)`,
+          },
         }}
       >
         <Toolbar sx={{ justifyContent: "space-between", minHeight: 64 }}>
@@ -418,7 +452,14 @@ export default function DashboardLayout() {
               sx={{
                 fontWeight: "bold",
                 letterSpacing: 1.2,
-                fontSize: { xs: "1.1rem", md: "1.35rem" },
+                fontSize: {
+                  xs: "0.95rem",
+                  sm: "1.1rem",
+                  md: "1.35rem",
+                },
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
                 background: "linear-gradient(90deg, #f58220, #e65100)",
                 WebkitBackgroundClip: "text",
                 WebkitTextFillColor: "transparent",
@@ -428,7 +469,6 @@ export default function DashboardLayout() {
             </Typography>
           </Box>
 
-          {/* Right side: Theme + Profile */}
           <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
             <Tooltip
               title={`Switch to ${mode === "dark" ? "Light" : "Dark"} Mode`}
@@ -449,8 +489,9 @@ export default function DashboardLayout() {
                     <Avatar
                       sx={{
                         bgcolor: "#f58220",
-                        width: 40,
-                        height: 40,
+                        width: { xs: 34, md: 40 },
+                        height: { xs: 34, md: 40 },
+                        fontSize: { xs: "0.9rem", md: "1.1rem" },
                         fontWeight: "bold",
                         fontSize: "1.1rem",
                       }}
@@ -497,78 +538,82 @@ export default function DashboardLayout() {
         </Toolbar>
       </AppBar>
 
-      {/* Reset Password Dialog */}
       <AdminResetPasswordDialog
         open={forgetPasswordOpen}
         targetUserEmail={user?.email}
         onClose={handleForgetClose}
       />
 
-      {/* Desktop Sidebar */}
       <Drawer
         variant="permanent"
         sx={{
-          display: { xs: "none", md: "block" },
-          width: collapsed ? collapsedWidth : expandedWidth,
+          display: {
+            xs: "none",
+            md: "block",
+          },
+          width: drawerWidth,
           flexShrink: 0,
           "& .MuiDrawer-paper": {
-            width: collapsed ? collapsedWidth : expandedWidth,
-            transition: "width 0.3s ease",
-            overflowX: "hidden",
-            height: layoutHeight,
-            // top: '5vh', // leave space for AppBar
-            borderRight: `1px solid ${mode === "dark" ? "#334155" : "#e2e8f0"}`,
-            background: mode === "dark" ? "#0f172a" : "#f8fafc",
+            width: drawerWidth,
+            transition: "width .3s ease",
+            boxSizing: "border-box",
+            height: "100vh",
+            overflow: "hidden",
+            background: mode === "dark" ? " #0f172a" : "#f8fafc",
+            borderRight:
+              mode === "dark" ? "1px solid #334155" : "1px solid #e2e8f0",
             boxShadow:
               mode === "dark"
-                ? "4px 0 20px rgba(0,0,0,0.5)"
-                : "4px 0 20px rgba(0,0,0,0.08)",
+                ? "4px 0 20px rgba(0,0,0,.5)"
+                : "4px 0 20px rgba(0,0,0,.08)",
           },
         }}
       >
         {drawerContent}
       </Drawer>
 
-      {/* Mobile Drawer */}
       <Drawer
         variant="temporary"
-        anchor="left"
         open={mobileOpen}
-        onClose={handleDrawerToggle}
-        ModalProps={{ keepMounted: true }}
+        onClose={() => setMobileOpen(false)}
+        ModalProps={{
+          keepMounted: true,
+        }}
         sx={{
-          display: { xs: "block", md: "none" },
+          display: {
+            xs: "block",
+            md: "none",
+          },
           "& .MuiDrawer-paper": {
-            width: expandedWidth,
-            boxSizing: "border-box",
+            width: 260,
+            height: "100vh",
             background: mode === "dark" ? "#0f172a" : "#f8fafc",
-            height: "AUTO",
-            top: "5vh",
           },
         }}
       >
         {drawerContent}
       </Drawer>
 
-      {/* Main Content Area – 90% width & height */}
       <Box
         component="main"
         sx={{
           flexGrow: 1,
-          p: { xs: 2, md: 4 },
+          p: {
+            xs: 1.5,
+            sm: 2,
+            md: 3,
+          },
           mt: { xs: 8, md: 9 },
-          // ml: { md: collapsed ? `${collapsedWidth}px` : `${expandedWidth}px` },
-          width: { xs: "100%", md: layoutWidth },
+          width: "100%",
+          height: "calc(100vh - 72px)",
+          maxWidth: "100%",
           mx: { md: "auto" },
           height: layoutHeight,
-          overflowY: "SCROLL",
+          overflowY: "auto",
+          overflowX: "hidden",
           background: mode === "dark" ? "#0f172a" : "#f8fafc",
           transition: "margin 0.3s, padding 0.3s",
           borderRadius: 3,
-          boxShadow:
-            mode === "dark"
-              ? "0 8px 32px rgba(0,0,0,0.6)"
-              : "0 8px 32px rgba(0,0,0,0.1)",
         }}
       >
         <Slide direction="up" in mountOnEnter unmountOnExit timeout={600}>
@@ -578,7 +623,6 @@ export default function DashboardLayout() {
         </Slide>
       </Box>
 
-      {/* Logout Confirmation */}
       <Dialog
         open={logoutDialogOpen}
         onClose={() => setLogoutDialogOpen(false)}

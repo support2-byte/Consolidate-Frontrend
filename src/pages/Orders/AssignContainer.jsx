@@ -69,9 +69,19 @@ import { api } from "../../api";
 import AssignmentForm from "./AssignForm";
 import dayjs from "dayjs";
 
-// You can keep these if you use them:
-// import StatusChip from './StatusChip';
-// import AssignmentForm from './AssignmentForm';
+const theme = {
+  primary: "#f58220",
+  secondary: "#1a9c8f",
+  background: "#f8f9fa",
+  surface: "#ffffff",
+  border: "#e0e0e0",
+  textPrimary: "#212121",
+  textSecondary: "#757575",
+  success: "#4caf50",
+  warning: "#ff9800",
+  error: "#f44336",
+  divider: "#e0e0e0",
+};
 
 const AssignModal = ({
   openAssignModal,
@@ -82,22 +92,7 @@ const AssignModal = ({
   fetchContainers,
   handleAssign,
   fetchOrders,
-  // api,
 }) => {
-  const theme = {
-    primary: "#f58220",
-    secondary: "#1a9c8f",
-    background: "#f8f9fa",
-    surface: "#ffffff",
-    border: "#e0e0e0",
-    textPrimary: "#212121",
-    textSecondary: "#757575",
-    success: "#4caf50",
-    warning: "#ff9800",
-    error: "#f44336",
-    divider: "#e0e0e0",
-  };
-
   const [detailedOrders, setDetailedOrders] = useState({});
   const [fetchingDetails, setFetchingDetails] = useState(false);
   const [snackbar, setSnackbar] = useState({
@@ -122,8 +117,7 @@ const AssignModal = ({
     () =>
       containers.filter(
         (c) =>
-          c.derived_status === "Available" ||
-          c.derived_status === "Assigned to Job",
+          c.current_status === "Available" || c.current_status === "Returned",
       ),
     [containers],
   );
@@ -137,9 +131,7 @@ const AssignModal = ({
   const fetchOrder = useCallback(
     async (id) => {
       try {
-        const response = await api.get(`/api/orders/${id}`, {
-          params: { includeContainer: true },
-        });
+        const response = await api.get(`/api/orders/${id}/assigned`);
         return response.data || null;
       } catch (err) {
         console.error(`Failed to fetch order ${id}:`, err);
@@ -149,7 +141,6 @@ const AssignModal = ({
     [api],
   );
 
-  // Fetch all selected orders
   useEffect(() => {
     if (!openAssignModal || !selectedOrders?.length) return;
 
@@ -182,21 +173,16 @@ const AssignModal = ({
       mounted = false;
     };
   }, [openAssignModal, selectedOrders, fetchOrder]);
+
   const enhancedHandleAssign = useCallback(() => {
     if (!selectedOrders?.length) {
-      // showToast?.('No orders selected to assign', 'warning');
       return;
     }
     if (!loadingDate) {
       console.warn("Loading date is required");
       return;
     }
-    console.log("loadingDateRef.current:", loadingDateRef.current);
-    console.log("assignmentQuantities:", assignmentQuantities);
-    console.log("assignmentWeights:", assignmentWeights);
-    console.log("selectedContainersPerDetail:", selectedContainersPerDetail);
 
-    console.log("selectedOrdersselectedOrdersselectedOrders", selectedOrders);
     const assignments = selectedOrders.reduce((acc, orderId) => {
       const fullOrder =
         detailedOrders?.[orderId] || orders?.find((o) => o.id === orderId);
@@ -227,20 +213,15 @@ const AssignModal = ({
 
           const containers = selectedContainer ? [selectedContainer] : [];
 
-          // Skip if nothing to assign
           if (qty <= 0 || weightKg <= 0 || containers.length === 0)
             return recAcc;
 
-          // Critical validation: ensure we have real DB ID
           if (!detailItem?.id) {
             console.error(
               `Missing orderItemId in shipping detail for order ${orderId}, receiver ${rec.id}, index ${idx}`,
               detailItem,
             );
-            // showToast?.(
-            //   `Cannot assign: missing item ID in detail ${idx + 1} (receiver ${rec.receiverName || rec.id})`,
-            //   'warning'
-            // );
+
             return recAcc;
           }
 
@@ -252,18 +233,14 @@ const AssignModal = ({
             loadingDate: loadingDateRef.current,
           };
 
-          console.log("recAcc entry:", rec.id, idx, recAcc[idx]);
-
           return recAcc;
         }, {});
 
-        // Only add receiver if it has valid assignments
         if (Object.keys(recAssignments).length > 0) {
           orderAssignments[rec.id] = recAssignments;
         }
       });
 
-      // Only include order if it has any receiver assignments
       if (Object.keys(orderAssignments).length > 0) {
         acc[orderId] = orderAssignments;
       }
@@ -271,19 +248,10 @@ const AssignModal = ({
       return acc;
     }, {});
 
-    // Debug: show what we're about to send
     if (Object.keys(assignments).length === 0) {
-      // showToast?.('No valid assignments to send (check quantities, weights, containers)', 'info');
-      console.log("No assignments generated – nothing to send");
       return;
     }
 
-    console.log(
-      "Final assignments payload (sending to backend):",
-      JSON.stringify(assignments, null, 2),
-    );
-
-    // Safety check: ensure no missing orderItemId
     const missingIds = [];
     Object.values(assignments).forEach((orderAssign) => {
       Object.values(orderAssign).forEach((recAssign) => {
@@ -295,18 +263,10 @@ const AssignModal = ({
 
     if (missingIds.length > 0) {
       console.warn("Some assignment entries missing orderItemId:", missingIds);
-      // showToast?.(
-      //   `Cannot assign: ${missingIds.length} items missing required ID – check console`,
-      //   'error'
-      // );
       return;
     }
-
-    // All good – send to backend
     handleAssign(assignments);
     setOpenAssignModal(false);
-
-    // showToast?.(`Assigning ${Object.keys(assignments).length} order(s)...`, 'info');
   }, [
     selectedOrders,
     detailedOrders,
@@ -495,6 +455,7 @@ const AssignModal = ({
 
       try {
         const payload = { [rec.orderId]: { [rec.id]: { full: true } } };
+
         const res = await api.post("/api/orders/remove-assign-container", {
           assignments: payload,
         });
@@ -745,7 +706,6 @@ const AssignModal = ({
       rec.orderId,
       rec.id,
     ]);
-    console.log("full rec", fullRec, fullOrder);
     return (
       <>
         <TableRow hover>
