@@ -1006,6 +1006,9 @@ const OrderForm = () => {
 
           Object.keys(sd).forEach((sdKey) => {
             camelSd[snakeToCamel(sdKey)] = sd[sdKey] ?? "";
+            if (sdKey === "consignmentStatus") {
+              camelSd.status = sd[sdKey] ?? "";
+            }
           });
 
           // Container Details inside shipping detail
@@ -4935,7 +4938,7 @@ const OrderForm = () => {
                                     >
                                       <CustomSelect
                                         label="Shippment Status"
-                                        value={sd.status || ""}
+                                        value={sd.status || rec.status || ""}
                                         onChange={(e) =>
                                           handleShippingChangeFn(
                                             i,

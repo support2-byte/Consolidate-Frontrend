@@ -148,13 +148,6 @@ export function ThemeProvider({ children }) {
             },
           },
 
-          MuiTextField: {
-            defaultProps: {
-              variant: "outlined",
-              size: "small",
-            },
-          },
-
           MuiOutlinedInput: {
             styleOverrides: {
               root: ({ theme }) => ({
