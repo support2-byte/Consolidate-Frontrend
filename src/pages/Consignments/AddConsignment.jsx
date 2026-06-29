@@ -583,37 +583,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       console.error("Error loading consignment:", err);
     }
   };
-  // Lookup after values and options are set
-  useEffect(() => {
-    if (
-      mode === "edit" &&
-      effectiveConsignmentId &&
-      options.third_parties?.length > 0 &&
-      options.banks?.length > 0 &&
-      options.originOptions?.length > 0 &&
-      options.destinationOptions?.length > 0 &&
-      (values.shipperName ||
-        values.consigneeName ||
-        values.bankName ||
-        values.originName ||
-        values.destinationName)
-    ) {
-      lookupMissingIds();
-    }
-    setEta(values.eta);
-  }, [
-    mode,
-    effectiveConsignmentId,
-    options.third_parties,
-    options.banks,
-    options.originOptions,
-    options.destinationOptions,
-    values.shipperName,
-    values.consigneeName,
-    values.bankName,
-    values.originName,
-    values.destinationName,
-  ]);
+
   const lookupMissingIds = () => {
     const updates = {};
     let hasUpdate = false;
@@ -719,6 +689,61 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       });
     }
   };
+
+  useEffect(() => {
+    if (
+      mode === "edit" &&
+      effectiveConsignmentId &&
+      options.originOptions?.length > 0 &&
+      options.destinationOptions?.length > 0
+    ) {
+      // If we have IDs but options are now loaded, force re-sync the display names
+      if (values.origin && !values.originName) {
+        const found = options.originOptions.find(
+          (opt) => opt.value === values.origin.toString(),
+        );
+        if (found) {
+          setValues((prev) => ({ ...prev, originName: found.label }));
+        }
+      }
+      if (values.destination && !values.destinationName) {
+        const found = options.destinationOptions.find(
+          (opt) => opt.value === values.destination.toString(),
+        );
+        if (found) {
+          setValues((prev) => ({ ...prev, destinationName: found.label }));
+        }
+      }
+
+      if (
+        options.third_parties?.length > 0 &&
+        options.banks?.length > 0 &&
+        (values.shipperName ||
+          values.consigneeName ||
+          values.bankName ||
+          values.originName ||
+          values.destinationName)
+      ) {
+        lookupMissingIds();
+      }
+    }
+    setEta(values.eta);
+  }, [
+    mode,
+    effectiveConsignmentId,
+    options.third_parties,
+    options.banks,
+    options.originOptions,
+    options.destinationOptions,
+    values.origin,
+    values.destination,
+    values.shipperName,
+    values.consigneeName,
+    values.bankName,
+    values.originName,
+    values.destinationName,
+  ]);
+
   useEffect(() => {
     if (!loading && initialValues === null) {
       // Capture snapshot after options and data are loaded
@@ -1012,7 +1037,13 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       .filter((id) => id);
     setAddedContainerIds(ids);
   }, [values.containers]);
-  // Fetch orders + filtering + flattening logic
+
+  useEffect(() => {
+    if (values.containers && values.containers.length > 0) {
+      setErrors((prev) => ({ ...prev, containers: undefined }));
+    }
+  }, [values.containers]);
+
   const handleSelectAllClick = (event) => {
     if (event.target.checked) {
       const newSelecteds = (orders || []).map((n) => n.id);
@@ -1494,6 +1525,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     }
     setSelectedContainers(newSelected);
   };
+
   const addSelectedContainers = () => {
     const selectedData = (selectedContainers || [])
       .map((id) => (containers || []).find((c) => c.cid === id))
@@ -1521,11 +1553,15 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       status: container.status || container.current_status || "Available",
       id: container.cid,
     }));
+
     setValues((prev) => ({
       ...prev,
       containers: [...(prev.containers || []), ...newContainers],
     }));
-    markArrayTouched("containers");
+
+    setTouched((prev) => ({ ...prev, containers: true }));
+    setErrors((prev) => ({ ...prev, containers: undefined }));
+
     setSelectedContainers([]);
     setContainerModalOpen(false);
     setSnackbar({
@@ -1534,6 +1570,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       severity: "success",
     });
   };
+
   const validationSchema = Yup.object({
     consignment_number: Yup.string().required("Consignment # is required"),
     shipper: Yup.string().required("Shipper is required"),
@@ -1947,6 +1984,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         vessel: parseInt(values.vessel, 10) || null,
         voyage: values.voyage?.trim() || null,
         shipping_line: values.shippingLine?.trim() || null,
+        seal_no: values.seal_no?.trim() || null,
 
         eta: values.eta ? dayjs(values.eta).format("YYYY-MM-DD") : null,
 

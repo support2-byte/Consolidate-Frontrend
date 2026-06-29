@@ -133,30 +133,15 @@ export const useContainerData = (propContainers = []) => {
     setLoadingContainers(true);
     setError(null);
     try {
-      const params = {
-        page: currentPage,
-        limit: rowsPerPage,
-      };
-      const res = await api.get("/api/containers", { params });
+      const res = await api.get("/api/containers");
       const data = res.data?.data || [];
       setAllContainers(data);
-      setContainers(data);
-      setTotalCount(res.data?.total || 0);
     } catch (err) {
       handleError(err, "Error fetching containers");
     } finally {
       setLoadingContainers(false);
     }
-  }, [
-    debouncedContainerNumber,
-    filters.container_size,
-    filters.container_type,
-    filters.owner_type,
-    filters.status,
-    filters.location,
-    currentPage,
-    rowsPerPage,
-  ]);
+  }, []);
 
   const fetchContainerById = async (cid) => {
     setLoadingHistory(true);
@@ -191,9 +176,14 @@ export const useContainerData = (propContainers = []) => {
 
   useEffect(() => {
     fetchContainers();
-  }, [currentPage, rowsPerPage]);
+  }, []);
+
   useEffect(() => {
-    if (allContainers.length === 0) return;
+    if (allContainers.length === 0) {
+      setContainers([]);
+      setTotalCount(0);
+      return;
+    }
 
     let filtered = [...allContainers];
 
@@ -204,29 +194,26 @@ export const useContainerData = (propContainers = []) => {
           .includes(filters.container_number.toUpperCase()),
       );
     }
-    if (filters.container_size) {
+    if (filters.container_size)
       filtered = filtered.filter(
         (c) => c.container_size === filters.container_size,
       );
-    }
-    if (filters.container_type) {
+    if (filters.container_type)
       filtered = filtered.filter(
         (c) => c.container_type === filters.container_type,
       );
-    }
-    if (filters.owner_type) {
+    if (filters.owner_type)
       filtered = filtered.filter((c) => c.owner_type === filters.owner_type);
-    }
-    if (filters.status) {
+    if (filters.status)
       filtered = filtered.filter((c) => c.derived_status === filters.status);
-    }
-    if (filters.location) {
+    if (filters.location)
       filtered = filtered.filter((c) => c.location === filters.location);
-    }
 
     setTotalCount(filtered.length);
-    setContainers(filtered);
-  }, [filters, allContainers]);
+
+    const start = (currentPage - 1) * rowsPerPage;
+    setContainers(filtered.slice(start, start + rowsPerPage));
+  }, [filters, allContainers, currentPage, rowsPerPage]);
 
   const handleFilterChange = (e) => {
     setFilters((prev) => ({ ...prev, [e.target.name]: e.target.value }));
