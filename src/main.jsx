@@ -1,7 +1,11 @@
 // src/main.jsx (updated)
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { createBrowserRouter, RouterProvider, Navigate } from "react-router-dom";
+import {
+  createBrowserRouter,
+  RouterProvider,
+  Navigate,
+} from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import ProtectedRoute from "./routes/Protected";
@@ -37,6 +41,10 @@ import PermissionEditor from "./pages/Admin/PermissionEditor";
 // Fallback Pages
 import Unauthorized from "./pages/Unauthorized";
 import NotificationSettings from "./pages/SystemData/NotificationSetting";
+import ContainerReleases from "./pages/Containers/ContainerReleases";
+import { AppProvider } from "./context/AppContext";
+import StatusesPage from "./pages/SystemData/NewEtaSetup";
+import BugReportPage from "./pages/SystemData/BugReport";
 
 // ────────────────────────────────────────────────────────────────
 // Router Configuration
@@ -51,7 +59,7 @@ const router = createBrowserRouter([
     path: "/",
     element: (
       <ProtectedRoute>
-        <DashboardLayout />  {/* ← Sidebar + Topbar wrapper */}
+        <DashboardLayout /> {/* ← Sidebar + Topbar wrapper */}
       </ProtectedRoute>
     ),
     children: [
@@ -60,160 +68,181 @@ const router = createBrowserRouter([
       { path: "dashboard", element: <DashboardCharts /> },
 
       // Operational pages – view only for staff
-      { 
-        path: "customers", 
+      {
+        path: "customers",
         element: (
           <ProtectedRoute permission={{ module: "customers", action: "view" }}>
             <Customers />
           </ProtectedRoute>
-        ) 
+        ),
       },
-      { 
-        path: "vendors", 
+      {
+        path: "vendors",
         element: (
           <ProtectedRoute permission={{ module: "vendors", action: "view" }}>
             <Vendors />
           </ProtectedRoute>
-        ) 
+        ),
       },
-      { 
-        path: "containers", 
+      {
+        path: "containers",
         element: (
           <ProtectedRoute permission={{ module: "containers", action: "view" }}>
             <ContainerForm />
           </ProtectedRoute>
-        ) 
+        ),
       },
-      { 
-        path: "orders", 
+      {
+        path: "containers/release",
+        element: (
+          <ProtectedRoute permission={{ module: "release", action: "view" }}>
+            <ContainerReleases />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "orders",
         element: (
           <ProtectedRoute permission={{ module: "orders", action: "view" }}>
             <Orders />
           </ProtectedRoute>
-        ) 
+        ),
       },
-      { 
-        path: "tracking", 
+      {
+        path: "tracking",
         element: (
           <ProtectedRoute permission={{ module: "tracking", action: "view" }}>
             <TrackingPage />
           </ProtectedRoute>
-        ) 
+        ),
       },
-      { 
-        path: "consignments", 
+      {
+        path: "consignments",
         element: (
-          <ProtectedRoute permission={{ module: "consignments", action: "view" }}>
+          <ProtectedRoute
+            permission={{ module: "consignments", action: "view" }}
+          >
             <Consignments />
           </ProtectedRoute>
-        ) 
+        ),
       },
 
       // Forms – protected by create/edit permissions
-      { 
-        path: "orders/add", 
+      {
+        path: "orders/add",
         element: (
           <ProtectedRoute permission={{ module: "orders", action: "create" }}>
             <OrderForm mode="add" />
           </ProtectedRoute>
-        ) 
+        ),
       },
-      { 
-        path: "orders/:id/edit", 
+      {
+        path: "orders/:id/edit",
         element: (
           <ProtectedRoute permission={{ module: "orders", action: "edit" }}>
             <OrderForm mode="edit" />
           </ProtectedRoute>
-        ) 
+        ),
       },
-      { 
-        path: "customers/add", 
+      {
+        path: "customers/add",
         element: (
-          <ProtectedRoute permission={{ module: "customers", action: "create" }}>
+          <ProtectedRoute
+            permission={{ module: "customers", action: "create" }}
+          >
             <CustomerAdd mode="add" />
           </ProtectedRoute>
-        ) 
+        ),
       },
-      { 
-        path: "customers/:id/edit", 
+      {
+        path: "customers/:id/edit",
         element: (
           <ProtectedRoute permission={{ module: "customers", action: "edit" }}>
             <CustomerAdd mode="edit" />
           </ProtectedRoute>
-        ) 
+        ),
       },
-      { 
-        path: "vendors/add", 
+      {
+        path: "vendors/add",
         element: (
           <ProtectedRoute permission={{ module: "vendors", action: "create" }}>
             <VendorsForm mode="add" />
           </ProtectedRoute>
-        ) 
+        ),
       },
-      { 
-        path: "vendors/:id/edit", 
+      {
+        path: "vendors/:id/edit",
         element: (
           <ProtectedRoute permission={{ module: "vendors", action: "edit" }}>
             <VendorsForm mode="edit" />
           </ProtectedRoute>
-        ) 
+        ),
       },
-      { 
-        path: "consignments/add", 
+      {
+        path: "consignments/add",
         element: (
-          <ProtectedRoute permission={{ module: "consignments", action: "create" }}>
+          <ProtectedRoute
+            permission={{ module: "consignments", action: "create" }}
+          >
             <AddConsignment mode="add" />
           </ProtectedRoute>
-        ) 
+        ),
       },
-      { 
-        path: "consignments/:id/edit", 
+      {
+        path: "consignments/:id/edit",
         element: (
-          <ProtectedRoute permission={{ module: "consignments", action: "edit" }}>
+          <ProtectedRoute
+            permission={{ module: "consignments", action: "edit" }}
+          >
             <AddConsignment mode="edit" />
           </ProtectedRoute>
-        ) 
+        ),
       },
 
       // Admin-only pages
-      { 
-        path: "users", 
+      {
+        path: "users",
         element: (
           <ProtectedRoute permission={{ module: "users", action: "view" }}>
             <UsersManagement />
           </ProtectedRoute>
-        ) 
+        ),
       },
-      { 
-        path: "permissions", 
+      {
+        path: "permissions",
         element: (
-          <ProtectedRoute permission={{ module: "permissions", action: "view" }}>
+          <ProtectedRoute
+            permission={{ module: "permissions", action: "view" }}
+          >
             <PermissionEditor />
           </ProtectedRoute>
-        ) 
+        ),
       },
-            { 
-        path: "notifications", 
+      {
+        path: "notifications",
         element: (
-          <ProtectedRoute permission={{ module: "notifications", action: "view" }}>
+          <ProtectedRoute
+            permission={{ module: "notifications", action: "view" }}
+          >
             <NotificationSettings />
           </ProtectedRoute>
-        ) 
+        ),
       },
-          { 
-        path: "notifications/:id", 
+      {
+        path: "notifications/:id",
         element: (
-          <ProtectedRoute permission={{ module: "notifications", action: "view" }}>
+          <ProtectedRoute
+            permission={{ module: "notifications", action: "view" }}
+          >
             <NotificationManage />
           </ProtectedRoute>
-        ) 
+        ),
       },
 
       // System/Admin section
       {
         path: "admin",
-        element: ( <Outlet />
-        ),
+        element: <Outlet />,
         children: [
           // { path: "notifications", element: <NotificationSettings /> },
           { path: "payment-types", element: <PaymentTypes /> },
@@ -223,8 +252,8 @@ const router = createBrowserRouter([
           { path: "banks", element: <Banks /> },
           { path: "third-parties", element: <ThirdParties /> },
           { path: "barcode-print", element: <BarcodePrintTest /> },
-          { path: "eta-setup", element: <EtaSetupPage /> },
-
+          { path: "eta-setup", element: <StatusesPage /> },
+          { path: "bug-report", element: <BugReportPage /> },
         ],
       },
 
@@ -244,9 +273,11 @@ const router = createBrowserRouter([
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <AuthProvider>
-      <ThemeProvider>
-        <RouterProvider router={router} />
-      </ThemeProvider>
+      <AppProvider>
+        <ThemeProvider>
+          <RouterProvider router={router} />
+        </ThemeProvider>
+      </AppProvider>
     </AuthProvider>
-  </React.StrictMode>
+  </React.StrictMode>,
 );

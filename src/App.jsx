@@ -1,41 +1,44 @@
 // src/App.js
-import React from 'react';
+import React from "react";
 import {
   BrowserRouter,
   Routes,
   Route,
   Navigate,
   Outlet,
-} from 'react-router-dom';
-import { useAuth } from './context/AuthContext';
-import { CircularProgress, Box } from '@mui/material';
-import Login from './pages/Login';
-import DashboardLayout from './layouts/DashboardLayout';
-import DashboardCharts from './pages/DashboardCharts';
-import Customers from './pages/Customers';
-import Vendors from './pages/Vendors/Vendors';
-import Containers from './pages/Containers/Containers';
-import AddContainers from './pages/Containers/AddContainer';
-import Orders from './pages/Orders/Orders';
-import AddConsignment from './pages/Consignments/AddConsignment';
-import Consignments from './pages/Consignments';
-import AddCustomer from './pages/AddCustomer';
-import AddVendor from './pages/AddVendor';
-import TrackingPage from './pages/Orders/TrackingPage';
-import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
-import OrderForm from './pages/Orders/AddOrder';
-import PaymentTypes from './pages/SystemData/PaymentTypes';
-import Categories from './pages/SystemData/Categories';
-import Vessels from './pages/SystemData/Vessels';
-import Places from './pages/SystemData/Places';
-import Banks from './pages/SystemData/Banks';
-import ThirdParties from './pages/SystemData/ThirdParties';
-import BarcodePrintTest from './pages/SystemData/BarcodePrintTest';
-import EtaSetupPage from './pages/SystemData/EtaSetup';
-import UsersManagement from './pages/Admin/UserModule';
-import PermissionEditor from './pages/Admin/PermissionEditor';
-import NotificationSettings from './pages/SystemData/NotificationSetting';
+} from "react-router-dom";
+import { useAuth } from "./context/AuthContext";
+import { CircularProgress, Box } from "@mui/material";
+import Login from "./pages/Login";
+import DashboardLayout from "./layouts/DashboardLayout";
+import DashboardCharts from "./pages/DashboardCharts";
+import Customers from "./pages/Customers";
+import Vendors from "./pages/Vendors/Vendors";
+import Containers from "./pages/Containers/Containers";
+import AddContainers from "./pages/Containers/AddContainer";
+import Orders from "./pages/Orders/Orders";
+import AddConsignment from "./pages/Consignments/AddConsignment";
+import Consignments from "./pages/Consignments";
+import AddCustomer from "./pages/AddCustomer";
+import AddVendor from "./pages/AddVendor";
+import TrackingPage from "./pages/Orders/TrackingPage";
+import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
+import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
+import OrderForm from "./pages/Orders/AddOrder";
+import PaymentTypes from "./pages/SystemData/PaymentTypes";
+import Categories from "./pages/SystemData/Categories";
+import Vessels from "./pages/SystemData/Vessels";
+import Places from "./pages/SystemData/Places";
+import Banks from "./pages/SystemData/Banks";
+import ThirdParties from "./pages/SystemData/ThirdParties";
+import BarcodePrintTest from "./pages/SystemData/BarcodePrintTest";
+import EtaSetupPage from "./pages/SystemData/EtaSetup";
+import UsersManagement from "./pages/Admin/UserModule";
+import PermissionEditor from "./pages/Admin/PermissionEditor";
+import NotificationSettings from "./pages/SystemData/NotificationSetting";
+import ContainerReleases from "./pages/Containers/ContainerReleases";
+import StatusesPage from "./pages/SystemData/NewEtaSetup";
+import BugReportPage from "./pages/SystemData/BugReport";
 
 // ────────────────────────────────────────────────────────────────
 // Protected Route Wrapper (checks auth + optional permission)
@@ -47,10 +50,10 @@ function ProtectedRoute({ requiredPermission = null }) {
     return (
       <Box
         sx={{
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          minHeight: '100vh',
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          minHeight: "100vh",
         }}
       >
         <CircularProgress />
@@ -63,7 +66,10 @@ function ProtectedRoute({ requiredPermission = null }) {
   }
 
   // Optional: check specific permission
-  if (requiredPermission && !can(requiredPermission.module, requiredPermission.action)) {
+  if (
+    requiredPermission &&
+    !can(requiredPermission.module, requiredPermission.action)
+  ) {
     return <Navigate to="/unauthorized" replace />;
   }
 
@@ -88,7 +94,7 @@ function AdminRoute() {
 // ────────────────────────────────────────────────────────────────
 function Unauthorized() {
   return (
-    <Box sx={{ p: 4, textAlign: 'center' }}>
+    <Box sx={{ p: 4, textAlign: "center" }}>
       <h1>403 - Access Denied</h1>
       <p>You don't have permission to view this page.</p>
     </Box>
@@ -119,42 +125,66 @@ export default function App() {
 
               {/* Create/Edit routes */}
               <Route path="orders/add" element={<OrderForm mode="add" />} />
-              <Route path="customers/add" element={<AddCustomer mode="add" />} />
-              <Route path="customers/:id/edit" element={<AddCustomer mode="edit" />} />
+              <Route
+                path="customers/add"
+                element={<AddCustomer mode="add" />}
+              />
+              <Route
+                path="customers/:id/edit"
+                element={<AddCustomer mode="edit" />}
+              />
               <Route path="vendors/add" element={<AddVendor mode="add" />} />
-              <Route path="vendors/:id/edit" element={<AddVendor mode="edit" />} />
+              <Route
+                path="vendors/:id/edit"
+                element={<AddVendor mode="edit" />}
+              />
               <Route path="containers" element={<AddContainers />} />
-              <Route path="consignments/add" element={<AddConsignment mode="add" />} />
-              <Route path="consignments/:id/edit" element={<AddConsignment mode="edit" />} />
-                <Route path="notifications" element={<NotificationSettings />} />
+              <Route
+                path="containers/release"
+                element={<ContainerReleases />}
+              />
+              <Route
+                path="consignments/add"
+                element={<AddConsignment mode="add" />}
+              />
+              <Route
+                path="consignments/:id/edit"
+                element={<AddConsignment mode="edit" />}
+              />
+              <Route path="notifications" element={<NotificationSettings />} />
 
               {/* Users Management – protected by permission */}
               <Route
                 path="users"
                 element={
-                  <ProtectedRoute requiredPermission={{ module: 'users', action: 'view' }}>
+                  <ProtectedRoute
+                    requiredPermission={{ module: "users", action: "view" }}
+                  >
                     <UsersManagement />
                   </ProtectedRoute>
                 }
               />
             </Route>
-<Route
-        path="admin"
-        element={
-          <ProtectedRoute requiredPermission={{ module: 'admin', action: 'view' }}>
-            <Outlet />
-          </ProtectedRoute>
-        }
-      >
-        <Route path="payment-types" element={<PaymentTypes />} />
-        <Route path="categories"     element={<Categories />} />
-        <Route path="vessels"        element={<Vessels />} />
-        <Route path="places"         element={<Places />} />
-        <Route path="banks"          element={<Banks />} />
-        <Route path="third-parties"  element={<ThirdParties />} />
-        <Route path="barcode-print"  element={<BarcodePrintTest />} />
-        <Route path="eta-setup"      element={<EtaSetupPage />} />
-      </Route>
+            <Route
+              path="admin"
+              element={
+                <ProtectedRoute
+                  requiredPermission={{ module: "admin", action: "view" }}
+                >
+                  <Outlet />
+                </ProtectedRoute>
+              }
+            >
+              <Route path="payment-types" element={<PaymentTypes />} />
+              <Route path="categories" element={<Categories />} />
+              <Route path="vessels" element={<Vessels />} />
+              <Route path="places" element={<Places />} />
+              <Route path="banks" element={<Banks />} />
+              <Route path="third-parties" element={<ThirdParties />} />
+              <Route path="barcode-print" element={<BarcodePrintTest />} />
+              <Route path="eta-setup" element={<StatusesPage />} />
+              <Route path="bug-report" element={<BugReportPage />} />
+            </Route>
           </Route>
 
           {/* Catch-all unauthorized / 404 */}

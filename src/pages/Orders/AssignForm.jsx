@@ -27,6 +27,8 @@ const AssignmentForm = React.memo(
     setAssignmentWeights,
     setSelectedContainersPerDetail,
     onAssignPreview,
+    loadingDate,
+    setLoadingDate,
   }) => {
     const [localQty, setLocalQty] = useState(
       assignmentQuantities[keyDetail] ?? "",
@@ -36,10 +38,10 @@ const AssignmentForm = React.memo(
       assignmentWeights[keyDetail] ?? "",
     );
 
-    // Single selected container
+    const today = new Date().toISOString().split("T")[0];
+
     const selectedCid = selectedContainersPerDetail[keyDetail] || "";
 
-    // Exclude containers already selected elsewhere
     const availableForThisDetail = useMemo(() => {
       const globallySelected = Object.entries(selectedContainersPerDetail)
         .filter(([detailKey]) => detailKey !== keyDetail)
@@ -124,6 +126,8 @@ const AssignmentForm = React.memo(
 
     const handleContainerChange = useCallback(
       (event) => {
+        console.log(event.target.value);
+
         setSelectedContainersPerDetail((prev) => ({
           ...prev,
           [keyDetail]: event.target.value,
@@ -196,7 +200,6 @@ const AssignmentForm = React.memo(
           }}
         />
 
-        {/* Single Container Select */}
         <FormControl fullWidth size="small">
           <InputLabel>Select Container</InputLabel>
 
@@ -240,11 +243,11 @@ const AssignmentForm = React.memo(
 
                   <Chip
                     size="small"
-                    label={container.derived_status || container.status}
+                    label={container.current_status || container.status}
                     color={
-                      container.derived_status === "Available"
+                      container.current_status === "Available"
                         ? "success"
-                        : container.derived_status === "Assigned to Job"
+                        : container.current_status === "Assigned to Job"
                           ? "warning"
                           : "default"
                     }
@@ -253,6 +256,23 @@ const AssignmentForm = React.memo(
               </MenuItem>
             ))}
           </Select>
+          <TextField
+            sx={{ mt: 4 }}
+            fullWidth
+            label="Loading Date"
+            type="date"
+            value={loadingDate}
+            onChange={(e) => {
+              const selectedDate = e.target.value;
+              if (selectedDate < today) {
+                return;
+              }
+              setLoadingDate(selectedDate);
+            }}
+            onPaste={(e) => e.preventDefault()}
+            InputLabelProps={{ shrink: true }}
+            inputProps={{ min: today }}
+          />
         </FormControl>
 
         <Tooltip

@@ -1,8 +1,14 @@
 // src/context/AuthContext.js
-import { createContext, useContext, useState, useEffect, useCallback } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+} from "react";
 import { api } from "../api";
 
-const AuthContext = createContext(null);
+export const AuthContext = createContext(null);
 
 /**
  * Auth Context Provider
@@ -38,7 +44,7 @@ export function AuthProvider({ children }) {
       // 2. Fetch permissions
       try {
         const permRes = await api.get("/auth/rbac/my-permissions");
-        console.log("permissions ",permRes)
+        console.log("permissions ", permRes);
         setPermissions(permRes.data?.permissions || {});
       } catch (permErr) {
         console.warn("[Permissions] Fetch failed:", permErr.message);
@@ -49,8 +55,10 @@ export function AuthProvider({ children }) {
 
       if (retryCount < maxRetries) {
         const delay = baseDelay * Math.pow(1.5, retryCount);
-        console.log(`Retrying session load in ${delay}ms (${retryCount + 1}/${maxRetries})...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
+        console.log(
+          `Retrying session load in ${delay}ms (${retryCount + 1}/${maxRetries})...`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, delay));
         return loadSession(retryCount + 1);
       }
 
@@ -70,26 +78,26 @@ export function AuthProvider({ children }) {
   // ────────────────────────────────────────────────────────────────
   // Login handler
   // ────────────────────────────────────────────────────────────────
- const login = async (email, password) => {
-  try {
-    const res = await api.post("/auth/login", { email, password });
+  const login = async (email, password) => {
+    try {
+      const res = await api.post("/auth/login", { email, password });
 
-await loadSession();
+      await loadSession();
 
-    // No need to check !user here – if loadSession didn't throw, user should be set
-    // But add a safety timeout to let React batch finish
-    await new Promise(resolve => setTimeout(resolve, 100));
+      // No need to check !user here – if loadSession didn't throw, user should be set
+      // But add a safety timeout to let React batch finish
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
-    return true; // return the fresh user
-  } catch (err) {
-    const message =
-      err.response?.data?.error ||
-      err.response?.data?.message ||
-      err.message ||
-      "Login failed. Please check your credentials.";
-    throw new Error(message);
-  }
-};
+      return true; // return the fresh user
+    } catch (err) {
+      const message =
+        err.response?.data?.error ||
+        err.response?.data?.message ||
+        err.message ||
+        "Login failed. Please check your credentials.";
+      throw new Error(message);
+    }
+  };
 
   // ────────────────────────────────────────────────────────────────
   // Logout handler
@@ -116,7 +124,7 @@ await loadSession();
       // Graceful handling if module doesn't exist
       return permissions?.[module]?.includes(action) ?? false;
     },
-    [permissions]
+    [permissions],
   );
 
   const hasRole = useCallback(
@@ -125,7 +133,7 @@ await loadSession();
       const required = Array.isArray(roles) ? roles : [roles];
       return required.includes(user.role);
     },
-    [user]
+    [user],
   );
 
   const isAdmin = useCallback(() => hasRole("admin"), [hasRole]);

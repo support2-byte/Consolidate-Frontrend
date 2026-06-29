@@ -1,5 +1,5 @@
 // OrdersList.jsx - Component for fetching and displaying orders (updated for normalized schema)
-import { useState, useEffect } from "react";
+import { useState, useEffect, useContext } from "react";
 import {
   Box,
   Paper,
@@ -69,11 +69,13 @@ import logoMFD from "../../../public/mfd-logo.png"; // Adjust path as needed
 // import { ordersApi } from "../api"; // Adjust path as needed
 import { api } from "../../api";
 import { Description } from "@mui/icons-material";
+import { AppContext } from "../../context/AppContext";
 // import { fontWeight } from "html2canvas/dist/types/css/property-descriptors/font-weight";
 // Handlers
 
 const OrdersList = () => {
   const navigate = useNavigate();
+  const { places, statuses } = useContext(AppContext);
   const [orders, setOrders] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
@@ -88,7 +90,7 @@ const OrdersList = () => {
   const [assignmentError, setAssignmentError] = useState(null);
   const [selectedContainers, setSelectedContainers] = useState([]);
   const [assigning, setAssigning] = useState(false);
-  const [places, setPlaces] = useState([]);
+  const [filterPlaces, setFilterPlaces] = useState([]);
   const [filters, setFilters] = useState({
     status: "",
     search: "", // ← single search field instead of booking_ref
@@ -125,19 +127,15 @@ const OrdersList = () => {
   ] = useState(null);
 
   const [selectedStatus, setSelectedStatus] = useState("");
-  // ... your existing component logic (useState, handlers, etc.)
-  // Handlers
+
   const handleStatusUpdate = (orderId, order) => {
-    //  console.log('Updating status for order:', orderId);
     setSelectedOrderForUpdate(orderId);
     if (orderId && orderId.length) {
       const firstRec = orderId[0];
-      console.log("receiverr", firstRec);
 
       setSelectedReceiverForUpdate(firstRec);
       setSelectedStatus(firstRec.status || "Received for Shipment"); // Default to receiver's status or first status
     }
-    console.log("receiverr", order, orderId);
 
     setOpenStatusDialog(true);
   };
@@ -148,7 +146,6 @@ const OrdersList = () => {
     setSelectedStatus("");
   };
   const handleStatusChange = (event) => {
-    //  console.log('Selected status:', event.target.value);
     setSelectedStatus(event.target.value);
   };
   const handleReceiverChange = (event) => {
@@ -173,12 +170,10 @@ const OrdersList = () => {
   };
 
   const handleShippingChange = (event) => {
-    console.log("itemssss ", event.target.value);
     const recId = event.target.value;
     const rec = selectedReceiverForUpdate?.shippingdetails?.find(
       (r) => r.itemRef === recId,
     );
-    console.log("seklected", rec);
 
     setSelectedReceiverForUpdateDetails(rec);
     // setSelectedStatus(rec?.status || 'Received for Shipment');ss
@@ -192,8 +187,6 @@ const OrdersList = () => {
       return;
     try {
       setLoading(true);
-      // console.log('Updating status to:', selectedStatus, 'for receiver:', selectedReceiverForUpdate);
-      // API call to update receiver status (triggers notifications as per mapping)
       await api.put(
         `/api/orders/${selectedOrderForUpdate.id}/receivers/${selectedReceiverForUpdate.id}/items/${selectedReceiverForUpdateDetails.itemRef}/status`,
         {
@@ -206,7 +199,7 @@ const OrdersList = () => {
       );
       setSnackbar({
         open: true,
-        message: `Status updated to "${selectedStatus}" for "${selectedReceiverForUpdate.receivername}" successfully! Notifications sent as per rules.`,
+        message: `Status updated to "${selectedStatus}" for "${selectedReceiverForUpdate.receiverName}" successfully! Notifications sent as per rules.`,
         severity: "success",
       });
       fetchOrders(); // Refresh the list to update overall status
@@ -226,17 +219,6 @@ const OrdersList = () => {
     handleCloseStatusDialog();
   };
 
-  // const handleFilterText = (e) => {
-  //     const { name, value } = e.target;
-  //     console.log("Filter change:", name, value);
-
-  //     setFilters((prev) => ({ ...prev, [name]: value }));
-
-  //     // Very important: reset to first page on every filter change
-  //     setPage(0);
-  // };
-
-  // 3. Handler for status dropdown (also reset page)
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
     setFilters((prev) => ({ ...prev, [name]: value }));
@@ -265,12 +247,7 @@ const OrdersList = () => {
         params.search = filters.search.trim();
       }
 
-      console.log("parametors", params);
       const response = await api.get("/api/orders", { params });
-      // ────────────────────────────────────────────────
-      //  VERY IMPORTANT: Check what your backend actually returns
-      // ────────────────────────────────────────────────
-      console.log("API RESPONSE STRUCTURE:", response.data.pagination);
 
       const ordersData =
         response.data.data || response.data.orders || response.data || [];
@@ -279,7 +256,6 @@ const OrdersList = () => {
         response.data.pagination.count ||
         response.data.pagination.totalCount ||
         0;
-      console.log("ordersssss dT ", ordersData);
       // Auto-populate logic (your existing code)
       const ordersWithAutoPopulate = await Promise.all(
         ordersData.map(async (order) => {
@@ -290,7 +266,6 @@ const OrdersList = () => {
 
           if (order[selectedOwnerKey] && !order[ownerNameKey]?.trim()) {
             try {
-              // console.log(`Auto-populating owner for order ${order.id} from ID: ${order[selectedOwnerKey]}`); // Debug log
               const customerRes = await api.get(
                 `/api/customers/${order[selectedOwnerKey]}`,
               );
@@ -314,7 +289,6 @@ const OrdersList = () => {
                   customer.zoho_id || customer.ref || "";
                 updatedOrder[`${ownerPrefix}_remarks`] =
                   customer.zoho_notes || customer.system_notes || "";
-                // console.log(`Auto-populated ${ownerNameKey} for order ${order.id}:`, updatedOrder[ownerNameKey]); // Debug log
                 return updatedOrder;
               }
             } catch (autoErr) {
@@ -328,7 +302,6 @@ const OrdersList = () => {
           return order; // No change needed
         }),
       );
-      console.log("orders with auto populate", totalCount);
       setOrders(ordersWithAutoPopulate);
       setTotal(totalCount);
     } catch (err) {
@@ -345,48 +318,11 @@ const OrdersList = () => {
     }
   };
   useEffect(() => {
-    fetchOptions();
+    setFilterPlaces(
+      places.map((p) => ({ value: p.id.toString(), label: p.name })),
+    );
     fetchOrders();
   }, [page, rowsPerPage, filters.status]);
-
-  // Fetch options on mount (replaces dummies)
-  const fetchOptions = async () => {
-    try {
-      setLoading(true);
-      const [
-        placesRes,
-        companiesRes,
-        categoriesRes,
-        subcategoriesRes,
-        statusesRes,
-      ] = await Promise.all([
-        api.get("api/options/places/crud"),
-        api.get("api/options/thirdParty/crud"),
-        api.get("api/options/categories/crud"), // Assumed endpoint; adjust if different
-        api.get("api/options/subcategories/crud"), // For subcategories
-        api.get("api/options/statuses"),
-      ]);
-      console.log("statussss", statusesRes);
-      // Places: assume data.places = [{id, name, is_destination, ...}]
-      // console.log('optionssss', placesRes, companiesRes, categoriesRes, subcategoriesRes, statusesRes);
-      const allPlaces = placesRes?.data?.places || [];
-      setPlaces(
-        allPlaces.map((p) => ({ value: p.id.toString(), label: p.name })),
-      );
-    } catch (error) {
-      console.error("Error fetching options:", error);
-      setSnackbar({
-        open: true,
-        message:
-          error.response?.data?.error ||
-          error.message ||
-          "Failed to fetch options",
-        severity: "error",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleClearSearch = async () => {
     setFilters({
@@ -410,22 +346,15 @@ const OrdersList = () => {
     setTempOrderId(null);
   };
 
-  // Helper function to get place name by ID
   const getPlaceName = (placeId) => {
     if (!placeId) return "-";
-    const place = places.find((p) => p.value === placeId.toString());
+    const place = filterPlaces.find((p) => p.value === placeId.toString());
     return place ? place.label : placeId;
   };
 
   const handleReceiverAction = (receiver) => {
-    // console.log('Editing receiver:', receiver);
-    // Example: Open an edit modal or update state
-    // You can implement logic here, e.g., setEditingReceiver(receiver);
-    alert(`Editing receiver: ${receiver.receiver_name}`); // Placeholder for demo
+    alert(`Editing receiver: ${receiver.receiver_name}`);
   };
-  // Helper to normalize containers (handle string or array)
-  // const normContainers = selectedOrder ? normalizeContainers(selectedOrders.containers) : [];
-  // Helper for horizontal key-value pairs in Grid
   const HorizontalKeyValue = ({ data, spacing = 3 }) => (
     <Grid container spacing={spacing}>
       {Object.entries(data).map(([key, value]) => (
@@ -485,16 +414,13 @@ const OrdersList = () => {
     // Optional: Show success snackbar
   };
   // Fetch open containers
-  const fetchContainers = async (payload) => {
+  const fetchContainers = async () => {
     if (loadingContainers) return; // Prevent multiple calls
     setLoadingContainers(true);
     setAssignmentError(null);
     try {
-      const response = await api.get("/api/containers", { params: payload });
-      // console.log('Fetched containers:', response);
-      // Filter for only available containers based on derived_status
+      const response = await api.get("/api/containers");
       const availableContainers = response.data.data || [];
-
       setContainers(availableContainers);
     } catch (err) {
       console.error("Error fetching containers:", err);
@@ -515,8 +441,7 @@ const OrdersList = () => {
     setModalError(null);
     try {
       const response = await api.get(`/api/orders/${orderId}`);
-      console.log("orders details", response);
-      setSelectedOrder(response.data); // Now includes nested receivers, order_items, etc.
+      setSelectedOrder(response.data);
     } catch (err) {
       console.error("Error fetching order details:", err);
       setModalError(
@@ -557,8 +482,6 @@ const OrdersList = () => {
   };
   const isSelected = (id) => selectedOrders.indexOf(id) !== -1;
   const handleAssign = async (assignments) => {
-    console.log("handleAssign called with assignments:", assignments);
-
     if (!assignments || Object.keys(assignments).length === 0) {
       setSnackbar({
         open: true,
@@ -628,6 +551,7 @@ const OrdersList = () => {
               qty,
               totalAssignedWeight: weightKg, // trust user input
               containers,
+              loadingDate: detail.loadingDate || null,
             };
           }
         });
@@ -651,13 +575,7 @@ const OrdersList = () => {
       return;
     }
 
-    console.log(
-      "Sending payload (user-provided weights):",
-      JSON.stringify(cleanAssignments, null, 2),
-    );
-
     try {
-      // FIXED: Add { assignments: ... } wrapper
       const res = await api.post("/api/orders/assign-container", {
         assignments: cleanAssignments,
       });
@@ -824,12 +742,6 @@ const OrdersList = () => {
     setRowsPerPage(parseInt(event.target.value, 10));
     setPage(0);
   };
-  // const handleFilterChange = (e) => {
-  //     console.log('Filter change:', e.target.name, e.target.value);
-  //     const { name, value } = e.target;
-  //     setFilters((prev) => ({ ...prev, [name]: value }));
-  //     setPage(0);
-  // };
 
   const handleEdit = (orderId) => {
     navigate(`/orders/${orderId}/edit/`, { state: { orderId } });
@@ -847,18 +759,8 @@ const OrdersList = () => {
   const handleSnackbarClose = () => {
     setSnackbar((prev) => ({ ...prev, open: false }));
   };
-  const statuses = [
-    "Ready for Loading",
-    "Loaded Into container",
-    "Shipment Processing",
-    "Shipment In Transit",
-    "Under Processing",
-    "Arrived at Sort Facility",
-    "Ready for Delivery",
-    "Shipment Delivered",
-  ];
+
   const getStatusColors = (status) => {
-    // Extend your existing getStatusColors function to handle new statuses
     const colorMap = {
       "Ready for Loading": { bg: "#f3e5f5", text: "#7b1fa2" },
       "Loaded Into Container": { bg: "#e0f2f1", text: "#00695c" },
@@ -929,11 +831,7 @@ const OrdersList = () => {
 
     try {
       // Validate container status
-      const status = (
-        directSelectedContainers.derived_status ||
-        directSelectedContainers.status ||
-        ""
-      ).trim();
+      const status = (directSelectedContainers.current_status || "").trim();
 
       if (status !== "Available" && status !== "Assigned to Job") {
         throw new Error(
@@ -956,18 +854,11 @@ const OrdersList = () => {
             receiver.shippingdetails || receiver.shippingDetails || [];
 
           details.forEach((detail, idx) => {
-            const remaining = parseInt(
-              detail.remainingItems || detail.remaining || 0,
-              10,
-            );
-
-            if (remaining <= 0) return;
-
             targets.push({
               orderId: String(orderId),
               receiverId: String(receiver.id),
               detailIndex: String(idx),
-              remainingQty: remaining,
+              remainingQty: parseInt(detail.totalNumber || 0, 10),
             });
           });
         }
@@ -980,7 +871,6 @@ const OrdersList = () => {
       }
 
       // Assign selected container to first available target
-      const target = targets[0];
 
       const containerId =
         directSelectedContainers.cid ||
@@ -990,26 +880,19 @@ const OrdersList = () => {
         throw new Error("Selected container is invalid");
       }
 
-      const assignmentList = [
-        {
-          orderId: target.orderId,
-          receiverId: target.receiverId,
-          detailIndex: target.detailIndex,
-          containerId: String(containerId),
-          qty: target.remainingQty,
-        },
-      ];
+      const assignmentList = targets.map((target) => ({
+        orderId: target.orderId,
+        receiverId: target.receiverId,
+        detailIndex: target.detailIndex,
+        containerId: String(containerId),
+        qty: target.remainingQty,
+      }));
 
       const payload = {
         assignments: assignmentList,
         requestedOrderIds: selectedOrders.map(String),
         totalContainers: 1,
       };
-
-      console.log(
-        "Sending assignment payload:",
-        JSON.stringify(payload, null, 2),
-      );
 
       const response = await api.post(
         "/api/orders/assign-containers-batch",
@@ -1071,37 +954,22 @@ const OrdersList = () => {
     setLoadingContainers(true);
     setAssignmentError(null);
 
-    console.log("tempData received (raw):", tempData);
-    console.log(
-      "tempData type:",
-      typeof tempData,
-      Array.isArray(tempData) ? "array" : "not array",
-    );
-
     let orderIdRaw;
 
-    // Case 1: tempData is an array → take first element (your current case)
     if (Array.isArray(tempData) && tempData.length > 0) {
-      orderIdRaw = tempData[0]; // e.g. 110 from [110]
-      console.log("Detected array input → using first element:", orderIdRaw);
-    }
-    // Case 2: tempData is a plain number/string
-    else if (
+      orderIdRaw = tempData[0];
+    } else if (
       typeof tempData === "number" ||
       (typeof tempData === "string" && !isNaN(Number(tempData)))
     ) {
       orderIdRaw = tempData;
-      console.log("Detected direct number/string input:", orderIdRaw);
-    }
-    // Case 3: tempData is object → fallback to your original properties
-    else if (tempData && typeof tempData === "object") {
+    } else if (tempData && typeof tempData === "object") {
       orderIdRaw =
         tempData?.orderId ||
         tempData?.id ||
         tempData?.order_id ||
         tempData?.OrderId ||
         tempData?.orderID;
-      console.log("Detected object input → extracted:", orderIdRaw);
     }
 
     // Final validation
@@ -1124,28 +992,14 @@ const OrdersList = () => {
     }
 
     setTempOrderId(orderId);
-    console.log("Successfully set tempOrderId to:", orderId);
 
     // Proceed with fetching containers...
     try {
-      const response = await api.get("/api/containers", {
-        params: {
-          container_number: "",
-          container_size: "",
-          container_type: "",
-          owner_type: "",
-          status: "",
-          location: "",
-          page: 1,
-          limit: 50,
-        },
-      });
-
-      console.log("Fetched containers:", response.data);
+      const response = await api.get("/api/containers");
 
       const allContainers = response.data.data || [];
       const availableContainers = allContainers.filter((c) => {
-        const status = (c.derived_status || c.status || "").trim();
+        const status = (c.current_status || "").trim();
         return status === "Available" || status === "Assigned to Job";
       });
 
@@ -1177,20 +1031,9 @@ const OrdersList = () => {
       });
       return;
     }
-    console.log(
-      "Assigning container to orderId:",
-      selectedContainer,
-      "with tempOrderId:",
-      tempOrderId,
-    );
 
     const orderId = Number(tempOrderId);
-    console.log(
-      "Assigning container to orderId:",
-      orderId,
-      "with tempOrderId:",
-      tempOrderId,
-    );
+
     if (isNaN(orderId) || orderId <= 0) {
       console.error("Invalid tempOrderId before send:", {
         tempOrderId,
@@ -1212,11 +1055,6 @@ const OrdersList = () => {
         containerId:
           selectedContainer.cid || selectedContainer.container_number,
       };
-
-      console.log(
-        "SENDING ASSIGNMENT PAYLOAD:",
-        JSON.stringify(payload, null, 2),
-      );
 
       const response = await api.post(
         "/api/orders/assign-one-container-multi-receivers",
@@ -1271,11 +1109,8 @@ const OrdersList = () => {
   };
   // Updated helper: parse and enhance with icons/chips for better UX
   const parseSummaryToList = (receivers, order) => {
-    console.log("Parsing receivers:", receivers);
     if (!receivers || !Array.isArray(receivers)) return [];
-    // return receivers.map(rec => ({
     return receivers;
-    // }));
   };
 
   const parseSummaryToListTwo = (receivers, order) => {
@@ -1298,7 +1133,6 @@ const OrdersList = () => {
                   receiverId: rec.id,
                   shippingDetailId: detail.id,
                   containerNumber: containerDetail.container.container_number,
-                  // Optional: Add more fields if needed, e.g., total_number: containerDetail.total_number
                 });
               }
             });
@@ -1307,16 +1141,10 @@ const OrdersList = () => {
       }
     });
 
-    // Optional: Deduplicate by container_number if needed
-    // const uniqueContainers = containerList.filter((item, index, self) =>
-    //     index === self.findIndex(t => t.containerNumber === item.containerNumber)
-    // );
-
     return containerList;
   };
 
   const PrettyList = ({ receivers, title }) => {
-    console.log("receiversss", receivers);
     return (
       <Card
         variant="outlined"
@@ -1545,25 +1373,19 @@ const OrdersList = () => {
     );
   };
 
-  // Combine both receivers and container details into one tooltip content
   const CombinedTooltip = ({ order }) => {
-    // You can merge both datasets or just pass receivers since shippingdetails contains containers
     return (
       <PrettyList receivers={order.receivers} title="Receivers & Containers" />
     );
   };
 
-  // Updated parse function to extract unique container numbers from the full order structure
-  // Assumes 'order' is the full JSON object provided (e.g., { id: 77, receivers: [...] })
   const parseContainersToList = (order) => {
     if (!order || !order.receivers || order.receivers.length === 0) {
       return [];
     }
 
-    const containerSet = new Set(); // Use Set for uniqueness
-    // console.log('Parsing containers from order:', order);
+    const containerSet = new Set();
     order.receivers.forEach((receiver) => {
-      // console.log('Processing receiver:', receiver);
       if (receiver.shippingdetails && Array.isArray(receiver.shippingdetails)) {
         receiver.shippingdetails.forEach((shippingDetail) => {
           if (
@@ -1594,7 +1416,6 @@ const OrdersList = () => {
 
   // Enhanced PrettyContainersList remains the same, but now feed it the parsed list
   const PrettyContainersList = ({ items, title }) => {
-    console.log("Containers items:", items);
     return (
       <Box sx={{ p: 1, maxWidth: 280 }}>
         <Typography
@@ -1610,29 +1431,24 @@ const OrdersList = () => {
         </Typography>
         <Stack direction="row" flexWrap="wrap" spacing={0.75} useFlexGap>
           {items.length > 0 ? (
-            items.map(
-              (item, index) => (
-                console.log("statussss", item),
-                (
-                  <Chip
-                    key={index}
-                    label={item.primary}
-                    icon={<CargoIcon fontSize="small" />}
-                    size="small"
-                    variant="outlined"
-                    sx={{
-                      borderRadius: 1.5,
-                      borderColor: "divider",
-                      backgroundColor: "#0d6c6a",
-                      "& .MuiChip-icon": { color: "secondary.main" },
-                      fontSize: "0.75rem",
-                      height: 24,
-                      "&:hover": { backgroundColor: "#e9ecef" },
-                    }}
-                  />
-                )
-              ),
-            )
+            items.map((item, index) => (
+              <Chip
+                key={index}
+                label={item.primary}
+                icon={<CargoIcon fontSize="small" />}
+                size="small"
+                variant="outlined"
+                sx={{
+                  borderRadius: 1.5,
+                  borderColor: "divider",
+                  backgroundColor: "#0d6c6a",
+                  "& .MuiChip-icon": { color: "secondary.main" },
+                  fontSize: "0.75rem",
+                  height: 24,
+                  "&:hover": { backgroundColor: "#e9ecef" },
+                }}
+              />
+            ))
           ) : (
             <Chip
               label="No containers"
@@ -4736,7 +4552,7 @@ applicable law provides otherwise
             <div><strong>SHIPPING LINE:</strong> ${getSafeValue(safeOrder.shipping_line)}</div>
 
             <div><strong>Dest:</strong> ${getPlaceName(getSafeValue(safeOrder.final_destination))}</div>
-            <div><strong>Shipper:</strong> ${getSafeValue(firstReceiver.receivername)}</div>
+            <div><strong>Shipper:</strong> ${getSafeValue(firstReceiver.receiverName)}</div>
             <div><strong>BOOKING NO:</strong> ${getSafeValue(safeOrder.rgl_booking_number)}</div>
 
             <div><strong>Comm:</strong> ${getCommodities() || "N/A"}</div>
@@ -4832,13 +4648,13 @@ applicable law provides otherwise
       orderData.receivers && orderData.receivers[0]
         ? orderData.receivers[0]
         : {};
-    const receiverName = receiver.receivername || "N/A"; // Fixed: receivername
-    const receiverContact = receiver.receivercontact || "N/A"; // Fixed: receivercontact
-    const receiverAddress = receiver.receiveraddress || "N/A"; // Fixed: receiveraddress
-    const receiverEmail = receiver.receiveremail || "N/A"; // Fixed: receiveremail
+    const receiverName = receiver.receiverName || "N/A";
+    const receiverContact = receiver.receiverContact || "N/A";
+    const receiverAddress = receiver.receiverAddress || "N/A";
+    const receiverEmail = receiver.receiverEmail || "N/A";
 
     // Get shipping details
-    const shippingDetails = receiver.shippingdetails || []; // Fixed: shippingdetails
+    const shippingDetails = receiver.shippingdetails || [];
 
     // Calculate totals
     let totalQty = 0;
@@ -5281,10 +5097,10 @@ applicable law provides otherwise
       orderData.receivers && orderData.receivers[0]
         ? orderData.receivers[0]
         : {};
-    const receiverName = receiver.receivername || "";
-    const receiverContact = receiver.receivercontact || "";
-    const receiverAddress = receiver.receiveraddress || "";
-    const receiverEmail = receiver.receiveremail || "";
+    const receiverName = receiver.receiverName || "";
+    const receiverContact = receiver.receiverContact || "";
+    const receiverAddress = receiver.receiverAddress || "";
+    const receiverEmail = receiver.receiverEmail || "";
 
     // Get shipping details
     const shippingDetails = receiver.shippingdetails || [];
@@ -5634,10 +5450,10 @@ applicable law provides otherwise
       orderData.receivers && orderData.receivers[0]
         ? orderData.receivers[0]
         : {};
-    const receiverName = receiver.receivername || "";
-    const receiverContact = receiver.receivercontact || "";
-    const receiverAddress = receiver.receiveraddress || "";
-    const receiverEmail = receiver.receiveremail || "";
+    const receiverName = receiver.receiverName || "";
+    const receiverContact = receiver.receiverContact || "";
+    const receiverAddress = receiver.receiverAddress || "";
+    const receiverEmail = receiver.receiverEmail || "";
 
     // Get shipping details
     const shippingDetails = receiver.shippingdetails || [];
@@ -5987,7 +5803,7 @@ applicable law provides otherwise
       orderData.receivers && orderData.receivers[0]
         ? orderData.receivers[0]
         : {};
-    const receiverName = receiver.receivername || "";
+    const receiverName = receiver.receiverName || "";
     const receiverContact = receiver.receivercontact || "";
     const receiverAddress = receiver.receiveraddress || "";
     const receiverEmail = receiver.receiveremail || "";
@@ -6305,7 +6121,7 @@ applicable law provides otherwise
       orderData.receivers && orderData.receivers[0]
         ? orderData.receivers[0]
         : {};
-    const receiverName = getValue(receiver.receivername);
+    const receiverName = getValue(receiver.receiverName);
     const receiverContact = getValue(receiver.receivercontact);
     const receiverAddress = getValue(receiver.receiveraddress);
 
@@ -6695,7 +6511,7 @@ applicable law provides otherwise
       orderData.receivers && orderData.receivers[0]
         ? orderData.receivers[0]
         : {};
-    const receiverName = getValue(receiver.receivername);
+    const receiverName = getValue(receiver.receiverName);
     const receiverContact = getValue(receiver.receivercontact);
     const receiverAddress = getValue(receiver.receiveraddress);
 
@@ -7085,7 +6901,7 @@ applicable law provides otherwise
       orderData.receivers && orderData.receivers[0]
         ? orderData.receivers[0]
         : {};
-    const receiverName = getValue(receiver.receivername);
+    const receiverName = getValue(receiver.receiverName);
     const receiverContact = getValue(receiver.receivercontact);
     const receiverAddress = getValue(receiver.receiveraddress);
 
@@ -7295,7 +7111,7 @@ applicable law provides otherwise
       orderData.receivers && orderData.receivers[0]
         ? orderData.receivers[0]
         : {};
-    const receiverName = getValue(receiver.receivername);
+    const receiverName = getValue(receiver.receiverName);
     const receiverContact = getValue(receiver.receivercontact);
     const receiverAddress = getValue(receiver.receiveraddress);
 
@@ -7505,7 +7321,7 @@ applicable law provides otherwise
       orderData.receivers && orderData.receivers[0]
         ? orderData.receivers[0]
         : {};
-    const receiverName = getValue(receiver.receivername);
+    const receiverName = getValue(receiver.receiverName);
     const receiverContact = getValue(receiver.receivercontact);
     const receiverAddress = getValue(receiver.receiveraddress);
 
@@ -8232,8 +8048,8 @@ applicable law provides otherwise
             >
               <MenuItem value="">All</MenuItem> {/* Added "All" option */}
               {statuses.map((status) => (
-                <MenuItem key={status} value={status}>
-                  {status}
+                <MenuItem key={status.id} value={status.order_status}>
+                  {status.order_status}
                 </MenuItem>
               ))}
             </Select>
@@ -8345,11 +8161,9 @@ applicable law provides otherwise
             </TableHead>
             <TableBody>
               {orders.map((order) => {
-                // console.log('Rendering order: conatiners', order.receivers);
                 const isItemSelected = isSelected(order.id);
                 // renderReceivers( order.receivers);
                 const containersList = order.receivers.forEach((receiver) => {
-                  // console.log('Processing receiver: connnnnnnntainerssss', receiver);
                   if (
                     receiver.shippingdetails &&
                     Array.isArray(receiver.shippingdetails)
@@ -8362,7 +8176,6 @@ applicable law provides otherwise
                         shippingDetail.containerDetails.forEach(
                           (containerDetail) => {
                             if (containerDetail && containerDetail) {
-                              // console.log('Found container detail:', containerDetail.container);
                               // return containersList.push({primary: containerDetail.container.container_number.trim() } );
                             }
                           },
@@ -8374,18 +8187,15 @@ applicable law provides otherwise
                 const status =
                   order.overall_status || order.status || "Created";
                 const colors = getStatusColors(status);
-                console.log("Ren container list:", containersList);
-                // Updated: Compute products summary from receivers[].shippingDetails (corrected field names to snake_case)
                 const productsSummary = order.receivers.flatMap((receiver) =>
                   (receiver.shippingdetails || []).map((detail) => ({
                     category: detail.category || "Unknown",
                     subcategory: detail.subcategory || "",
-                    type: detail.type || "Package", // Item type (e.g., "Package")
+                    type: detail.type || "Package",
                     weight: parseFloat(detail.weight || 0),
                     total_number: parseInt(detail.totalNumber || 0),
                     itemRef: detail.itemRef || "",
                     shippingDetailStatus: detail.status || "",
-                    // containerName: detail.containerDetails || []
                   })),
                 );
                 const totalItems = productsSummary.reduce(
@@ -8606,7 +8416,7 @@ applicable law provides otherwise
           selectedOrder={selectedOrder}
           modalLoading={modalLoading}
           modalError={modalError}
-          places={places}
+          places={filterPlaces}
         />
         {/* Snackbar for notifications */}
         <Snackbar
@@ -8749,7 +8559,7 @@ applicable law provides otherwise
               >
                 {selectedOrderForUpdate?.receivers?.map((rec) => (
                   <MenuItem key={rec.id} value={rec.id}>
-                    {rec.receivername} (Current: {rec.status})
+                    {rec.receiverName} | (Current: {rec.status})
                   </MenuItem>
                 ))}
               </Select>
@@ -8776,8 +8586,8 @@ applicable law provides otherwise
                 onChange={handleStatusChange}
               >
                 {statuses.map((status) => (
-                  <MenuItem key={status} value={status}>
-                    {status}
+                  <MenuItem key={status.id} value={status.order_status}>
+                    {status.order_status}
                   </MenuItem>
                 ))}
               </Select>

@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useContext,
+} from "react";
 import {
   Box,
   Chip,
@@ -35,6 +41,7 @@ import {
   CardContent,
   Slide,
 } from "@mui/material";
+import { AppContext } from "../../context/AppContext";
 import {
   Add as AddIcon,
   Download as DownloadIcon,
@@ -83,7 +90,7 @@ const StyledTableHeadCell = styled(TableCell)(({ theme }) => ({
 
 export default function Consignments() {
   const navigate = useNavigate();
-
+  const { statuses } = useContext(AppContext);
   const [consignments, setConsignments] = useState([]);
   const [orderBy, setOrderBy] = useState("created_at");
   const [order, setOrder] = useState("desc");
@@ -109,7 +116,6 @@ export default function Consignments() {
   });
   const [exporting, setExporting] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [statusList, setStatusList] = useState([]);
   const [error, setError] = useState(null);
 
   // Server-side params
@@ -132,7 +138,6 @@ export default function Consignments() {
     try {
       const response = await api.get("/api/consignments", { params });
       const data = response.data;
-      console.log("API Response:", data);
 
       setConsignments(data.data || []);
       setRowCount(data.total || 0);
@@ -153,20 +158,14 @@ export default function Consignments() {
     getConsignments();
   }, [getConsignments]);
 
-  // Fetch statuses (once on mount)
-  useEffect(() => {
-    const fetchStatus = async () => {
-      try {
-        const res = await api.get("/api/consignments/statuses");
-        setStatusList(res.data.statusOptions || []);
-      } catch (err) {
-        console.error("Error fetching statuses:", err);
-      }
-    };
-    fetchStatus();
-  }, []);
+  const consignmentStatuses = useMemo(
+    () =>
+      (statuses || [])
+        .filter((s) => s.status === true && s.consignment_status)
+        .sort((a, b) => a.sorting_number - b.sorting_number),
+    [statuses],
+  );
 
-  // Render helpers
   const renderDate = (dateStr) => {
     if (!dateStr) return "N/A";
     return new Date(dateStr).toLocaleDateString("en-GB", {
@@ -226,33 +225,10 @@ export default function Consignments() {
   };
 
   const handleStatusUpdate = (consignment) => {
-    console.log("Updating status for consignment:", consignment.id);
     setSelectedConsignmentForUpdate(consignment);
     setSelectedStatus(consignment.status || "");
     setOpenStatusDialog(true);
   };
-
-  //   const handleConfirmStatusUpdate = async () => {
-  //     console.log('Confirming status update for consignment:', selectedConsignmentForUpdate?.id, 'to', selectedStatus);
-  //     if (!selectedConsignmentForUpdate || !selectedStatus) return;
-  // // console.log('Updating status for consignment', selectedConsignmentForUpdate.id, 'to', selectedStatus);
-  //     try {
-  //   const res = await api.put(`/api/consignments/${selectedConsignmentForUpdate.id}/status`, {
-  //         status: selectedStatus,
-  //       });
-  //       console.log('Status updated:', res);
-  //       setSnackbar({ open: true, message: 'Status updated successfully!', severity: 'success' });
-  //       // getConsignments();
-  //     } catch (err) {
-  //       setSnackbar({
-  //         open: true,
-  //         message: 'Failed to update status',
-  //         severity: 'error',
-  //       });
-  //     } finally {
-  //       setOpenStatusDialog(false);
-  //     }
-  //   };
 
   const handleView = (id) => {
     navigate(`/consignments/${id}/edit`, {
@@ -268,7 +244,6 @@ export default function Consignments() {
 
   const handleDelete = (id) => {
     if (window.confirm("Are you sure you want to delete this consignment?")) {
-      console.log("Delete consignment", id);
       setSnackbar({
         open: true,
         message: "Consignment deleted successfully!",
@@ -282,14 +257,16 @@ export default function Consignments() {
   };
 
   const handleConfirmStatusUpdate = async (row) => {
-    console.log("consignments", row);
     try {
+      const selectedStatusObj = consignmentStatuses.find(
+        (s) => s.consignment_status === selectedStatus,
+      );
       const res = await api.put(`/api/consignments/${row.id}/status`, {
         newStatus: selectedStatus,
+        days_offset: selectedStatusObj?.days_offset ?? 0,
         reason: "Status advanced via UI",
       });
       const { message } = res.data || {};
-      console.log("Status updated:", res);
       getConsignments();
       setLoading(false);
 
@@ -393,9 +370,9 @@ export default function Consignments() {
             onChange={handleFilterChange}
           >
             <MenuItem value="">All</MenuItem>
-            {statusList.map((s) => (
-              <MenuItem key={s.value} value={s.value}>
-                {s.label}
+            {consignmentStatuses.map((s) => (
+              <MenuItem key={s.id} value={s.consignment_status}>
+                {s.consignment_status}
               </MenuItem>
             ))}
           </Select>
@@ -408,21 +385,41 @@ export default function Consignments() {
           borderRadius: 2,
           overflow: "auto",
           display: "table-cell",
+          width: "100%",
           maxHeight: 600,
         }}
       >
-        <Table>
+        <Table sx={{ width: "100%", tableLayout: "fixed" }}>
           <TableHead>
             <TableRow>
-              <StyledTableHeadCell padding="checkbox">
+              <StyledTableHeadCell padding="checkbox" sx={{ width: 50 }}>
                 <Checkbox />
               </StyledTableHeadCell>
-              {columns.map((col) => (
-                <StyledTableHeadCell key={col.key}>
-                  {col.label}
-                </StyledTableHeadCell>
-              ))}
-              <StyledTableHeadCell>Actions</StyledTableHeadCell>
+              <StyledTableHeadCell sx={{ width: 140 }}>
+                Consignment #
+              </StyledTableHeadCell>
+              <StyledTableHeadCell sx={{ width: 160 }}>
+                Shipper
+              </StyledTableHeadCell>
+              <StyledTableHeadCell sx={{ width: 160 }}>
+                Consignee
+              </StyledTableHeadCell>
+              <StyledTableHeadCell sx={{ width: 110 }}>ETA</StyledTableHeadCell>
+              <StyledTableHeadCell sx={{ width: 110 }}>
+                Created
+              </StyledTableHeadCell>
+              <StyledTableHeadCell sx={{ width: 100 }}>
+                Gross Wt
+              </StyledTableHeadCell>
+              <StyledTableHeadCell sx={{ width: 80 }}>
+                Orders
+              </StyledTableHeadCell>
+              <StyledTableHeadCell sx={{ width: 130 }}>
+                Status
+              </StyledTableHeadCell>
+              <StyledTableHeadCell sx={{ width: 100 }}>
+                Actions
+              </StyledTableHeadCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -440,35 +437,39 @@ export default function Consignments() {
               </TableRow>
             ) : (
               consignments.map((row) => (
-                <StyledTableRow key={row.id} sx={{ fontSize: 10 }} hover>
+                <StyledTableRow key={row.id} hover>
                   <TableCell padding="checkbox">
                     <Checkbox />
                   </TableCell>
-                  <TableCell>{row.consignment_number || "N/A"}</TableCell>
-                  <TableCell>
+                  <TableCell sx={{ fontSize: 12, wordBreak: "break-word" }}>
+                    {row.consignment_number || "N/A"}
+                  </TableCell>
+                  <TableCell sx={{ fontSize: 12, wordBreak: "break-word" }}>
                     {row.shipperName?.substring(0, 20) ||
                       row.shipper?.substring(0, 20) ||
                       "N/A"}
                   </TableCell>
-                  <TableCell>
+                  <TableCell sx={{ fontSize: 12, wordBreak: "break-word" }}>
                     {row.consigneeName?.substring(0, 20) ||
                       row.consignee?.substring(0, 20) ||
                       "N/A"}
                   </TableCell>
-                  <TableCell>{renderDate(row.eta)}</TableCell>
-                  <TableCell>{renderDate(row.created_at)}</TableCell>
-                  <TableCell>{row.gross_weight || 0} kg</TableCell>
-                  <TableCell>{row.orders?.length || 0}</TableCell>
+                  <TableCell sx={{ fontSize: 12 }}>
+                    {renderDate(row.eta)}
+                  </TableCell>
+                  <TableCell sx={{ fontSize: 12 }}>
+                    {renderDate(row.created_at)}
+                  </TableCell>
+                  <TableCell sx={{ fontSize: 12 }}>
+                    {row.gross_weight || 0} kg
+                  </TableCell>
+                  <TableCell sx={{ fontSize: 12 }}>
+                    {row.orders?.length || 0}
+                  </TableCell>
                   <TableCell>{renderStatus(row.status)}</TableCell>
                   <TableCell>
                     <Stack direction="row" spacing={1}>
-                      {/* <Tooltip title="View">
-                        <IconButton size="small" onClick={() => navigate(`/consignments/${row.id}`)}>
-                          <VisibilityIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip> */}
                       <Tooltip title="Edit">
-                        {/* {console.log('Row data for edit:', row)} */}
                         <IconButton
                           size="small"
                           onClick={() => handleEdit(row.id)}
@@ -521,9 +522,9 @@ export default function Consignments() {
               label="Status"
               onChange={(e) => setSelectedStatus(e.target.value)}
             >
-              {statusList.map((s) => (
-                <MenuItem key={s.value} value={s.value}>
-                  {s.label}
+              {consignmentStatuses.map((s) => (
+                <MenuItem key={s.id} value={s.consignment_status}>
+                  {s.consignment_status}
                 </MenuItem>
               ))}
             </Select>

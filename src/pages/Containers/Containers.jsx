@@ -36,7 +36,7 @@ import AddCircleIcon from "@mui/icons-material/AddCircle";
 import EditIcon from "@mui/icons-material/Edit";
 import HistoryIcon from "@mui/icons-material/History";
 import CloseIcon from "@mui/icons-material/Close";
-import { api } from "../../api"; // Assuming api is configured with baseURL
+import { api } from "../../api";
 import SaveIcon from "@mui/icons-material/Save";
 const modalStyle = {
   position: "absolute",
@@ -54,6 +54,7 @@ const modalStyle = {
 };
 
 const ContainerModule = ({
+  isConsignment,
   containers: propContainers = [],
   selectedContainers = [],
   onToggle,
@@ -223,10 +224,20 @@ const ContainerModule = ({
         page: currentPage,
         limit: rowsPerPage,
       };
-      const response = await api.get("/api/containers", { params });
+
+      let response;
+      if (isConsignment === true) {
+        response = await api.get("/api/containers/consignment-containers", {
+          params,
+        });
+      } else {
+        response = await api.get("/api/containers", { params });
+      }
+
       if (response.status !== 200) {
         throw new Error(`Unexpected response status: ${response.status}`);
       }
+
       setContainers(response.data?.data || []);
       setTotalCount(response.data?.total || 0);
     } catch (error) {

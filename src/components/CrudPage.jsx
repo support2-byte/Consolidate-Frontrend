@@ -1,8 +1,20 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import {
-  Paper, Typography, Button, Dialog, DialogTitle, DialogContent, DialogActions,
-  Stack, Box, IconButton, Tooltip, Snackbar, Alert, CircularProgress
+  Paper,
+  Typography,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Stack,
+  Box,
+  IconButton,
+  Tooltip,
+  Snackbar,
+  Alert,
+  CircularProgress,
 } from "@mui/material";
 import { DataGrid, GridToolbar } from "@mui/x-data-grid";
 import EditIcon from "@mui/icons-material/Edit";
@@ -11,9 +23,23 @@ import AddIcon from "@mui/icons-material/Add";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 
-export default function CrudPage({ title, endpoint, columns, formFields, idKey = "id" }) {
-  const [rows, setRows] = useState([]);
-  const [loading, setLoading] = useState(false); // 👈 loading state
+export default function CrudPage({
+  title,
+  endpoint,
+  columns,
+  formFields,
+  idKey = "id",
+  rows: externalRows,
+  loading: externalLoading,
+  onDelete,
+  onReloadZoho,
+}) {
+  const isControlled = externalRows !== undefined;
+  const [internalRows, setInternalRows] = useState([]);
+  const [internalLoading, setInternalLoading] = useState(false);
+
+  const rows = isControlled ? externalRows : internalRows;
+  const loading = isControlled ? !!externalLoading : internalLoading;
   const [snackbar, setSnackbar] = useState({
     open: false,
     message: "",
@@ -29,69 +55,47 @@ export default function CrudPage({ title, endpoint, columns, formFields, idKey =
   };
 
   const load = async () => {
-  try {
-    setLoading(true);
-    // Use endpoint prop (e.g., /api/customers/panel?search=All&limit=5000)
-    // If endpoint has no query, you can append defaults here
-    const response = await api.get(endpoint);  // Now uses prop!
-    console.log("Fetched data:", response.data);
-    setRows(response.data);
-  } catch (err) {
-    console.error("Failed to load data", err);
-    showToast("Failed to load data", "error");
-  } finally {
-    setLoading(false);
-  }
-};
+    if (isControlled) return; // parent (e.g. AppContext) owns the data
+    try {
+      setInternalLoading(true);
+      const response = await api.get(endpoint);
+      setInternalRows(response.data);
+    } catch (err) {
+      console.error("Failed to load data", err);
+      showToast("Failed to load data", "error");
+    } finally {
+      setInternalLoading(false);
+    }
+  };
 
   useEffect(() => {
-    load();
-  }, [  ]);
+    if (!isControlled) load();
+  }, []);
 
   const startAdd = () => {
     const route = `/${title.toLowerCase()}/add`;
     navigate(route);
   };
 
- const loadZoho = async () => {
-  try {
-    setLoading(true);
-    
-    // Option 1: Use relative path (recommended if frontend & backend same domain)
-    // const response = await axios.get('/api/zohoCustomer/zoho-customer', {
-    //   params: {
-    //     search: 'All',
-    //     limit: 5000,          // or whatever you want
-    //     secret: import.meta.env.VITE_ZOHO_WEBHOOK_SECRET  // store in .env, NEVER hardcode
-    //   }
-    // });
-
-    // Option 2: Full URL (use only for testing, hide secret!)
-    const response = await axios.get(
-      'https://consolidate.onrender.com/api/customerPanals?search=All&limit=5000&',
-      // {
-      //   params: {
-      //     search: 'All',
-      //     limit: 5000,
-      //     secret: '729d8ae7b4ed55f4cfbab5ee07f1eca74eecb97011' // ← REMOVE in prod!
-      //   }
-      // }
-    );
-
-    console.log("Fetched Zoho sync data:", response.data);
-    
-    // If your endpoint returns the updated customer list:
-    // setRows(response.data);  // or update your table state
-    
-    showToast("Zoho customers synced successfully!", "success");
-  } catch (err) {
-    console.error("Failed to sync Zoho data:", err);
-    const errorMsg = err.response?.data?.error || err.message;
-    showToast(`Failed to sync: ${errorMsg}`, "error");
-  } finally {
-    setLoading(false);
-  }
-};  
+  const loadZoho = async () => {
+    if (onReloadZoho) {
+      await onReloadZoho();
+      return;
+    }
+    try {
+      setInternalLoading(true);
+      const response = await axios.get(
+        "https://consolidate.onrender.com/api/customerPanals?search=All&limit=5000&",
+      );
+      showToast("Zoho customers synced successfully!", "success");
+    } catch (err) {
+      console.error("Failed to sync Zoho data:", err);
+      const errorMsg = err.response?.data?.error || err.message;
+      showToast(`Failed to sync: ${errorMsg}`, "error");
+    } finally {
+      setInternalLoading(false);
+    }
+  };
 
   const startEdit = (row) => {
     const route = `/${title.toLowerCase()}/${row.zoho_id}/edit`;
@@ -105,8 +109,12 @@ export default function CrudPage({ title, endpoint, columns, formFields, idKey =
 
   const handleConfirmDelete = async () => {
     try {
-      await api.delete(`${endpoint}/${deleteId}`);
-      await load();
+      if (onDelete) {
+        await onDelete(deleteId);
+      } else {
+        await api.delete(`${endpoint}/${deleteId}`);
+        await load();
+      }
       showToast("Record deleted successfully!", "success");
     } catch (err) {
       showToast("Failed to delete record", "error");
@@ -116,7 +124,7 @@ export default function CrudPage({ title, endpoint, columns, formFields, idKey =
   };
 
   const gridColumns = [
-    ...columns.map(c => ({
+    ...columns.map((c) => ({
       field: c.key,
       headerName: c.label,
       flex: 1,
@@ -145,12 +153,20 @@ export default function CrudPage({ title, endpoint, columns, formFields, idKey =
       renderCell: (params) => (
         <Stack direction="row" spacing={1} mt={2}>
           <Tooltip title="Edit">
-            <IconButton color="primary" size="small" onClick={() => startEdit(params.row)}>
+            <IconButton
+              color="primary"
+              size="small"
+              onClick={() => startEdit(params.row)}
+            >
               <EditIcon fontSize="small" />
             </IconButton>
           </Tooltip>
           <Tooltip title="Delete">
-            <IconButton color="error" size="small" onClick={() => handleDeleteClick(params.row.zoho_id)}>
+            <IconButton
+              color="error"
+              size="small"
+              onClick={() => handleDeleteClick(params.row.zoho_id)}
+            >
               <DeleteIcon fontSize="small" />
             </IconButton>
           </Tooltip>
@@ -162,7 +178,12 @@ export default function CrudPage({ title, endpoint, columns, formFields, idKey =
   return (
     <Paper sx={{ p: 3, borderRadius: 3, boxShadow: 3, position: "relative" }}>
       {/* Header */}
-      <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
+      <Stack
+        direction="row"
+        justifyContent="space-between"
+        alignItems="center"
+        mb={2}
+      >
         <Typography variant="h5">{title}</Typography>
         <Button
           style={{ backgroundColor: "#f58220", color: "#fff" }}
@@ -173,15 +194,15 @@ export default function CrudPage({ title, endpoint, columns, formFields, idKey =
         >
           Add {title}
         </Button>
-            <Button
+        <Button
           style={{ backgroundColor: "#f58220", color: "#fff" }}
           variant="contained"
           startIcon={<AddIcon />}
           onClick={loadZoho}
           sx={{ borderRadius: 2 }}
         >
-         ReLoad Zoho {title} 
-    </Button>
+          ReLoad Zoho {title}
+        </Button>
       </Stack>
 
       {/* Loader overlay */}
@@ -206,7 +227,10 @@ export default function CrudPage({ title, endpoint, columns, formFields, idKey =
         sx={{
           height: 550,
           width: "100%",
-          "& .MuiDataGrid-columnHeaders": { backgroundColor: "#f4f6f8", fontWeight: "bold" },
+          "& .MuiDataGrid-columnHeaders": {
+            backgroundColor: "#f4f6f8",
+            fontWeight: "bold",
+          },
           "& .MuiDataGrid-row:hover": { backgroundColor: "#f1f9ff" },
         }}
       >
@@ -225,10 +249,16 @@ export default function CrudPage({ title, endpoint, columns, formFields, idKey =
       {/* Confirm Delete Dialog */}
       <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)}>
         <DialogTitle>Confirm Delete</DialogTitle>
-        <DialogContent>Are you sure you want to delete this record?</DialogContent>
+        <DialogContent>
+          Are you sure you want to delete this record?
+        </DialogContent>
         <DialogActions>
           <Button onClick={() => setConfirmOpen(false)}>Cancel</Button>
-          <Button color="error" variant="contained" onClick={handleConfirmDelete}>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={handleConfirmDelete}
+          >
             Delete
           </Button>
         </DialogActions>
