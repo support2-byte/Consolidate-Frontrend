@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Box,
   Card,
@@ -31,11 +31,15 @@ import DeleteRoundedIcon from "@mui/icons-material/DeleteRounded";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
+import AttachFileRoundedIcon from "@mui/icons-material/AttachFileRounded";
+import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
+import ImageOutlinedIcon from "@mui/icons-material/ImageOutlined";
 import { useThemeContext } from "../../context/ThemeContext";
 import { api } from "../../api";
 
 const MAX_TITLE = 80;
 const MAX_DESC = 1000;
+const MAX_ATTACHMENTS = 3;
 
 export default function BugReportPage() {
   const { mode } = useThemeContext();
@@ -47,8 +51,11 @@ export default function BugReportPage() {
   const [editingId, setEditingId] = useState(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [newFiles, setNewFiles] = useState([]);
+  const [existingAttachments, setExistingAttachments] = useState([]);
   const [errors, setErrors] = useState({ title: "", description: "" });
   const [loading, setLoading] = useState(false);
+  const fileInputRef = useRef(null);
 
   const [snackOpen, setSnackOpen] = useState(false);
   const [snackMsg, setSnackMsg] = useState("");
@@ -92,11 +99,16 @@ export default function BugReportPage() {
       setEditingId(report.id || report._id);
       setTitle(report.title);
       setDescription(report.description);
+      setExistingAttachments(
+        Array.isArray(report.attachments) ? report.attachments : [],
+      );
     } else {
       setEditingId(null);
       setTitle("");
       setDescription("");
+      setExistingAttachments([]);
     }
+    setNewFiles([]);
     setErrors({ title: "", description: "" });
     setDialogOpen(true);
   };
@@ -106,35 +118,60 @@ export default function BugReportPage() {
     setEditingId(null);
     setTitle("");
     setDescription("");
+    setNewFiles([]);
+    setExistingAttachments([]);
+  };
+
+  const handleFileChange = (e) => {
+    const selected = Array.from(e.target.files || []);
+    const totalAllowed = MAX_ATTACHMENTS - existingAttachments.length;
+    const combined = [...newFiles, ...selected].slice(0, totalAllowed);
+    setNewFiles(combined);
+    e.target.value = "";
+  };
+
+  const handleRemoveNewFile = (index) => {
+    setNewFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const buildFormData = () => {
+    const fd = new FormData();
+    fd.append("title", title.trim());
+    fd.append("description", description.trim());
+    newFiles.forEach((file) => fd.append("attachments", file));
+    return fd;
   };
 
   const handleSaveReport = async () => {
     if (!validate()) return;
     setLoading(true);
 
-    const payload = {
-      title: title.trim(),
-      description: description.trim(),
-    };
-
     try {
       if (editingId) {
+        const fd = buildFormData();
         const { data } = await api.put(
           `/api/options/bug-report/${editingId}`,
-          payload,
+          fd,
+          { headers: { "Content-Type": "multipart/form-data" } },
         );
+        const updated = data?.report || {};
         setReports((prev) =>
           prev.map((r) =>
-            (r.id || r._id) === editingId ? { ...r, ...payload } : r,
+            (r.id || r._id) === editingId ? { ...r, ...updated } : r,
           ),
         );
         showNotification(data?.message || "Bug report updated successfully.");
       } else {
-        const { data } = await api.post("/api/options/bug-report", payload);
+        const fd = buildFormData();
+        const { data } = await api.post("/api/options/bug-report", fd, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
         const newReport = data?.report || {
-          ...payload,
+          title: title.trim(),
+          description: description.trim(),
           id: Date.now(),
           isFixed: false,
+          attachments: [],
         };
         setReports((prev) => [newReport, ...prev]);
         showNotification(data?.message || "Bug report submitted successfully.");
@@ -153,10 +190,11 @@ export default function BugReportPage() {
   const handleToggleFixed = async (id, currentStatus) => {
     try {
       const updatedStatus = !currentStatus;
-      await api.put(`/api/options/bug-report/${id}`, {
-        isFixed: updatedStatus,
+      const fd = new FormData();
+      fd.append("isFixed", updatedStatus);
+      await api.put(`/api/options/bug-report/${id}`, fd, {
+        headers: { "Content-Type": "multipart/form-data" },
       });
-
       setReports((prev) =>
         prev.map((r) =>
           (r.id || r._id) === id ? { ...r, isFixed: updatedStatus } : r,
@@ -187,13 +225,11 @@ export default function BugReportPage() {
     }
   };
 
+  const totalAttachmentCount = existingAttachments.length + newFiles.length;
+  const canAddMore = totalAttachmentCount < MAX_ATTACHMENTS;
+
   return (
-    <Box
-      sx={{
-        minHeight: "100vh",
-        p: { xs: 2, md: 4 },
-      }}
-    >
+    <Box sx={{ minHeight: "100vh", p: { xs: 2, md: 4 } }}>
       <Box
         sx={{
           display: "flex",
@@ -287,10 +323,13 @@ export default function BugReportPage() {
                 <TableCell width={80} align="center" sx={{ fontWeight: 600 }}>
                   Fixed
                 </TableCell>
-                <TableCell width={300} sx={{ fontWeight: 600 }}>
+                <TableCell width={260} sx={{ fontWeight: 600 }}>
                   Title
                 </TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Description</TableCell>
+                <TableCell width={100} sx={{ fontWeight: 600 }}>
+                  Files
+                </TableCell>
                 <TableCell width={120} align="center" sx={{ fontWeight: 600 }}>
                   Actions
                 </TableCell>
@@ -299,7 +338,7 @@ export default function BugReportPage() {
             <TableBody>
               {reports.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} align="center" sx={{ py: 8 }}>
+                  <TableCell colSpan={6} align="center" sx={{ py: 8 }}>
                     <Typography
                       variant="body1"
                       color="text.secondary"
@@ -314,6 +353,9 @@ export default function BugReportPage() {
               ) : (
                 reports.map((report, index) => {
                   const id = report.id || report._id;
+                  const attachments = Array.isArray(report.attachments)
+                    ? report.attachments
+                    : [];
                   return (
                     <TableRow
                       key={id}
@@ -368,6 +410,34 @@ export default function BugReportPage() {
                         >
                           {report.description}
                         </Typography>
+                      </TableCell>
+                      <TableCell>
+                        {attachments.length > 0 ? (
+                          <Box
+                            sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}
+                          >
+                            {attachments.map((url, i) => (
+                              <Tooltip key={i} title={url}>
+                                <Chip
+                                  icon={<ImageOutlinedIcon />}
+                                  label={`File ${i + 1}`}
+                                  size="small"
+                                  variant="outlined"
+                                  component="a"
+                                  href={url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  clickable
+                                  sx={{ fontSize: "0.7rem" }}
+                                />
+                              </Tooltip>
+                            ))}
+                          </Box>
+                        ) : (
+                          <Typography variant="caption" color="text.disabled">
+                            —
+                          </Typography>
+                        )}
                       </TableCell>
                       <TableCell align="right">
                         <Box sx={{ display: "inline-flex", gap: 0.5 }}>
@@ -452,6 +522,102 @@ export default function BugReportPage() {
               variant="outlined"
               sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
             />
+
+            {/* Attachments section */}
+            <Box>
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  mb: 1,
+                }}
+              >
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  Attachments
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {totalAttachmentCount} / {MAX_ATTACHMENTS}
+                </Typography>
+              </Box>
+
+              {/* Existing attachments (edit mode) */}
+              {existingAttachments.length > 0 && (
+                <Box
+                  sx={{ display: "flex", flexWrap: "wrap", gap: 1, mb: 1.5 }}
+                >
+                  {existingAttachments.map((url, i) => (
+                    <Chip
+                      key={i}
+                      icon={<ImageOutlinedIcon />}
+                      label={url.split("/").pop() || `File ${i + 1}`}
+                      size="small"
+                      variant="outlined"
+                      component="a"
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      clickable
+                      sx={{ maxWidth: 200 }}
+                    />
+                  ))}
+                </Box>
+              )}
+
+              {/* Newly staged files */}
+              {newFiles.length > 0 && (
+                <Box
+                  sx={{ display: "flex", flexWrap: "wrap", gap: 1, mb: 1.5 }}
+                >
+                  {newFiles.map((file, i) => (
+                    <Chip
+                      key={i}
+                      icon={<AttachFileRoundedIcon />}
+                      label={file.name}
+                      size="small"
+                      color="primary"
+                      variant="outlined"
+                      onDelete={() => handleRemoveNewFile(i)}
+                      deleteIcon={<CloseRoundedIcon />}
+                      disabled={loading}
+                      sx={{ maxWidth: 200 }}
+                    />
+                  ))}
+                </Box>
+              )}
+
+              {/* File picker button */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                style={{ display: "none" }}
+                onChange={handleFileChange}
+              />
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<AttachFileRoundedIcon />}
+                onClick={() => fileInputRef.current?.click()}
+                disabled={loading || !canAddMore}
+                sx={{ borderRadius: 2, textTransform: "none" }}
+              >
+                {canAddMore
+                  ? `Attach image${MAX_ATTACHMENTS - totalAttachmentCount > 1 ? "s" : ""} (${MAX_ATTACHMENTS - totalAttachmentCount} remaining)`
+                  : "Max attachments reached"}
+              </Button>
+              {editingId && existingAttachments.length > 0 && (
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  display="block"
+                  sx={{ mt: 0.75 }}
+                >
+                  New uploads will be added to existing attachments.
+                </Typography>
+              )}
+            </Box>
           </Box>
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2, gap: 1 }}>

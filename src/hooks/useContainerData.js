@@ -258,45 +258,44 @@ export const useContainerData = (propContainers = []) => {
     setOpenHistoryModal(true);
   };
 
-  const handleEdit = (container) => {
-    setEditingContainer(container);
-    setFormData({
-      ownership: container.owner_type || "soc",
-      containerNo: container.container_number || "",
-      size: container.container_size || "",
-      type: container.container_type || "",
-      derived_status: container.derived_status || "",
-      location: container.location || "karachi_port",
-      dateAdded: new Date().toISOString().split("T")[0],
-      dateOfManufacture: container.manufacture_date
-        ? new Date(container.manufacture_date).toISOString().split("T")[0]
-        : "",
-      purchaseDate: container.purchase_date
-        ? new Date(container.purchase_date).toISOString().split("T")[0]
-        : "",
-      purchasePrice: container.purchase_price || "",
-      purchaseFrom: container.purchase_from || "",
-      ownershipDetails: container.owned_by || "Self-Owned",
-      availableAtDate: container.available_at
-        ? new Date(container.available_at).toISOString().split("T")[0]
-        : "",
-      currency: container.currency || "USD",
-      hireStartDate: container.hire_start_date
-        ? new Date(container.hire_start_date).toISOString().split("T")[0]
-        : "",
-      hireEndDate: container.hire_end_date
-        ? new Date(container.hire_end_date).toISOString().split("T")[0]
-        : "",
-      vendor: container.hired_by || "",
-      return_date: container.return_date
-        ? new Date(container.return_date).toISOString().split("T")[0]
-        : "",
-      freeDays: container.free_days || "",
-      placeOfLoading: container.place_of_loading || "",
-      placeOfDelivery: container.place_of_destination || "",
-    });
-    setIsEditing(true);
-    setOpenAddModal(true);
+  const handleEdit = async (containerData) => {
+    try {
+      const response = await api.get(`/api/containers/${containerData.cid}`);
+
+      const container = await response.data;
+
+      setFormData({
+        ownership: container.owner_type || "soc",
+        containerNo: container.container_number || "",
+        size: container.container_size || "",
+        type: container.container_type || "",
+        derived_status: container.status || "",
+        location: container.location || "karachi_port",
+        dateAdded: new Date().toISOString().split("T")[0],
+        dateOfManufacture: container.manufacture_date
+          ? new Date(container.manufacture_date).toISOString().split("T")[0]
+          : "",
+        purchasePrice: container.purchase_price || "",
+        purchaseFrom: container.purchase_from || "",
+        ownershipDetails: container.owned_by || "Self-Owned",
+        currency: container.currency || "USD",
+        hireStartDate: container.hire_start_date?.split("T")[0] ?? "",
+        hireEndDate: container.hire_end_date?.split("T")[0] ?? "",
+        return_date: container.return_date?.split("T")[0] ?? "",
+        dateOfManufacture: container.manufacture_date?.split("T")[0] ?? "",
+        purchaseDate: container.purchase_date?.split("T")[0] ?? "",
+        availableAtDate: container.available_at?.split("T")[0] ?? "",
+        vendor: container.hired_by || "",
+        freeDays: container.free_days || "",
+        placeOfLoading: container.place_of_loading || "",
+        placeOfDelivery: container.place_of_destination || "",
+      });
+      setEditingContainer(containerData);
+      setIsEditing(true);
+      setOpenAddModal(true);
+    } catch (error) {
+      console.log("Something went wrong", error);
+    }
   };
 
   const resetForm = () => {

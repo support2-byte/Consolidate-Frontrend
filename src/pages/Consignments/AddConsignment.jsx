@@ -2583,7 +2583,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
             <div><strong>Comm:</strong> ${uniqueCommodities.length > 0 ? uniqueCommodities.map((c) => c.commodity).join(", ") : "N/A"}</div>
             <div><strong>Origin:</strong> ${data.originName || "N/A"}</div>
             <div>
-                <strong>GROSS Wt:</strong> <span class="underline">${data.gross_weight || "0"} KGS</span><br>
                 <strong>NET Wt:</strong> <span class="underline">${data.net_weight || "0"} KGS</span>
             </div>
 
@@ -2602,7 +2601,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         <div class="summary-bar">
             <div class="summary-box">${containerNo} ${containerSize}${containerType}</div>
             <div class="summary-text">
-                PKGS: ${Number(total_assign_boxes_all).toLocaleString()} &nbsp; GROSS WT: ${data.gross_weight || "0"} KGS &nbsp; NET WT: ${data.net_weight || "0"} KGS
+                PKGS: ${Number(total_assign_boxes_all).toLocaleString()} &nbsp; NET WT: ${data.net_weight || "0"} KGS
             </div>
         </div>
 
@@ -5381,40 +5380,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                             }}
                           />
                         </Box>
-
-                        {/* Gross Weight - Auto & Disabled */}
-                        {/* <Box sx={{ flex: 1, minWidth: 300 }}>
-                          <CustomTextField
-                            name="gross_weight"
-                            value={values.gross_weight || 0}
-                            label="Gross Weight"
-                            type="number"
-                            required
-                            disabled
-                            InputProps={{ readOnly: true }}
-                            startAdornment={
-                              <LocalShippingIcon
-                                sx={{ mr: 1, color: "#f58220" }}
-                              />
-                            }
-                            endAdornment={
-                              <Typography
-                                variant="body2"
-                                color="text.secondary"
-                              >
-                                KGS
-                              </Typography>
-                            }
-                            helperText="Net + 15% (packaging estimate)"
-                            sx={{
-                              "& .MuiInputBase-input.Mui-disabled": {
-                                WebkitTextFillColor: "#000000",
-                                color: "#000000",
-                                fontWeight: "bold",
-                              },
-                            }}
-                          />
-                        </Box> */}
                       </Box>
 
                       {/* Optional: Show summary when orders selected */}
