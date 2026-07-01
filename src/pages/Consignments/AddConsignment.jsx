@@ -1098,10 +1098,9 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         }));
       }
 
-      // Normalize selected container IDs to numbers + use Set for fast lookup
       const selectedCidsSet = new Set(
         selectedContainerIds
-          .map((id) => parseInt(id, 1000))
+          .map((id) => parseInt(id, 10))
           .filter((id) => !isNaN(id)),
       );
 
@@ -1199,8 +1198,8 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
           addedContainerIds,
         );
 
-        setOrders(fetchedOrders);
-        setOrderTotal(fetchedTotal);
+        setOrders(filteredOrders);
+        setOrderTotal(filteredOrders.length);
 
         // Auto-select all visible rows
         if (filteredOrders.length > 0) {
@@ -1883,10 +1882,8 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
 
   const validateAndPrepare = async () => {
     try {
-      // 1. Run Yup validation on the form values (core fields)
       await validationSchema.validate(values, { abortEarly: false });
 
-      // 2. Use flatShipments as the real source for containers & orders
       if (!flatShipments?.length) {
         setSnackbar({
           open: true,
@@ -1897,18 +1894,11 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         return null;
       }
 
-      // 3. Extract unique containers
       const uniqueContainers = Array.from(
         new Map(
-          flatShipments.map((s) => [
-            s.containerNumber,
-            {
-              containerNo: s.containerNumber,
-              cid: s.containerCid || null,
-              // size: s.containerNumber.includes('40') ? '40ft' : '20ft', // improve this logic if you have real size data
-              // status: s.containerStatus || 'Assigned',
-              // // Add more fields if needed (seal, type, ownership, etc.)
-            },
+          (values.containers || []).map((c) => [
+            c.containerNo,
+            { containerNo: c.containerNo, cid: c.id || c.cid || null },
           ]),
         ).values(),
       );
@@ -1922,8 +1912,30 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         return null;
       }
 
-      // 4. Extract unique order IDs
-      const uniqueOrderIds = [...new Set(flatShipments.map((s) => s.orderId))];
+      const selectedCidSet = new Set(
+        (values.containers || [])
+          .map((c) => c.id || c.cid)
+          .filter(Boolean)
+          .map((id) => parseInt(id, 10)),
+      );
+
+      const activeFlatShipments = flatShipments.filter((s) =>
+        selectedCidSet.has(parseInt(s.containerCid, 10)),
+      );
+
+      if (!activeFlatShipments.length) {
+        setSnackbar({
+          open: true,
+          message:
+            "No shipments/containers selected. Please select at least one container assignment.",
+          severity: "error",
+        });
+        return null;
+      }
+
+      const uniqueOrderIds = [
+        ...new Set(activeFlatShipments.map((s) => s.orderId)),
+      ];
 
       if (uniqueOrderIds.length === 0) {
         setSnackbar({
@@ -1934,21 +1946,19 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         return null;
       }
 
-      // 5. Optional: Build explicit assignment mapping (very useful for backend)
-      const assignments = flatShipments.map((s) => ({
+      const assignments = activeFlatShipments.map((s) => ({
         orderId: s.orderId,
         receiverName: s.receivername || null,
         category: s.category || null,
         containerNo: s.containerNumber,
+        containerCid: s.containerCid,
+        shippingDetailId: s.shippingDetailId,
         assignedWeight: parseFloat(s.assignWeight || 0),
         assignedBoxes: parseInt(s.assignBoxes || 0) || null,
         remainingItems: parseInt(s.remainingItems || 0) || null,
-        // Add more if needed (e.g. shippingDetailId if you have it)
       }));
 
-      // 6. Build the final payload
       const submitData = {
-        // Core consignment fields from form
         consignment_number: values.consignment_number?.trim() || null,
         consignment_value: parseFloat(values.consignment_value) || 0,
         net_weight: parseFloat(values.netWeight) || 0,
