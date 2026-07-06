@@ -1,23 +1,26 @@
-// src/main.jsx (updated)
 import React from "react";
 import ReactDOM from "react-dom/client";
 import {
   createBrowserRouter,
   RouterProvider,
   Navigate,
+  Outlet,
 } from "react-router-dom";
+import { ToastContainer } from "react-toastify";
 import { AuthProvider } from "./context/AuthContext";
 import { ThemeProvider } from "./context/ThemeContext";
+import { AppProvider } from "./context/AppContext";
 import ProtectedRoute from "./routes/Protected";
-import { Outlet } from "react-router-dom";
-// Pages & Components
+
 import Login from "./pages/Login";
 import Register from "./pages/Register";
-import DashboardLayout from "./pages/Dashboard"; // ← this has sidebar + topbar
+import DashboardLayout from "./pages/Dashboard";
 import DashboardCharts from "./pages/DashboardCharts";
 import Customers from "./pages/Customers/Customers";
 import ContainerForm from "./pages/Containers/AddContainer";
+import ContainerReleases from "./pages/Containers/ContainerReleases";
 import NotificationManage from "./pages/SystemData/ManageNotifications";
+import NotificationSettings from "./pages/SystemData/NotificationSetting";
 import Vendors from "./pages/Vendors/Vendors";
 import Orders from "./pages/Orders/Orders";
 import Consignments from "./pages/Consignments/Consignments";
@@ -33,114 +36,33 @@ import Places from "./pages/SystemData/Places";
 import Banks from "./pages/SystemData/Banks";
 import ThirdParties from "./pages/SystemData/ThirdParties";
 import BarcodePrintTest from "./pages/SystemData/BarcodePrintTest";
-import EtaSetupPage from "./pages/SystemData/EtaSetup";
-import UserTracking from "./pages/UserTracking";
-import UsersManagement from "./pages/Admin/UserModule";
-import PermissionEditor from "./pages/Admin/PermissionEditor";
-
-// Fallback Pages
-import Unauthorized from "./pages/Unauthorized";
-import NotificationSettings from "./pages/SystemData/NotificationSetting";
-import ContainerReleases from "./pages/Containers/ContainerReleases";
-import { AppProvider } from "./context/AppContext";
 import StatusesPage from "./pages/SystemData/NewEtaSetup";
 import BugReportPage from "./pages/SystemData/BugReport";
+import UsersManagement from "./pages/Admin/UserModule";
+import PermissionEditor from "./pages/Admin/PermissionEditor";
+import Unauthorized from "./pages/Unauthorized";
 
-// ────────────────────────────────────────────────────────────────
-// Router Configuration
-// ────────────────────────────────────────────────────────────────
 const router = createBrowserRouter([
-  // Public routes (no auth required)
   { path: "/login", element: <Login /> },
   { path: "/register", element: <Register /> },
+  { path: "/unauthorized", element: <Unauthorized /> },
 
-  // Protected routes (require authentication)
   {
     path: "/",
     element: (
       <ProtectedRoute>
-        <DashboardLayout /> {/* ← Sidebar + Topbar wrapper */}
+        <DashboardLayout />
       </ProtectedRoute>
     ),
     children: [
-      // Default / Dashboard
       { index: true, element: <DashboardCharts /> },
       { path: "dashboard", element: <DashboardCharts /> },
 
-      // Operational pages – view only for staff
       {
         path: "customers",
         element: (
           <ProtectedRoute permission={{ module: "customers", action: "view" }}>
             <Customers />
-          </ProtectedRoute>
-        ),
-      },
-      {
-        path: "vendors",
-        element: (
-          <ProtectedRoute permission={{ module: "vendors", action: "view" }}>
-            <Vendors />
-          </ProtectedRoute>
-        ),
-      },
-      {
-        path: "containers",
-        element: (
-          <ProtectedRoute permission={{ module: "containers", action: "view" }}>
-            <ContainerForm />
-          </ProtectedRoute>
-        ),
-      },
-      {
-        path: "containers/release",
-        element: (
-          <ProtectedRoute permission={{ module: "release", action: "view" }}>
-            <ContainerReleases />
-          </ProtectedRoute>
-        ),
-      },
-      {
-        path: "orders",
-        element: (
-          <ProtectedRoute permission={{ module: "orders", action: "view" }}>
-            <Orders />
-          </ProtectedRoute>
-        ),
-      },
-      {
-        path: "tracking",
-        element: (
-          <ProtectedRoute permission={{ module: "tracking", action: "view" }}>
-            <TrackingPage />
-          </ProtectedRoute>
-        ),
-      },
-      {
-        path: "consignments",
-        element: (
-          <ProtectedRoute
-            permission={{ module: "consignments", action: "view" }}
-          >
-            <Consignments />
-          </ProtectedRoute>
-        ),
-      },
-
-      // Forms – protected by create/edit permissions
-      {
-        path: "orders/add",
-        element: (
-          <ProtectedRoute permission={{ module: "orders", action: "create" }}>
-            <OrderForm mode="add" />
-          </ProtectedRoute>
-        ),
-      },
-      {
-        path: "orders/:id/edit",
-        element: (
-          <ProtectedRoute permission={{ module: "orders", action: "edit" }}>
-            <OrderForm mode="edit" />
           </ProtectedRoute>
         ),
       },
@@ -162,6 +84,15 @@ const router = createBrowserRouter([
           </ProtectedRoute>
         ),
       },
+
+      {
+        path: "vendors",
+        element: (
+          <ProtectedRoute permission={{ module: "vendors", action: "view" }}>
+            <Vendors />
+          </ProtectedRoute>
+        ),
+      },
       {
         path: "vendors/add",
         element: (
@@ -175,6 +106,59 @@ const router = createBrowserRouter([
         element: (
           <ProtectedRoute permission={{ module: "vendors", action: "edit" }}>
             <VendorsForm mode="edit" />
+          </ProtectedRoute>
+        ),
+      },
+
+      {
+        path: "containers",
+        element: (
+          <ProtectedRoute permission={{ module: "containers", action: "view" }}>
+            <ContainerForm />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "containers/release",
+        element: (
+          <ProtectedRoute permission={{ module: "release", action: "view" }}>
+            <ContainerReleases />
+          </ProtectedRoute>
+        ),
+      },
+
+      {
+        path: "orders",
+        element: (
+          <ProtectedRoute permission={{ module: "orders", action: "view" }}>
+            <Orders />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "orders/add",
+        element: (
+          <ProtectedRoute permission={{ module: "orders", action: "create" }}>
+            <OrderForm mode="add" />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "orders/:id/edit",
+        element: (
+          <ProtectedRoute permission={{ module: "orders", action: "edit" }}>
+            <OrderForm mode="edit" />
+          </ProtectedRoute>
+        ),
+      },
+
+      {
+        path: "consignments",
+        element: (
+          <ProtectedRoute
+            permission={{ module: "consignments", action: "view" }}
+          >
+            <Consignments />
           </ProtectedRoute>
         ),
       },
@@ -199,25 +183,15 @@ const router = createBrowserRouter([
         ),
       },
 
-      // Admin-only pages
       {
-        path: "users",
+        path: "tracking",
         element: (
-          <ProtectedRoute permission={{ module: "users", action: "view" }}>
-            <UsersManagement />
+          <ProtectedRoute permission={{ module: "tracking", action: "view" }}>
+            <TrackingPage />
           </ProtectedRoute>
         ),
       },
-      {
-        path: "permissions",
-        element: (
-          <ProtectedRoute
-            permission={{ module: "permissions", action: "view" }}
-          >
-            <PermissionEditor />
-          </ProtectedRoute>
-        ),
-      },
+
       {
         path: "notifications",
         element: (
@@ -239,45 +213,130 @@ const router = createBrowserRouter([
         ),
       },
 
-      // System/Admin section
+      {
+        path: "users",
+        element: (
+          <ProtectedRoute permission={{ module: "users", action: "view" }}>
+            <UsersManagement />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "permissions",
+        element: (
+          <ProtectedRoute
+            permission={{ module: "permissions", action: "view" }}
+          >
+            <PermissionEditor />
+          </ProtectedRoute>
+        ),
+      },
+
       {
         path: "admin",
         element: <Outlet />,
         children: [
-          // { path: "notifications", element: <NotificationSettings /> },
-          { path: "payment-types", element: <PaymentTypes /> },
-          { path: "categories", element: <Categories /> },
-          { path: "vessels", element: <Vessels /> },
-          { path: "places", element: <Places /> },
-          { path: "banks", element: <Banks /> },
-          { path: "third-parties", element: <ThirdParties /> },
-          { path: "barcode-print", element: <BarcodePrintTest /> },
-          { path: "eta-setup", element: <StatusesPage /> },
-          { path: "bug-report", element: <BugReportPage /> },
+          {
+            path: "payment-types",
+            element: (
+              <ProtectedRoute
+                permission={{ module: "payment-types", action: "view" }}
+              >
+                <PaymentTypes />
+              </ProtectedRoute>
+            ),
+          },
+          {
+            path: "categories",
+            element: (
+              <ProtectedRoute
+                permission={{ module: "categories", action: "view" }}
+              >
+                <Categories />
+              </ProtectedRoute>
+            ),
+          },
+          {
+            path: "vessels",
+            element: (
+              <ProtectedRoute
+                permission={{ module: "vessels", action: "view" }}
+              >
+                <Vessels />
+              </ProtectedRoute>
+            ),
+          },
+          {
+            path: "places",
+            element: (
+              <ProtectedRoute permission={{ module: "places", action: "view" }}>
+                <Places />
+              </ProtectedRoute>
+            ),
+          },
+          {
+            path: "banks",
+            element: (
+              <ProtectedRoute permission={{ module: "banks", action: "view" }}>
+                <Banks />
+              </ProtectedRoute>
+            ),
+          },
+          {
+            path: "third-parties",
+            element: (
+              <ProtectedRoute
+                permission={{ module: "third-parties", action: "view" }}
+              >
+                <ThirdParties />
+              </ProtectedRoute>
+            ),
+          },
+          {
+            path: "barcode-print",
+            element: (
+              <ProtectedRoute
+                permission={{ module: "barcode-print", action: "view" }}
+              >
+                <BarcodePrintTest />
+              </ProtectedRoute>
+            ),
+          },
+          {
+            path: "eta-setup",
+            element: (
+              <ProtectedRoute
+                permission={{ module: "eta-setup", action: "view" }}
+              >
+                <StatusesPage />
+              </ProtectedRoute>
+            ),
+          },
+          {
+            path: "bug-report",
+            element: (
+              <ProtectedRoute
+                permission={{ module: "bug-report", action: "view" }}
+              >
+                <BugReportPage />
+              </ProtectedRoute>
+            ),
+          },
         ],
       },
-
-      // Other pages
-      { path: "user-tracking", element: <UserTracking /> },
     ],
   },
 
-  // Fallbacks
-  { path: "/unauthorized", element: <Unauthorized /> },
   { path: "*", element: <Navigate to="/" replace /> },
 ]);
 
-// ────────────────────────────────────────────────────────────────
-// Root Render
-// ────────────────────────────────────────────────────────────────
 ReactDOM.createRoot(document.getElementById("root")).render(
-  <React.StrictMode>
-    <AuthProvider>
-      <AppProvider>
-        <ThemeProvider>
-          <RouterProvider router={router} />
-        </ThemeProvider>
-      </AppProvider>
-    </AuthProvider>
-  </React.StrictMode>,
+  <AuthProvider>
+    <AppProvider>
+      <ThemeProvider>
+        <RouterProvider router={router} />
+        <ToastContainer stacked position="bottom-right" theme="dark" />
+      </ThemeProvider>
+    </AppProvider>
+  </AuthProvider>,
 );

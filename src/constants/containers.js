@@ -84,7 +84,7 @@ export const DEFAULT_FORM_DATA = {
   size: "",
   type: "",
   derived_status: "",
-  location: "karachi_port",
+  location: "",
   dateAdded: new Date().toISOString().split("T")[0],
   dateOfManufacture: "",
   purchaseDate: "",

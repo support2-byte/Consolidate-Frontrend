@@ -14,14 +14,14 @@ import {
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import EditNoteIcon from "@mui/icons-material/EditNote";
-import HistoryIcon from "@mui/icons-material/History";
+import YoutubeSearchedForIcon from "@mui/icons-material/YoutubeSearchedFor";
 import SaveIcon from "@mui/icons-material/Save";
 import CloseIcon from "@mui/icons-material/Close";
 import {
   CONTAINER_STATUS_OPTIONS,
-  LOCATION_OPTIONS,
   STATUS_COLOR_MAP,
 } from "../../constants/containers";
+import { TimerReset } from "lucide-react";
 
 const ContainerTableRow = ({
   container,
@@ -39,6 +39,7 @@ const ContainerTableRow = ({
   onEdit,
   onOpenHistory,
   onMarkReturned,
+  places,
 }) => {
   const currentStatus = isEditingRow
     ? tempData.status
@@ -149,9 +150,9 @@ const ContainerTableRow = ({
                 setTempData((p) => ({ ...p, location: e.target.value }))
               }
             >
-              {LOCATION_OPTIONS.map((l) => (
-                <MenuItem key={l.value} value={l.value}>
-                  {l.label}
+              {places.map((place) => (
+                <MenuItem key={place.id} value={place.name}>
+                  {place.name}
                 </MenuItem>
               ))}
             </Select>
@@ -195,7 +196,7 @@ const ContainerTableRow = ({
                 sx={{ color: "#0d6c6a" }}
                 size="small"
               >
-                <EditIcon fontSize="small" />
+                <TimerReset fontSize="small" />
               </IconButton>
             </Tooltip>
             <Tooltip title="Edit Container Details">
@@ -218,7 +219,7 @@ const ContainerTableRow = ({
                 {loadingHistory ? (
                   <CircularProgress size={16} />
                 ) : (
-                  <HistoryIcon />
+                  <YoutubeSearchedForIcon />
                 )}
               </IconButton>
             </Tooltip>

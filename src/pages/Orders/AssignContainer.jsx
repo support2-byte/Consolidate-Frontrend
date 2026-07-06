@@ -92,6 +92,7 @@ const AssignModal = ({
   fetchContainers,
   handleAssign,
   fetchOrders,
+  places,
 }) => {
   const [detailedOrders, setDetailedOrders] = useState({});
   const [fetchingDetails, setFetchingDetails] = useState(false);
@@ -113,13 +114,30 @@ const AssignModal = ({
     loadingDateRef.current = loadingDate;
   }, [loadingDate]);
 
-  const availableContainers = useMemo(
-    () =>
-      containers.filter(
+  const filterContainers = useCallback(
+    (order) => {
+      if (!order?.place_of_loading) return containers;
+      const matchedPlace = places.find((p) => p.id === order.place_of_loading);
+
+      if (!matchedPlace) return [];
+
+      return containers.filter(
+        (container) => container.location === matchedPlace.name,
+      );
+    },
+    [containers, places],
+  );
+
+  const getAvailableContainersForOrder = useCallback(
+    (order) => {
+      const locationFiltered = filterContainers(order);
+
+      return locationFiltered.filter(
         (c) =>
           c.current_status === "Available" || c.current_status === "Returned",
-      ),
-    [containers],
+      );
+    },
+    [filterContainers],
   );
 
   const getDetailKey = useCallback(
@@ -323,6 +341,8 @@ const AssignModal = ({
       orders?.find((o) => o.id === rec.orderId) ||
       null;
 
+    const ordersAvailableContainers = getAvailableContainersForOrder(fullOrder);
+
     if (!fullOrder) {
       return (
         <TableRow>
@@ -420,7 +440,7 @@ const AssignModal = ({
       ...new Set(
         existingContainers.map(
           (cid) =>
-            availableContainers.find((c) => String(c.cid) === String(cid))
+            ordersAvailableContainers.find((c) => String(c.cid) === String(cid))
               ?.container_number || String(cid),
         ),
       ),
@@ -663,7 +683,7 @@ const AssignModal = ({
                           setSelectedContainersPerDetail
                         }
                         // enhancedHandleAssign={enhancedHandleAssign}
-                        availableContainers={availableContainers}
+                        availableContainers={ordersAvailableContainers}
                         // Optional callback when user clicks "Preview Assignment"
                         onAssignPreview={(previewData) => {
                           console.log(

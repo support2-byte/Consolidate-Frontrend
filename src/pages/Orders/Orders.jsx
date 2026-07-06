@@ -993,14 +993,33 @@ const OrdersList = () => {
 
     setTempOrderId(orderId);
 
-    // Proceed with fetching containers...
     try {
       const response = await api.get("/api/containers");
 
       const allContainers = response.data.data || [];
+
+      const selectedOrderObjects = orders.filter((o) =>
+        selectedOrders.includes(o.id),
+      );
+
+      const placeIds = [
+        ...new Set(
+          selectedOrderObjects.map((o) => o.place_of_loading).filter(Boolean),
+        ),
+      ];
+
+      const placeNames = places
+        .filter((p) => placeIds.includes(p.id))
+        .map((p) => p.name);
+
       const availableContainers = allContainers.filter((c) => {
-        const status = (c.current_status || "").trim();
-        return status === "Available" || status === "Assigned to Job";
+        const status =
+          c.current_status === "Available" ||
+          c.current_status === "Assigned to Job";
+
+        const location = placeNames.includes(c.location);
+
+        return status && location;
       });
 
       setContainers(availableContainers);
@@ -1022,75 +1041,6 @@ const OrdersList = () => {
     setDirectSelectedContainers(null);
   };
 
-  const handleAssignContainerAll = async () => {
-    if (!selectedContainer) {
-      setSnackbar({
-        open: true,
-        message: "Please select a container first",
-        severity: "warning",
-      });
-      return;
-    }
-
-    const orderId = Number(tempOrderId);
-
-    if (isNaN(orderId) || orderId <= 0) {
-      console.error("Invalid tempOrderId before send:", {
-        tempOrderId,
-        converted: orderId,
-      });
-      setSnackbar({
-        open: true,
-        message: "No valid order selected. Please close and reopen the dialog.",
-        severity: "error",
-      });
-      return;
-    }
-
-    setAssigning(true);
-
-    try {
-      const payload = {
-        orderId: orderId,
-        containerId:
-          selectedContainer.cid || selectedContainer.container_number,
-      };
-
-      const response = await api.post(
-        "/api/orders/assign-one-container-multi-receivers",
-        payload,
-      );
-
-      setSnackbar({
-        open: true,
-        message: `Container assigned successfully to order #${orderId}`,
-        severity: "success",
-      });
-
-      // Refresh data
-      fetchOrders?.(); // if you have this function
-      fetchReceivers?.(orderId); // if you have per-order fetch
-
-      setOpenDirectAssign(false);
-      setSelectedContainer(null);
-      setTempOrderId(null);
-    } catch (err) {
-      console.error("Assignment request failed:", err);
-
-      let msg = "Failed to assign container";
-      if (err.response?.data?.details) {
-        msg = err.response.data.details; // e.g. "Valid orderId is required"
-      } else if (err.response?.data?.error) {
-        msg = err.response.data.error;
-      } else if (err.message) {
-        msg = err.message;
-      }
-
-      setSnackbar({ open: true, message: msg, severity: "error" });
-    } finally {
-      setAssigning(false);
-    }
-  };
   const StatusChip = ({ status }) => {
     const colors = getStatusColors(status);
     return (
@@ -8449,6 +8399,7 @@ applicable law provides otherwise
           handleReceiverAction={handleReceiverAction}
           onUpdateReceiver={handleUpdateReceiver}
           fetchOrders={fetchOrders}
+          places={places}
         />
         {/* New Direct Assign Dialog */}
         <Dialog

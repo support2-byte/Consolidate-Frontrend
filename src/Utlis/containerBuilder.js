@@ -19,7 +19,7 @@ export const validateNumber = (value, fieldName) => {
   return true;
 };
 
-export const validateForm = (formData) => {
+export const validateForm = (formData, places) => {
   const errors = [];
 
   if (!formData.containerNo.trim()) {
@@ -32,12 +32,6 @@ export const validateForm = (formData) => {
 
   if (!formData.size) errors.push("Size is required");
   if (!formData.type) errors.push("Type is required");
-
-  if (
-    !formData.location ||
-    !["karachi_port", "dubai_port"].includes(formData.location)
-  )
-    errors.push("Valid Location is required (Karachi Port or Dubai Port)");
 
   if (formData.ownership === "soc") {
     if (

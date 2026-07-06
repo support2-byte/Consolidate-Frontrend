@@ -15,7 +15,6 @@ import {
 import {
   CONTAINER_STATUS_OPTIONS,
   CURRENCY_OPTIONS,
-  LOCATION_OPTIONS,
 } from "../../constants/containers";
 import { StyledTextField, StyledSelect, FieldRow } from "./FormFields";
 import { AppContext } from "../../context/AppContext";
@@ -46,11 +45,10 @@ const ContainerFormModal = ({
   sizes,
   types,
   ownershipTypes,
+  places,
 }) => {
   const isSoc = formData.ownership === "soc";
   const isCoc = formData.ownership === "coc";
-
-  const { places } = useContext(AppContext);
 
   const loadingPlaces = places?.filter((p) => p.is_loading) || [];
   const destinationPlaces = places?.filter((p) => p.is_destination) || [];
@@ -94,7 +92,7 @@ const ContainerFormModal = ({
               onChange({
                 target: {
                   name: "containerNo",
-                  value: e.target.value.toUpperCase(),
+                  value: e.target.value.replace(/\s+/g, "").toUpperCase(),
                 },
               });
             }}
@@ -150,12 +148,12 @@ const ContainerFormModal = ({
           <StyledSelect
             label="Location"
             name="location"
-            value={formData.location || "karachi_port"}
+            value={formData.location ?? ""}
             onChange={onChange}
           >
-            {LOCATION_OPTIONS.map((l) => (
-              <MenuItem key={l.value} value={l.value}>
-                {l.label}
+            {places.map((place) => (
+              <MenuItem key={place.id} value={place.name}>
+                {place.name}
               </MenuItem>
             ))}
           </StyledSelect>

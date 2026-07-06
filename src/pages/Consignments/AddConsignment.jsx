@@ -511,7 +511,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
             setTimeout(() => handleStatusChange(defaultStatus), 100);
           }
         }
-
         if (mode === "edit" && effectiveConsignmentId) {
           await loadConsignment(effectiveConsignmentId);
         }

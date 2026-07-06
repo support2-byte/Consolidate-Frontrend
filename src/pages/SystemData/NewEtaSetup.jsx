@@ -1,4 +1,4 @@
-import { useState, useContext, useEffect, useCallback } from "react";
+import { useContext, useEffect, useCallback, useReducer } from "react";
 import {
   Box,
   Typography,
@@ -9,17 +9,10 @@ import {
   TableHead,
   TableRow,
   Paper,
-  IconButton,
-  Switch,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
   Button,
-  TextField,
   CircularProgress,
 } from "@mui/material";
-import { Close, Save, Add, Delete } from "@mui/icons-material";
+import { Add } from "@mui/icons-material";
 import {
   DndContext,
   closestCenter,
@@ -34,6 +27,7 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
+import { toast } from "react-toastify";
 import { AppContext } from "../../context/AppContext";
 import { api } from "../../api";
 import { SortableRow } from "../../components/statuses/sortableRow";
@@ -51,32 +45,85 @@ const EMPTY_FORM = {
   status: true,
 };
 
+const initialState = {
+  rows: [],
+  editRow: null,
+  editForm: { ...EMPTY_FORM },
+  addOpen: false,
+  addForm: { ...EMPTY_FORM },
+  deleteRow: null,
+  saving: false,
+  deleting: false,
+};
+
+const reducer = (state, action) => {
+  switch (action.type) {
+    case "SET_ROWS":
+      return { ...state, rows: action.payload };
+    case "OPEN_EDIT":
+      return {
+        ...state,
+        editRow: action.payload,
+        editForm: {
+          order_status: action.payload.order_status ?? "",
+          container_status: action.payload.container_status ?? "",
+          consignment_status: action.payload.consignment_status ?? "",
+          days_offset: action.payload.days_offset,
+          status: action.payload.status,
+        },
+      };
+    case "CLOSE_EDIT":
+      return { ...state, editRow: null, editForm: { ...EMPTY_FORM } };
+    case "UPDATE_EDIT_FORM":
+      return { ...state, editForm: { ...state.editForm, ...action.payload } };
+    case "OPEN_ADD":
+      return { ...state, addOpen: true, addForm: { ...EMPTY_FORM } };
+    case "CLOSE_ADD":
+      return { ...state, addOpen: false, addForm: { ...EMPTY_FORM } };
+    case "UPDATE_ADD_FORM":
+      return { ...state, addForm: { ...state.addForm, ...action.payload } };
+    case "SET_DELETE_ROW":
+      return { ...state, deleteRow: action.payload };
+    case "SET_SAVING":
+      return { ...state, saving: action.payload };
+    case "SET_DELETING":
+      return { ...state, deleting: action.payload };
+    case "UPDATE_ROW":
+      return {
+        ...state,
+        rows: state.rows.map((r) =>
+          r.id === action.payload.id ? action.payload : r,
+        ),
+      };
+    case "ADD_ROW":
+      return { ...state, rows: [...state.rows, action.payload] };
+    case "REMOVE_ROW":
+      return {
+        ...state,
+        rows: state.rows.filter((r) => r.id !== action.payload),
+      };
+    default:
+      return state;
+  }
+};
+
 export default function StatusesPage() {
   const {
     statuses: contextStatuses,
     fetchStatuses,
     statusLoading,
   } = useContext(AppContext);
-  const [rows, setRows] = useState([]);
-  const [editRow, setEditRow] = useState(null);
-  const [editForm, setEditForm] = useState({});
-  const [addOpen, setAddOpen] = useState(false);
-  const [addForm, setAddForm] = useState(EMPTY_FORM);
-  const [deleteRow, setDeleteRow] = useState(null);
-  const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
 
-  useEffect(() => {
-    fetchStatuses();
-  }, []);
+  const [state, dispatch] = useReducer(reducer, initialState);
 
   useEffect(() => {
     if (contextStatuses?.length) {
-      setRows(
-        [...contextStatuses].sort(
+      dispatch({
+        type: "SET_ROWS",
+        payload: [...contextStatuses].sort(
           (a, b) => a.sorting_number - b.sorting_number,
         ),
-      );
+      });
     }
   }, [contextStatuses]);
 
@@ -92,116 +139,105 @@ export default function StatusesPage() {
       const { active, over } = event;
       if (!over || active.id === over.id) return;
 
-      const oldIndex = rows.findIndex((r) => r.id === active.id);
-      const newIndex = rows.findIndex((r) => r.id === over.id);
-      const reordered = arrayMove(rows, oldIndex, newIndex).map((r, i) => ({
-        ...r,
-        sorting_number: i + 1,
-      }));
+      const oldIndex = state.rows.findIndex((r) => r.id === active.id);
+      const newIndex = state.rows.findIndex((r) => r.id === over.id);
+      const reordered = arrayMove(state.rows, oldIndex, newIndex).map(
+        (r, i) => ({
+          ...r,
+          sorting_number: i + 1,
+        }),
+      );
 
-      setRows(reordered);
+      dispatch({ type: "SET_ROWS", payload: reordered });
 
       try {
-        await Promise.all(
-          reordered.map((r) =>
-            api.put(`/api/options/updateStatus/${r.id}`, {
-              sorting_number: r.sorting_number,
-            }),
-          ),
-        );
-      } catch {
-        setRows(rows);
+        await api.put(`/api/options/bulkUpdateStatus`, {
+          statuses: reordered.map((r) => ({
+            id: r.id,
+            sorting_number: r.sorting_number,
+          })),
+        });
+      } catch (error) {
+        dispatch({ type: "SET_ROWS", payload: state.rows });
+        toast.error("Failed to reorder statuses. Please try again.");
       }
     },
-    [rows],
+    [state.rows],
   );
 
-  const openEdit = (row) => {
-    setEditRow(row);
-    setEditForm({
-      order_status: row.order_status ?? "",
-      container_status: row.container_status ?? "",
-      consignment_status: row.consignment_status ?? "",
-      days_offset: row.days_offset,
-      status: row.status,
-    });
-  };
-
-  const handleEditField = (key, value) =>
-    setEditForm((f) => ({ ...f, [key]: value }));
-  const handleAddField = (key, value) =>
-    setAddForm((f) => ({ ...f, [key]: value }));
-
   const handleSave = async () => {
-    setSaving(true);
+    dispatch({ type: "SET_SAVING", payload: true });
     try {
       const { data } = await api.put(
-        `/api/options/updateStatus/${editRow.id}`,
+        `/api/options/updateStatus/${state.editRow.id}`,
         {
-          order_status: editForm.order_status || null,
-          container_status: editForm.container_status || null,
-          consignment_status: editForm.consignment_status || null,
-          days_offset: editForm.days_offset,
-          status: editForm.status,
+          order_status: state.editForm.order_status || null,
+          container_status: state.editForm.container_status || null,
+          consignment_status: state.editForm.consignment_status || null,
+          days_offset: state.editForm.days_offset,
+          status: state.editForm.status,
         },
       );
-      setRows((prev) =>
-        prev.map((r) => (r.id === editRow.id ? data.status : r)),
-      );
-      setEditRow(null);
-    } catch {
+      dispatch({ type: "UPDATE_ROW", payload: data.status });
+      dispatch({ type: "CLOSE_EDIT" });
+      toast.success("Status updated successfully!");
+    } catch (error) {
+      toast.error(error.response?.data?.error || "Failed to update status.");
     } finally {
-      setSaving(false);
+      dispatch({ type: "SET_SAVING", payload: false });
     }
   };
 
   const handleAdd = async () => {
-    setSaving(true);
+    dispatch({ type: "SET_SAVING", payload: true });
     try {
-      const nextSortingNumber = rows.length
-        ? Math.max(...rows.map((r) => r.sorting_number)) + 1
+      const nextSortingNumber = state.rows.length
+        ? Math.max(...state.rows.map((r) => r.sorting_number)) + 1
         : 1;
       const { data } = await api.post(`/api/options/addStatus`, {
-        order_status: addForm.order_status || null,
-        container_status: addForm.container_status || null,
-        consignment_status: addForm.consignment_status || null,
-        days_offset: addForm.days_offset,
-        status: addForm.status,
+        order_status: state.addForm.order_status || null,
+        container_status: state.addForm.container_status || null,
+        consignment_status: state.addForm.consignment_status || null,
+        days_offset: state.addForm.days_offset,
+        status: state.addForm.status,
         sorting_number: nextSortingNumber,
       });
-      setRows((prev) => [...prev, data.status]);
-      setAddOpen(false);
-      setAddForm(EMPTY_FORM);
-    } catch {
+      dispatch({ type: "ADD_ROW", payload: data.status });
+      dispatch({ type: "CLOSE_ADD" });
+      toast.success("Status added successfully!");
+    } catch (error) {
+      toast.error(error.response?.data?.error || "Failed to add status.");
     } finally {
-      setSaving(false);
+      dispatch({ type: "SET_SAVING", payload: false });
     }
   };
 
   const handleToggle = async (row) => {
-    const prev = rows;
-    setRows((r) =>
-      r.map((x) => (x.id === row.id ? { ...x, status: !x.status } : x)),
-    );
+    dispatch({ type: "UPDATE_ROW", payload: { ...row, status: !row.status } });
     try {
       const { data } = await api.put(`/api/options/updateStatus/${row.id}`, {
         status: !row.status,
       });
-      setRows((r) => r.map((x) => (x.id === row.id ? data.status : x)));
-    } catch {
-      setRows(prev);
+      dispatch({ type: "UPDATE_ROW", payload: data.status });
+      toast.success(`Status ${!row.status ? "enabled" : "disabled"}.`);
+    } catch (error) {
+      // Revert optimistic update
+      dispatch({ type: "UPDATE_ROW", payload: row });
+      toast.error("Failed to toggle status.");
     }
   };
 
   const handleDelete = async () => {
-    setDeleting(true);
+    dispatch({ type: "SET_DELETING", payload: true });
     try {
-      await api.delete(`/api/options/deleteStatus/${deleteRow.id}`);
-      setRows((prev) => prev.filter((r) => r.id !== deleteRow.id));
-      setDeleteRow(null);
-    } catch {
+      await api.delete(`/api/options/deleteStatus/${state.deleteRow.id}`);
+      dispatch({ type: "REMOVE_ROW", payload: state.deleteRow.id });
+      dispatch({ type: "SET_DELETE_ROW", payload: null });
+      toast.success("Status deleted successfully!");
+    } catch (error) {
+      toast.error(error.response?.data?.error || "Failed to delete status.");
     } finally {
-      setDeleting(false);
+      dispatch({ type: "SET_DELETING", payload: false });
     }
   };
 
@@ -225,7 +261,7 @@ export default function StatusesPage() {
           variant="contained"
           size="small"
           startIcon={<Add />}
-          onClick={() => setAddOpen(true)}
+          onClick={() => dispatch({ type: "OPEN_ADD" })}
           sx={{
             bgcolor: TEAL,
             "&:hover": { bgcolor: "#155f55" },
@@ -294,7 +330,7 @@ export default function StatusesPage() {
                       <CircularProgress size={28} sx={{ color: TEAL }} />
                     </TableCell>
                   </TableRow>
-                ) : rows.length === 0 ? (
+                ) : state.rows.length === 0 ? (
                   <TableRow>
                     <TableCell
                       colSpan={8}
@@ -306,16 +342,20 @@ export default function StatusesPage() {
                   </TableRow>
                 ) : (
                   <SortableContext
-                    items={rows.map((r) => r.id)}
+                    items={state.rows.map((r) => r.id)}
                     strategy={verticalListSortingStrategy}
                   >
-                    {rows.map((row) => (
+                    {state.rows.map((row) => (
                       <SortableRow
                         key={row.id}
                         row={row}
-                        onEdit={openEdit}
+                        onEdit={(r) =>
+                          dispatch({ type: "OPEN_EDIT", payload: r })
+                        }
                         onToggle={handleToggle}
-                        onDelete={setDeleteRow}
+                        onDelete={(r) =>
+                          dispatch({ type: "SET_DELETE_ROW", payload: r })
+                        }
                       />
                     ))}
                   </SortableContext>
@@ -327,34 +367,35 @@ export default function StatusesPage() {
       </Paper>
 
       <StatusDialog
-        open={!!editRow}
-        onClose={() => setEditRow(null)}
+        open={!!state.editRow}
+        onClose={() => dispatch({ type: "CLOSE_EDIT" })}
         title="Edit Status"
-        form={editForm}
-        onFieldChange={handleEditField}
+        form={state.editForm}
+        onFieldChange={(key, value) =>
+          dispatch({ type: "UPDATE_EDIT_FORM", payload: { [key]: value } })
+        }
         onSave={handleSave}
-        saving={saving}
+        saving={state.saving}
       />
 
       <StatusDialog
-        open={addOpen}
-        onClose={() => {
-          setAddOpen(false);
-          setAddForm(EMPTY_FORM);
-        }}
+        open={state.addOpen}
+        onClose={() => dispatch({ type: "CLOSE_ADD" })}
         title="Add Status"
-        form={addForm}
-        onFieldChange={handleAddField}
+        form={state.addForm}
+        onFieldChange={(key, value) =>
+          dispatch({ type: "UPDATE_ADD_FORM", payload: { [key]: value } })
+        }
         onSave={handleAdd}
-        saving={saving}
+        saving={state.saving}
       />
 
       <DeleteDialog
-        open={!!deleteRow}
-        onClose={() => setDeleteRow(null)}
+        open={!!state.deleteRow}
+        onClose={() => dispatch({ type: "SET_DELETE_ROW", payload: null })}
         onConfirm={handleDelete}
-        deleting={deleting}
-        rowName={deleteRow?.order_status}
+        deleting={state.deleting}
+        rowName={state.deleteRow?.order_status}
       />
     </Box>
   );

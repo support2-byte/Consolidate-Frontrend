@@ -126,8 +126,6 @@ const AssignmentForm = React.memo(
 
     const handleContainerChange = useCallback(
       (event) => {
-        console.log(event.target.value);
-
         setSelectedContainersPerDetail((prev) => ({
           ...prev,
           [keyDetail]: event.target.value,

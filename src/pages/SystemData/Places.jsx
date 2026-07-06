@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useEffect, useRef, useReducer, useContext } from "react";
 import {
   Box,
   Typography,
@@ -18,70 +18,109 @@ import {
   Autocomplete,
   TextField,
   ListItemText,
-  Snackbar,
-  Alert,
   CircularProgress,
   Chip,
   Tooltip,
   Divider,
+  IconButton,
+  Grid,
+  Stack,
 } from "@mui/material";
-import { api } from "../../api";
-import { useContext } from "react";
-import { AppContext } from "../../context/AppContext";
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
-import IconButton from "@mui/material/IconButton";
 import SearchIcon from "@mui/icons-material/Search";
+import { toast } from "react-toastify";
+import { api } from "../../api";
+import { AppContext } from "../../context/AppContext";
 
 const NOMINATIM_BASE_URL = "https://nominatim.openstreetmap.org/search";
-const NOMINATIM_PARAMS = "format=json&limit=5&addressdetails=1&countrycodes="; // Add country filter if needed, e.g., 'us,ca'
+const NOMINATIM_PARAMS = "format=json&limit=5&addressdetails=1";
 
-const Places = () => {
-  const [openDialog, setOpenDialog] = useState(false);
-  const [editMode, setEditMode] = useState(false);
-  const [selectedPlace, setSelectedPlace] = useState(null);
-  const [formData, setFormData] = useState({
+const initialState = {
+  openDialog: false,
+  editMode: false,
+  selectedPlace: null,
+  dialogLoading: false,
+  suggestions: [],
+  inputValue: "",
+  formData: {
     name: "",
     isLoading: false,
     isDestination: false,
     country: "",
     latitude: "",
     longitude: "",
-  });
+  },
+};
+
+const reducer = (state, action) => {
+  switch (action.type) {
+    case "OPEN_DIALOG":
+      return {
+        ...state,
+        openDialog: true,
+        editMode: !!action.payload,
+        selectedPlace: action.payload || null,
+        inputValue: action.payload?.name || "",
+        suggestions: [],
+        formData: action.payload
+          ? {
+              name: action.payload.name || "",
+              isLoading: action.payload.is_loading || false,
+              isDestination: action.payload.is_destination || false,
+              country: action.payload.country || "",
+              latitude: action.payload.latitude || "",
+              longitude: action.payload.longitude || "",
+            }
+          : initialState.formData,
+      };
+    case "CLOSE_DIALOG":
+      return {
+        ...state,
+        openDialog: false,
+        selectedPlace: null,
+        editMode: false,
+        inputValue: "",
+        suggestions: [],
+        formData: initialState.formData,
+      };
+    case "UPDATE_FORM":
+      return {
+        ...state,
+        formData: { ...state.formData, ...action.payload },
+      };
+    case "SET_SUGGESTIONS":
+      return { ...state, suggestions: action.payload };
+    case "SET_INPUT_VALUE":
+      return { ...state, inputValue: action.payload };
+    case "SET_DIALOG_LOADING":
+      return { ...state, dialogLoading: action.payload };
+    default:
+      return state;
+  }
+};
+
+const Places = () => {
   const { places, fetchPlaces, placesLoading } = useContext(AppContext);
-  const [loading, setLoading] = useState(true);
-  const [dialogLoading, setDialogLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [snackbar, setSnackbar] = useState({
-    open: false,
-    message: "",
-    severity: "info",
-  });
-  const [suggestions, setSuggestions] = useState([]); // For autocomplete options
-  const [inputValue, setInputValue] = useState(""); // Debounced input
+  const [state, dispatch] = useReducer(reducer, initialState);
   const timeoutRef = useRef(null);
 
-  // Safe inputValue for MUI (always string)
-  const safeInputValue = inputValue || "";
+  const safeInputValue = state.inputValue || "";
 
-  // Debounced Nominatim search
   useEffect(() => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
 
     timeoutRef.current = setTimeout(() => {
       if (safeInputValue.length > 2) {
-        // Use safe version
         fetchSuggestions(safeInputValue);
       } else {
-        setSuggestions([]);
+        dispatch({ type: "SET_SUGGESTIONS", payload: [] });
       }
-    }, 300); // 300ms debounce
+    }, 300);
 
     return () => clearTimeout(timeoutRef.current);
-  }, [safeInputValue]); // Depend on safe version
+  }, [safeInputValue]);
 
   const fetchSuggestions = async (query) => {
     try {
@@ -90,149 +129,93 @@ const Places = () => {
       );
       if (!response.ok) throw new Error("Nominatim search failed");
       const data = await response.json();
-      setSuggestions(
-        data.map((item) => ({
+      dispatch({
+        type: "SET_SUGGESTIONS",
+        payload: data.map((item) => ({
           label: item.display_name || item.name,
           value: item.display_name,
           lat: item.lat,
           lon: item.lon,
           country: item.address?.country || "",
         })),
-      );
+      });
     } catch (err) {
       console.error("Error fetching suggestions:", err);
-      setSuggestions([]);
+      dispatch({ type: "SET_SUGGESTIONS", payload: [] });
     }
   };
 
   const handleSuggestionSelect = (event, option) => {
     if (option && typeof option === "object") {
       const name = option.value || option.label || "";
-      setFormData((prev) => ({
-        ...prev,
-        name,
-        latitude: option.lat,
-        longitude: option.lon,
-        country: option.country,
-      }));
-      setInputValue(name);
+      dispatch({ type: "SET_INPUT_VALUE", payload: name });
+      dispatch({
+        type: "UPDATE_FORM",
+        payload: {
+          name,
+          latitude: option.lat,
+          longitude: option.lon,
+          country: option.country,
+        },
+      });
     } else if (typeof option === "string") {
-      setFormData((prev) => ({ ...prev, name: option }));
-      setInputValue(option);
+      dispatch({ type: "SET_INPUT_VALUE", payload: option });
+      dispatch({ type: "UPDATE_FORM", payload: { name: option } });
     }
   };
 
   const validateForm = () => {
-    if (!formData.name.trim()) {
-      setSnackbar({
-        open: true,
-        message: "Place name is required.",
-        severity: "warning",
-      });
+    if (!state.formData.name.trim()) {
+      toast.warning("Place name is required.");
       return false;
     }
-    if (!formData.country.trim()) {
-      setSnackbar({
-        open: true,
-        message: "Country is required.",
-        severity: "warning",
-      });
+    if (!state.formData.country.trim()) {
+      toast.warning("Country is required.");
       return false;
     }
     return true;
-  };
-
-  const handleOpenDialog = (place = null) => {
-    setEditMode(!!place);
-    setSelectedPlace(place);
-    if (place) {
-      // Map snake_case backend keys to camelCase form state for edit
-      setFormData({
-        name: place.name || "",
-        isLoading: place.is_loading || false,
-        isDestination: place.is_destination || false,
-        country: place.country || "",
-        latitude: place.latitude || "",
-        longitude: place.longitude || "",
-      });
-      setInputValue(place.name || ""); // Prefill input for better UX
-    } else {
-      setFormData({
-        name: "",
-        isLoading: false,
-        isDestination: false,
-        country: "",
-        latitude: "",
-        longitude: "",
-      });
-      setInputValue(""); // Reset to empty string
-    }
-    setSuggestions([]);
-    setOpenDialog(true);
-  };
-
-  const handleCloseDialog = () => {
-    setOpenDialog(false);
-    setSelectedPlace(null);
-    setFormData({
-      name: "",
-      isLoading: false,
-      isDestination: false,
-      country: "",
-      latitude: "",
-      longitude: "",
-    });
-    setSuggestions([]);
-    setInputValue(""); // Reset to empty string
   };
 
   const handleSave = async () => {
     if (!validateForm()) return;
 
     try {
-      setDialogLoading(true);
+      dispatch({ type: "SET_DIALOG_LOADING", payload: true });
+      const payload = {
+        name: state.formData.name,
+        is_loading: state.formData.isLoading,
+        is_destination: state.formData.isDestination,
+        country: state.formData.country,
+        latitude: parseFloat(state.formData.latitude) || null,
+        longitude: parseFloat(state.formData.longitude) || null,
+      };
+
       let response;
-      if (editMode) {
-        response = await api.put(`api/options/places/${selectedPlace.id}`, {
-          name: formData.name,
-          is_loading: formData.isLoading,
-          is_destination: formData.isDestination,
-          country: formData.country,
-          latitude: parseFloat(formData.latitude) || null,
-          longitude: parseFloat(formData.longitude) || null,
-        });
+      if (state.editMode) {
+        response = await api.put(
+          `api/options/places/${state.selectedPlace.id}`,
+          payload,
+        );
       } else {
-        response = await api.post("api/options/places", {
-          name: formData.name,
-          is_loading: formData.isLoading,
-          is_destination: formData.isDestination,
-          country: formData.country,
-          latitude: parseFloat(formData.latitude) || null,
-          longitude: parseFloat(formData.longitude) || null,
-        });
+        response = await api.post("api/options/places", payload);
       }
+
       if (response.status >= 400) {
-        const errorData = response.data;
-        throw new Error(errorData.error || "Failed to save place");
+        throw new Error(response.data?.error || "Failed to save place");
       }
+
       await fetchPlaces();
-      handleCloseDialog();
-      setSnackbar({
-        open: true,
-        message: editMode
+      dispatch({ type: "CLOSE_DIALOG" });
+      toast.success(
+        state.editMode
           ? "Place updated successfully!"
           : "Place added successfully!",
-        severity: "success",
-      });
+      );
     } catch (err) {
       console.error("Error saving place:", err);
-      setSnackbar({
-        open: true,
-        message: err.message || "Failed to save place.",
-        severity: "error",
-      });
+      toast.error(err.message || "Failed to save place.");
     } finally {
-      setDialogLoading(false);
+      dispatch({ type: "SET_DIALOG_LOADING", payload: false });
     }
   };
 
@@ -247,22 +230,13 @@ const Places = () => {
     try {
       const response = await api.delete(`api/options/places/${id}`);
       if (response.status >= 400) {
-        const errorData = response.data;
-        throw new Error(errorData.error || "Failed to delete place");
+        throw new Error(response.data?.error || "Failed to delete place");
       }
       await fetchPlaces();
-      setSnackbar({
-        open: true,
-        message: "Place deleted successfully!",
-        severity: "success",
-      });
+      toast.success("Place deleted successfully!");
     } catch (err) {
       console.error("Error deleting place:", err);
-      setSnackbar({
-        open: true,
-        message: err.message || "Failed to delete place.",
-        severity: "error",
-      });
+      toast.error(err.message || "Failed to delete place.");
     }
   };
 
@@ -273,23 +247,19 @@ const Places = () => {
     return types.join(", ") || "None";
   };
 
-  const handleSnackbarClose = () => {
-    setSnackbar({ ...snackbar, open: false });
-  };
-
   const renderEmptyState = () => (
-    <Box sx={{ textAlign: "center", py: 4 }}>
+    <Box sx={{ textAlign: "center", py: 6 }}>
       <Typography variant="h6" color="textSecondary" gutterBottom>
         No places found
       </Typography>
-      <Typography variant="body2" color="textSecondary">
-        Click "Add New" to get started.
+      <Typography variant="body2" color="textSecondary" sx={{ mb: 3 }}>
+        Click "Add New Place" to start mapping your locations.
       </Typography>
       <Button
         variant="outlined"
         startIcon={<AddIcon />}
-        onClick={() => handleOpenDialog()}
-        sx={{ mt: 2 }}
+        onClick={() => dispatch({ type: "OPEN_DIALOG" })}
+        size="large"
       >
         Add Your First Place
       </Button>
@@ -297,34 +267,49 @@ const Places = () => {
   );
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Box
-        sx={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          mb: 3,
-        }}
+    <Box sx={{ p: { xs: 2, md: 4 } }}>
+      <Grid
+        container
+        justifyContent="space-between"
+        alignItems="center"
+        spacing={2}
+        sx={{ mb: 4 }}
       >
-        <Box>
-          <Typography variant="h4" component="h1" gutterBottom>
+        <Grid item xs={12} sm={8}>
+          <Typography
+            variant="h4"
+            component="h1"
+            fontWeight="bold"
+            gutterBottom
+          >
             Manage Places
           </Typography>
-          <Typography variant="body2" color="textSecondary">
+          <Typography variant="body1" color="textSecondary">
             Add, edit, or remove locations for loading and destinations.
           </Typography>
-        </Box>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => handleOpenDialog()}
-          size="large"
+        </Grid>
+        <Grid
+          item
+          xs={12}
+          sm={4}
+          sx={{ textAlign: { xs: "left", sm: "right" } }}
         >
-          Add New Place
-        </Button>
-      </Box>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => dispatch({ type: "OPEN_DIALOG" })}
+            size="large"
+            disableElevation
+          >
+            Add New Place
+          </Button>
+        </Grid>
+      </Grid>
 
-      <Paper sx={{ p: 2, overflowX: "auto", position: "relative" }}>
+      <Paper
+        elevation={2}
+        sx={{ width: "100%", overflowX: "auto", position: "relative" }}
+      >
         {placesLoading && (
           <Box
             sx={{
@@ -332,255 +317,338 @@ const Places = () => {
               top: "50%",
               left: "50%",
               transform: "translate(-50%, -50%)",
+              zIndex: 10,
             }}
           >
             <CircularProgress />
           </Box>
         )}
-        {error && !loading && (
-          <Alert severity="error" sx={{ mb: 2 }}>
-            {error}.{" "}
-            <Button size="small" onClick={fetchPlaces}>
-              Retry
-            </Button>
-          </Alert>
-        )}
-        <Table>
-          <TableHead sx={{ background: "#0d6c6a", color: "#fff" }}>
+
+        <Table sx={{ minWidth: 650 }} aria-label="places table">
+          <TableHead sx={{ bgcolor: "primary.main" }}>
             <TableRow>
-              <TableCell sx={{ color: "#fff" }}>
-                <strong>ID</strong>
-              </TableCell>
-              <TableCell sx={{ color: "#fff" }}>
-                <strong>Name</strong>
-              </TableCell>
-              <TableCell sx={{ color: "#fff" }}>
-                <strong>Type</strong>
-              </TableCell>
-              <TableCell sx={{ color: "#fff" }}>
-                <strong>Country</strong>
-              </TableCell>
-              <TableCell sx={{ color: "#fff" }}>
-                <strong>Latitude</strong>
-              </TableCell>
-              <TableCell sx={{ color: "#fff" }}>
-                <strong>Longitude</strong>
-              </TableCell>
-              <TableCell sx={{ color: "#fff" }}>
-                <strong>Actions</strong>
-              </TableCell>
+              {[
+                "ID",
+                "Name",
+                "Type",
+                "Country",
+                "Latitude",
+                "Longitude",
+                "Actions",
+              ].map((head) => (
+                <TableCell
+                  key={head}
+                  sx={{ color: "primary.contrastText", fontWeight: "bold" }}
+                >
+                  {head}
+                </TableCell>
+              ))}
             </TableRow>
           </TableHead>
           <TableBody>
-            {places.length === 0 && !placesLoading
-              ? renderEmptyState()
-              : places.map((place) => (
-                  <TableRow
-                    key={place.id}
-                    hover
-                    sx={{ "&:last-child td, &:last-child th": { border: 0 } }}
-                  >
-                    <TableCell>{place.id}</TableCell>
-                    <TableCell>
-                      <Typography variant="body1" fontWeight="medium">
-                        {place.name}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      {getTypeLabel(place) === "None" ? (
-                        <Chip
-                          label="None"
-                          size="small"
-                          color="primary"
-                          variant="outlined"
-                        />
-                      ) : (
-                        <Chip
-                          label={getTypeLabel(place)}
-                          size="small"
-                          color="primary"
-                        />
-                      )}
-                    </TableCell>
-                    <TableCell>{place.country || "N/A"}</TableCell>
-                    <TableCell>{place.latitude || "N/A"}</TableCell>
-                    <TableCell>{place.longitude || "N/A"}</TableCell>
-                    <TableCell>
-                      <Tooltip title="Edit Place">
-                        <IconButton
-                          size="small"
-                          onClick={() => handleOpenDialog(place)}
-                        >
-                          <EditIcon />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Delete Place">
-                        <IconButton
-                          size="small"
-                          color="error"
-                          onClick={() => handleDelete(place.id)}
-                        >
-                          <DeleteIcon />
-                        </IconButton>
-                      </Tooltip>
-                    </TableCell>
-                  </TableRow>
-                ))}
+            {places.length === 0 && !placesLoading ? (
+              <TableRow>
+                <TableCell colSpan={7}>{renderEmptyState()}</TableCell>
+              </TableRow>
+            ) : (
+              places.map((place) => (
+                <TableRow
+                  key={place.id}
+                  hover
+                  sx={{ "&:last-child td, &:last-child th": { border: 0 } }}
+                >
+                  <TableCell>{place.id}</TableCell>
+                  <TableCell>
+                    <Typography variant="body2" fontWeight="500">
+                      {place.name}
+                    </Typography>
+                  </TableCell>
+                  <TableCell>
+                    {getTypeLabel(place) === "None" ? (
+                      <Chip label="None" size="small" variant="outlined" />
+                    ) : (
+                      <Chip
+                        label={getTypeLabel(place)}
+                        size="small"
+                        color="primary"
+                      />
+                    )}
+                  </TableCell>
+                  <TableCell>{place.country || "N/A"}</TableCell>
+                  <TableCell>{place.latitude || "N/A"}</TableCell>
+                  <TableCell>{place.longitude || "N/A"}</TableCell>
+                  <TableCell>
+                    <Tooltip title="Edit">
+                      <IconButton
+                        size="small"
+                        color="primary"
+                        onClick={() =>
+                          dispatch({ type: "OPEN_DIALOG", payload: place })
+                        }
+                      >
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Delete">
+                      <IconButton
+                        size="small"
+                        color="error"
+                        onClick={() => handleDelete(place.id)}
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
           </TableBody>
         </Table>
       </Paper>
 
-      {/* Dialog for Add/Edit */}
       <Dialog
-        open={openDialog}
-        onClose={handleCloseDialog}
-        maxWidth="lg"
+        open={state.openDialog}
+        onClose={() => dispatch({ type: "CLOSE_DIALOG" })}
         fullWidth
+        maxWidth="md"
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            overflow: "hidden",
+          },
+        }}
       >
-        <DialogTitle sx={{ background: "#0d6c6a", color: "#fff" }}>
-          {editMode ? "Edit Place" : "Add New Place"}
+        <DialogTitle
+          sx={{
+            bgcolor: "primary.main",
+            color: "#fff",
+            py: 2,
+            fontWeight: 600,
+            fontSize: 22,
+          }}
+        >
+          {state.editMode ? "Edit Place Details" : "Add New Place"}
         </DialogTitle>
-        <DialogContent dividers>
-          <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
-            {editMode
+
+        <DialogContent sx={{ p: 3 }}>
+          <Typography
+            variant="body1"
+            color="text.secondary"
+            sx={{ my: 2, fontWeight: 600 }}
+          >
+            {state.editMode
               ? "Update the details below."
-              : "Enter place details. Use the search to auto-fill coordinates."}
+              : "Search for a place to automatically fill coordinates."}
           </Typography>
-          <Autocomplete
-            freeSolo
-            options={suggestions || []}
-            getOptionLabel={(option) => (option ? option.label || "" : "")}
-            isOptionEqualToValue={(option, value) =>
-              option?.value === value?.value
-            }
-            onChange={handleSuggestionSelect}
-            inputValue={safeInputValue} // Use safe version to prevent undefined
-            onInputChange={(_, newInputValue) => {
-              setInputValue(newInputValue || "");
-              setFormData((prev) => ({ ...prev, name: newInputValue || "" }));
-            }}
-            renderInput={(params) => (
-              <TextField
-                {...params}
+
+          <Grid container spacing={3}>
+            <Grid item size={6}>
+              <Autocomplete
+                freeSolo
                 fullWidth
-                label="Place Name *"
-                sx={{ mt: 1 }}
-                required
-                placeholder="Start typing to search places (e.g., New York, Eiffel Tower)..."
-                InputProps={{
-                  ...params.InputProps,
-                  startAdornment: (
-                    <SearchIcon sx={{ mr: 1, color: "action.active" }} />
-                  ),
+                options={state.suggestions || []}
+                getOptionLabel={(option) => option?.label || ""}
+                isOptionEqualToValue={(option, value) =>
+                  option?.value === value?.value
+                }
+                inputValue={safeInputValue}
+                onChange={handleSuggestionSelect}
+                onInputChange={(_, value) => {
+                  dispatch({
+                    type: "SET_INPUT_VALUE",
+                    payload: value || "",
+                  });
+
+                  dispatch({
+                    type: "UPDATE_FORM",
+                    payload: {
+                      name: value || "",
+                    },
+                  });
                 }}
-                error={!formData.name.trim()}
-                helperText={!formData.name.trim() ? "Required field" : ""}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    fullWidth
+                    label="Place Name"
+                    required
+                    placeholder="Search city, warehouse, port..."
+                    error={!state.formData.name.trim()}
+                    helperText={
+                      !state.formData.name.trim()
+                        ? "Place name is required"
+                        : "Search to auto-fill location details."
+                    }
+                    InputProps={{
+                      ...params.InputProps,
+                      startAdornment: (
+                        <>
+                          <SearchIcon
+                            sx={{
+                              mr: 1,
+                              color: "action.active",
+                            }}
+                          />
+                          {params.InputProps.startAdornment}
+                        </>
+                      ),
+                    }}
+                  />
+                )}
+                renderOption={(props, option) => (
+                  <li {...props}>
+                    <ListItemText
+                      primary={option.label}
+                      secondary={`${option.country} • ${option.lat}, ${option.lon}`}
+                    />
+                  </li>
+                )}
               />
-            )}
-            renderOption={(props, option) => (
-              <li {...props}>
-                <ListItemText
-                  primary={option.label}
-                  secondary={`Lat: ${option.lat}, Lon: ${option.lon}, Country: ${option.country}`}
-                />
-              </li>
-            )}
-          />
-          <Divider sx={{ my: 2 }} />
-          <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={formData.isLoading}
-                  onChange={(e) =>
-                    setFormData({ ...formData, isLoading: e.target.checked })
+            </Grid>
+
+            <Grid item size={3}>
+              <TextField
+                fullWidth
+                label="Latitude"
+                type="number"
+                value={state.formData.latitude}
+                onChange={(e) =>
+                  dispatch({
+                    type: "UPDATE_FORM",
+                    payload: {
+                      latitude: e.target.value,
+                    },
+                  })
+                }
+                InputProps={{
+                  readOnly: true,
+                }}
+                helperText="Automatically filled from search"
+              />
+            </Grid>
+
+            <Grid item size={3}>
+              <TextField
+                fullWidth
+                label="Longitude"
+                type="number"
+                value={state.formData.longitude}
+                onChange={(e) =>
+                  dispatch({
+                    type: "UPDATE_FORM",
+                    payload: {
+                      longitude: e.target.value,
+                    },
+                  })
+                }
+                InputProps={{
+                  readOnly: true,
+                }}
+                helperText="Automatically filled from search"
+              />
+            </Grid>
+
+            <Grid item size={4}>
+              <TextField
+                fullWidth
+                label="Country"
+                required
+                value={state.formData.country}
+                onChange={(e) =>
+                  dispatch({
+                    type: "UPDATE_FORM",
+                    payload: {
+                      country: e.target.value,
+                    },
+                  })
+                }
+                error={!state.formData.country.trim()}
+                helperText={
+                  !state.formData.country.trim() ? "Country is required" : ""
+                }
+              />
+            </Grid>
+            <Grid item size={6}>
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={state.formData.isLoading}
+                      onChange={(e) =>
+                        dispatch({
+                          type: "UPDATE_FORM",
+                          payload: {
+                            isLoading: e.target.checked,
+                          },
+                        })
+                      }
+                    />
                   }
+                  label="Loading Point"
                 />
-              }
-              label="Loading Point (e.g., pickup location)"
-            />
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={formData.isDestination}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      isDestination: e.target.checked,
-                    })
+
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={state.formData.isDestination}
+                      onChange={(e) =>
+                        dispatch({
+                          type: "UPDATE_FORM",
+                          payload: {
+                            isDestination: e.target.checked,
+                          },
+                        })
+                      }
+                    />
                   }
+                  label="Destination"
                 />
-              }
-              label="Destination (e.g., drop-off location)"
-            />
-          </Box>
-          <TextField
-            fullWidth
-            label="Country *"
-            value={formData.country}
-            onChange={(e) =>
-              setFormData({ ...formData, country: e.target.value })
-            }
-            sx={{ mt: 2 }}
-            required
-            error={!formData.country.trim()}
-            helperText={!formData.country.trim() ? "Required field" : ""}
-          />
-          <Box sx={{ display: "flex", gap: 2, mt: 2 }}>
-            <TextField
-              fullWidth
-              label="Latitude"
-              type="number"
-              step="any"
-              value={formData.latitude}
-              onChange={(e) =>
-                setFormData({ ...formData, latitude: e.target.value })
-              }
-              helperText="Auto-filled from search (optional)"
-            />
-            <TextField
-              fullWidth
-              label="Longitude"
-              type="number"
-              step="any"
-              value={formData.longitude}
-              onChange={(e) =>
-                setFormData({ ...formData, longitude: e.target.value })
-              }
-              helperText="Auto-filled from search (optional)"
-            />
-          </Box>
+              </Stack>
+            </Grid>
+          </Grid>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseDialog} disabled={dialogLoading}>
+
+        <DialogActions
+          sx={{
+            px: 3,
+            py: 2,
+            borderTop: 1,
+            borderColor: "divider",
+            justifyContent: "space-between",
+            flexDirection: {
+              xs: "column-reverse",
+              sm: "row",
+            },
+            gap: 2,
+          }}
+        >
+          <Button
+            fullWidth={window.innerWidth < 600}
+            onClick={() => dispatch({ type: "CLOSE_DIALOG" })}
+            disabled={state.dialogLoading}
+          >
             Cancel
           </Button>
+
           <Button
-            onClick={handleSave}
             variant="contained"
+            disableElevation
+            fullWidth={window.innerWidth < 600}
+            onClick={handleSave}
             disabled={
-              dialogLoading || !formData.name.trim() || !formData.country.trim()
+              state.dialogLoading ||
+              !state.formData.name.trim() ||
+              !state.formData.country.trim()
             }
           >
-            {dialogLoading ? <CircularProgress size={20} /> : "Save"}
+            {state.dialogLoading ? (
+              <CircularProgress size={22} color="inherit" />
+            ) : (
+              "Save Place"
+            )}
           </Button>
         </DialogActions>
       </Dialog>
-
-      {/* Snackbar for notifications */}
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={4000}
-        onClose={handleSnackbarClose}
-      >
-        <Alert
-          onClose={handleSnackbarClose}
-          severity={snackbar.severity}
-          sx={{ width: "100%" }}
-        >
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
     </Box>
   );
 };

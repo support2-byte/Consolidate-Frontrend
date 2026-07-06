@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Box,
   Card,
@@ -58,6 +58,24 @@ import { api } from "../../api";
 import { useAuth } from "../../context/AuthContext";
 import debounce from "lodash/debounce";
 
+function buildRoleMap(rolePermissions) {
+  const map = {};
+  for (const row of rolePermissions) {
+    if (!map[row.module_code]) map[row.module_code] = [];
+    map[row.module_code].push(row.action_code);
+  }
+  return map;
+}
+
+function buildOverrideMap(overrides) {
+  const map = {};
+  for (const row of overrides) {
+    if (!map[row.module_code]) map[row.module_code] = {};
+    map[row.module_code][row.action_code] = row.granted;
+  }
+  return map;
+}
+
 export default function UsersManagement() {
   const { can, isAdmin } = useAuth();
 
@@ -71,22 +89,35 @@ export default function UsersManagement() {
   const [roleFilter, setRoleFilter] = useState("");
   const [activeFilter, setActiveFilter] = useState("");
   const [availableRoles, setAvailableRoles] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [tableLoading, setTableLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState({});
 
-  // Form states for edit/add
   const [formName, setFormName] = useState("");
   const [formEmail, setFormEmail] = useState("");
   const [formRole, setFormRole] = useState("");
   const [formActive, setFormActive] = useState(true);
   const [formPassword, setFormPassword] = useState("");
+  const [formSubmitting, setFormSubmitting] = useState(false);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
-  const [formSubmitting, setFormSubmitting] = useState(false);
   const [tabValue, setTabValue] = useState(0);
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState(null);
+
+  const [roleMap, setRoleMap] = useState({});
+  const [overrides, setOverrides] = useState({});
+  const [catalogModules, setCatalogModules] = useState([]);
+  const [catalogActions, setCatalogActions] = useState([]);
+  const [permLoading, setPermLoading] = useState(false);
+
+  const [viewDialogOpen, setViewDialogOpen] = useState(false);
+  const [viewUser, setViewUser] = useState(null);
+  const [viewRoleMap, setViewRoleMap] = useState({});
+  const [viewOverrideMap, setViewOverrideMap] = useState({});
+  const [viewRoleName, setViewRoleName] = useState("—");
+  const [viewLoading, setViewLoading] = useState(false);
 
   const [snackbar, setSnackbar] = useState({
     open: false,
@@ -94,99 +125,112 @@ export default function UsersManagement() {
     severity: "success",
   });
 
-  const [tableLoading, setTableLoading] = useState(false);
-  const [actionLoading, setActionLoading] = useState({});
+  const showSnack = (message, severity = "success") =>
+    setSnackbar({ open: true, message, severity });
 
-  // View Permissions Modal states
-  const [viewDialogOpen, setViewDialogOpen] = useState(false);
-  const [viewUser, setViewUser] = useState(null);
-  const [viewRolePermissions, setViewRolePermissions] = useState({});
-  const [viewOverrides, setViewOverrides] = useState({});
-  const [viewEffective, setViewEffective] = useState({});
-  const [viewRoleName, setViewRoleName] = useState("—");
-  const [viewLoading, setViewLoading] = useState(false);
-
-  // Permission editor states (when editing)
-  const [rolePermissions, setRolePermissions] = useState({});
-  const [overrides, setOverrides] = useState({});
-
-  const [catalogModules, setCatalogModules] = useState([]);
-  const [catalogActions, setCatalogActions] = useState([]);
-
-  // ────────────────────────────────────────────────────────────────
-  // Fetch data
-  // ────────────────────────────────────────────────────────────────
   const fetchUsers = useCallback(async () => {
     if (!can("users", "view")) return;
     setTableLoading(true);
     try {
-      const params = {
-        page: page + 1,
-        limit: rowsPerPage,
-        sort: `${orderBy}:${order}`,
-        search: searchTerm.trim() || undefined,
-        role: roleFilter || undefined,
-        active: activeFilter || undefined,
-      };
-      const res = await api.get("/auth/users", { params });
-      if (res.data?.success) {
-        setUsers(res.data.users || []);
-        setTotal(res.data.pagination?.total || 0);
-        setAvailableRoles(res.data.roles || []);
-      }
-    } catch (err) {
-      console.error("Failed to fetch users:", err);
-      setSnackbar({
-        open: true,
-        message: "Could not load users",
-        severity: "error",
+      const res = await api.get("/auth/users", {
+        params: {
+          page: page + 1,
+          limit: rowsPerPage,
+          search: searchTerm.trim() || undefined,
+          roleId: roleFilter || undefined,
+          active: activeFilter || undefined,
+        },
       });
+      if (res.data?.success) {
+        setUsers(res.data.data || []);
+        setTotal(res.data.pagination?.total || 0);
+      }
+    } catch {
+      showSnack("Could not load users", "error");
     } finally {
       setTableLoading(false);
     }
-  }, [
-    page,
-    rowsPerPage,
-    orderBy,
-    order,
-    searchTerm,
-    roleFilter,
-    activeFilter,
-    can,
-  ]);
+  }, [page, rowsPerPage, searchTerm, roleFilter, activeFilter, can]);
+
+  const fetchRoles = useCallback(async () => {
+    try {
+      const res = await api.get("/auth/roles");
+      if (res.data?.success) setAvailableRoles(res.data.data || []);
+    } catch (err) {
+      const status = err.response?.status;
+      if (status !== 403) {
+        showSnack("Could not load roles", "warning");
+      }
+    }
+  }, []);
 
   const fetchCatalog = useCallback(async () => {
     try {
-      const res = await api.get("/auth/admin/permissions/all");
+      const res = await api.get("/auth/rbac/permissions");
       if (res.data?.success) {
-        setCatalogModules(res.data.modules || []);
-        setCatalogActions(res.data.actions || []);
+        setCatalogModules(res.data.data?.modules || []);
+        setCatalogActions(res.data.data?.actions || []);
       }
-    } catch (err) {
-      console.error("Failed to load catalog:", err);
-      setSnackbar({
-        open: true,
-        message: "Failed to load permission catalog",
-        severity: "warning",
-      });
+    } catch {
+      showSnack("Failed to load permission catalog", "warning");
+    }
+  }, []);
+
+  const fetchUserPermissions = useCallback(async (userId) => {
+    setPermLoading(true);
+    try {
+      const res = await api.get(`/auth/users/${userId}/permissions`);
+      if (res.data?.success) {
+        setRoleMap(buildRoleMap(res.data.data?.rolePermissions || []));
+        setOverrides(buildOverrideMap(res.data.data?.overrides || []));
+      }
+    } catch {
+      showSnack("Failed to load permissions", "error");
+    } finally {
+      setPermLoading(false);
     }
   }, []);
 
   useEffect(() => {
     fetchUsers();
-  }, []);
+  }, [fetchUsers]);
 
   useEffect(() => {
-    if (
-      dialogOpen &&
-      currentUser &&
-      isAdmin() &&
-      tabValue === 1 &&
-      catalogModules.length === 0
-    ) {
-      fetchCatalog();
+    fetchRoles();
+  }, [fetchRoles]);
+
+  useEffect(() => {
+    if (dialogOpen && currentUser && isAdmin() && tabValue === 1) {
+      if (catalogModules.length === 0) fetchCatalog();
+      fetchUserPermissions(currentUser.id);
     }
-  }, [dialogOpen, currentUser, tabValue, isAdmin, catalogModules.length]);
+  }, [
+    dialogOpen,
+    currentUser,
+    tabValue,
+    isAdmin,
+    catalogModules.length,
+    fetchCatalog,
+    fetchUserPermissions,
+  ]);
+
+  useEffect(() => {
+    if (!dialogOpen) return;
+    if (currentUser) {
+      setFormName(currentUser.name || "");
+      setFormEmail(currentUser.email || "");
+      setFormRole(currentUser.role_id || "");
+      setFormActive(currentUser.active ?? true);
+      setFormPassword("");
+    } else {
+      const defaultRole = availableRoles.find((r) => r.name === "viewer");
+      setFormName("");
+      setFormEmail("");
+      setFormRole(defaultRole?.id || "");
+      setFormActive(true);
+      setFormPassword("");
+    }
+  }, [dialogOpen, currentUser, availableRoles]);
 
   const debouncedSearch = useCallback(
     debounce((value) => {
@@ -196,122 +240,38 @@ export default function UsersManagement() {
     [],
   );
 
-  // ────────────────────────────────────────────────────────────────
-  // Load permissions when editing user
-  // ────────────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!dialogOpen || !currentUser || !isAdmin()) return;
-    setTabValue(0);
-    setLoading(true);
-    api
-      .get(`/auth/admin/users/${currentUser.id}/permissions`)
-      .then((res) => {
-        if (res.data?.success) {
-          console.log("[Permission]", res.data);
-
-          setRolePermissions(res.data.rolePermissions || {});
-          setOverrides(res.data.overrides || {});
-        }
-      })
-      .catch((err) => {
-        console.error("Failed to load permissions:", err);
-        setSnackbar({
-          open: true,
-          message: "Failed to load permissions",
-          severity: "error",
-        });
-      })
-      .finally(() => setLoading(false));
-  }, [dialogOpen, currentUser, isAdmin]);
-
-  // ────────────────────────────────────────────────────────────────
-  // Form sync for edit/add
-  // ────────────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (dialogOpen) {
-      if (currentUser) {
-        setFormName(currentUser.name || "");
-        setFormEmail(currentUser.email || "");
-
-        const selectedRole = availableRoles.find(
-          (r) => r.name === currentUser.role,
-        );
-        setFormRole(selectedRole?.id || "");
-
-        setFormActive(currentUser.active ?? true);
-        setFormPassword("");
-      } else {
-        const defaultRole = availableRoles.find((r) => r.name === "viewer");
-        setFormName("");
-        setFormEmail("");
-        setFormRole(defaultRole?.id || "");
-        setFormActive(true);
-        setFormPassword("");
-      }
-    }
-  }, [dialogOpen, currentUser, availableRoles]);
-
-  // ────────────────────────────────────────────────────────────────
-  // Handlers
-  // ────────────────────────────────────────────────────────────────
   const handleSort = (property) => {
-    const isAsc = orderBy === property && order === "asc";
-    setOrder(isAsc ? "desc" : "asc");
+    setOrder(orderBy === property && order === "asc" ? "desc" : "asc");
     setOrderBy(property);
     setPage(0);
   };
 
-  const handleChangePage = (_, newPage) => setPage(newPage);
-
-  const handleChangeRowsPerPage = (e) => {
-    setRowsPerPage(parseInt(e.target.value, 10));
-    setPage(0);
-  };
-
   const toggleActive = async (user) => {
-    if (!can("users", "edit"))
-      return setSnackbar({
-        open: true,
-        message: "No permission",
-        severity: "warning",
-      });
+    if (!can("users", "edit")) return showSnack("No permission", "warning");
 
     const newActive = !user.active;
-    const userId = user.id;
-
-    setActionLoading((prev) => ({ ...prev, [userId]: true }));
+    setActionLoading((prev) => ({ ...prev, [user.id]: true }));
     setUsers((prev) =>
-      prev.map((u) => (u.id === userId ? { ...u, active: newActive } : u)),
+      prev.map((u) => (u.id === user.id ? { ...u, active: newActive } : u)),
     );
 
     try {
-      await api.put(`/auth/users/${userId}`, { active: newActive });
-      setSnackbar({
-        open: true,
-        message: `User ${user.name || user.email} ${newActive ? "activated" : "deactivated"}`,
-        severity: "success",
-      });
-    } catch (err) {
-      setUsers((prev) =>
-        prev.map((u) => (u.id === userId ? { ...u, active: !newActive } : u)),
+      await api.put(`/auth/users/${user.id}`, { active: newActive });
+      showSnack(
+        `${user.name || user.email} ${newActive ? "activated" : "deactivated"}`,
       );
-      setSnackbar({
-        open: true,
-        message: "Failed to update status",
-        severity: "error",
-      });
+    } catch {
+      setUsers((prev) =>
+        prev.map((u) => (u.id === user.id ? { ...u, active: !newActive } : u)),
+      );
+      showSnack("Failed to update status", "error");
     } finally {
-      setActionLoading((prev) => ({ ...prev, [userId]: false }));
+      setActionLoading((prev) => ({ ...prev, [user.id]: false }));
     }
   };
 
   const handleDelete = (user) => {
-    if (!can("users", "delete"))
-      return setSnackbar({
-        open: true,
-        message: "No permission",
-        severity: "warning",
-      });
+    if (!can("users", "delete")) return showSnack("No permission", "warning");
     setUserToDelete(user);
     setDeleteDialogOpen(true);
   };
@@ -319,14 +279,10 @@ export default function UsersManagement() {
   const confirmDelete = async () => {
     try {
       await api.delete(`/auth/users/${userToDelete.id}`);
-      setSnackbar({ open: true, message: "User deleted", severity: "success" });
+      showSnack("User deleted");
       fetchUsers();
-    } catch (err) {
-      setSnackbar({
-        open: true,
-        message: "Failed to delete user",
-        severity: "error",
-      });
+    } catch {
+      showSnack("Failed to delete user", "error");
     } finally {
       setDeleteDialogOpen(false);
       setUserToDelete(null);
@@ -335,18 +291,9 @@ export default function UsersManagement() {
 
   const handleOpenDialog = (user = null) => {
     if (user && !can("users", "edit"))
-      return setSnackbar({
-        open: true,
-        message: "No edit permission",
-        severity: "warning",
-      });
+      return showSnack("No edit permission", "warning");
     if (!user && !can("users", "create"))
-      return setSnackbar({
-        open: true,
-        message: "No create permission",
-        severity: "warning",
-      });
-
+      return showSnack("No create permission", "warning");
     setCurrentUser(user);
     setDialogOpen(true);
   };
@@ -355,36 +302,25 @@ export default function UsersManagement() {
     setDialogOpen(false);
     setCurrentUser(null);
     setTabValue(0);
+    setRoleMap({});
+    setOverrides({});
   };
 
   const handleSaveUser = async (e) => {
     e.preventDefault();
 
-    if (!formName.trim())
-      return setSnackbar({
-        open: true,
-        message: "Name required",
-        severity: "error",
-      });
+    if (!formName.trim()) return showSnack("Name required", "error");
     if (!formEmail.includes("@"))
-      return setSnackbar({
-        open: true,
-        message: "Valid email required",
-        severity: "error",
-      });
+      return showSnack("Valid email required", "error");
     if (!currentUser && formPassword.length < 8)
-      return setSnackbar({
-        open: true,
-        message: "Password min 8 chars",
-        severity: "error",
-      });
+      return showSnack("Password min 8 chars", "error");
 
     setFormSubmitting(true);
 
     const payload = {
       name: formName.trim(),
       email: formEmail.trim(),
-      role: formRole,
+      roleId: formRole,
       active: formActive,
     };
 
@@ -393,67 +329,45 @@ export default function UsersManagement() {
     try {
       if (currentUser) {
         await api.put(`/auth/users/${currentUser.id}`, payload);
-        setSnackbar({
-          open: true,
-          message: "User updated",
-          severity: "success",
-        });
+        showSnack("User updated");
       } else {
         await api.post("/auth/users", payload);
-        setSnackbar({
-          open: true,
-          message: "User created",
-          severity: "success",
-        });
+        showSnack("User created");
       }
       fetchUsers();
       handleCloseDialog();
     } catch (err) {
-      const msg = err.response?.data?.error || "Failed to save user";
-      setSnackbar({ open: true, message: msg, severity: "error" });
+      const code = err.response?.data?.error;
+      showSnack(
+        code === "EMAIL_TAKEN" ? "Email already in use" : "Failed to save user",
+        "error",
+      );
     } finally {
       setFormSubmitting(false);
     }
   };
 
-  const handlePermissionToggle = async (module, action, newGranted) => {
+  const handlePermissionToggle = async (mod, action, newGranted) => {
     if (!currentUser?.id) return;
 
-    const originalOverrides = { ...overrides };
-    setOverrides((prev) => ({
-      ...prev,
-      [module]: {
-        ...prev[module],
-        [action]: newGranted,
-      },
+    const prev = { ...overrides };
+    setOverrides((p) => ({
+      ...p,
+      [mod.code]: { ...p[mod.code], [action.code]: newGranted },
     }));
 
     try {
-      await api.post(`/auth/admin/users/${currentUser.id}/permissions`, {
-        module,
-        action,
+      await api.put(`/auth/users/${currentUser.id}/permissions`, {
+        moduleId: mod.id,
+        actionId: action.id,
         granted: newGranted,
       });
-
-      const res = await api.get(
-        `/auth/admin/users/${currentUser.id}/permissions`,
+      showSnack(
+        `"${action.code}" on "${mod.code}" ${newGranted ? "granted" : "revoked"}`,
       );
-      if (res.data?.success) {
-        setRolePermissions(res.data.rolePermissions || {});
-        setOverrides(res.data.overrides || {});
-        setSnackbar({
-          open: true,
-          message: `Permission "${action}" on "${module}" updated`,
-          severity: "success",
-        });
-      }
-    } catch (err) {
-      setOverrides(originalOverrides);
-      setSnackbar({
-        open: true,
-        message: `Failed to update "${action}" on "${module}"`,
-        severity: "error",
-      });
+    } catch {
+      setOverrides(prev);
+      showSnack(`Failed to update "${action.code}" on "${mod.code}"`, "error");
     }
   };
 
@@ -461,29 +375,29 @@ export default function UsersManagement() {
     setViewUser(user);
     setViewDialogOpen(true);
     setViewLoading(true);
-
     try {
-      const res = await api.get(`/auth/admin/users/${user.id}/permissions`);
+      const res = await api.get(`/auth/users/${user.id}/permissions`);
       if (res.data?.success) {
-        setViewRolePermissions(res.data.rolePermissions || {});
-        setViewOverrides(res.data.overrides || {});
-        setViewEffective(res.data.effective || {});
-        setViewRoleName(res.data.role || "unknown");
+        setViewRoleMap(buildRoleMap(res.data.data?.rolePermissions || []));
+        setViewOverrideMap(buildOverrideMap(res.data.data?.overrides || []));
+        setViewRoleName(res.data.data?.roleName || "—");
       }
-    } catch (err) {
-      console.error("Failed to load view permissions:", err);
-      setSnackbar({
-        open: true,
-        message: "Failed to load permissions",
-        severity: "error",
-      });
+    } catch {
+      showSnack("Failed to load permissions", "error");
     } finally {
       setViewLoading(false);
     }
   };
 
-  const handleSnackbarClose = () =>
-    setSnackbar((prev) => ({ ...prev, open: false }));
+  const effectivePermCount = Object.values(viewRoleMap).reduce(
+    (acc, acts) => acc + acts.length,
+    0,
+  );
+
+  const overrideCount = Object.values(viewOverrideMap).reduce(
+    (acc, obj) => acc + Object.keys(obj).length,
+    0,
+  );
 
   return (
     <Box sx={{ p: { xs: 2, md: 3 } }}>
@@ -509,7 +423,6 @@ export default function UsersManagement() {
               <TextField
                 size="small"
                 placeholder="Search..."
-                value={searchTerm}
                 onChange={(e) => debouncedSearch(e.target.value)}
                 InputProps={{
                   startAdornment: (
@@ -566,7 +479,6 @@ export default function UsersManagement() {
             </Stack>
           </Stack>
 
-          {/* Table */}
           {tableLoading ? (
             <Box sx={{ display: "flex", justifyContent: "center", py: 10 }}>
               <CircularProgress />
@@ -613,20 +525,17 @@ export default function UsersManagement() {
                           </Avatar>
                         </TableCell>
                         <TableCell>{user.name || "—"}</TableCell>
-                        <TableCell>{user.email || "—"}</TableCell>
+                        <TableCell>{user.email}</TableCell>
                         <TableCell>
                           <Chip
                             label={
-                              user.role
-                                ? typeof user.role === "string"
-                                  ? user.role.charAt(0).toUpperCase() +
-                                    user.role.slice(1)
-                                  : user.role
+                              user.role_name
+                                ? user.role_name.charAt(0).toUpperCase() +
+                                  user.role_name.slice(1)
                                 : "—"
                             }
                             color="primary"
                             size="small"
-                            variant="filled"
                           />
                         </TableCell>
                         <TableCell align="center">
@@ -691,15 +600,17 @@ export default function UsersManagement() {
                 count={total}
                 rowsPerPage={rowsPerPage}
                 page={page}
-                onPageChange={handleChangePage}
-                onRowsPerPageChange={handleChangeRowsPerPage}
+                onPageChange={(_, newPage) => setPage(newPage)}
+                onRowsPerPageChange={(e) => {
+                  setRowsPerPage(parseInt(e.target.value, 10));
+                  setPage(0);
+                }}
               />
             </Paper>
           )}
         </CardContent>
       </Card>
 
-      {/* Edit/Add Dialog */}
       <Dialog
         open={dialogOpen}
         onClose={handleCloseDialog}
@@ -753,7 +664,6 @@ export default function UsersManagement() {
                   required
                   disabled={formSubmitting}
                 />
-
                 <TextField
                   label="Email Address"
                   type="email"
@@ -763,8 +673,7 @@ export default function UsersManagement() {
                   required
                   disabled={formSubmitting}
                 />
-
-                <FormControl fullWidth sx={{ mb: 3 }} disabled={formSubmitting}>
+                <FormControl fullWidth disabled={formSubmitting}>
                   <InputLabel>Role</InputLabel>
                   <Select
                     value={formRole}
@@ -778,7 +687,6 @@ export default function UsersManagement() {
                     ))}
                   </Select>
                 </FormControl>
-
                 <FormControlLabel
                   control={
                     <Checkbox
@@ -790,7 +698,6 @@ export default function UsersManagement() {
                   }
                   label="Account is active"
                 />
-
                 {!currentUser && (
                   <TextField
                     label="Password"
@@ -806,14 +713,9 @@ export default function UsersManagement() {
               </Stack>
             ) : (
               <Box>
-                <Typography
-                  variant="subtitle1"
-                  gutterBottom
-                  sx={{ mb: 3, fontWeight: 600 }}
-                >
+                <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>
                   Custom Overrides & Effective Permissions
                 </Typography>
-
                 <Typography
                   variant="body2"
                   color="text.secondary"
@@ -823,27 +725,27 @@ export default function UsersManagement() {
                   Changes are saved instantly.
                 </Typography>
 
-                {loading ? (
+                {permLoading ? (
                   <Box
                     sx={{ display: "flex", justifyContent: "center", py: 8 }}
                   >
                     <CircularProgress />
                   </Box>
                 ) : catalogModules.length === 0 ? (
-                  <Alert severity="info" sx={{ mt: 2 }}>
-                    No modules or actions defined in the system yet.
+                  <Alert severity="info">
+                    No modules defined in the system yet.
                   </Alert>
                 ) : (
                   <Stack spacing={2}>
                     {catalogModules.map((mod) => {
-                      const moduleCode = mod;
-                      const roleActs = rolePermissions[moduleCode] || [];
-                      const overrideMap = overrides[moduleCode] || {};
+                      const roleActs = roleMap[mod.code] || [];
+                      const overrideMap = overrides[mod.code] || {};
 
                       const grantedActions = catalogActions.filter((act) => {
-                        const hasRole = roleActs.includes(act);
-                        const ovr = overrideMap[act];
-                        return ovr !== undefined ? ovr : hasRole;
+                        const ovr = overrideMap[act.code];
+                        return ovr !== undefined
+                          ? ovr
+                          : roleActs.includes(act.code);
                       });
 
                       const deniedActions = catalogActions.filter(
@@ -852,7 +754,7 @@ export default function UsersManagement() {
 
                       return (
                         <Accordion
-                          key={moduleCode}
+                          key={mod.id}
                           sx={{
                             borderRadius: 2,
                             boxShadow: 1,
@@ -866,11 +768,10 @@ export default function UsersManagement() {
                               bgcolor: "grey.100",
                               borderBottom: "1px solid",
                               borderColor: "divider",
-                              py: 1.5,
                             }}
                           >
                             <Typography variant="subtitle1" fontWeight={600}>
-                              {moduleCode}
+                              {mod.name}
                             </Typography>
                           </AccordionSummary>
 
@@ -888,9 +789,7 @@ export default function UsersManagement() {
                                   }}
                                 >
                                   <CheckIcon fontSize="small" /> Granted
-                                  Permissions
                                 </Typography>
-
                                 <Box
                                   sx={{
                                     display: "flex",
@@ -899,34 +798,22 @@ export default function UsersManagement() {
                                   }}
                                 >
                                   {grantedActions.map((act) => {
-                                    const hasRoleDefault =
-                                      roleActs.includes(act);
-                                    const overrideValue = overrideMap[act];
                                     const isOverridden =
-                                      overrideValue !== undefined;
-
+                                      overrideMap[act.code] !== undefined;
                                     return (
                                       <FormControlLabel
-                                        key={act}
+                                        key={act.id}
                                         control={
                                           <Checkbox
                                             checked={true}
                                             onChange={() =>
                                               handlePermissionToggle(
-                                                moduleCode,
+                                                mod,
                                                 act,
                                                 false,
                                               )
                                             }
                                             color="success"
-                                            sx={{
-                                              color: isOverridden
-                                                ? "success.main"
-                                                : "grey.500",
-                                              "&.Mui-checked": {
-                                                color: "success.main",
-                                              },
-                                            }}
                                           />
                                         }
                                         label={
@@ -938,23 +825,22 @@ export default function UsersManagement() {
                                             }}
                                           >
                                             <Typography fontWeight={500}>
-                                              {act}
+                                              {act.name}
                                             </Typography>
-                                            {isOverridden ? (
-                                              <Chip
-                                                size="small"
-                                                label="Override: YES"
-                                                color="success"
-                                                variant="outlined"
-                                              />
-                                            ) : (
-                                              <Chip
-                                                size="small"
-                                                label="From Role"
-                                                color="default"
-                                                variant="outlined"
-                                              />
-                                            )}
+                                            <Chip
+                                              size="small"
+                                              label={
+                                                isOverridden
+                                                  ? "Override: YES"
+                                                  : "From Role"
+                                              }
+                                              color={
+                                                isOverridden
+                                                  ? "success"
+                                                  : "default"
+                                              }
+                                              variant="outlined"
+                                            />
                                           </Box>
                                         }
                                       />
@@ -977,9 +863,7 @@ export default function UsersManagement() {
                                   }}
                                 >
                                   <CancelIcon fontSize="small" /> Denied
-                                  Permissions
                                 </Typography>
-
                                 <Box
                                   sx={{
                                     display: "flex",
@@ -988,34 +872,22 @@ export default function UsersManagement() {
                                   }}
                                 >
                                   {deniedActions.map((act) => {
-                                    const hasRoleDefault =
-                                      roleActs.includes(act);
-                                    const overrideValue = overrideMap[act];
                                     const isOverridden =
-                                      overrideValue !== undefined;
-
+                                      overrideMap[act.code] !== undefined;
                                     return (
                                       <FormControlLabel
-                                        key={act}
+                                        key={act.id}
                                         control={
                                           <Checkbox
                                             checked={false}
                                             onChange={() =>
                                               handlePermissionToggle(
-                                                moduleCode,
+                                                mod,
                                                 act,
                                                 true,
                                               )
                                             }
                                             color="error"
-                                            sx={{
-                                              color: isOverridden
-                                                ? "error.main"
-                                                : "grey.500",
-                                              "&.Mui-checked": {
-                                                color: "error.main",
-                                              },
-                                            }}
                                           />
                                         }
                                         label={
@@ -1030,23 +902,22 @@ export default function UsersManagement() {
                                               fontWeight={500}
                                               color="text.secondary"
                                             >
-                                              {act}
+                                              {act.name}
                                             </Typography>
-                                            {isOverridden ? (
-                                              <Chip
-                                                size="small"
-                                                label="Override: NO"
-                                                color="error"
-                                                variant="outlined"
-                                              />
-                                            ) : (
-                                              <Chip
-                                                size="small"
-                                                label="Denied by Role"
-                                                color="default"
-                                                variant="outlined"
-                                              />
-                                            )}
+                                            <Chip
+                                              size="small"
+                                              label={
+                                                isOverridden
+                                                  ? "Override: NO"
+                                                  : "Denied by Role"
+                                              }
+                                              color={
+                                                isOverridden
+                                                  ? "error"
+                                                  : "default"
+                                              }
+                                              variant="outlined"
+                                            />
                                           </Box>
                                         }
                                       />
@@ -1055,17 +926,6 @@ export default function UsersManagement() {
                                 </Box>
                               </Box>
                             )}
-
-                            {grantedActions.length === 0 &&
-                              deniedActions.length === 0 && (
-                                <Typography
-                                  color="text.secondary"
-                                  align="center"
-                                  sx={{ py: 4 }}
-                                >
-                                  No actions available for this module
-                                </Typography>
-                              )}
                           </AccordionDetails>
                         </Accordion>
                       );
@@ -1099,35 +959,21 @@ export default function UsersManagement() {
         </form>
       </Dialog>
 
-      {/* View Permissions Modal */}
       <Dialog
         open={viewDialogOpen}
         onClose={() => setViewDialogOpen(false)}
         maxWidth="lg"
         fullWidth
-        PaperProps={{
-          sx: {
-            borderRadius: 3,
-            minHeight: "80vh",
-          },
-        }}
+        PaperProps={{ sx: { borderRadius: 3, minHeight: "80vh" } }}
       >
-        <DialogTitle
-          sx={{
-            bgcolor: "primary.main",
-            color: "white",
-            py: 3,
-          }}
-        >
-          <Stack spacing={1}>
+        <DialogTitle sx={{ bgcolor: "primary.main", color: "white", py: 3 }}>
+          <Stack spacing={0.5}>
             <Typography variant="h5" fontWeight={700}>
               User Permissions
             </Typography>
-
             <Typography variant="body2" sx={{ opacity: 0.9 }}>
               {viewUser?.name}
             </Typography>
-
             <Typography variant="body2" sx={{ opacity: 0.8 }}>
               {viewUser?.email}
             </Typography>
@@ -1136,11 +982,7 @@ export default function UsersManagement() {
 
         <DialogContent
           dividers
-          sx={{
-            p: { xs: 2, md: 3 },
-            bgcolor: "grey.50",
-            minHeight: 500,
-          }}
+          sx={{ p: { xs: 2, md: 3 }, bgcolor: "grey.50" }}
         >
           {viewLoading ? (
             <Box
@@ -1155,7 +997,6 @@ export default function UsersManagement() {
             </Box>
           ) : (
             <Stack spacing={3}>
-              {/* Summary Cards */}
               <Grid container spacing={2}>
                 <Grid item xs={12} md={4}>
                   <Paper
@@ -1165,7 +1006,6 @@ export default function UsersManagement() {
                       borderRadius: 3,
                       border: "1px solid",
                       borderColor: "divider",
-                      height: "100%",
                     }}
                   >
                     <Typography
@@ -1175,13 +1015,11 @@ export default function UsersManagement() {
                     >
                       Role
                     </Typography>
-
                     <Typography variant="h6" fontWeight={700}>
                       {viewRoleName}
                     </Typography>
                   </Paper>
                 </Grid>
-
                 <Grid item xs={12} md={4}>
                   <Paper
                     elevation={0}
@@ -1190,7 +1028,6 @@ export default function UsersManagement() {
                       borderRadius: 3,
                       border: "1px solid",
                       borderColor: "divider",
-                      height: "100%",
                     }}
                   >
                     <Typography
@@ -1198,15 +1035,13 @@ export default function UsersManagement() {
                       color="text.secondary"
                       gutterBottom
                     >
-                      Effective Permissions
+                      Role Permissions
                     </Typography>
-
                     <Typography variant="h4" fontWeight={700}>
-                      {Object.values(viewEffective).flat().length}
+                      {effectivePermCount}
                     </Typography>
                   </Paper>
                 </Grid>
-
                 <Grid item xs={12} md={4}>
                   <Paper
                     elevation={0}
@@ -1215,7 +1050,6 @@ export default function UsersManagement() {
                       borderRadius: 3,
                       border: "1px solid",
                       borderColor: "divider",
-                      height: "100%",
                     }}
                   >
                     <Typography
@@ -1225,12 +1059,8 @@ export default function UsersManagement() {
                     >
                       Custom Overrides
                     </Typography>
-
                     <Typography variant="h4" fontWeight={700}>
-                      {Object.values(viewOverrides).reduce(
-                        (acc, obj) => acc + Object.keys(obj).length,
-                        0,
-                      )}
+                      {overrideCount}
                     </Typography>
                   </Paper>
                 </Grid>
@@ -1246,110 +1076,52 @@ export default function UsersManagement() {
                 }}
               >
                 <Typography variant="h6" fontWeight={700} gutterBottom>
-                  Effective Permissions
-                </Typography>
-
-                <Stack spacing={2}>
-                  {Object.entries(viewEffective).map(([module, acts]) => (
-                    <Box key={module}>
-                      <Typography
-                        variant="subtitle2"
-                        sx={{
-                          mb: 1,
-                          textTransform: "uppercase",
-                          fontWeight: 700,
-                        }}
-                      >
-                        {module}
-                      </Typography>
-
-                      <Box
-                        sx={{
-                          display: "flex",
-                          flexWrap: "wrap",
-                          gap: 1,
-                        }}
-                      >
-                        {acts.map((act) => (
-                          <Chip
-                            key={act}
-                            label={act}
-                            color="primary"
-                            size="small"
-                          />
-                        ))}
-                      </Box>
-                    </Box>
-                  ))}
-                </Stack>
-              </Paper>
-
-              <Paper
-                elevation={0}
-                sx={{
-                  p: 3,
-                  borderRadius: 3,
-                  border: "1px solid",
-                  borderColor: "divider",
-                }}
-              >
-                <Typography variant="h6" fontWeight={700} gutterBottom>
                   Role Permissions
                 </Typography>
-
-                <Stack spacing={2}>
-                  {Object.keys(viewRolePermissions || {}).length === 0 ? (
-                    <Typography color="text.secondary">
-                      No role permissions assigned.
-                    </Typography>
-                  ) : (
-                    <Stack spacing={2}>
-                      {Object.entries(viewRolePermissions).map(
-                        ([module, acts]) => (
-                          <Box
-                            key={module}
-                            sx={{
-                              display: "flex",
-                              flexDirection: { xs: "column", md: "row" },
-                              gap: 2,
-                              py: 1.5,
-                              borderBottom: "1px solid",
-                              borderColor: "divider",
-                              "&:last-child": {
-                                borderBottom: "none",
-                                pb: 0,
-                              },
-                            }}
-                          >
-                            <Typography
-                              sx={{
-                                minWidth: 180,
-                                fontWeight: 600,
-                                textTransform: "capitalize",
-                              }}
-                            >
-                              {module}
-                            </Typography>
-
-                            <Box
-                              sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}
-                            >
-                              {acts.map((act) => (
-                                <Chip
-                                  key={act}
-                                  label={act}
-                                  color="success"
-                                  size="small"
-                                />
-                              ))}
-                            </Box>
-                          </Box>
-                        ),
-                      )}
-                    </Stack>
-                  )}
-                </Stack>
+                {Object.keys(viewRoleMap).length === 0 ? (
+                  <Typography color="text.secondary">
+                    No role permissions assigned.
+                  </Typography>
+                ) : (
+                  <Stack spacing={2}>
+                    {Object.entries(viewRoleMap).map(([mod, acts]) => (
+                      <Box
+                        key={mod}
+                        sx={{
+                          display: "flex",
+                          flexDirection: { xs: "column", md: "row" },
+                          gap: 2,
+                          py: 1.5,
+                          borderBottom: "1px solid",
+                          borderColor: "divider",
+                          "&:last-child": { borderBottom: "none", pb: 0 },
+                        }}
+                      >
+                        <Typography
+                          sx={{
+                            minWidth: 180,
+                            fontWeight: 600,
+                            textTransform: "capitalize",
+                          }}
+                        >
+                          {mod}
+                        </Typography>
+                        <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
+                          {acts.map((act) => (
+                            <Chip
+                              key={act}
+                              label={act}
+                              color="success"
+                              size="small"
+                            />
+                          ))}
+                        </Box>
+                      </Box>
+                    ))}
+                  </Stack>
+                )}
               </Paper>
+
               <Paper
                 elevation={0}
                 sx={{
@@ -1362,62 +1134,55 @@ export default function UsersManagement() {
                 <Typography variant="h6" fontWeight={700} gutterBottom>
                   Custom Overrides
                 </Typography>
-
-                <Stack spacing={2}>
-                  {Object.keys(viewOverrides || {}).length === 0 ? (
-                    <Typography color="text.secondary">
-                      No custom overrides configured.
-                    </Typography>
-                  ) : (
-                    <Stack spacing={2}>
-                      {Object.entries(viewOverrides).map(
-                        ([module, overrides]) => (
-                          <Box
-                            key={module}
+                {Object.keys(viewOverrideMap).length === 0 ? (
+                  <Typography color="text.secondary">
+                    No custom overrides configured.
+                  </Typography>
+                ) : (
+                  <Stack spacing={2}>
+                    {Object.entries(viewOverrideMap).map(
+                      ([mod, modOverrides]) => (
+                        <Box
+                          key={mod}
+                          sx={{
+                            display: "flex",
+                            flexDirection: { xs: "column", md: "row" },
+                            gap: 2,
+                            py: 1.5,
+                            borderBottom: "1px solid",
+                            borderColor: "divider",
+                            "&:last-child": { borderBottom: "none", pb: 0 },
+                          }}
+                        >
+                          <Typography
                             sx={{
-                              display: "flex",
-                              flexDirection: { xs: "column", md: "row" },
-                              gap: 2,
-                              py: 1.5,
-                              borderBottom: "1px solid",
-                              borderColor: "divider",
-                              "&:last-child": {
-                                borderBottom: "none",
-                                pb: 0,
-                              },
+                              minWidth: 180,
+                              fontWeight: 600,
+                              textTransform: "capitalize",
                             }}
                           >
-                            <Typography
-                              sx={{
-                                minWidth: 180,
-                                fontWeight: 600,
-                                textTransform: "capitalize",
-                              }}
-                            >
-                              {module}
-                            </Typography>
-
-                            <Box
-                              sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}
-                            >
-                              {Object.entries(overrides).map(
-                                ([action, granted]) => (
-                                  <Chip
-                                    key={action}
-                                    label={action}
-                                    color={granted ? "success" : "error"}
-                                    variant={granted ? "filled" : "outlined"}
-                                    size="small"
-                                  />
-                                ),
-                              )}
-                            </Box>
+                            {mod}
+                          </Typography>
+                          <Box
+                            sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}
+                          >
+                            {Object.entries(modOverrides).map(
+                              ([action, granted]) => (
+                                <Chip
+                                  key={action}
+                                  label={action}
+                                  color={granted ? "success" : "error"}
+                                  variant={granted ? "filled" : "outlined"}
+                                  size="small"
+                                />
+                              ),
+                            )}
                           </Box>
-                        ),
-                      )}
-                    </Stack>
-                  )}
-                </Stack>
+                        </Box>
+                      ),
+                    )}
+                  </Stack>
+                )}
               </Paper>
             </Stack>
           )}
@@ -1430,7 +1195,6 @@ export default function UsersManagement() {
         </DialogActions>
       </Dialog>
 
-      {/* Delete Dialog */}
       <Dialog
         open={deleteDialogOpen}
         onClose={() => setDeleteDialogOpen(false)}
@@ -1450,15 +1214,14 @@ export default function UsersManagement() {
         </DialogActions>
       </Dialog>
 
-      {/* Snackbar */}
       <Snackbar
         open={snackbar.open}
         autoHideDuration={5000}
-        onClose={handleSnackbarClose}
+        onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
       >
         <Alert
-          onClose={handleSnackbarClose}
+          onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
           severity={snackbar.severity}
           sx={{ width: "100%" }}
         >
