@@ -766,7 +766,7 @@ const OrderModalView = ({
                 </Typography>
               </Box>
               <Chip
-                label={item.consignmentStatus || "Order Created"}
+                label={item.status || "Order Created"}
                 size="small"
                 sx={{
                   bgcolor: "#00695c",
@@ -780,6 +780,9 @@ const OrderModalView = ({
               <Grid container spacing={1.5}>
                 {[
                   ["Type", item.type],
+                  ["Status", item.status],
+                  ["ETA", item.eta],
+                  ["ETD", item.etd],
                   ["Total Number", item.totalNumber],
                   ["Weight", item.weight ? `${item.weight} kg` : null],
                   ["Pickup Location", item.pickupLocation],
@@ -827,7 +830,7 @@ const OrderModalView = ({
                               key={h}
                               sx={{
                                 fontWeight: 700,
-                                color: T.tealDark,
+                                color: "white",
                                 fontSize: 12,
                               }}
                             >

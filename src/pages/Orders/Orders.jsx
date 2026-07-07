@@ -1251,9 +1251,20 @@ const OrdersList = () => {
                                     </IconButton>
                                   </Tooltip>
                                 </Box>
-                                <StatusChip status={c.status} size="small" />
-
-                                {/* <Divider /> */}
+                                <StatusChip
+                                  status={item.trackingStatus || c.status}
+                                  size="small"
+                                />
+                                <Chip
+                                  label={`ETA: ${item.trackingEta ? new Date(item.trackingEta).toLocaleDateString() : "N/A"}`}
+                                  size="small"
+                                  sx={{
+                                    height: 18,
+                                    fontSize: "0.65rem",
+                                    backgroundColor: "#00695c",
+                                    color: "#fff",
+                                  }}
+                                />
                               </div>
                             ))}
                           </Stack>
