@@ -332,9 +332,6 @@ const AssignModal = ({
     );
   }
 
-  // ────────────────────────────────────────────────
-  // ReceiverRow Component
-  // ────────────────────────────────────────────────
   const ReceiverRow = React.memo(({ rec, globalIndex }) => {
     const fullOrder =
       detailedOrders?.[rec.orderId] ||

@@ -7,6 +7,7 @@ import {
   TableCell,
   TableHead,
   TableRow,
+  TablePagination,
   Paper,
   Button,
   TextField,
@@ -30,12 +31,11 @@ import {
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
-import { ToastContainer, toast } from "react-toastify";
+import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { api } from "../../api";
 
 const initialState = {
-  // Categories State
   openDialog: false,
   editMode: false,
   selectedCategory: null,
@@ -43,8 +43,7 @@ const initialState = {
   selected: [],
   categories: [],
   loadingCat: true,
-
-  // Subcategories State
+  pageCat: 0,
   openSubDialog: false,
   editModeSub: false,
   selectedSubCategory: null,
@@ -52,7 +51,10 @@ const initialState = {
   selectedSub: [],
   subcategories: [],
   loadingSub: true,
+  pageSub: 0,
 };
+
+const ROWS_PER_PAGE = 10;
 
 const reducer = (state, action) => {
   switch (action.type) {
@@ -88,6 +90,7 @@ const Categories = () => {
     selected,
     categories,
     loadingCat,
+    pageCat,
     openSubDialog,
     editModeSub,
     selectedSubCategory,
@@ -95,9 +98,9 @@ const Categories = () => {
     selectedSub,
     subcategories,
     loadingSub,
+    pageSub,
   } = state;
 
-  // Wrappers to keep text inputs working cleanly
   const setFormData = (newData) => {
     dispatch({
       type: "SET_STATE",
@@ -122,7 +125,7 @@ const Categories = () => {
   }, []);
 
   useEffect(() => {
-    dispatch({ type: "SET_STATE", payload: { selectedSub: [] } });
+    dispatch({ type: "SET_STATE", payload: { selectedSub: [], pageSub: 0 } });
   }, [selected]);
 
   const fetchCategories = async () => {
@@ -161,6 +164,23 @@ const Categories = () => {
     selected.length === 0
       ? subcategories
       : subcategories.filter((sub) => selected.includes(sub.category_id));
+
+  const paginatedCategories = categories.slice(
+    pageCat * ROWS_PER_PAGE,
+    pageCat * ROWS_PER_PAGE + ROWS_PER_PAGE,
+  );
+  const paginatedSubcategories = filteredSubcategories.slice(
+    pageSub * ROWS_PER_PAGE,
+    pageSub * ROWS_PER_PAGE + ROWS_PER_PAGE,
+  );
+
+  const handleChangePageCat = (event, newPage) => {
+    dispatch({ type: "SET_STATE", payload: { pageCat: newPage } });
+  };
+
+  const handleChangePageSub = (event, newPage) => {
+    dispatch({ type: "SET_STATE", payload: { pageSub: newPage } });
+  };
 
   const validateCatForm = () => {
     if (!formData.name.trim()) {
@@ -252,7 +272,7 @@ const Categories = () => {
       }
       await fetchCategories();
       await fetchSubcategories();
-      dispatch({ type: "SET_STATE", payload: { selected: [] } });
+      dispatch({ type: "SET_STATE", payload: { selected: [], pageCat: 0 } });
       toast.success("Selected categories deleted successfully!");
     } catch (err) {
       console.error("Error deleting categories:", err);
@@ -350,7 +370,7 @@ const Categories = () => {
           );
       }
       await fetchSubcategories();
-      dispatch({ type: "SET_STATE", payload: { selectedSub: [] } });
+      dispatch({ type: "SET_STATE", payload: { selectedSub: [], pageSub: 0 } });
       toast.success("Selected subcategories deleted successfully!");
     } catch (err) {
       console.error("Error deleting subcategories:", err);
@@ -395,364 +415,390 @@ const Categories = () => {
   );
 
   return (
-    <Box sx={{ p: { xs: 2, md: 4 }, maxWidth: "1400px", margin: "0 auto" }}>
-      <ToastContainer
-        position="top-right"
-        autoClose={4000}
-        hideProgressBar={false}
-      />
-
-      {/* Categories Section */}
-      <Box sx={{ mb: 6 }}>
-        <Box
-          sx={{
-            display: "flex",
-            flexDirection: { xs: "column", sm: "row" },
-            justifyContent: "space-between",
-            alignItems: { xs: "flex-start", sm: "center" },
-            mb: 3,
-            gap: 2,
-          }}
-        >
-          <Box>
-            <Typography
-              variant="h4"
-              component="h1"
-              gutterBottom
-              sx={{ color: "#0d6c6a", fontWeight: "bold" }}
-            >
-              Manage Categories
-            </Typography>
-            <Typography variant="body2" color="textSecondary">
-              Organize your main categories. Subcategories will be filtered
-              based on selection.
-            </Typography>
-          </Box>
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => handleOpenDialog()}
-            size="large"
-            sx={{
-              backgroundColor: "#0d6c6a",
-              "&:hover": { backgroundColor: "#0a5654" },
-              whiteSpace: "nowrap",
-            }}
-          >
-            Add Category
-          </Button>
-        </Box>
-
-        <Paper elevation={2} sx={{ overflow: "hidden", position: "relative" }}>
-          {loadingCat && (
-            <Box
-              sx={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                backgroundColor: "rgba(255,255,255,0.7)",
-                zIndex: 10,
-              }}
-            >
-              <CircularProgress sx={{ color: "#0d6c6a" }} />
-            </Box>
-          )}
-
-          <Box sx={{ overflowX: "auto" }}>
-            <Table>
-              <TableHead sx={{ backgroundColor: "#f4f6f8" }}>
-                <TableRow>
-                  <TableCell padding="checkbox">
-                    <Checkbox
-                      indeterminate={
-                        selected.length > 0 &&
-                        selected.length < categories.length
-                      }
-                      checked={
-                        categories.length > 0 &&
-                        selected.length === categories.length
-                      }
-                      onChange={handleHeaderCheckboxCat}
-                    />
-                  </TableCell>
-                  <TableCell sx={{ fontWeight: "bold" }}>ID</TableCell>
-                  <TableCell sx={{ fontWeight: "bold" }}>Name</TableCell>
-                  <TableCell sx={{ fontWeight: "bold" }}>Status</TableCell>
-                  <TableCell sx={{ fontWeight: "bold", textAlign: "right" }}>
-                    Actions
-                  </TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {categories.length === 0 && !loadingCat
-                  ? renderEmptyState("categories", 5)
-                  : categories.map((category) => (
-                      <TableRow
-                        key={category.id}
-                        hover
-                        sx={{
-                          "&:last-child td, &:last-child th": { border: 0 },
-                        }}
-                      >
-                        <TableCell padding="checkbox">
-                          <Checkbox
-                            checked={selected.includes(category.id)}
-                            onChange={() => handleToggleCat(category.id)}
-                          />
-                        </TableCell>
-                        <TableCell>{category.id}</TableCell>
-                        <TableCell>
-                          <Typography variant="body1" fontWeight="medium">
-                            {category.name}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Chip
-                            label={category.status ? "Active" : "Inactive"}
-                            color={category.status ? "success" : "default"}
-                            size="small"
-                          />
-                        </TableCell>
-                        <TableCell sx={{ textAlign: "right" }}>
-                          <Tooltip title="Edit Category">
-                            <IconButton
-                              onClick={() => handleOpenDialog(category)}
-                              color="primary"
-                              size="small"
-                            >
-                              <EditIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-              </TableBody>
-            </Table>
-          </Box>
-
+    <Box sx={{ p: { xs: 2, md: 4 }, maxWidth: "1800px", margin: "0 auto" }}>
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: { xs: "column", lg: "row" },
+          gap: 4,
+          alignItems: "flex-start",
+        }}
+      >
+        <Box sx={{ flex: 1, minWidth: 0, width: "100%" }}>
           <Box
             sx={{
               display: "flex",
+              flexDirection: { xs: "column", sm: "row" },
               justifyContent: "space-between",
-              alignItems: "center",
-              p: 2,
-              borderTop: "1px solid #eee",
+              alignItems: { xs: "flex-start", sm: "center" },
+              mb: 3,
+              gap: 2,
             }}
           >
-            <Box sx={{ display: "flex", alignItems: "center" }}>
-              {selected.length > 0 && (
-                <Tooltip
-                  title={`Delete ${selected.length} selected categories`}
-                >
-                  <Button
-                    variant="outlined"
-                    color="error"
-                    startIcon={<DeleteIcon />}
-                    onClick={handleBulkDeleteCat}
-                    sx={{ mr: 2 }}
-                    size="small"
-                  >
-                    Delete ({selected.length})
-                  </Button>
-                </Tooltip>
-              )}
+            <Box>
+              <Typography
+                variant="h4"
+                component="h1"
+                gutterBottom
+                sx={{ color: "#0d6c6a", fontWeight: "bold" }}
+              >
+                Manage Categories
+              </Typography>
               <Typography variant="body2" color="textSecondary">
-                Total: {categories.length}
+                Organize your main categories. Subcategories will be filtered
+                based on selection.
               </Typography>
             </Box>
-          </Box>
-        </Paper>
-      </Box>
-
-      {/* Subcategories Section */}
-      <Box>
-        <Box
-          sx={{
-            display: "flex",
-            flexDirection: { xs: "column", sm: "row" },
-            justifyContent: "space-between",
-            alignItems: { xs: "flex-start", sm: "center" },
-            mb: 3,
-            gap: 2,
-          }}
-        >
-          <Box>
-            <Typography
-              variant="h4"
-              component="h1"
-              gutterBottom
-              sx={{ color: "#0d6c6a", fontWeight: "bold" }}
-            >
-              Manage Subcategories
-            </Typography>
-            <Typography variant="body2" color="textSecondary">
-              {selected.length > 0
-                ? `Filtering subcategories by ${selected.length} selected category(ies).`
-                : "Select categories above to filter."}
-            </Typography>
-          </Box>
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => handleOpenSubDialog()}
-            size="large"
-            disabled={categories.length === 0}
-            sx={{
-              backgroundColor: "#0d6c6a",
-              "&:hover": { backgroundColor: "#0a5654" },
-              whiteSpace: "nowrap",
-            }}
-          >
-            Add Subcategory
-          </Button>
-        </Box>
-
-        <Paper elevation={2} sx={{ overflow: "hidden", position: "relative" }}>
-          {loadingSub && (
-            <Box
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => handleOpenDialog()}
+              size="large"
               sx={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                backgroundColor: "rgba(255,255,255,0.7)",
-                zIndex: 10,
+                backgroundColor: "#0d6c6a",
+                "&:hover": { backgroundColor: "#0a5654" },
+                whiteSpace: "nowrap",
               }}
             >
-              <CircularProgress sx={{ color: "#0d6c6a" }} />
-            </Box>
-          )}
-
-          <Box sx={{ overflowX: "auto" }}>
-            <Table>
-              <TableHead sx={{ backgroundColor: "#f4f6f8" }}>
-                <TableRow>
-                  <TableCell padding="checkbox">
-                    <Checkbox
-                      indeterminate={
-                        selectedSub.length > 0 &&
-                        selectedSub.length < filteredSubcategories.length
-                      }
-                      checked={
-                        filteredSubcategories.length > 0 &&
-                        selectedSub.length === filteredSubcategories.length
-                      }
-                      onChange={handleHeaderCheckboxSub}
-                    />
-                  </TableCell>
-                  <TableCell sx={{ fontWeight: "bold" }}>ID</TableCell>
-                  <TableCell sx={{ fontWeight: "bold" }}>
-                    Parent Category
-                  </TableCell>
-                  <TableCell sx={{ fontWeight: "bold" }}>Name</TableCell>
-                  <TableCell sx={{ fontWeight: "bold" }}>Status</TableCell>
-                  <TableCell sx={{ fontWeight: "bold", textAlign: "right" }}>
-                    Actions
-                  </TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {filteredSubcategories.length === 0 && !loadingSub
-                  ? renderEmptyState("subcategories", 6)
-                  : filteredSubcategories.map((subcategory) => (
-                      <TableRow
-                        key={subcategory.id}
-                        hover
-                        sx={{
-                          "&:last-child td, &:last-child th": { border: 0 },
-                        }}
-                      >
-                        <TableCell padding="checkbox">
-                          <Checkbox
-                            checked={selectedSub.includes(subcategory.id)}
-                            onChange={() => handleToggleSub(subcategory.id)}
-                          />
-                        </TableCell>
-                        <TableCell>{subcategory.id}</TableCell>
-                        <TableCell>
-                          <Chip
-                            label={
-                              categories.find(
-                                (c) => c.id === subcategory.category_id,
-                              )?.name || "Unknown"
-                            }
-                            size="small"
-                            variant="outlined"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="body1" fontWeight="medium">
-                            {subcategory.name}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Chip
-                            label={subcategory.status ? "Active" : "Inactive"}
-                            color={subcategory.status ? "success" : "default"}
-                            size="small"
-                          />
-                        </TableCell>
-                        <TableCell sx={{ textAlign: "right" }}>
-                          <Tooltip title="Edit Subcategory">
-                            <IconButton
-                              onClick={() => handleOpenSubDialog(subcategory)}
-                              color="primary"
-                              size="small"
-                            >
-                              <EditIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-              </TableBody>
-            </Table>
+              Add Category
+            </Button>
           </Box>
 
+          <Paper
+            elevation={2}
+            sx={{ overflow: "hidden", position: "relative" }}
+          >
+            {loadingCat && (
+              <Box
+                sx={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: "rgba(255,255,255,0.7)",
+                  zIndex: 10,
+                }}
+              >
+                <CircularProgress sx={{ color: "#0d6c6a" }} />
+              </Box>
+            )}
+
+            <Box sx={{ overflowX: "auto" }}>
+              <Table>
+                <TableHead sx={{ backgroundColor: "#f4f6f8" }}>
+                  <TableRow>
+                    <TableCell padding="checkbox">
+                      <Checkbox
+                        indeterminate={
+                          selected.length > 0 &&
+                          selected.length < categories.length
+                        }
+                        checked={
+                          categories.length > 0 &&
+                          selected.length === categories.length
+                        }
+                        onChange={handleHeaderCheckboxCat}
+                      />
+                    </TableCell>
+                    <TableCell sx={{ fontWeight: "bold" }}>ID</TableCell>
+                    <TableCell sx={{ fontWeight: "bold" }}>Name</TableCell>
+                    <TableCell sx={{ fontWeight: "bold" }}>Status</TableCell>
+                    <TableCell sx={{ fontWeight: "bold", textAlign: "right" }}>
+                      Actions
+                    </TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {categories.length === 0 && !loadingCat
+                    ? renderEmptyState("categories", 5)
+                    : paginatedCategories.map((category) => (
+                        <TableRow
+                          key={category.id}
+                          hover
+                          sx={{
+                            "&:last-child td, &:last-child th": { border: 0 },
+                          }}
+                        >
+                          <TableCell padding="checkbox">
+                            <Checkbox
+                              checked={selected.includes(category.id)}
+                              onChange={() => handleToggleCat(category.id)}
+                            />
+                          </TableCell>
+                          <TableCell>{category.id}</TableCell>
+                          <TableCell>
+                            <Typography variant="body1" fontWeight="medium">
+                              {category.name}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Chip
+                              label={category.status ? "Active" : "Inactive"}
+                              color={category.status ? "success" : "default"}
+                              size="small"
+                            />
+                          </TableCell>
+                          <TableCell sx={{ textAlign: "right" }}>
+                            <Tooltip title="Edit Category">
+                              <IconButton
+                                onClick={() => handleOpenDialog(category)}
+                                color="primary"
+                                size="small"
+                              >
+                                <EditIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                </TableBody>
+              </Table>
+            </Box>
+
+            <TablePagination
+              component="div"
+              count={categories.length}
+              page={pageCat}
+              onPageChange={handleChangePageCat}
+              rowsPerPage={ROWS_PER_PAGE}
+              onRowsPerPageChange={() => {}}
+              rowsPerPageOptions={[10]}
+            />
+
+            <Box
+              sx={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                p: 2,
+                borderTop: "1px solid #eee",
+              }}
+            >
+              <Box sx={{ display: "flex", alignItems: "center" }}>
+                {selected.length > 0 && (
+                  <Tooltip
+                    title={`Delete ${selected.length} selected categories`}
+                  >
+                    <Button
+                      variant="outlined"
+                      color="error"
+                      startIcon={<DeleteIcon />}
+                      onClick={handleBulkDeleteCat}
+                      sx={{ mr: 2 }}
+                      size="small"
+                    >
+                      Delete ({selected.length})
+                    </Button>
+                  </Tooltip>
+                )}
+                <Typography variant="body2" color="textSecondary">
+                  Total: {categories.length}
+                </Typography>
+              </Box>
+            </Box>
+          </Paper>
+        </Box>
+
+        <Box sx={{ flex: 1, minWidth: 0, width: "100%" }}>
           <Box
             sx={{
               display: "flex",
+              flexDirection: { xs: "column", sm: "row" },
               justifyContent: "space-between",
-              alignItems: "center",
-              p: 2,
-              borderTop: "1px solid #eee",
+              alignItems: { xs: "flex-start", sm: "center" },
+              mb: 3,
+              gap: 2,
             }}
           >
-            <Box sx={{ display: "flex", alignItems: "center" }}>
-              {selectedSub.length > 0 && (
-                <Tooltip
-                  title={`Delete ${selectedSub.length} selected subcategories`}
-                >
-                  <Button
-                    variant="outlined"
-                    color="error"
-                    startIcon={<DeleteIcon />}
-                    onClick={handleBulkDeleteSub}
-                    sx={{ mr: 2 }}
-                    size="small"
-                  >
-                    Delete ({selectedSub.length})
-                  </Button>
-                </Tooltip>
-              )}
+            <Box>
+              <Typography
+                variant="h4"
+                component="h1"
+                gutterBottom
+                sx={{ color: "#0d6c6a", fontWeight: "bold" }}
+              >
+                Manage Subcategories
+              </Typography>
               <Typography variant="body2" color="textSecondary">
-                Total: {filteredSubcategories.length}
+                {selected.length > 0
+                  ? `Filtering subcategories by ${selected.length} selected category(ies).`
+                  : "Select categories above to filter."}
               </Typography>
             </Box>
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => handleOpenSubDialog()}
+              size="large"
+              disabled={categories.length === 0}
+              sx={{
+                backgroundColor: "#0d6c6a",
+                "&:hover": { backgroundColor: "#0a5654" },
+                whiteSpace: "nowrap",
+              }}
+            >
+              Add Subcategory
+            </Button>
           </Box>
-        </Paper>
+
+          <Paper
+            elevation={2}
+            sx={{ overflow: "hidden", position: "relative" }}
+          >
+            {loadingSub && (
+              <Box
+                sx={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: "rgba(255,255,255,0.7)",
+                  zIndex: 10,
+                }}
+              >
+                <CircularProgress sx={{ color: "#0d6c6a" }} />
+              </Box>
+            )}
+
+            <Box sx={{ overflowX: "auto" }}>
+              <Table>
+                <TableHead sx={{ backgroundColor: "#f4f6f8" }}>
+                  <TableRow>
+                    <TableCell padding="checkbox">
+                      <Checkbox
+                        indeterminate={
+                          selectedSub.length > 0 &&
+                          selectedSub.length < filteredSubcategories.length
+                        }
+                        checked={
+                          filteredSubcategories.length > 0 &&
+                          selectedSub.length === filteredSubcategories.length
+                        }
+                        onChange={handleHeaderCheckboxSub}
+                      />
+                    </TableCell>
+                    <TableCell sx={{ fontWeight: "bold" }}>ID</TableCell>
+                    <TableCell sx={{ fontWeight: "bold" }}>
+                      Parent Category
+                    </TableCell>
+                    <TableCell sx={{ fontWeight: "bold" }}>Name</TableCell>
+                    <TableCell sx={{ fontWeight: "bold" }}>Status</TableCell>
+                    <TableCell sx={{ fontWeight: "bold", textAlign: "right" }}>
+                      Actions
+                    </TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {filteredSubcategories.length === 0 && !loadingSub
+                    ? renderEmptyState("subcategories", 6)
+                    : paginatedSubcategories.map((subcategory) => (
+                        <TableRow
+                          key={subcategory.id}
+                          hover
+                          sx={{
+                            "&:last-child td, &:last-child th": { border: 0 },
+                          }}
+                        >
+                          <TableCell padding="checkbox">
+                            <Checkbox
+                              checked={selectedSub.includes(subcategory.id)}
+                              onChange={() => handleToggleSub(subcategory.id)}
+                            />
+                          </TableCell>
+                          <TableCell>{subcategory.id}</TableCell>
+                          <TableCell>
+                            <Chip
+                              label={
+                                categories.find(
+                                  (c) => c.id === subcategory.category_id,
+                                )?.name || "Unknown"
+                              }
+                              size="small"
+                              variant="outlined"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body1" fontWeight="medium">
+                              {subcategory.name}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Chip
+                              label={subcategory.status ? "Active" : "Inactive"}
+                              color={subcategory.status ? "success" : "default"}
+                              size="small"
+                            />
+                          </TableCell>
+                          <TableCell sx={{ textAlign: "right" }}>
+                            <Tooltip title="Edit Subcategory">
+                              <IconButton
+                                onClick={() => handleOpenSubDialog(subcategory)}
+                                color="primary"
+                                size="small"
+                              >
+                                <EditIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                </TableBody>
+              </Table>
+            </Box>
+
+            <TablePagination
+              component="div"
+              count={filteredSubcategories.length}
+              page={pageSub}
+              onPageChange={handleChangePageSub}
+              rowsPerPage={ROWS_PER_PAGE}
+              onRowsPerPageChange={() => {}}
+              rowsPerPageOptions={[10]}
+            />
+
+            <Box
+              sx={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                p: 2,
+                borderTop: "1px solid #eee",
+              }}
+            >
+              <Box sx={{ display: "flex", alignItems: "center" }}>
+                {selectedSub.length > 0 && (
+                  <Tooltip
+                    title={`Delete ${selectedSub.length} selected subcategories`}
+                  >
+                    <Button
+                      variant="outlined"
+                      color="error"
+                      startIcon={<DeleteIcon />}
+                      onClick={handleBulkDeleteSub}
+                      sx={{ mr: 2 }}
+                      size="small"
+                    >
+                      Delete ({selectedSub.length})
+                    </Button>
+                  </Tooltip>
+                )}
+                <Typography variant="body2" color="textSecondary">
+                  Total: {filteredSubcategories.length}
+                </Typography>
+              </Box>
+            </Box>
+          </Paper>
+        </Box>
       </Box>
 
-      {/* Categories Dialog */}
       <Dialog
         open={openDialog}
         onClose={handleCloseDialog}
@@ -806,7 +852,6 @@ const Categories = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Subcategories Dialog */}
       <Dialog
         open={openSubDialog}
         onClose={handleCloseSubDialog}

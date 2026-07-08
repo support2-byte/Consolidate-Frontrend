@@ -1,4 +1,3 @@
-// OrdersList.jsx - Component for fetching and displaying orders (updated for normalized schema)
 import { useState, useEffect, useContext } from "react";
 import {
   Box,
@@ -51,7 +50,7 @@ import Tooltip from "@mui/material/Tooltip";
 import List from "@mui/material/List";
 import AssignmentIcon from "@mui/icons-material/Assignment";
 import { Autocomplete } from "@mui/material";
-import CargoIcon from "@mui/icons-material/LocalShipping"; // Or use InventoryIcon
+import CargoIcon from "@mui/icons-material/LocalShipping";
 import { styled } from "@mui/material/styles";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import AddIcon from "@mui/icons-material/Add";
@@ -63,15 +62,12 @@ import SearchIcon from "@mui/icons-material/Search";
 import { useNavigate } from "react-router-dom";
 import OrderModalView from "./OrderModalView";
 import AssignModal from "./AssignContainer";
-import logoPic from "../../../public/logo-2.png"; // Adjust path as needed
-import logoCAS from "../../../public/cas-logo.png"; // Adjust path as needed
-import logoMFD from "../../../public/mfd-logo.png"; // Adjust path as needed
-// import { ordersApi } from "../api"; // Adjust path as needed
+import logoPic from "../../../public/logo-2.png";
+import logoCAS from "../../../public/cas-logo.png";
+import logoMFD from "../../../public/mfd-logo.png";
 import { api } from "../../api";
 import { Description } from "@mui/icons-material";
 import { AppContext } from "../../context/AppContext";
-// import { fontWeight } from "html2canvas/dist/types/css/property-descriptors/font-weight";
-// Handlers
 
 const OrdersList = () => {
   const navigate = useNavigate();
@@ -93,7 +89,7 @@ const OrdersList = () => {
   const [filterPlaces, setFilterPlaces] = useState([]);
   const [filters, setFilters] = useState({
     status: "",
-    search: "", // ← single search field instead of booking_ref
+    search: "",
   });
   const [snackbar, setSnackbar] = useState({
     open: false,
@@ -101,22 +97,21 @@ const OrdersList = () => {
     severity: "info",
   });
   const [openModal, setOpenModal] = useState(false);
-  const [assignments, setAssignments] = useState({}); // For storing receiver-container assignments
+  const [assignments, setAssignments] = useState({});
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [modalLoading, setModalLoading] = useState(false);
   const [modalError, setModalError] = useState(null);
   const [exporting, setExporting] = useState(false);
   const [tempOrderId, setTempOrderId] = useState(null);
-  // New states for selection and assignment
   const [selectedOrders, setSelectedOrders] = useState([]);
   const [openAssignModal, setOpenAssignModal] = useState(false);
   const [containers, setContainers] = useState([]);
   const [selectedContainer, setSelectedContainer] = useState("");
-  // New states for direct assign
+
   const [openDirectAssign, setOpenDirectAssign] = useState(false);
   const [directSelectedContainers, setDirectSelectedContainers] =
     useState(null);
-  // States for status update
+
   const [openStatusDialog, setOpenStatusDialog] = useState(false);
   const [selectedOrderForUpdate, setSelectedOrderForUpdate] = useState(null);
   const [selectedReceiverForUpdate, setSelectedReceiverForUpdate] =
@@ -134,7 +129,7 @@ const OrdersList = () => {
       const firstRec = orderId[0];
 
       setSelectedReceiverForUpdate(firstRec);
-      setSelectedStatus(firstRec.status || "Received for Shipment"); // Default to receiver's status or first status
+      setSelectedStatus(firstRec.status || "Received for Shipment");
     }
 
     setOpenStatusDialog(true);
@@ -176,7 +171,6 @@ const OrdersList = () => {
     );
 
     setSelectedReceiverForUpdateDetails(rec);
-    // setSelectedStatus(rec?.status || 'Received for Shipment');ss
   };
   const handleConfirmStatusUpdate = async () => {
     if (
@@ -192,9 +186,8 @@ const OrdersList = () => {
         {
           status: selectedStatus,
           itemRefs: [selectedReceiverForUpdateDetails.itemRef],
-          // Optional: Include trigger logic if backend handles notifications
-          notifyClient: true, // Based on "Shown to Client?" mapping
-          notifyParties: true, // Sender/Receiver as per rules
+          notifyClient: true,
+          notifyParties: true,
         },
       );
       setSnackbar({
@@ -202,7 +195,7 @@ const OrdersList = () => {
         message: `Status updated to "${selectedStatus}" for "${selectedReceiverForUpdate.receiverName}" successfully! Notifications sent as per rules.`,
         severity: "success",
       });
-      fetchOrders(); // Refresh the list to update overall status
+      fetchOrders();
     } catch (err) {
       setLoading(false);
       setSnackbar({
@@ -215,7 +208,6 @@ const OrdersList = () => {
       });
       console.error("Error updating status:", err);
     }
-    // setLoading(false);
     handleCloseStatusDialog();
   };
 
@@ -225,7 +217,6 @@ const OrdersList = () => {
     setPage(0);
   };
 
-  // 4. Fetch logic – clean & consistent
   const fetchOrders = async () => {
     setLoading(true);
     setError(null);
@@ -256,7 +247,6 @@ const OrdersList = () => {
         response.data.pagination.count ||
         response.data.pagination.totalCount ||
         0;
-      // Auto-populate logic (your existing code)
       const ordersWithAutoPopulate = await Promise.all(
         ordersData.map(async (order) => {
           const ownerPrefix =
@@ -271,7 +261,6 @@ const OrdersList = () => {
               );
               if (customerRes?.data) {
                 const customer = customerRes.data;
-                // Map customer fields to owner (adjust paths based on your API response structure)
                 const updatedOrder = { ...order };
                 updatedOrder[ownerNameKey] =
                   customer.contact_name ||
@@ -1251,10 +1240,7 @@ const OrdersList = () => {
                                     </IconButton>
                                   </Tooltip>
                                 </Box>
-                                <StatusChip
-                                  status={item.trackingStatus || c.status}
-                                  size="small"
-                                />
+                                <StatusChip status={c.status} size="small" />
                                 <Chip
                                   label={`ETA: ${item.trackingEta ? new Date(item.trackingEta).toLocaleDateString() : "N/A"}`}
                                   size="small"
@@ -8398,7 +8384,7 @@ applicable law provides otherwise
           openAssignModal={openAssignModal}
           setOpenAssignModal={setOpenAssignModal}
           selectedOrders={selectedOrders}
-          orders={orders} // Assuming 'orders' is available
+          orders={orders}
           containers={containers}
           selectedContainers={selectedContainers}
           setSelectedContainers={setSelectedContainers}
@@ -8412,7 +8398,6 @@ applicable law provides otherwise
           fetchOrders={fetchOrders}
           places={places}
         />
-        {/* New Direct Assign Dialog */}
         <Dialog
           open={openDirectAssign}
           onClose={handleCloseDirectAssign}
@@ -8498,7 +8483,6 @@ applicable law provides otherwise
             </Button>
           </DialogActions>
         </Dialog>
-        {/* Status Update Dialog - Updated for per-receiver status */}
         <Dialog
           open={openStatusDialog}
           onClose={handleCloseStatusDialog}

@@ -27,8 +27,8 @@ api.interceptors.response.use(
 
     if (
       error.response?.status !== 401 ||
-      error.response?.data?.error !== "TOKEN_EXPIRED" ||
-      original._retry
+      original._retry ||
+      original.url === "/auth/refresh"
     ) {
       return Promise.reject(error);
     }

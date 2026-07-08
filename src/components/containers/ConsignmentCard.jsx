@@ -41,6 +41,7 @@ export const ConsignmentCard = ({
   const sortedEvents = [...consignment.orders].sort(
     (a, b) => new Date(b.eventTime) - new Date(a.eventTime),
   );
+
   const earliestEvent =
     [...consignment.orders].sort(
       (a, b) => new Date(a.eventTime) - new Date(b.eventTime),
@@ -271,6 +272,9 @@ export const ConsignmentCard = ({
                   </TableCell>
                   <TableCell sx={{ fontSize: 13 }}>
                     {event.formNo || "N/A"}
+                  </TableCell>
+                  <TableCell sx={{ fontSize: 13 }}>
+                    {event.itemRef || "N/A"}
                   </TableCell>
                   <TableCell sx={{ fontSize: 13 }}>
                     {event.eventSummary || "N/A"}

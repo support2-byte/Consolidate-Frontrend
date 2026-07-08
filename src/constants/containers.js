@@ -58,6 +58,7 @@ export const TABLE_HEADERS = [
 export const HISTORY_TABLE_HEADERS = [
   "Booking Ref",
   "Form No",
+  "Item Ref",
   "Summary",
   "Qty",
   "Weight",
@@ -71,6 +72,7 @@ export const UNASSIGNED_TABLE_HEADERS = [
   "Date",
   "Booking Ref",
   "Form No",
+  "Item Ref",
   "Summary",
   "Qty",
   "Weight",

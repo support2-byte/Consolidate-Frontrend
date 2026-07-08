@@ -81,7 +81,6 @@ const ContainerTableRow = ({
         />
       </TableCell>
 
-      {/* Status (editable) */}
       <TableCell>
         {isEditingRow ? (
           <FormControl size="small" sx={{ minWidth: 120 }}>
@@ -114,15 +113,15 @@ const ContainerTableRow = ({
         {isEditingRow ? (
           <FormControl size="small" sx={{ minWidth: 150 }}>
             <Select
-              value={currentJobStatus === "N/A" ? "" : currentJobStatus}
+              value={
+                currentJobStatus === "Available" ? "N/A" : currentJobStatus
+              }
               onChange={(e) =>
                 setTempData((p) => ({ ...p, jobStatus: e.target.value }))
               }
               displayEmpty
             >
-              <MenuItem value="">
-                <em>None</em>
-              </MenuItem>
+              <MenuItem value="Available">None (Available)</MenuItem>
               {jobStatusOptions.map((s) => (
                 <MenuItem key={s} value={s}>
                   {s}

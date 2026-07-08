@@ -43,15 +43,8 @@ const AssignmentForm = React.memo(
     const selectedCid = selectedContainersPerDetail[keyDetail] || "";
 
     const availableForThisDetail = useMemo(() => {
-      const globallySelected = Object.entries(selectedContainersPerDetail)
-        .filter(([detailKey]) => detailKey !== keyDetail)
-        .map(([, cid]) => cid)
-        .filter(Boolean);
-
-      return availableContainers.filter(
-        (c) => !globallySelected.includes(c.cid),
-      );
-    }, [availableContainers, selectedContainersPerDetail, keyDetail]);
+      return availableContainers;
+    }, [availableContainers]);
 
     const selectedContainer = useMemo(
       () => availableContainers.find((c) => c.cid === selectedCid),
