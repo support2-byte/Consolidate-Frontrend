@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useContext } from "react";
 import {
   Box,
   Button,
@@ -26,9 +26,11 @@ import ContainerTableRow from "../../components/containers/ContainerTableRow";
 import ContainerFormModal from "../../components/containers/ContainerFormModal";
 import HistoryModal from "../../components/containers/HistoryModal";
 import { TABLE_HEADERS } from "../../constants/containers";
+import { AppContext } from "../../context/AppContext";
 
 const ContainerModule = ({ propContainers = [] }) => {
   const state = useContainerData(propContainers);
+  const { places } = useContext(AppContext);
 
   const {
     generateFullManifestPDF,
@@ -243,6 +245,7 @@ const ContainerModule = ({ propContainers = [] }) => {
                       onEdit={handleEdit}
                       onOpenHistory={openHistory}
                       onMarkReturned={markReturned}
+                      places={places}
                     />
                   ))
                 )}
@@ -278,6 +281,7 @@ const ContainerModule = ({ propContainers = [] }) => {
           sizes={sizes}
           types={types}
           ownershipTypes={ownershipTypes}
+          places={places}
         />
 
         <HistoryModal

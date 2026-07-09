@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Box,
   Typography,
@@ -16,15 +16,32 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../api";
 
+function buildRoleMap(rolePermissions) {
+  const map = {};
+  for (const row of rolePermissions) {
+    if (!map[row.module_code]) map[row.module_code] = [];
+    map[row.module_code].push(row.action_code);
+  }
+  return map;
+}
+
+function buildOverrideMap(overrides) {
+  const map = {};
+  for (const row of overrides) {
+    if (!map[row.module_code]) map[row.module_code] = {};
+    map[row.module_code][row.action_code] = row.granted;
+  }
+  return map;
+}
+
 export default function PermissionEditor() {
   const { can } = useAuth();
 
   const [users, setUsers] = useState([]);
   const [selectedUser, setSelectedUser] = useState(null);
   const [tab, setTab] = useState(0);
-  const [rolePermissions, setRolePermissions] = useState({});
-  const [overrides, setOverrides] = useState({});
-  const [effective, setEffective] = useState({});
+  const [roleMap, setRoleMap] = useState({});
+  const [overrideMap, setOverrideMap] = useState({});
   const [roleName, setRoleName] = useState("—");
   const [catalogModules, setCatalogModules] = useState([]);
   const [catalogActions, setCatalogActions] = useState([]);
@@ -35,130 +52,147 @@ export default function PermissionEditor() {
     severity: "success",
   });
 
-  // Load all users
   useEffect(() => {
     if (!can("users", "view")) return;
 
-    setLoading(true);
-    api
-      .get("/auth/users")
-      .then((res) => {
-        if (res.data?.success) {
-          setUsers(res.data.users || []);
-        }
-      })
-      .catch(() => {
+    const fetchUsers = async () => {
+      setLoading(true);
+      try {
+        const res = await api.get("/auth/users");
+        if (res.data?.success) setUsers(res.data.data || []);
+      } catch {
         setSnackbar({
           open: true,
           message: "Failed to load users",
           severity: "error",
         });
-      })
-      .finally(() => setLoading(false));
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchUsers();
   }, [can]);
 
-  // Load full permission catalog (only once)
   useEffect(() => {
-    let isMounted = true;
-
     const fetchCatalog = async () => {
       try {
-        const res = await api.get("/auth/admin/permissions/catalog");
-
-        if (isMounted && res.data?.success) {
-          setCatalogModules(res.data.modules || []);
-          setCatalogActions(res.data.actions || []);
-          console.log("Permission catalog loaded:", res.data);
+        const res = await api.get("/auth/rbac/permissions");
+        if (res.data?.success) {
+          setCatalogModules(res.data.data?.modules || []);
+          setCatalogActions(res.data.data?.actions || []);
         }
-      } catch (err) {
-        if (isMounted) {
-          console.error("Failed to load permission catalog:", err);
-          setSnackbar({
-            open: true,
-            message: "Could not load full permission list",
-            severity: "warning",
-          });
-        }
+      } catch {
+        setSnackbar({
+          open: true,
+          message: "Could not load permission catalog",
+          severity: "warning",
+        });
       }
     };
 
     fetchCatalog();
-
-    return () => {
-      isMounted = false;
-    };
   }, []);
 
-  // Load selected user's permissions
   useEffect(() => {
     if (!selectedUser?.id) return;
 
-    setLoading(true);
-    api
-      .get(`/auth/admin/users/${selectedUser.id}/permissions`)
-      .then((res) => {
-        console.log('reteunnnn',res)
+    const fetchUserPermissions = async () => {
+      setLoading(true);
+      try {
+        const res = await api.get(`/auth/users/${selectedUser.id}/permissions`);
         if (res.data?.success) {
-          setRolePermissions(res.data.rolePermissions || {});
-          setOverrides(res.data.overrides || {});
-          setEffective(res.data.effective || {});
-          setRoleName(res.data.role || "unknown");
+          setRoleMap(buildRoleMap(res.data.data?.rolePermissions || []));
+          setOverrideMap(buildOverrideMap(res.data.data?.overrides || []));
+          setRoleName(res.data.data?.roleName || "—");
         }
-      })
-      .catch((err) => {
-        console.error("Failed to load user permissions:", err);
+      } catch {
         setSnackbar({
           open: true,
           message: "Failed to load user permissions",
           severity: "error",
         });
-      })
-      .finally(() => setLoading(false));
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchUserPermissions();
   }, [selectedUser]);
 
-  // Handle override toggle
-  const handleToggle = (module, action, newGranted) => {
-    if (!selectedUser?.id) return;
+  const handleToggle = useCallback(
+    async (mod, action, newGranted) => {
+      if (!selectedUser?.id) return;
 
-    api
-      .post(`/auth/admin/users/${selectedUser.id}/permissions`, {
-        module,
-        action,
-        granted: newGranted,
-      })
-      .then(() => {
-        setOverrides((prev) => ({
+      try {
+        await api.put(`/auth/users/${selectedUser.id}/permissions`, {
+          moduleId: mod.id,
+          actionId: action.id,
+          granted: newGranted,
+        });
+
+        setOverrideMap((prev) => ({
           ...prev,
-          [module]: {
-            ...prev[module],
-            [action]: newGranted,
+          [mod.code]: {
+            ...prev[mod.code],
+            [action.code]: newGranted,
           },
-        }));
-
-        setEffective((prev) => ({
-          ...prev,
-          [module]: newGranted
-            ? [...(prev[module] || []), action]
-            : (prev[module] || []).filter((a) => a !== action),
         }));
 
         setSnackbar({
           open: true,
-          message: `Permission "${action}" ${newGranted ? "granted" : "revoked"}`,
+          message: `"${action.code}" on "${mod.code}" ${newGranted ? "granted" : "revoked"}`,
           severity: "success",
         });
-      })
-      .catch(() => {
+      } catch {
         setSnackbar({
           open: true,
           message: "Failed to update permission",
           severity: "error",
         });
-      });
-  };
+      }
+    },
+    [selectedUser],
+  );
 
-  if (!can("admin", "view")) {
-    return <Typography color="error">Access denied – admin only</Typography>;
+  const handleRevert = useCallback(
+    async (mod, action) => {
+      if (!selectedUser?.id) return;
+
+      try {
+        await api.put(`/auth/users/${selectedUser.id}/permissions`, {
+          moduleId: mod.id,
+          actionId: action.id,
+          granted: null,
+        });
+
+        setOverrideMap((prev) => {
+          const next = { ...prev };
+          if (next[mod.code]) {
+            next[mod.code] = { ...next[mod.code] };
+            delete next[mod.code][action.code];
+          }
+          return next;
+        });
+
+        setSnackbar({
+          open: true,
+          message: `"${action.code}" on "${mod.code}" reverted to role default`,
+          severity: "info",
+        });
+      } catch {
+        setSnackbar({
+          open: true,
+          message: "Failed to revert permission",
+          severity: "error",
+        });
+      }
+    },
+    [selectedUser],
+  );
+
+  if (!can("permissions", "view")) {
+    return <Typography color="error">Access denied</Typography>;
   }
 
   return (
@@ -167,7 +201,6 @@ export default function PermissionEditor() {
         Permission Editor
       </Typography>
 
-      {/* User Selection */}
       <Paper sx={{ p: 3, mb: 4 }}>
         <Typography variant="h6" gutterBottom>
           Select User
@@ -182,7 +215,7 @@ export default function PermissionEditor() {
             {users.map((user) => (
               <Chip
                 key={user.id}
-                label={`${user.email} (${user.role || "?"})`}
+                label={`${user.email} (${user.role_name || "?"})`}
                 color={selectedUser?.id === user.id ? "primary" : "default"}
                 onClick={() => setSelectedUser(user)}
                 variant={selectedUser?.id === user.id ? "filled" : "outlined"}
@@ -200,7 +233,7 @@ export default function PermissionEditor() {
               Permissions for: {selectedUser.email}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Current role: <strong>{"roleName" || currentUser?.role || "loading..."}</strong>
+              Role: <strong>{roleName}</strong>
             </Typography>
           </Box>
 
@@ -215,19 +248,18 @@ export default function PermissionEditor() {
             </Box>
           ) : (
             <>
-              {/* Role Permissions Tab */}
               {tab === 0 && (
                 <Box>
                   <Typography variant="subtitle1" gutterBottom>
-                    Permissions inherited from role "{"roleName" || "unknown"}"
+                    Permissions inherited from role "{roleName}"
                   </Typography>
 
-                  {Object.keys(rolePermissions).length === 0 ? (
+                  {Object.keys(roleMap).length === 0 ? (
                     <Typography color="text.secondary" sx={{ py: 4 }}>
-                      This role has no default permissions assigned yet.
+                      This role has no permissions assigned.
                     </Typography>
                   ) : (
-                    Object.entries(rolePermissions).map(([mod, actions]) => (
+                    Object.entries(roleMap).map(([mod, actions]) => (
                       <Box key={mod} sx={{ mb: 3 }}>
                         <Typography variant="subtitle2" gutterBottom>
                           {mod}
@@ -249,79 +281,122 @@ export default function PermissionEditor() {
                 </Box>
               )}
 
-              {/* User Overrides Tab – full catalog */}
               {tab === 1 && (
                 <Box>
                   <Typography variant="subtitle1" gutterBottom>
-                    All System Permissions – Assign/Override for this user
+                    Override individual permissions for this user
                   </Typography>
 
                   {catalogModules.length === 0 ? (
                     <Alert severity="info" sx={{ mt: 2 }}>
-                      No modules or actions defined in the system yet.
+                      No modules defined in the system yet.
                     </Alert>
                   ) : (
                     catalogModules.map((mod) => {
-                      const moduleCode = mod; // backend returns string array
-                      const roleActions = rolePermissions[moduleCode] || [];
-                      const overrideMap = overrides[moduleCode] || {};
+                      const roleActions = roleMap[mod.code] || [];
+                      const modOverrides = overrideMap[mod.code] || {};
 
                       return (
-                        <Paper key={moduleCode} variant="outlined" sx={{ p: 3, mb: 3 }}>
+                        <Paper
+                          key={mod.id}
+                          variant="outlined"
+                          sx={{ p: 3, mb: 3 }}
+                        >
                           <Typography variant="h6" gutterBottom>
-                            {moduleCode}
+                            {mod.name}
                           </Typography>
 
                           <Divider sx={{ my: 2 }} />
 
-                          <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+                          <Box
+                            sx={{
+                              display: "flex",
+                              flexDirection: "column",
+                              gap: 1.5,
+                            }}
+                          >
                             {catalogActions.map((action) => {
-                              const hasRoleDefault = roleActions.includes(action);
-                              const overrideValue = overrideMap[action];
-                              const isChecked = overrideValue !== undefined ? overrideValue : hasRoleDefault;
+                              const hasRoleDefault = roleActions.includes(
+                                action.code,
+                              );
+                              const overrideValue = modOverrides[action.code];
+                              const isChecked =
+                                overrideValue !== undefined
+                                  ? overrideValue
+                                  : hasRoleDefault;
+                              const isOverridden = overrideValue !== undefined;
 
                               return (
-                                <FormControlLabel
-                                  key={action}
-                                  control={
-                                    <Checkbox
-                                      checked={isChecked}
-                                      onChange={() => handleToggle(moduleCode, action, !isChecked)}
-                                      color={overrideValue !== undefined ? "secondary" : "primary"}
+                                <Box
+                                  key={action.id}
+                                  sx={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 2,
+                                  }}
+                                >
+                                  <FormControlLabel
+                                    control={
+                                      <Checkbox
+                                        checked={isChecked}
+                                        onChange={() =>
+                                          handleToggle(mod, action, !isChecked)
+                                        }
+                                        color={
+                                          isOverridden ? "secondary" : "primary"
+                                        }
+                                      />
+                                    }
+                                    label={
+                                      <Box
+                                        sx={{
+                                          display: "flex",
+                                          alignItems: "center",
+                                          gap: 1.5,
+                                        }}
+                                      >
+                                        <Typography>{action.name}</Typography>
+
+                                        {isOverridden && (
+                                          <Chip
+                                            size="small"
+                                            label={`override: ${overrideValue ? "granted" : "revoked"}`}
+                                            color="secondary"
+                                            variant="outlined"
+                                          />
+                                        )}
+
+                                        {!isOverridden && hasRoleDefault && (
+                                          <Chip
+                                            size="small"
+                                            label="from role"
+                                            color="default"
+                                            variant="outlined"
+                                          />
+                                        )}
+
+                                        {!isOverridden && !hasRoleDefault && (
+                                          <Chip
+                                            size="small"
+                                            label="denied by role"
+                                            variant="outlined"
+                                          />
+                                        )}
+                                      </Box>
+                                    }
+                                  />
+
+                                  {isOverridden && (
+                                    <Chip
+                                      size="small"
+                                      label="revert to role"
+                                      onClick={() => handleRevert(mod, action)}
+                                      variant="outlined"
+                                      color="default"
+                                      sx={{ cursor: "pointer" }}
                                     />
-                                  }
-                                  label={
-                                    <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
-                                      <Typography component="span">{action}</Typography>
-
-                                      {overrideValue !== undefined && (
-                                        <Chip
-                                          size="small"
-                                          label={`override: ${overrideValue ? "YES" : "NO"}`}
-                                          color="secondary"
-                                          variant="outlined"
-                                        />
-                                      )}
-
-                                      {overrideValue === undefined && hasRoleDefault && (
-                                        <Chip
-                                          size="small"
-                                          label="from role"
-                                          color="default"
-                                          variant="outlined"
-                                        />
-                                      )}
-
-                                      {overrideValue === undefined && !hasRoleDefault && (
-                                        <Chip
-                                          size="small"
-                                          label="denied by role"
-                                          variant="outlined"
-                                        />
-                                      )}
-                                    </Box>
-                                  }
-                                />
+                                  )}
+                                </Box>
                               );
                             })}
                           </Box>
@@ -339,11 +414,11 @@ export default function PermissionEditor() {
       <Snackbar
         open={snackbar.open}
         autoHideDuration={5000}
-        onClose={() => setSnackbar({ ...snackbar, open: false })}
+        onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
       >
         <Alert
-          onClose={() => setSnackbar({ ...snackbar, open: false })}
+          onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
           severity={snackbar.severity}
           sx={{ width: "100%" }}
         >

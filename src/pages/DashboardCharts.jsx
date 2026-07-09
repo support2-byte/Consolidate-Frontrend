@@ -1,381 +1,567 @@
-import React from 'react';
+import React, { useState, useEffect } from "react";
 import {
   Box,
   Card,
   CardContent,
   Typography,
   Grid,
-  Button,
   Chip,
-  Paper,
-  Stack,
-  Divider,
-} from '@mui/material';
+  Skeleton,
+  Alert,
+  Button,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+} from "@mui/material";
 import {
   Package,
   Truck,
-  Plane,
   Ship,
-  MapPin,
-  Calendar,
-  TrendingUp,
-  TrendingDown,
-} from 'lucide-react';
-import { styled } from '@mui/material/styles';
+  Users,
+  Send,
+  Inbox,
+  RefreshCcwIcon as RefreshIcon,
+} from "lucide-react";
+import { styled } from "@mui/material/styles";
+import { api } from "../api";
+import { toast } from "react-toastify";
+import { useNavigate } from "react-router-dom";
 
 const StyledCard = styled(Card)(({ theme }) => ({
   borderRadius: 16,
-  boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
-  transition: 'all 0.3s ease',
-  '&:hover': {
-    transform: 'translateY(-4px)',
-    boxShadow: '0 8px 25px rgba(0,0,0,0.12)',
+  boxShadow: "0 2px 16px rgba(0,0,0,0.06)",
+  border: `1px solid ${theme.palette.divider}`,
+  height: "100%",
+  transition: "all 0.2s ease",
+  "&:hover": {
+    boxShadow: "0 4px 20px rgba(0,0,0,0.1)",
   },
 }));
 
-const DashboardCharts = () => {
-  const kpiData = [
-    {
-      title: "Total Shipments",
-      value: "26,666",
-      change: "+21.01%",
-      trend: "up",
-      icon: Package,
-      color: "#f58220",
-    },
-    {
-      title: "Out for Delivery",
-      value: "6,500",
-      change: "+21.01%",
-      trend: "up",
-      icon: Truck,
-      color: "#f58220",
-    },
-    {
-      title: "In Transit",
-      value: "5,000",
-      change: "+21.01%",
-      trend: "up",
-      icon: Plane,
-      color: "#f58220",
-    },
-    {
-      title: "Pending",
-      value: "26,666",
-      change: "-21.01%",
-      trend: "down",
-      icon: Ship,
-      color: "#ef4444",
-    },
-  ];
+const PROGRESS_COLORS = [
+  "#94a3b8",
+  "#60a5fa",
+  "#3b82f6",
+  "#6366f1",
+  "#8b5cf6",
+  "#a855f7",
+  "#f59e0b",
+  "#f97316",
+  "#10b981",
+];
 
-  const recentShipments = [
+const formatDate = (dateStr) => {
+  if (!dateStr) return "—";
+  return new Date(dateStr).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+};
+
+const DashboardCharts = () => {
+  const navigate = useNavigate();
+  const [dashboardData, setDashboardData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
+
+  const fetchDashboardData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await api.get("/api/options/dashboard");
+      setDashboardData(response.data.data);
+    } catch (err) {
+      setError("Failed to load dashboard data");
+      toast.error("Failed to load dashboard data");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <Box sx={{ p: { xs: 2, md: 3 } }}>
+        <Skeleton
+          variant="rounded"
+          height={80}
+          sx={{ mb: 2, borderRadius: 2 }}
+        />
+        <Grid container spacing={2} sx={{ mb: 3 }}>
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <Grid item xs={6} sm={4} md={2} key={i}>
+              <Skeleton
+                variant="rounded"
+                height={100}
+                sx={{ borderRadius: 2 }}
+              />
+            </Grid>
+          ))}
+        </Grid>
+        <Grid container spacing={1.5} sx={{ mb: 3 }}>
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <Grid item xs={6} sm={4} md={2} key={i}>
+              <Skeleton
+                variant="rounded"
+                height={100}
+                sx={{ borderRadius: 2, width: 160 }}
+              />
+            </Grid>
+          ))}
+        </Grid>
+        <Skeleton variant="rounded" height={300} sx={{ borderRadius: 2 }} />
+      </Box>
+    );
+  }
+
+  if (error) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Alert
+          severity="error"
+          action={<Button onClick={fetchDashboardData}>Retry</Button>}
+        >
+          {error}
+        </Alert>
+      </Box>
+    );
+  }
+
+  if (!dashboardData) return null;
+
+  const { counts, statuses, countsByStatus, recentOrders, recentConsignments } =
+    dashboardData;
+
+  const topCounts = [
     {
-      id: "#3752584",
-      status: "In Transit",
-      statusColor: "#3b82f6",
-      bgColor: "#eff6ff",
-      address: "789 Front Street West, Toronto",
-      eta: "Jan 27 - Feb 01",
-      icon: Truck,
-      progress: 65,
+      label: "Total Orders",
+      value: counts.orders,
+      icon: <Package size={22} />,
+      color: "#f58220",
     },
     {
-      id: "#3752584",
-      status: "Out for Delivery",
-      statusColor: "#8b5cf6",
-      bgColor: "#f3e8ff",
-      address: "789 Front Street West, Toronto",
-      eta: "Jan 27 - Feb 01",
-      icon: Plane,
-      progress: 85,
+      label: "Total Containers",
+      value: counts.containers,
+      icon: <Truck size={22} />,
+      color: "#3b82f6",
     },
     {
-      id: "#3752584",
-      status: "Processing",
-      statusColor: "#f59e0b",
-      bgColor: "#fef3c7",
-      address: "789 Front Street West, Toronto",
-      eta: "Jan 27 - Feb 01",
-      icon: Ship,
-      progress: 35,
+      label: "Total Consignments",
+      value: counts.consignments,
+      icon: <Ship size={22} />,
+      color: "#8b5cf6",
+    },
+    {
+      label: "Customers",
+      value: counts.customers,
+      icon: <Users size={22} />,
+      color: "#10b981",
+    },
+    {
+      label: "Senders",
+      value: counts.senders,
+      icon: <Send size={22} />,
+      color: "#ec4899",
+    },
+    {
+      label: "Receivers",
+      value: counts.receivers,
+      icon: <Inbox size={22} />,
+      color: "#f59e0b",
     },
   ];
 
   return (
-    <Box sx={{ p: 4, bgcolor: '#f8fafc', minHeight: '100vh' }}>
-      <Box sx={{ maxWidth: 1400, mx: 'auto' }}>
-        {/* Header */}
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 5 }}>
-          <Box>
-            <Typography variant="h4" fontWeight="bold" color="#1f2937">
-              Dashboard
-            </Typography>
-            <Typography variant="body1" color="text.secondary" sx={{ mt: 0.5 }}>
-              Welcome back, Daniel
-            </Typography>
-          </Box>
+    <Box sx={{ p: { xs: 1.5, sm: 2, md: 3 } }}>
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          mb: 3,
+          flexDirection: { xs: "column", sm: "row" },
+          gap: 1,
+        }}
+      >
+        <Typography variant="h5" fontWeight="bold">
+          Dashboard Overview
+        </Typography>
+        <Button
+          startIcon={<RefreshIcon size={16} />}
+          onClick={fetchDashboardData}
+          size="small"
+          sx={{ width: { xs: "100%", sm: "auto" } }}
+        >
+          Refresh
+        </Button>
+      </Box>
 
-          <Button
-            variant="contained"
-            size="large"
-            startIcon={<Package size={20} />}
-            sx={{
-              bgcolor: '#f58220',
-              '&:hover': { bgcolor: '#059669' },
-              borderRadius: 3,
-              textTransform: 'none',
-              px: 4,
-              py: 1.5,
-            }}
-          >
-            Create Shipment
-          </Button>
-        </Box>
-
-        {/* KPI Cards */}
-        <Grid container spacing={3} sx={{ mb: 6 }}>
-          {kpiData.map((kpi, index) => (
-            <Grid item xs={12} sm={6} md={3} key={index}>
-              <StyledCard>
-                <CardContent sx={{ p: 3 }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <Box
-                      sx={{
-                        p: 1.5,
-                        borderRadius: 3,
-                        bgcolor: `${kpi.color}15`,
-                      }}
-                    >
-                      <kpi.icon size={32} color={kpi.color} />
-                    </Box>
-
-                    <Chip
-                      label={kpi.change}
-                      size="small"
-                      icon={kpi.trend === 'up' ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
-                      sx={{
-                        bgcolor: kpi.trend === 'up' ? '#ecfdf5' : '#fef2f2',
-                        color: kpi.trend === 'up' ? '#f58220' : '#ef4444',
-                        fontWeight: 600,
-                      }}
-                    />
-                  </Box>
-
-                  <Typography variant="h5" fontWeight="600" sx={{ mt: 4, mb: 0.5 }}>
-                    {kpi.value}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {kpi.title}
-                  </Typography>
-
-                  {/* Mini Sparkline */}
-                  <Box sx={{ mt: 3, height: 48, display: 'flex', alignItems: 'flex-end', gap: 0.8 }}>
-                    {Array.from({ length: 12 }).map((_, i) => (
-                      <Box
-                        key={i}
-                        sx={{
-                          flex: 1,
-                          height: `${30 + (i % 5) * 8}px`,
-                          bgcolor: '#f58220',
-                          borderRadius: '4px 4px 0 0',
-                          opacity: 0.7 + (i % 3) * 0.1,
-                        }}
-                      />
-                    ))}
-                  </Box>
-                </CardContent>
-              </StyledCard>
-            </Grid>
-          ))}
-        </Grid>
-
-        <Grid container spacing={3}>
-          {/* Recent Shipments */}
-          <Grid item xs={12} lg={8}>
-            <Paper
-              elevation={0}
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        {topCounts.map((item, idx) => (
+          <Grid item size={{ xs: 6, sm: 4, md: 2 }} key={idx}>
+            <StyledCard
               sx={{
-                borderRadius: 4,
-                p: 4,
-                border: '1px solid #e5e7eb',
+                bgcolor: `${item.color}08`,
+                borderLeft: `5px solid ${item.color}`,
               }}
             >
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
-                <Typography variant="h6" fontWeight="600" sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                  <Package size={24} /> Recent Shipments
-                </Typography>
-                <Button variant="text" endIcon={<span>→</span>} sx={{ color: '#f58220' }}>
-                  View All
-                </Button>
-              </Box>
-
-              <Stack spacing={3}>
-                {recentShipments.map((shipment, index) => (
-                  <Card key={index} variant="outlined" sx={{ borderRadius: 3, p: 3 }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
-                      <Box>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                          <Typography variant="h6" fontWeight="600" fontFamily="monospace">
-                            {shipment.id}
-                          </Typography>
-                          <Chip
-                            label={shipment.status}
-                            size="small"
-                            sx={{
-                              bgcolor: shipment.bgColor,
-                              color: shipment.statusColor,
-                              fontWeight: 600,
-                            }}
-                          />
-                        </Box>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1, color: 'text.secondary' }}>
-                          <MapPin size={18} />
-                          <Typography variant="body2">{shipment.address}</Typography>
-                        </Box>
-                      </Box>
-
-                      <Box textAlign="right">
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'text.secondary', mb: 1 }}>
-                          <Calendar size={18} />
-                          <Typography variant="body2">ETA: {shipment.eta}</Typography>
-                        </Box>
-                        <shipment.icon size={52} color="#9ca3af" />
-                      </Box>
-                    </Box>
-
-                    {/* Progress Bar */}
-                    <Box sx={{ mb: 1 }}>
-                      <Box sx={{ height: 8, bgcolor: '#f1f5f9', borderRadius: 4, overflow: 'hidden' }}>
-                        <Box
-                          sx={{
-                            height: '100%',
-                            width: `${shipment.progress}%`,
-                            bgcolor: 'linear-gradient(90deg, #f58220, #34d399)',
-                            borderRadius: 4,
-                          }}
-                        />
-                      </Box>
-                    </Box>
-
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', color: '#64748b' }}>
-                      <div>Order Placed</div>
-                      <div>Processing</div>
-                      <div>In Transit</div>
-                      <div>Out for Delivery</div>
-                      <div>Delivered</div>
-                    </Box>
-                  </Card>
-                ))}
-              </Stack>
-            </Paper>
-          </Grid>
-
-          {/* Real-Time Map Sidebar */}
-          <Grid item xs={12} lg={4}>
-            <Paper
-              elevation={0}
-              sx={{
-                borderRadius: 4,
-                p: 4,
-                height: '100%',
-                border: '1px solid #e5e7eb',
-              }}
-            >
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 4 }}>
-                <Box sx={{ p: 1.5, bgcolor: '#bae6fd', borderRadius: 3 }}>
-                  <MapPin size={28} color="#0ea5e9" />
-                </Box>
-                <Typography variant="h6" fontWeight="600">
-                  Real-Time Map
-                </Typography>
-              </Box>
-
-              {/* Map Area */}
-              <Box
-                sx={{
-                  height: 320,
-                  borderRadius: 3,
-                  overflow: 'hidden',
-                  position: 'relative',
-                  mb: 4,
-                  border: '1px solid #e5e7eb',
-                }}
+              <CardContent
+                sx={{ p: { xs: 1.5, sm: 2 }, "&:last-child": { pb: 1.5 } }}
               >
-                <img
-                  src="https://images.unsplash.com/photo-1521295121783-8a321d551ad2?w=800"
-                  alt="World Map"
-                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                />
                 <Box
                   sx={{
-                    position: 'absolute',
-                    inset: 0,
-                    background: 'linear-gradient(transparent, rgba(0,0,0,0.4))',
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <Box sx={{ minWidth: 0, flex: 1 }}>
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      fontSize="0.75rem"
+                      sx={{
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {item.label}
+                    </Typography>
+                    <Typography
+                      variant="h5"
+                      fontWeight="800"
+                      mt={0.5}
+                      fontSize="1.5rem"
+                    >
+                      {item.value.toLocaleString()}
+                    </Typography>
+                  </Box>
+                  <Box sx={{ color: item.color, opacity: 0.8, ml: 1 }}>
+                    {item.icon}
+                  </Box>
+                </Box>
+              </CardContent>
+            </StyledCard>
+          </Grid>
+        ))}
+      </Grid>
+
+      <Typography variant="h5" fontWeight="bold">
+        Order Status Pipeline
+      </Typography>
+
+      <Box
+        sx={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 1.5,
+          mb: 4,
+          mt: 2,
+        }}
+      >
+        {statuses.map((status, index) => {
+          const count = countsByStatus.orders[status.order_status] || 0;
+          const color = PROGRESS_COLORS[index % PROGRESS_COLORS.length];
+
+          if (!status.order_status) return null;
+
+          return (
+            <Box
+              key={status.id}
+              sx={{
+                width: { xs: "calc(50% - 6px)", sm: "160px" },
+                flexShrink: 0,
+              }}
+            >
+              <StyledCard sx={{ position: "relative", overflow: "hidden" }}>
+                <Box
+                  sx={{
+                    position: "absolute",
+                    top: -10,
+                    right: -10,
+                    width: 60,
+                    height: 60,
+                    borderRadius: "50%",
+                    bgcolor: `${color}25`,
                   }}
                 />
-              </Box>
-
-              {/* Live Tracking List */}
-              <Stack spacing={2}>
-                {[
-                  { id: "#3752584", status: "Out for Delivery", type: "Food Materials", color: "#8b5cf6" },
-                  { id: "#3752584", status: "In Transit", type: "Food Materials", color: "#3b82f6" },
-                  { id: "#3752584", status: "Processing", type: "Food Materials", color: "#f59e0b" },
-                ].map((item, i) => (
-                  <Paper
-                    key={i}
-                    variant="outlined"
+                <CardContent sx={{ pt: 2, position: "relative" }}>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
                     sx={{
-                      p: 2.5,
-                      borderRadius: 3,
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
+                      fontSize: "0.7rem",
+                      lineHeight: 1.3,
+                      display: "block",
+                      fontWeight: 600,
                     }}
                   >
-                    <Box>
-                      <Typography variant="subtitle2" fontWeight="600">
-                        {item.id}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        {item.type}
-                      </Typography>
-                    </Box>
-                    <Chip
-                      label={item.status}
-                      size="small"
-                      sx={{
-                        bgcolor: `${item.color}15`,
-                        color: item.color,
-                        fontWeight: 600,
-                      }}
-                    />
-                  </Paper>
-                ))}
-              </Stack>
-
-              <Button
-                fullWidth
-                variant="outlined"
-                sx={{
-                  mt: 4,
-                  borderRadius: 3,
-                  py: 1.5,
-                  borderColor: '#f58220',
-                  color: '#f58220',
-                  '&:hover': {
-                    borderColor: '#059669',
-                    bgcolor: '#f0fdf4',
-                  },
-                }}
-              >
-                View All Shipments
-              </Button>
-            </Paper>
-          </Grid>
-        </Grid>
+                    {status.order_status}
+                  </Typography>
+                  <Typography
+                    variant="h6"
+                    fontWeight="700"
+                    sx={{ color, mt: 1, fontSize: "1.4rem" }}
+                  >
+                    {count}
+                  </Typography>
+                </CardContent>
+              </StyledCard>
+            </Box>
+          );
+        })}
       </Box>
+
+      <Grid container spacing={3}>
+        <Grid item size={{ xs: 12, md: 6 }}>
+          <StyledCard>
+            <Box
+              sx={{
+                p: 2,
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <Typography variant="h6" fontWeight="700" fontSize="1rem">
+                Recent Orders
+              </Typography>
+              <Chip
+                label={counts.orders}
+                size="small"
+                sx={{ fontWeight: 700, bgcolor: "#f5822015", color: "#f58220" }}
+              />
+            </Box>
+            <TableContainer sx={{ px: 1.5, pb: 1.5 }}>
+              <Table size="small" sx={{ minWidth: 600 }}>
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 700, fontSize: "0.75rem" }}>
+                      Ref
+                    </TableCell>
+                    <TableCell sx={{ fontWeight: 700, fontSize: "0.75rem" }}>
+                      Item Ref
+                    </TableCell>
+                    <TableCell
+                      sx={{
+                        fontWeight: 700,
+                        fontSize: "0.75rem",
+                        display: { xs: "none", md: "table-cell" },
+                      }}
+                    >
+                      Receiver
+                    </TableCell>
+                    <TableCell sx={{ fontWeight: 700, fontSize: "0.75rem" }}>
+                      Status
+                    </TableCell>
+                    <TableCell
+                      sx={{
+                        fontWeight: 700,
+                        fontSize: "0.75rem",
+                        display: { xs: "none", sm: "table-cell" },
+                      }}
+                    >
+                      ETA
+                    </TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {recentOrders.slice(0, 5).map((order) => (
+                    <TableRow
+                      key={order.id}
+                      hover
+                      sx={{ "&:last-child td": { border: 0 } }}
+                    >
+                      <TableCell
+                        sx={{ fontSize: "0.8rem", fontFamily: "monospace" }}
+                      >
+                        {order.rgl_booking_number || "—"}
+                      </TableCell>
+                      <TableCell
+                        sx={{ fontSize: "0.8rem", fontFamily: "monospace" }}
+                      >
+                        {order.item_ref || "—"}
+                      </TableCell>
+                      <TableCell
+                        sx={{
+                          fontSize: "0.8rem",
+                          display: { xs: "none", md: "table-cell" },
+                          maxWidth: 150,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {order.receiver_name || "—"}
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          label={order.order_status || "Created"}
+                          size="small"
+                          sx={{
+                            fontSize: "0.7rem",
+                            height: 24,
+                            bgcolor: `${PROGRESS_COLORS[statuses.findIndex((s) => s.order_status === order.order_status)] || "#94a3b8"}20`,
+                            color:
+                              PROGRESS_COLORS[
+                                statuses.findIndex(
+                                  (s) => s.order_status === order.order_status,
+                                )
+                              ] || "#94a3b8",
+                            fontWeight: 600,
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell
+                        sx={{
+                          fontSize: "0.8rem",
+                          color: "text.secondary",
+                          display: { xs: "none", sm: "table-cell" },
+                        }}
+                      >
+                        {formatDate(order.eta)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+            <Typography
+              sx={{ textAlign: "right", mb: 1, mr: 1, cursor: "pointer" }}
+              onClick={() => navigate("/orders")}
+            >
+              <Chip
+                label={"View All"}
+                size="small"
+                sx={{
+                  px: 2,
+                  fontSize: "0.7rem",
+                  height: 24,
+                  bgcolor: "#f59e0b",
+                  color: "white",
+                  fontWeight: 600,
+                }}
+              />
+            </Typography>
+          </StyledCard>
+        </Grid>
+        <Grid item size={{ xs: 12, md: 6 }}>
+          <StyledCard>
+            <Box
+              sx={{
+                p: 2,
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <Typography variant="h6" fontWeight="700" fontSize="1rem">
+                Recent Consignments
+              </Typography>
+              <Chip
+                label={counts.consignments}
+                size="small"
+                sx={{ fontWeight: 700, bgcolor: "#8b5cf615", color: "#8b5cf6" }}
+              />
+            </Box>
+            <TableContainer sx={{ px: 1.5, pb: 1.5 }}>
+              <Table size="small" sx={{ minWidth: 400 }}>
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 700, fontSize: "0.75rem" }}>
+                      Consignment #
+                    </TableCell>
+                    <TableCell sx={{ fontWeight: 700, fontSize: "0.75rem" }}>
+                      Consignee
+                    </TableCell>
+                    <TableCell sx={{ fontWeight: 700, fontSize: "0.75rem" }}>
+                      Status
+                    </TableCell>
+                    <TableCell
+                      sx={{
+                        fontWeight: 700,
+                        fontSize: "0.75rem",
+                        display: { xs: "none", sm: "table-cell" },
+                      }}
+                    >
+                      ETA
+                    </TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {recentConsignments.slice(0, 5).map((cons) => (
+                    <TableRow
+                      key={cons.id}
+                      hover
+                      sx={{ "&:last-child td": { border: 0 } }}
+                    >
+                      <TableCell
+                        sx={{ fontSize: "0.8rem", fontFamily: "monospace" }}
+                      >
+                        {cons.consignment_number}
+                      </TableCell>
+                      <TableCell sx={{ fontSize: "0.8rem" }}>
+                        {cons.consignee}
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          label={cons.status}
+                          size="small"
+                          sx={{
+                            fontSize: "0.7rem",
+                            height: 24,
+                            bgcolor: `${PROGRESS_COLORS[statuses.findIndex((s) => s.consignment_status === cons.status)] || "#94a3b8"}20`,
+                            color:
+                              PROGRESS_COLORS[
+                                statuses.findIndex(
+                                  (s) => s.consignment_status === cons.status,
+                                )
+                              ] || "#94a3b8",
+                            fontWeight: 600,
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell
+                        sx={{
+                          fontSize: "0.8rem",
+                          color: "text.secondary",
+                          display: { xs: "none", sm: "table-cell" },
+                        }}
+                      >
+                        {formatDate(cons.eta)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+            <Typography
+              sx={{ textAlign: "right", mb: 1, mr: 1, cursor: "pointer" }}
+              onClick={() => navigate("/consignments")}
+            >
+              <Chip
+                label={"View All"}
+                size="small"
+                sx={{
+                  px: 2,
+                  fontSize: "0.7rem",
+                  height: 24,
+                  bgcolor: "#f59e0b",
+                  color: "white",
+                  fontWeight: 600,
+                }}
+              />
+            </Typography>
+          </StyledCard>
+        </Grid>
+      </Grid>
     </Box>
   );
 };

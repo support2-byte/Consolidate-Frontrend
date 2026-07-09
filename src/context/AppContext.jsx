@@ -1,5 +1,6 @@
-import { createContext, useEffect, useState } from "react";
+import { createContext, useEffect, useState, useRef } from "react";
 import { api } from "../api";
+import { toast } from "react-toastify";
 
 export const AppContext = createContext();
 
@@ -12,10 +13,11 @@ export const AppProvider = ({ children }) => {
   const [statusLoading, setStatusLoading] = useState(false);
   const [loadingCustomers, setLoadingCustomers] = useState(true);
 
+  const isInitialized = useRef(false);
+
   const fetchCustomers = async () => {
     try {
       setLoadingCustomers(true);
-
       const params = new URLSearchParams({
         search: "All",
         limit: 5000,
@@ -26,10 +28,11 @@ export const AppProvider = ({ children }) => {
       if (response.status === 200) {
         setCustomers(response.data);
       } else {
-        console.log("No customer found!");
+        toast.error("Failed to load customers data.");
       }
     } catch (error) {
-      console.log(error);
+      console.error("Customer Fetch Error:", error);
+      toast.error("An error occurred while fetching customers.");
     } finally {
       setLoadingCustomers(false);
     }
@@ -43,10 +46,11 @@ export const AppProvider = ({ children }) => {
       if (response.status === 200) {
         setPlaces(response.data.places);
       } else {
-        console.log("No customer found!");
+        toast.error("Failed to load locations.");
       }
     } catch (error) {
-      console.log(error);
+      console.error("Places Fetch Error:", error);
+      toast.error("An error occurred while fetching places.");
     } finally {
       setPlacesLoading(false);
     }
@@ -60,18 +64,21 @@ export const AppProvider = ({ children }) => {
       if (response.status === 200) {
         setStatuses(response.data.statuses);
       } else {
-        console.log("No customer found!");
+        toast.error("Failed to load system statuses.");
       }
     } catch (error) {
-      console.log(error);
+      console.error("Status Fetch Error:", error);
+      toast.error("An error occurred while fetching statuses.");
     } finally {
       setStatusLoading(false);
     }
   };
 
   useEffect(() => {
+    if (isInitialized.current) return;
+    isInitialized.current = true;
+
     fetchCustomers();
-    fetchPlaces();
     fetchPlaces();
     fetchStatuses();
   }, []);

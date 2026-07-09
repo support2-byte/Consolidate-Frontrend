@@ -47,7 +47,6 @@ const UnassignedOrdersTab = ({
 
   return (
     <Box>
-      {/* Summary banner with generate button */}
       <Box
         sx={{
           mb: 2,
@@ -130,6 +129,9 @@ const UnassignedOrdersTab = ({
                 </TableCell>
                 <TableCell sx={{ fontSize: 13 }}>
                   {event.formNo || "N/A"}
+                </TableCell>
+                <TableCell sx={{ fontSize: 13 }}>
+                  {event.itemRef || "N/A"}
                 </TableCell>
                 <TableCell sx={{ fontSize: 13, maxWidth: 200 }}>
                   {event.eventSummary || "N/A"}

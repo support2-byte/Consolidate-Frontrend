@@ -2,12 +2,9 @@ import { useState, useEffect, useRef } from "react";
 import {
   Box,
   Card,
-  CardContent,
   TextField,
   Button,
   Typography,
-  Snackbar,
-  Alert,
   LinearProgress,
   Chip,
   Table,
@@ -25,7 +22,6 @@ import {
   DialogContent,
   DialogActions,
 } from "@mui/material";
-import BugReportOutlinedIcon from "@mui/icons-material/BugReportOutlined";
 import SendRoundedIcon from "@mui/icons-material/SendRounded";
 import DeleteRoundedIcon from "@mui/icons-material/DeleteRounded";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
@@ -34,6 +30,7 @@ import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
 import AttachFileRoundedIcon from "@mui/icons-material/AttachFileRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import ImageOutlinedIcon from "@mui/icons-material/ImageOutlined";
+import { toast } from "react-toastify";
 import { useThemeContext } from "../../context/ThemeContext";
 import { api } from "../../api";
 
@@ -57,18 +54,16 @@ export default function BugReportPage() {
   const [loading, setLoading] = useState(false);
   const fileInputRef = useRef(null);
 
-  const [snackOpen, setSnackOpen] = useState(false);
-  const [snackMsg, setSnackMsg] = useState("");
-  const [snackSeverity, setSnackSeverity] = useState("success");
-
-  useEffect(() => {
-    fetchReports();
-  }, []);
-
   const showNotification = (msg, severity = "success") => {
-    setSnackMsg(msg);
-    setSnackSeverity(severity);
-    setSnackOpen(true);
+    if (severity === "error") {
+      toast.error(msg);
+    } else if (severity === "warning") {
+      toast.warning(msg);
+    } else if (severity === "info") {
+      toast.info(msg);
+    } else {
+      toast.success(msg);
+    }
   };
 
   const fetchReports = async () => {
@@ -85,6 +80,10 @@ export default function BugReportPage() {
       setTableLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchReports();
+  }, []);
 
   const validate = () => {
     const e = { title: "", description: "" };
@@ -241,19 +240,6 @@ export default function BugReportPage() {
         }}
       >
         <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-          <Box
-            sx={{
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              width: 48,
-              height: 48,
-              borderRadius: "50%",
-              backgroundColor: "#00695c",
-            }}
-          >
-            <BugReportOutlinedIcon sx={{ color: "#fff", fontSize: 28 }} />
-          </Box>
           <Box>
             <Typography
               variant="h5"
@@ -644,21 +630,6 @@ export default function BugReportPage() {
           </Button>
         </DialogActions>
       </Dialog>
-
-      <Snackbar
-        open={snackOpen}
-        autoHideDuration={4000}
-        onClose={() => setSnackOpen(false)}
-        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-      >
-        <Alert
-          severity={snackSeverity}
-          onClose={() => setSnackOpen(false)}
-          sx={{ borderRadius: 2, fontWeight: 500 }}
-        >
-          {snackMsg}
-        </Alert>
-      </Snackbar>
     </Box>
   );
 }

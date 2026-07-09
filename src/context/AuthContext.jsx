@@ -1,137 +1,87 @@
-// src/context/AuthContext.js
 import {
   createContext,
   useContext,
   useState,
   useEffect,
   useCallback,
+  useMemo,
 } from "react";
 import { api } from "../api";
 
 export const AuthContext = createContext(null);
 
-/**
- * Auth Context Provider
- * Manages user session, permissions, and authentication state
- */
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [permissions, setPermissions] = useState({});
+  const [permissions, setPermissions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // ────────────────────────────────────────────────────────────────
-  // Core session loader with retry logic
-  // ────────────────────────────────────────────────────────────────
-  const loadSession = useCallback(async (retryCount = 0) => {
-    const maxRetries = 3;
-    const baseDelay = 1500;
-
+  const loadSession = useCallback(async () => {
     setLoading(true);
     setError(null);
 
     try {
-      // 1. Fetch current user
       const userRes = await api.get("/auth/me");
-      const userData = userRes.data?.user || userRes.data;
+      const userData = userRes.data?.data;
 
-      if (!userData?.id) {
-        throw new Error("Invalid user data from /me");
-      }
+      if (!userData?.id) throw new Error("Invalid user data");
 
       setUser(userData);
-
-      // 2. Fetch permissions
-      try {
-        const permRes = await api.get("/auth/rbac/my-permissions");
-        console.log("permissions ", permRes);
-        setPermissions(permRes.data?.permissions || {});
-      } catch (permErr) {
-        console.warn("[Permissions] Fetch failed:", permErr.message);
-        setPermissions({});
-      }
+      setPermissions(userData.permissions || []);
     } catch (err) {
-      console.warn("[Session] Load failed:", err.message);
-
-      if (retryCount < maxRetries) {
-        const delay = baseDelay * Math.pow(1.5, retryCount);
-        console.log(
-          `Retrying session load in ${delay}ms (${retryCount + 1}/${maxRetries})...`,
-        );
-        await new Promise((resolve) => setTimeout(resolve, delay));
-        return loadSession(retryCount + 1);
-      }
-
       setError(err.message || "Failed to load session");
       setUser(null);
-      setPermissions({});
+      setPermissions([]);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  // Initial session check on mount
   useEffect(() => {
     loadSession();
   }, [loadSession]);
 
-  // ────────────────────────────────────────────────────────────────
-  // Login handler
-  // ────────────────────────────────────────────────────────────────
   const login = async (email, password) => {
     try {
-      const res = await api.post("/auth/login", { email, password });
-
+      await api.post("/auth/login", { email, password });
       await loadSession();
-
-      // No need to check !user here – if loadSession didn't throw, user should be set
-      // But add a safety timeout to let React batch finish
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      return true; // return the fresh user
+      return true;
     } catch (err) {
       const message =
-        err.response?.data?.error ||
         err.response?.data?.message ||
+        err.response?.data?.error ||
         err.message ||
         "Login failed. Please check your credentials.";
       throw new Error(message);
     }
   };
 
-  // ────────────────────────────────────────────────────────────────
-  // Logout handler
-  // ────────────────────────────────────────────────────────────────
   const logout = async () => {
     try {
       await api.post("/auth/logout");
     } catch (err) {
       console.warn("[Logout] API failed:", err.message);
-      // Continue anyway
     } finally {
       setUser(null);
-      setPermissions({});
+      setPermissions([]);
       setError(null);
-      // Redirect to login (moved to component level - see note below)
     }
   };
 
-  // ────────────────────────────────────────────────────────────────
-  // Permission & Role Checks
-  // ────────────────────────────────────────────────────────────────
+  const permissionSet = useMemo(() => new Set(permissions), [permissions]);
+
   const can = useCallback(
     (module, action = "view") => {
-      // Graceful handling if module doesn't exist
-      return permissions?.[module]?.includes(action) ?? false;
+      return permissionSet.has(`${module}.${action}`);
     },
-    [permissions],
+    [permissionSet],
   );
 
   const hasRole = useCallback(
     (roles) => {
-      if (!user?.role) return false;
+      if (!user?.roleName) return false;
       const required = Array.isArray(roles) ? roles : [roles];
-      return required.includes(user.role);
+      return required.includes(user.roleName);
     },
     [user],
   );
@@ -140,18 +90,18 @@ export function AuthProvider({ children }) {
   const isManager = useCallback(() => hasRole("manager"), [hasRole]);
   const isStaff = useCallback(() => hasRole("staff"), [hasRole]);
 
-  // ────────────────────────────────────────────────────────────────
-  // Manual refresh helpers
-  // ────────────────────────────────────────────────────────────────
   const refreshSession = useCallback(() => loadSession(), [loadSession]);
 
   const refreshUserOnly = useCallback(async () => {
     try {
       const res = await api.get("/auth/me");
-      const userData = res.data?.user || res.data;
-      if (userData?.id) setUser(userData);
+      const userData = res.data?.data;
+      if (userData?.id) {
+        setUser(userData);
+        setPermissions(userData.permissions || []);
+      }
     } catch (err) {
-      console.warn("[Refresh User] Failed:", err);
+      console.warn("[Refresh User] Failed:", err.message);
     }
   }, []);
 

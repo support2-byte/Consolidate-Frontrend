@@ -335,7 +335,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     );
     return place ? place.label : placeId;
   };
-  // === Updated ETA Suggestion Handler ===
+
   const handleStatusChange = (newStatusOrEvent) => {
     const newStatus =
       typeof newStatusOrEvent === "string"
@@ -358,12 +358,11 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       const receiverStatus = matchedStatus?.order_status || newStatus;
       const offsetDays = statusOffsets[receiverStatus] ?? 0;
 
-      const today = dayjs(); // Today is January 08, 2026
+      const today = dayjs();
       const suggestedEta = today.add(offsetDays, "day").format("YYYY-MM-DD");
 
       setEtaSuggestion(suggestedEta);
 
-      // Only auto-fill if ETA is empty or default
       if (!eta || !eta.trim()) {
         setEta(suggestedEta);
         setValues((prev) => ({ ...prev, eta: suggestedEta }));
@@ -511,7 +510,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
             setTimeout(() => handleStatusChange(defaultStatus), 100);
           }
         }
-
         if (mode === "edit" && effectiveConsignmentId) {
           await loadConsignment(effectiveConsignmentId);
         }
@@ -902,12 +900,10 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       setSelectedOrders(allOrderIds);
     }
   }, [orders]);
-  // ✨ YAHAN TAK ✨
-  // In your component
+
   const calculatedTotals = useMemo(() => {
     let totalAssignedWeight = 0;
 
-    // Option A: from original nested structure
     const ordersToSum = includedOrders.length > 0 ? includedOrders : orders;
 
     ordersToSum.forEach((order) => {
@@ -1254,9 +1250,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
             pol: getPlaceName?.(order.place_of_loading) || "-",
             pod: getPlaceName?.(order.place_of_delivery) || "-",
             sender: order.sender_name || "-",
-            // Receiver level
             receiverName: receiver.receivername || "-",
-            // Shipping detail / product level
             category: detail.category || "Unknown",
             subcategory: detail.subcategory || "",
             type: detail.type || "Package",
@@ -1264,11 +1258,9 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
             weight: Number(detail.weight || 0),
             itemRef: detail.itemRef || "",
             remainingItems: Number(detail.remainingItems || 0),
-            receiverStatus: receiver.status,
-            // Single container
+            receiverStatus: detail.status,
             containerNumber:
               containerDetail.container?.container_number?.trim() || "-",
-            // containerCid: containerDetail.container?.cid,
             containerStatus: containerDetail.status || "-",
             assignWeight: containerDetail.assign_weight || "-",
             assignBoxes: containerDetail.assign_total_box || "-",
@@ -1360,18 +1352,14 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                     borderColor: "grey.200",
                     backgroundColor: "#fff",
                     boxShadow: "none",
-                    //   transition: 'all 0.2s ease',
-                    //   '&:hover': { boxShadow: '0 1px 4px rgba(0,0,0,0.1)', borderColor: 'primary.light' },
                   }}
                 >
-                  {/* Receiver Info */}
                   <Stack direction="row" alignItems="center" spacing={1.5}>
                     <Box sx={{ flex: 1, minWidth: 0 }}>
                       <Typography variant="body2" fontWeight="medium" noWrap>
                         {receiver.receiver_name || "Unnamed Receiver"}
                       </Typography>
                     </Box>
-                    <StatusChip status={receiver.status} size="small" />
                   </Stack>
 
                   <Divider sx={{ mt: 1 }} />
@@ -1381,12 +1369,20 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                     receiver.shippingdetails.map((item, sIdx) => (
                       <Box key={sIdx} sx={{ mt: 1, pl: 1 }}>
                         <Box sx={{ flexDirection: "column" }}>
-                          <Typography variant="body2" fontWeight="bold">
-                            {item.category || "Unknown Category"} -{" "}
-                            {item.subcategory || "Unknown Subcategory"} (
-                            {item.type || "Unknown Type"}) Total:{" "}
-                            {item.totalNumber ?? 0}, Weight: {item.weight ?? 0}
-                          </Typography>
+                          <Stack
+                            direction="row"
+                            alignItems="center"
+                            spacing={1}
+                          >
+                            <Typography variant="body2" fontWeight="bold">
+                              {item.category || "Unknown Category"} -{" "}
+                              {item.subcategory || "Unknown Subcategory"} (
+                              {item.type || "Unknown Type"}) Total:{" "}
+                              {item.totalNumber ?? 0}, Weight:{" "}
+                              {item.weight ?? 0}
+                            </Typography>
+                            <StatusChip status={item.status} size="small" />
+                          </Stack>
                           <Typography variant="caption" color="text.secondary">
                             Qty Total Assigned:{" "}
                             {Math.max(
@@ -2214,17 +2210,20 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       />
     );
   };
+
   const parseSummaryToList = (receivers) => {
     if (!receivers || !Array.isArray(receivers)) return [];
     return receivers.map((rec) => ({
       primary: rec.receiver_name,
-      status: rec.status,
+      status: rec.shippingdetails?.[0]?.status || "Created",
     }));
   };
+
   const parseContainersToList = (containersStr) => {
     if (!containersStr) return [];
     return containersStr.split(", ").map((cont) => ({ primary: cont.trim() }));
   };
+
   const StyledTableRow = styled(TableRow)(({ theme }) => ({
     "&:nth-of-type(odd)": {
       backgroundColor: theme.palette.action.hover,
@@ -5947,7 +5946,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                             >
                               Receiver
                             </TableCell>
-                            {/* <TableCell sx={{ bgcolor: '#0d6c6a' , color: '#fff', fontWeight: 'Bold' }}>Product</TableCell> */}
 
                             <TableCell
                               sx={{
@@ -6029,8 +6027,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                                       color="text.secondary"
                                     >
                                       {shipment.subcategory &&
-                                        `${shipment.subcategory} • `}
-                                      {/* {shipment.productName} */}
+                                        ` • ${shipment.subcategory}`}
                                     </Typography>
                                   </Box>
                                 </TableCell>

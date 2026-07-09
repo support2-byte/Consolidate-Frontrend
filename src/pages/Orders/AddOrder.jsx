@@ -724,13 +724,17 @@ const OrderForm = () => {
           label: c.company_name,
         })),
       );
-      const fetchedCategories = categoriesRes?.data?.categories || [];
+      const fetchedCategories = (categoriesRes?.data?.categories || []).filter(
+        (c) => c.status !== false,
+      );
       setCategories(fetchedCategories.map((c) => c.name));
-      const fetchedSubcategories = subcategoriesRes?.data?.subcategories || [];
+
+      const fetchedSubcategories = subcategoriesRes?.data?.subCategories || [];
+
       const subMap = {};
       fetchedCategories.forEach((cat) => {
         subMap[cat.name] = fetchedSubcategories
-          .filter((s) => s.category_id === cat.id)
+          .filter((s) => s.category_id === cat.id && s.status === true)
           .map((s) => s.name);
       });
       setCategorySubMap(subMap);
@@ -745,7 +749,7 @@ const OrderForm = () => {
           "Failed to fetch options",
         severity: "error",
       });
-      // Fallback to dummies if needed
+
       setCategories(["Electronics", "Clothing", "Books"]);
       setCategorySubMap({
         Electronics: ["Smartphones", "Laptops", "Accessories"],
@@ -763,19 +767,6 @@ const OrderForm = () => {
     }
   };
 
-  const themeColors = {
-    primary: "#f58220",
-    secondary: "#1a9c8f",
-    background: "#f8f9fa",
-    surface: "#ffffff",
-    border: "#e0e0e0",
-    textPrimary: "#212121",
-    textSecondary: "#757575",
-    success: "#4caf50",
-    warning: "#ff9800",
-    error: "#f44336",
-  };
-  // Fetch containers on mount
   useEffect(() => {
     fetchOptions();
     fetchContainers();
@@ -783,7 +774,6 @@ const OrderForm = () => {
       fetchOrder(orderId);
     }
   }, [orderId]);
-  // Auto-expand accordions with errors
 
   useEffect(() => {
     if (Object.keys(errors).length > 0) {
@@ -837,7 +827,7 @@ const OrderForm = () => {
       setExpanded((prev) => new Set([...prev, ...panelsToExpand]));
     }
   }, [errors]);
-  // Fetch all containers
+
   const fetchContainers = async () => {
     setLoadingContainers(true);
     try {
@@ -870,10 +860,8 @@ const OrderForm = () => {
 
       if (!response.data) throw new Error("Invalid response data");
 
-      // The actual response is FLAT (as per your example)
-      const orderData = response.data; // ← No .order wrapper in GET
+      const orderData = response.data;
 
-      // Safe array parser
       const safeParseArray = (value, fallback = []) => {
         if (Array.isArray(value)) return value;
         if (!value) return fallback;

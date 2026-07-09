@@ -1,75 +1,335 @@
-import { useState, useEffect, useContext, useMemo, useCallback } from "react";
+import {
+  useReducer,
+  useEffect,
+  useContext,
+  useMemo,
+  useCallback,
+  useState,
+} from "react";
 import { AppContext } from "../context/AppContext";
 import { api } from "../api";
 import { DEFAULT_FORM_DATA } from "../constants/containers";
 import { buildContainerPayload, validateForm } from "../Utlis/containerBuilder";
 
-export const useContainerData = (propContainers = []) => {
-  const { places, statuses: masterStatuses = [] } = useContext(AppContext);
+const initialFilters = {
+  container_number: "",
+  container_size: "",
+  container_type: "",
+  owner_type: "",
+  status: "",
+  location: "",
+};
 
-  const [filters, setFilters] = useState({
-    container_number: "",
-    container_size: "",
-    container_type: "",
-    owner_type: "",
-    status: "",
-    location: "",
-  });
-  const [currentPage, setCurrentPage] = useState(1);
-  const [rowsPerPage, setRowsPerPage] = useState(50);
-  const [totalCount, setTotalCount] = useState(0);
+const initialDataState = {
+  filters: initialFilters,
+  currentPage: 1,
+  rowsPerPage: 50,
+  totalCount: 0,
+  sizes: [],
+  types: [],
+  ownershipTypes: [],
+  filterPlace: [],
+  containers: [],
+  allContainers: [],
+};
 
-  const [debouncedContainerNumber, setDebouncedContainerNumber] = useState("");
+const initialFormState = {
+  openAddModal: false,
+  isEditing: false,
+  editingContainer: null,
+  formData: DEFAULT_FORM_DATA,
+};
 
-  const [sizes, setSizes] = useState([]);
-  const [types, setTypes] = useState([]);
-  const [ownershipTypes, setOwnershipTypes] = useState([]);
-  const [filterPlace, setFilterPlace] = useState([]);
+const initialHistoryState = {
+  openHistoryModal: false,
+  selectedContainerNo: null,
+  historyCid: "",
+  usageHistory: [],
+  unassignedOrders: [],
+  activeHistoryTab: 0,
+};
 
-  const [containers, setContainers] = useState([]);
-  const [allContainers, setAllContainers] = useState([]);
-
-  const [openAddModal, setOpenAddModal] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
-  const [editingContainer, setEditingContainer] = useState(null);
-  const [formData, setFormData] = useState(DEFAULT_FORM_DATA);
-
-  const [editingId, setEditingId] = useState(null);
-  const [tempData, setTempData] = useState({
+const initialUIState = {
+  loadingContainers: false,
+  loadingForm: false,
+  loadingReturned: {},
+  loadingOptions: false,
+  loadingHistory: false,
+  loadingUnassigned: false,
+  generatingPDF: false,
+  error: null,
+  snackbar: {
+    open: false,
+    message: "",
+    severity: "info",
+  },
+  editingId: null,
+  tempData: {
     current_status: "",
     status: "",
     location: "",
     jobStatus: "",
-  });
+  },
+};
 
-  const [openHistoryModal, setOpenHistoryModal] = useState(false);
-  const [selectedContainerNo, setSelectedContainerNo] = useState(null);
-  const [historyCid, setHistoryCid] = useState("");
-  const [usageHistory, setUsageHistory] = useState([]);
-  const [unassignedOrders, setUnassignedOrders] = useState([]);
-  const [activeHistoryTab, setActiveHistoryTab] = useState(0);
+const dataReducer = (state, action) => {
+  switch (action.type) {
+    case "SET_FILTER":
+      return {
+        ...state,
+        filters: { ...state.filters, [action.field]: action.value },
+        currentPage: 1,
+      };
+    case "CLEAR_FILTERS":
+      return {
+        ...state,
+        filters: initialFilters,
+        currentPage: 1,
+      };
+    case "SET_PAGE":
+      return { ...state, currentPage: action.page };
+    case "SET_ROWS_PER_PAGE":
+      return { ...state, rowsPerPage: action.rows, currentPage: 1 };
+    case "SET_TOTAL_COUNT":
+      return { ...state, totalCount: action.count };
+    case "SET_OPTIONS":
+      return {
+        ...state,
+        sizes: action.sizes,
+        types: action.types,
+        ownershipTypes: action.ownershipTypes,
+        filterPlace: action.filterPlace,
+      };
+    case "SET_ALL_CONTAINERS":
+      return { ...state, allContainers: action.containers };
+    case "SET_FILTERED_CONTAINERS":
+      return {
+        ...state,
+        containers: action.containers,
+        totalCount: action.totalCount,
+      };
+    default:
+      return state;
+  }
+};
 
-  const [loadingContainers, setLoadingContainers] = useState(false);
-  const [loadingForm, setLoadingForm] = useState(false);
-  const [loadingReturned, setLoadingReturned] = useState({});
-  const [loadingOptions, setLoadingOptions] = useState(false);
-  const [loadingHistory, setLoadingHistory] = useState(false);
-  const [loadingUnassigned, setLoadingUnassigned] = useState(false);
-  const [generatingPDF, setGeneratingPDF] = useState(false);
+const formReducer = (state, action) => {
+  switch (action.type) {
+    case "OPEN_ADD_MODAL":
+      return { ...state, openAddModal: true };
+    case "CLOSE_ADD_MODAL":
+      return {
+        ...state,
+        openAddModal: false,
+        isEditing: false,
+        editingContainer: null,
+        formData: DEFAULT_FORM_DATA,
+      };
+    case "SET_EDITING":
+      return {
+        ...state,
+        isEditing: true,
+        editingContainer: action.container,
+        formData: action.formData,
+        openAddModal: true,
+      };
+    case "UPDATE_FORM":
+      if (state.formData[action.field] === action.value) {
+        return state;
+      }
+      return {
+        ...state,
+        formData: { ...state.formData, [action.field]: action.value },
+      };
+    case "RESET_FORM":
+      return {
+        ...state,
+        isEditing: false,
+        editingContainer: null,
+        formData: DEFAULT_FORM_DATA,
+        openAddModal: false,
+      };
+    default:
+      return state;
+  }
+};
 
-  const [error, setError] = useState(null);
-  const [snackbar, setSnackbar] = useState({
-    open: false,
-    message: "",
-    severity: "info",
-  });
+const historyReducer = (state, action) => {
+  switch (action.type) {
+    case "OPEN_HISTORY":
+      return {
+        ...state,
+        openHistoryModal: true,
+        selectedContainerNo: action.containerNumber,
+        historyCid: action.cid,
+        activeHistoryTab: 0,
+        unassignedOrders: [],
+        usageHistory: [],
+      };
+    case "CLOSE_HISTORY":
+      return {
+        ...state,
+        openHistoryModal: false,
+        selectedContainerNo: null,
+        historyCid: "",
+        usageHistory: [],
+        unassignedOrders: [],
+        activeHistoryTab: 0,
+      };
+    case "SET_USAGE_HISTORY":
+      return { ...state, usageHistory: action.history };
+    case "SET_UNASSIGNED_ORDERS":
+      return { ...state, unassignedOrders: action.orders };
+    case "SET_ACTIVE_TAB":
+      return { ...state, activeHistoryTab: action.tab };
+    default:
+      return state;
+  }
+};
 
-  useEffect(() => {
-    const timeout = setTimeout(() => {
-      setDebouncedContainerNumber(filters.container_number);
-    }, 400);
-    return () => clearTimeout(timeout);
-  }, [filters.container_number]);
+const uiReducer = (state, action) => {
+  switch (action.type) {
+    case "SET_LOADING":
+      return { ...state, [action.key]: action.value };
+    case "SET_LOADING_RETURNED":
+      return {
+        ...state,
+        loadingReturned: {
+          ...state.loadingReturned,
+          [action.cid]: action.value,
+        },
+      };
+    case "SHOW_SNACKBAR":
+      return {
+        ...state,
+        snackbar: {
+          open: true,
+          message: action.message,
+          severity: action.severity || "info",
+        },
+        error: null,
+      };
+    case "HIDE_SNACKBAR":
+      return { ...state, snackbar: { ...state.snackbar, open: false } };
+    case "SET_ERROR":
+      return { ...state, error: action.error };
+    case "START_QUICK_EDIT":
+      return {
+        ...state,
+        editingId: action.cid,
+        tempData: action.tempData,
+      };
+    case "CANCEL_QUICK_EDIT":
+      return {
+        ...state,
+        editingId: null,
+        tempData: {
+          current_status: "",
+          status: "",
+          location: "",
+          jobStatus: "",
+        },
+      };
+    case "UPDATE_TEMP_DATA":
+      return {
+        ...state,
+        tempData: { ...state.tempData, [action.field]: action.value },
+      };
+    case "SET_GENERATING_PDF":
+      return { ...state, generatingPDF: action.value };
+    default:
+      return state;
+  }
+};
+
+const dataActions = {
+  setFilter: (field, value) => ({ type: "SET_FILTER", field, value }),
+  clearFilters: () => ({ type: "CLEAR_FILTERS" }),
+  setPage: (page) => ({ type: "SET_PAGE", page }),
+  setRowsPerPage: (rows) => ({ type: "SET_ROWS_PER_PAGE", rows }),
+  setTotalCount: (count) => ({ type: "SET_TOTAL_COUNT", count }),
+  setOptions: (sizes, types, ownershipTypes, filterPlace) => ({
+    type: "SET_OPTIONS",
+    sizes,
+    types,
+    ownershipTypes,
+    filterPlace,
+  }),
+  setAllContainers: (containers) => ({
+    type: "SET_ALL_CONTAINERS",
+    containers,
+  }),
+  setFilteredContainers: (containers, totalCount) => ({
+    type: "SET_FILTERED_CONTAINERS",
+    containers,
+    totalCount,
+  }),
+};
+
+const formActions = {
+  openAddModal: () => ({ type: "OPEN_ADD_MODAL" }),
+  closeAddModal: () => ({ type: "CLOSE_ADD_MODAL" }),
+  setEditing: (container, formData) => ({
+    type: "SET_EDITING",
+    container,
+    formData,
+  }),
+  updateForm: (field, value) => ({ type: "UPDATE_FORM", field, value }),
+  resetForm: () => ({ type: "RESET_FORM" }),
+};
+
+const historyActions = {
+  openHistory: (cid, containerNumber) => ({
+    type: "OPEN_HISTORY",
+    cid,
+    containerNumber,
+  }),
+  closeHistory: () => ({ type: "CLOSE_HISTORY" }),
+  setUsageHistory: (history) => ({ type: "SET_USAGE_HISTORY", history }),
+  setUnassignedOrders: (orders) => ({ type: "SET_UNASSIGNED_ORDERS", orders }),
+  setActiveTab: (tab) => ({ type: "SET_ACTIVE_TAB", tab }),
+};
+
+const uiActions = {
+  setLoading: (key, value) => ({ type: "SET_LOADING", key, value }),
+  setLoadingReturned: (cid, value) => ({
+    type: "SET_LOADING_RETURNED",
+    cid,
+    value,
+  }),
+  showSnackbar: (message, severity) => ({
+    type: "SHOW_SNACKBAR",
+    message,
+    severity,
+  }),
+  hideSnackbar: () => ({ type: "HIDE_SNACKBAR" }),
+  setError: (error) => ({ type: "SET_ERROR", error }),
+  startQuickEdit: (cid, tempData) => ({
+    type: "START_QUICK_EDIT",
+    cid,
+    tempData,
+  }),
+  cancelQuickEdit: () => ({ type: "CANCEL_QUICK_EDIT" }),
+  updateTempData: (field, value) => ({
+    type: "UPDATE_TEMP_DATA",
+    field,
+    value,
+  }),
+  setGeneratingPDF: (value) => ({ type: "SET_GENERATING_PDF", value }),
+};
+
+export const useContainerData = (propContainers = []) => {
+  const { places, statuses: masterStatuses = [] } = useContext(AppContext);
+
+  const [dataState, dataDispatch] = useReducer(dataReducer, initialDataState);
+  const [formState, formDispatch] = useReducer(formReducer, initialFormState);
+  const [historyState, historyDispatch] = useReducer(
+    historyReducer,
+    initialHistoryState,
+  );
+  const [uiState, uiDispatch] = useReducer(uiReducer, initialUIState);
+
+  const [debouncedContainerNumber, setDebouncedContainerNumber] = useState("");
 
   const jobStatusOptions = useMemo(
     () => [
@@ -78,114 +338,100 @@ export const useContainerData = (propContainers = []) => {
     [masterStatuses],
   );
 
-  const getPlaceName = (placeId) => {
-    if (!placeId) return "N/A";
-    const id = placeId.toString();
-    const place = filterPlace.find((p) => p.value === id || p.id === placeId);
-    return place ? place.label : `ID: ${placeId}`;
-  };
-
-  const showToast = (message, severity = "info") => {
-    setSnackbar({ open: true, message, severity });
-    setError(null);
-  };
-
-  const handleError = (
-    err,
-    defaultMessage = "An unexpected error occurred",
-  ) => {
-    console.error("Error:", err);
-    const message = err.response?.data?.error || err.message || defaultMessage;
-    setError(message);
-    showToast(message, "error");
-  };
-
-  const fetchOptions = async () => {
-    setLoadingOptions(true);
-    try {
-      const [sizeRes, typeRes, ownershipRes] = await Promise.all([
-        api.get("/api/containers/sizes"),
-        api.get("/api/containers/types"),
-        api.get("/api/containers/ownership-types"),
-      ]);
-      setSizes(sizeRes.data || []);
-      setTypes(typeRes.data || []);
-      setOwnershipTypes(ownershipRes.data || []);
-      setFilterPlace(
-        places.map((p) => ({
-          id: p.id,
-          value: p.id.toString(),
-          label: p.name,
-        })),
+  const getPlaceName = useCallback(
+    (placeId) => {
+      if (!placeId) return "N/A";
+      const id = placeId.toString();
+      const place = dataState.filterPlace.find(
+        (p) => p.value === id || p.id === placeId,
       );
-    } catch (err) {
-      handleError(err, "Error fetching options");
-    } finally {
-      setLoadingOptions(false);
-    }
-  };
+      return place ? place.label : `ID: ${placeId}`;
+    },
+    [dataState.filterPlace],
+  );
+
+  const showToast = useCallback((message, severity = "info") => {
+    uiDispatch(uiActions.showSnackbar(message, severity));
+  }, []);
+
+  const handleError = useCallback(
+    (err, defaultMessage = "An unexpected error occurred") => {
+      console.error("Error:", err);
+      const message =
+        err.response?.data?.error || err.message || defaultMessage;
+      uiDispatch(uiActions.setError(message));
+      uiDispatch(uiActions.showSnackbar(message, "error"));
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setDebouncedContainerNumber(dataState.filters.container_number);
+    }, 400);
+    return () => clearTimeout(timeout);
+  }, [dataState.filters.container_number]);
+
+  useEffect(() => {
+    const fetchOptions = async () => {
+      uiDispatch(uiActions.setLoading("loadingOptions", true));
+      try {
+        const [sizeRes, typeRes, ownershipRes] = await Promise.all([
+          api.get("/api/containers/sizes"),
+          api.get("/api/containers/types"),
+          api.get("/api/containers/ownership-types"),
+        ]);
+        dataDispatch(
+          dataActions.setOptions(
+            sizeRes.data || [],
+            typeRes.data || [],
+            ownershipRes.data || [],
+            places.map((p) => ({
+              id: p.id,
+              value: p.id.toString(),
+              label: p.name,
+            })),
+          ),
+        );
+      } catch (err) {
+        handleError(err, "Error fetching options");
+      } finally {
+        uiDispatch(uiActions.setLoading("loadingOptions", false));
+      }
+    };
+    fetchOptions();
+  }, [places, handleError]);
 
   const fetchContainers = useCallback(async () => {
     if (!navigator.onLine) {
       handleError(new Error("You are offline. Please check your connection."));
       return;
     }
-    setLoadingContainers(true);
-    setError(null);
+    uiDispatch(uiActions.setLoading("loadingContainers", true));
+    uiDispatch(uiActions.setError(null));
     try {
       const res = await api.get("/api/containers");
       const data = res.data?.data || [];
-      setAllContainers(data);
+      dataDispatch(dataActions.setAllContainers(data));
     } catch (err) {
       handleError(err, "Error fetching containers");
     } finally {
-      setLoadingContainers(false);
+      uiDispatch(uiActions.setLoading("loadingContainers", false));
     }
-  }, []);
-
-  const fetchContainerById = async (cid) => {
-    setLoadingHistory(true);
-    setUsageHistory([]);
-    try {
-      const res = await api.get(`/api/containers/${cid}/usage-history`);
-      const grouped = res.data?.groupedByConsignment || {};
-      setUsageHistory(Object.values(grouped).reverse());
-    } catch (err) {
-      setUsageHistory([]);
-      handleError(err, "Error fetching container details");
-    } finally {
-      setLoadingHistory(false);
-    }
-  };
-
-  const fetchUnassignedOrders = async (cid) => {
-    setLoadingUnassigned(true);
-    try {
-      const res = await api.get(`/api/containers/${cid}/unassigned-orders`);
-      setUnassignedOrders(res.data?.orders || []);
-    } catch {
-      setUnassignedOrders([]);
-    } finally {
-      setLoadingUnassigned(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchOptions();
-  }, []);
+  }, [handleError]);
 
   useEffect(() => {
     fetchContainers();
-  }, []);
+  }, [fetchContainers]);
 
   useEffect(() => {
-    if (allContainers.length === 0) {
-      setContainers([]);
-      setTotalCount(0);
+    if (dataState.allContainers.length === 0) {
+      dataDispatch(dataActions.setFilteredContainers([], 0));
       return;
     }
 
-    let filtered = [...allContainers];
+    let filtered = [...dataState.allContainers];
+    const { filters } = dataState;
 
     if (filters.container_number) {
       filtered = filtered.filter((c) =>
@@ -209,49 +455,81 @@ export const useContainerData = (propContainers = []) => {
     if (filters.location)
       filtered = filtered.filter((c) => c.location === filters.location);
 
-    setTotalCount(filtered.length);
+    const start = (dataState.currentPage - 1) * dataState.rowsPerPage;
+    dataDispatch(
+      dataActions.setFilteredContainers(
+        filtered.slice(start, start + dataState.rowsPerPage),
+        filtered.length,
+      ),
+    );
+  }, [
+    dataState.filters,
+    dataState.allContainers,
+    dataState.currentPage,
+    dataState.rowsPerPage,
+  ]);
 
-    const start = (currentPage - 1) * rowsPerPage;
-    setContainers(filtered.slice(start, start + rowsPerPage));
-  }, [filters, allContainers, currentPage, rowsPerPage]);
+  const fetchContainerById = useCallback(
+    async (cid) => {
+      uiDispatch(uiActions.setLoading("loadingHistory", true));
+      historyDispatch(historyActions.setUsageHistory([]));
+      try {
+        const res = await api.get(`/api/containers/${cid}/usage-history`);
+        const grouped = res.data?.groupedByConsignment || {};
+        historyDispatch(
+          historyActions.setUsageHistory(Object.values(grouped).reverse()),
+        );
+      } catch (err) {
+        historyDispatch(historyActions.setUsageHistory([]));
+        handleError(err, "Error fetching container details");
+      } finally {
+        uiDispatch(uiActions.setLoading("loadingHistory", false));
+      }
+    },
+    [handleError],
+  );
 
-  const handleFilterChange = (e) => {
-    setFilters((prev) => ({ ...prev, [e.target.name]: e.target.value }));
-    setCurrentPage(1);
-  };
+  const fetchUnassignedOrders = useCallback(async (cid) => {
+    uiDispatch(uiActions.setLoading("loadingUnassigned", true));
+    try {
+      const res = await api.get(`/api/containers/${cid}/unassigned-orders`);
+      historyDispatch(
+        historyActions.setUnassignedOrders(res.data?.orders || []),
+      );
+    } catch {
+      historyDispatch(historyActions.setUnassignedOrders([]));
+    } finally {
+      uiDispatch(uiActions.setLoading("loadingUnassigned", false));
+    }
+  }, []);
 
-  const handleClearFilters = () => {
-    setFilters({
-      container_number: "",
-      container_size: "",
-      container_type: "",
-      owner_type: "",
-      status: "",
-      location: "",
-    });
-    setCurrentPage(1);
-  };
+  const handleFilterChange = useCallback((e) => {
+    dataDispatch(dataActions.setFilter(e.target.name, e.target.value));
+  }, []);
 
-  const handleFormChange = (e) =>
-    setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+  const handleClearFilters = useCallback(() => {
+    dataDispatch(dataActions.clearFilters());
+  }, []);
 
-  const openHistory = (cid, containerNumber) => {
-    setSelectedContainerNo(containerNumber);
-    setHistoryCid(cid);
-    setActiveHistoryTab(0);
-    setUnassignedOrders([]);
-    fetchContainerById(cid);
-    fetchUnassignedOrders(cid);
-    setOpenHistoryModal(true);
-  };
+  const handleFormChange = useCallback((e) => {
+    formDispatch(formActions.updateForm(e.target.name, e.target.value));
+  }, []);
 
-  const handleEdit = async (containerData) => {
+  const openHistory = useCallback(
+    (cid, containerNumber) => {
+      historyDispatch(historyActions.openHistory(cid, containerNumber));
+      fetchContainerById(cid);
+      fetchUnassignedOrders(cid);
+    },
+    [fetchContainerById, fetchUnassignedOrders],
+  );
+
+  const handleEdit = useCallback(async (containerData) => {
     try {
       const response = await api.get(`/api/containers/${containerData.cid}`);
+      const container = response.data;
 
-      const container = await response.data;
-
-      setFormData({
+      const formData = {
         ownership: container.owner_type || "soc",
         containerNo: container.container_number || "",
         size: container.container_size || "",
@@ -269,32 +547,27 @@ export const useContainerData = (propContainers = []) => {
         hireStartDate: container.hire_start_date?.split("T")[0] ?? "",
         hireEndDate: container.hire_end_date?.split("T")[0] ?? "",
         return_date: container.return_date?.split("T")[0] ?? "",
-        dateOfManufacture: container.manufacture_date?.split("T")[0] ?? "",
         purchaseDate: container.purchase_date?.split("T")[0] ?? "",
         availableAtDate: container.available_at?.split("T")[0] ?? "",
         vendor: container.hired_by || "",
         freeDays: container.free_days || "",
         placeOfLoading: container.place_of_loading || "",
         placeOfDelivery: container.place_of_destination || "",
-      });
-      setEditingContainer(containerData);
-      setIsEditing(true);
-      setOpenAddModal(true);
+      };
+
+      formDispatch(formActions.setEditing(containerData, formData));
     } catch (error) {
       console.log("Something went wrong", error);
     }
-  };
+  }, []);
 
-  const resetForm = () => {
-    setIsEditing(false);
-    setEditingContainer(null);
-    setFormData(DEFAULT_FORM_DATA);
-    setOpenAddModal(false);
-  };
+  const resetForm = useCallback(() => {
+    formDispatch(formActions.resetForm());
+  }, []);
 
-  const handleFormSubmit = async () => {
+  const handleFormSubmit = useCallback(async () => {
     try {
-      validateForm(formData);
+      validateForm(formState.formData, places);
     } catch (err) {
       handleError(err);
       return;
@@ -303,11 +576,14 @@ export const useContainerData = (propContainers = []) => {
       handleError(new Error("You are offline. Please check your connection."));
       return;
     }
-    setLoadingForm(true);
+    uiDispatch(uiActions.setLoading("loadingForm", true));
     try {
-      const payload = buildContainerPayload(formData);
-      if (isEditing && editingContainer) {
-        await api.put(`/api/containers/${editingContainer.cid}`, payload);
+      const payload = buildContainerPayload(formState.formData);
+      if (formState.isEditing && formState.editingContainer) {
+        await api.put(
+          `/api/containers/${formState.editingContainer.cid}`,
+          payload,
+        );
         showToast("Container updated successfully", "success");
       } else {
         await api.post("/api/containers", payload);
@@ -318,113 +594,137 @@ export const useContainerData = (propContainers = []) => {
     } catch (err) {
       handleError(err, "Failed to save container");
     } finally {
-      setLoadingForm(false);
+      uiDispatch(uiActions.setLoading("loadingForm", false));
     }
-  };
+  }, [formState, places, handleError, showToast, resetForm, fetchContainers]);
 
-  const handleQuickEdit = (container) => {
-    setEditingId(container.cid);
-    setTempData({
-      current_status: container.assignment_status || "",
-      status: container.current_status || "",
-      location: container.location || "",
-      jobStatus: container.assignment_status || "",
-    });
-  };
+  const handleQuickEdit = useCallback((container) => {
+    uiDispatch(
+      uiActions.startQuickEdit(container.cid, {
+        current_status: container.assignment_status || "",
+        status: container.current_status || "",
+        location: container.location || "",
+        jobStatus: container.assignment_status || "",
+      }),
+    );
+  }, []);
 
-  const handleQuickSave = async (cid) => {
-    if (!tempData.status || !tempData.location) {
-      showToast("Status and Location are required", "error");
-      return;
-    }
-    try {
-      await api.put(`/api/containers/status/${cid}`, {
-        current_status: tempData.current_status,
-        derived_status: tempData.status,
-        location: tempData.location,
-        container_status: tempData.jobStatus || null,
-      });
-      showToast("Container updated successfully", "success");
-      setEditingId(null);
-      await fetchContainers();
-    } catch (err) {
-      handleError(err, "Failed to update container");
-    }
-  };
+  const handleQuickSave = useCallback(
+    async (cid) => {
+      if (!uiState.tempData.status || !uiState.tempData.location) {
+        showToast("Status and Location are required", "error");
+        return;
+      }
+      try {
+        await api.put(`/api/containers/status/${cid}`, {
+          current_status: uiState.tempData.current_status,
+          derived_status: uiState.tempData.status,
+          location: uiState.tempData.location,
+          container_status: uiState.tempData.jobStatus || null,
+        });
+        showToast("Container updated successfully", "success");
+        uiDispatch(uiActions.cancelQuickEdit());
+        await fetchContainers();
+      } catch (err) {
+        handleError(err, "Failed to update container");
+      }
+    },
+    [uiState.tempData, showToast, fetchContainers, handleError],
+  );
 
-  const handleQuickCancel = () => {
-    setEditingId(null);
-    setTempData({
-      current_status: "",
-      status: "",
-      location: "",
-      jobStatus: "",
-    });
-  };
+  const handleQuickCancel = useCallback(() => {
+    uiDispatch(uiActions.cancelQuickEdit());
+  }, []);
 
-  // ─── Mark Returned ───────────────────────────────────────────────────────
-  const markReturned = async (cid) => {
-    if (!navigator.onLine) {
-      handleError(new Error("You are offline. Please check your connection."));
-      return;
-    }
-    setLoadingReturned((prev) => ({ ...prev, [cid]: true }));
-    try {
-      await api.put(`/api/containers/${cid}`, {
-        derived_status: "Returned",
-        remarks: "Marked as returned via frontend",
-      });
-      await fetchContainers();
-      showToast("Container marked as returned successfully", "success");
-    } catch (err) {
-      handleError(err, "Failed to mark as returned");
-    } finally {
-      setLoadingReturned((prev) => ({ ...prev, [cid]: false }));
-    }
-  };
+  const markReturned = useCallback(
+    async (cid) => {
+      if (!navigator.onLine) {
+        handleError(
+          new Error("You are offline. Please check your connection."),
+        );
+        return;
+      }
+      uiDispatch(uiActions.setLoadingReturned(cid, true));
+      try {
+        await api.put(`/api/containers/${cid}`, {
+          derived_status: "Returned",
+          remarks: "Marked as returned via frontend",
+        });
+        await fetchContainers();
+        showToast("Container marked as returned successfully", "success");
+      } catch (err) {
+        handleError(err, "Failed to mark as returned");
+      } finally {
+        uiDispatch(uiActions.setLoadingReturned(cid, false));
+      }
+    },
+    [handleError, showToast, fetchContainers],
+  );
+
+  const handleSnackbarClose = useCallback(() => {
+    uiDispatch(uiActions.hideSnackbar());
+  }, []);
 
   return {
-    // State
-    filters,
-    currentPage,
-    rowsPerPage,
-    totalCount,
-    sizes,
-    types,
-    ownershipTypes,
-    filterPlace,
-    containers,
-    formData,
-    isEditing,
-    editingContainer,
-    openAddModal,
-    setOpenAddModal,
-    editingId,
-    tempData,
-    setTempData,
-    openHistoryModal,
-    setOpenHistoryModal,
-    selectedContainerNo,
-    historyCid,
-    usageHistory,
-    unassignedOrders,
-    activeHistoryTab,
-    setActiveHistoryTab,
-    loadingContainers,
-    loadingForm,
-    loadingReturned,
-    loadingOptions,
-    loadingHistory,
-    loadingUnassigned,
-    generatingPDF,
-    setGeneratingPDF,
-    error,
-    snackbar,
+    filters: dataState.filters,
+    currentPage: dataState.currentPage,
+    rowsPerPage: dataState.rowsPerPage,
+    totalCount: dataState.totalCount,
+    sizes: dataState.sizes,
+    types: dataState.types,
+    ownershipTypes: dataState.ownershipTypes,
+    filterPlace: dataState.filterPlace,
+    containers: dataState.containers,
+    formData: formState.formData,
+    isEditing: formState.isEditing,
+    editingContainer: formState.editingContainer,
+    openAddModal: formState.openAddModal,
+    openHistoryModal: historyState.openHistoryModal,
+    selectedContainerNo: historyState.selectedContainerNo,
+    historyCid: historyState.historyCid,
+    usageHistory: historyState.usageHistory,
+    unassignedOrders: historyState.unassignedOrders,
+    activeHistoryTab: historyState.activeHistoryTab,
+    loadingContainers: uiState.loadingContainers,
+    loadingForm: uiState.loadingForm,
+    loadingReturned: uiState.loadingReturned,
+    loadingOptions: uiState.loadingOptions,
+    loadingHistory: uiState.loadingHistory,
+    loadingUnassigned: uiState.loadingUnassigned,
+    generatingPDF: uiState.generatingPDF,
+    error: uiState.error,
+    snackbar: uiState.snackbar,
+    editingId: uiState.editingId,
+    tempData: uiState.tempData,
     jobStatusOptions,
-    // Helpers
+    debouncedContainerNumber,
     getPlaceName,
     showToast,
-    // Handlers
+    setOpenAddModal: (open) =>
+      open
+        ? formDispatch(formActions.openAddModal())
+        : formDispatch(formActions.closeAddModal()),
+    setOpenHistoryModal: (open) =>
+      open
+        ? historyDispatch(historyActions.openHistory("", ""))
+        : historyDispatch(historyActions.closeHistory()),
+    setActiveHistoryTab: (tab) =>
+      historyDispatch(historyActions.setActiveTab(tab)),
+    setTempData: (updater) => {
+      if (typeof updater === "function") {
+        const newData = updater(uiState.tempData);
+        Object.entries(newData).forEach(([key, value]) => {
+          uiDispatch(uiActions.updateTempData(key, value));
+        });
+      } else {
+        Object.entries(updater).forEach(([key, value]) => {
+          uiDispatch(uiActions.updateTempData(key, value));
+        });
+      }
+    },
+    setGeneratingPDF: (value) => uiDispatch(uiActions.setGeneratingPDF(value)),
+    setCurrentPage: (page) => dataDispatch(dataActions.setPage(page)),
+    setRowsPerPage: (rows) => dataDispatch(dataActions.setRowsPerPage(rows)),
     handleFilterChange,
     handleClearFilters,
     handleFormChange,
@@ -436,9 +736,7 @@ export const useContainerData = (propContainers = []) => {
     handleQuickCancel,
     markReturned,
     openHistory,
-    setCurrentPage,
-    setRowsPerPage,
-    handleSnackbarClose: () => setSnackbar((s) => ({ ...s, open: false })),
+    handleSnackbarClose,
     fetchContainers,
   };
 };
