@@ -221,16 +221,16 @@ const router = createBrowserRouter([
           </ProtectedRoute>
         ),
       },
-      {
-        path: "permissions",
-        element: (
-          <ProtectedRoute
-            permission={{ module: "permissions", action: "view" }}
-          >
-            <PermissionEditor />
-          </ProtectedRoute>
-        ),
-      },
+      // {
+      //   path: "permissions",
+      //   element: (
+      //     <ProtectedRoute
+      //       permission={{ module: "permissions", action: "view" }}
+      //     >
+      //       <PermissionEditor />
+      //     </ProtectedRoute>
+      //   ),
+      // },
 
       {
         path: "admin",

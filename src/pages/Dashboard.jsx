@@ -49,6 +49,7 @@ import {
   DirectionsBoat as DirectionsBoatIcon,
   LocationOn as LocationOnIcon,
   Notifications as NotificationsIcon,
+  Lock,
 } from "@mui/icons-material";
 import { Link as RouterLink } from "react-router-dom";
 import { useThemeContext } from "../context/ThemeContext";
@@ -97,12 +98,12 @@ export default function DashboardLayout() {
       module: "dashboard",
     },
     { label: "Users", path: "/users", icon: <PersonIcon />, module: "users" },
-    {
-      label: "Permissions",
-      path: "/permissions",
-      icon: <Lock />,
-      module: "permissions",
-    },
+    // {
+    //   label: "Permissions",
+    //   path: "/permissions",
+    //   icon: <Lock />,
+    //   module: "permissions",
+    // },
     {
       label: "Customers",
       path: "/customers",
