@@ -47,6 +47,7 @@ import autoTable from "jspdf-autotable";
 import html2canvas from "html2canvas";
 import logoPic from "../../../public/logo-2.png";
 import { AppContext } from "../../context/AppContext";
+import { useLoading } from "../../context/LoadingContext";
 
 const CustomTextField = ({ disabled, ...props }) => (
   <TextField
@@ -96,7 +97,13 @@ const CustomSelect = ({
 }) => (
   <FormControl
     size="medium"
-    sx={{ flex: 1, minWidth: 0, ...selectSx, background: "#fff" }}
+    sx={{
+      flex: 1,
+      minWidth: 0,
+      width: "100%",
+      ...selectSx,
+      background: "#fff",
+    }}
     error={error}
     required={required}
   >
@@ -109,6 +116,7 @@ const CustomSelect = ({
       {label}
     </InputLabel>
     <Select
+      fullWidth
       label={label}
       name={name}
       value={value}
@@ -145,15 +153,16 @@ const CustomSelect = ({
     </Select>
   </FormControl>
 );
+
 const OrderForm = () => {
   const { places, customers, statuses: rawStatuses } = useContext(AppContext);
+  const { isLoading, setIsLoading } = useLoading();
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewSrc, setPreviewSrc] = useState("");
   const location = useLocation();
   const navigate = useNavigate();
   const [expanded, setExpanded] = useState(new Set(["panel1"]));
   const [containers, setContainers] = useState([]);
-  const [loading, setLoading] = useState(false);
   const [loadingContainers, setLoadingContainers] = useState(false);
   const [categories, setCategories] = useState([]);
   const [categorySubMap, setCategorySubMap] = useState({});
@@ -705,7 +714,7 @@ const OrderForm = () => {
 
   const fetchOptions = async () => {
     try {
-      setLoading(true);
+      setIsLoading(true);
       const [companiesRes, categoriesRes, subcategoriesRes] = await Promise.all(
         [
           api.get("api/options/thirdParty/crud"),
@@ -763,7 +772,7 @@ const OrderForm = () => {
         { value: "Company A", label: "Company A" },
       ]);
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
@@ -852,7 +861,7 @@ const OrderForm = () => {
     }
   };
   const fetchOrder = async (id) => {
-    setLoading(true);
+    setIsLoading(true);
     try {
       const response = await api.get(`/api/orders/${id}`, {
         params: { includeContainer: true },
@@ -1073,7 +1082,7 @@ const OrderForm = () => {
       });
       if (err.response?.status === 404) navigate("/orders");
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
   const handleChange = (e) => {
@@ -2136,9 +2145,7 @@ const OrderForm = () => {
       ),
     }));
   };
-  // Frontend: handleSaveShipping function (add this to your AddOrder.jsx component)
-  // This function saves/updates shipping details for a specific receiver index without full form submission
-  // It can be called on the "Save" button click for shipping section
+
   const handleSaveShipping = async (index) => {
     if (!validateShippingDetails(index)) {
       setSnackbar({
@@ -2148,9 +2155,9 @@ const OrderForm = () => {
       });
       return;
     }
-    setLoading(true);
+    setIsLoading(true);
     const formDataToSend = new FormData();
-    // Dynamic panel2
+
     const panel2FieldPrefix =
       formData.senderType === "sender" ? "receiver" : "sender";
     const listKey = formData.senderType === "sender" ? "receivers" : "senders";
@@ -2178,9 +2185,7 @@ const OrderForm = () => {
       remarks: itemData.remarks || "",
       shipping_line: itemData.shippingLine || "",
     };
-    // Append panel2 data as JSON
     formDataToSend.append(`${panel2FieldPrefix}s`, JSON.stringify([snakeRec]));
-    // Append shipping details as order_items flat list for this item
     const orderItemsToSend = (itemData.shippingDetails || []).map((sd, j) => {
       const snakeItem = {};
       Object.keys(sd).forEach((key) => {
@@ -2193,7 +2198,6 @@ const OrderForm = () => {
       return snakeItem;
     });
     formDataToSend.append("order_items", JSON.stringify(orderItemsToSend));
-    // Append order_id for update
     formDataToSend.append("order_id", orderId);
     try {
       const response = await api.put(
@@ -2203,9 +2207,7 @@ const OrderForm = () => {
           headers: { "Content-Type": "multipart/form-data" },
         },
       );
-      // Update local formData with response if needed
       if (response.data.success) {
-        // Optionally refetch full order or update local state
         await fetchOrder(orderId);
         setSnackbar({
           open: true,
@@ -2228,10 +2230,10 @@ const OrderForm = () => {
         severity: "error",
       });
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
-  // Validation helper for shipping details (add this too)
+
   const validateShippingDetails = (index) => {
     const panel2FieldPrefix =
       formData.senderType === "sender" ? "receiver" : "sender";
@@ -2241,7 +2243,6 @@ const OrderForm = () => {
     const shippingDetails = itemData.shippingDetails || [];
     let isValid = true;
     const newErrors = { ...errors };
-    // Validate item level
     const nameField =
       formData.senderType === "sender" ? "receiverName" : "senderName";
     if (!itemData[nameField]?.trim()) {
@@ -2257,7 +2258,6 @@ const OrderForm = () => {
       newErrors[`${listKey}[${index}].etd`] = "ETD required";
       isValid = false;
     }
-    // Validate each shipping detail
     shippingDetails.forEach((sd, j) => {
       if (!sd.pickupLocation?.trim()) {
         newErrors[`${listKey}[${index}].shippingDetails[${j}].pickupLocation`] =
@@ -2285,11 +2285,6 @@ const OrderForm = () => {
         ] = "Delivery address required";
         isValid = false;
       }
-      // const totalNum = parseInt(sd.totalNumber || 0);
-      // if (!sd.totalNumber || totalNum <= 0) {
-      //     newErrors[`${listKey}[${index}].shippingDetails[${j}].totalNumber`] = 'Total number must be positive';
-      //     isValid = false;
-      // }
       const weight = parseFloat(sd.weight || 0);
       if (!sd.weight || weight <= 0) {
         newErrors[`${listKey}[${index}].shippingDetails[${j}].weight`] =
@@ -2459,9 +2454,7 @@ const OrderForm = () => {
       ),
     }));
   };
-  const handleReceiverContainersChange = (index) => (event) => {
-    // Removed containers, placeholder
-  };
+
   const handleAccordionChange = (panel) => (event, isExpanded) => {
     setExpanded((prev) => {
       const newSet = new Set(prev);
@@ -2473,6 +2466,7 @@ const OrderForm = () => {
       return newSet;
     });
   };
+
   const handleFileUpload = (e) => {
     const files = Array.from(e.target.files);
     setFormData((prev) => ({
@@ -2483,6 +2477,7 @@ const OrderForm = () => {
       ],
     }));
   };
+
   const handleGatepassUpload = (e) => {
     const files = Array.from(e.target.files);
     setFormData((prev) => ({
@@ -2495,12 +2490,11 @@ const OrderForm = () => {
   };
 
   const handleSave = async () => {
-    setLoading(true);
+    setIsLoading(true);
 
     const formDataToSend = new FormData();
     const dateFields = ["eta", "etd", "dropDate", "deliveryDate"];
 
-    // ── 1. Core Order Fields ─────────────────────────────────────
     const coreFields = {
       booking_ref: formData.bookingRef,
       rgl_booking_number: formData.rglBookingNumber,
@@ -2524,7 +2518,6 @@ const OrderForm = () => {
       }
     });
 
-    // ── 2. Sender / Owner Fields ─────────────────────────────────
     const ownerPrefix =
       formData.senderType === "sender" ? "sender" : "receiver";
     const ownerFields = [
@@ -2541,7 +2534,6 @@ const OrderForm = () => {
       formDataToSend.append(`${ownerPrefix}_${field.toLowerCase()}`, value);
     });
 
-    // ── 3. Panel 2: Receivers / Senders ──────────────────────────
     const panel2Items =
       formData.senderType === "receiver"
         ? formData.senders
@@ -2582,7 +2574,6 @@ const OrderForm = () => {
 
     formDataToSend.append(panel2ArrayKey, JSON.stringify(panel2ToSend));
 
-    // ── 4. Order Items ───────────────────────────────────────────
     const orderItemsToSend = [];
     panel2Items.forEach((item, receiverIndex) => {
       (item.shippingDetails || []).forEach((sd, j) => {
@@ -2594,7 +2585,6 @@ const OrderForm = () => {
           }
         });
 
-        // Handle container details
         snakeItem.container_details = (sd.containerDetails || []).map((cd) => {
           const snakeCd = {};
           Object.keys(cd).forEach((ck) => {
@@ -2616,7 +2606,6 @@ const OrderForm = () => {
 
     formDataToSend.append("order_items", JSON.stringify(orderItemsToSend));
 
-    // ── 5. Transport Fields ──────────────────────────────────────
     const transportFields = {
       transport_type: formData.transportType || "Drop Off",
       collection_scope: formData.collection_scope || "Partial",
@@ -2641,7 +2630,6 @@ const OrderForm = () => {
       }
     });
 
-    // ── 6. Drop Off Details (Flattened) ──────────────────────────
     const flattenedDropOffDetails = [];
 
     if (
@@ -2671,19 +2659,16 @@ const OrderForm = () => {
       JSON.stringify(flattenedDropOffDetails),
     );
 
-    // ── 7. Attachments & Gatepass ────────────────────────────────
     ["attachments", "gatepass"].forEach((key) => {
       const value = formData[key];
       if (Array.isArray(value) && value.length > 0) {
         const newFiles = value.filter((item) => item instanceof File);
         const existing = value.filter((item) => !(item instanceof File));
 
-        // Append new files
         newFiles.forEach((file) => {
           formDataToSend.append(key, file);
         });
 
-        // Append existing files metadata
         if (existing.length > 0) {
           formDataToSend.append(
             `${camelToSnake(key)}_existing`,
@@ -2728,7 +2713,7 @@ const OrderForm = () => {
         severity: "error",
       });
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
   const handleCancel = () => {
@@ -2746,7 +2731,6 @@ const OrderForm = () => {
       return false;
     }
     if (name.startsWith("receivers[") || name.startsWith("senders[")) {
-      // For new items, editable
       const match = name.match(/(receivers|senders)\[(\d+)\]\.(.+)/);
       if (match) {
         const list =
@@ -2768,7 +2752,7 @@ const OrderForm = () => {
     return !editableInEdit.includes(name);
   };
 
-  if (loading) {
+  if (isLoading) {
     return (
       <Paper sx={{ p: 3, borderRadius: 3, boxShadow: 3, bgcolor: "#fafafa" }}>
         <Stack
@@ -2803,13 +2787,6 @@ const OrderForm = () => {
             alignItems="center"
             mb={3}
             className="MuiStack-root css-twoet5"
-            // sx={{
-            //   position: "sticky",
-            //   zIndex: 9999,
-            //   top: 63,
-            //   background: "white",
-            //   p: 2,
-            // }}
           >
             <Typography variant="h4" fontWeight="bold" color="#f58220">
               {isEditMode ? "Edit" : "New"} Order Details
@@ -2833,7 +2810,7 @@ const OrderForm = () => {
                   color: "#f58220",
                   px: 3,
                 }}
-                disabled={loading}
+                disabled={isLoading}
               >
                 CANCEL
               </Button>
@@ -2847,13 +2824,12 @@ const OrderForm = () => {
                   px: 3,
                   "&:hover": { backgroundColor: "#0d6c6a" },
                 }}
-                disabled={loading}
+                disabled={isLoading}
               >
-                {loading ? "Saving..." : "SAVE"}
+                {isLoading ? "Saving..." : "SAVE"}
               </Button>
             </Stack>
           </Stack>
-          {/* Top Order Fields */}
           <Stack spacing={3} mb={4}>
             <Box
               sx={{
@@ -3159,7 +3135,7 @@ const OrderForm = () => {
                             {/* ── Panel 1 owner autocomplete (uses options2 from context) ── */}
                             <Autocomplete
                               options={options2}
-                              loading={loading}
+                              loading={isLoading}
                               freeSolo={true}
                               getOptionLabel={(option) =>
                                 typeof option === "string"
@@ -3194,7 +3170,7 @@ const OrderForm = () => {
                                   helperText={
                                     errors[ownerNameKey] ||
                                     errors.selectedSenderOwner ||
-                                    (loading ? "Loading..." : "")
+                                    (isLoading ? "Loading..." : "")
                                   }
                                   disabled={isFieldDisabled(
                                     "selectedSenderOwner",
@@ -5378,7 +5354,7 @@ const OrderForm = () => {
                             {/* ── Panel 2 receiver/sender autocomplete (uses options3 from context) ── */}
                             <Autocomplete
                               options={options3}
-                              loading={loading}
+                              loading={isLoading}
                               freeSolo={true}
                               getOptionLabel={(option) =>
                                 typeof option === "string"
@@ -5784,7 +5760,7 @@ const OrderForm = () => {
                                 </Box>
 
                                 <Grid container spacing={2}>
-                                  <Grid item xs={12} sm={6}>
+                                  <Grid size={{ xs: 12, sm: 6, md: 2 }}>
                                     <CustomSelect
                                       label="Drop Method *"
                                       value={detail.dropMethod || ""}
@@ -5808,7 +5784,7 @@ const OrderForm = () => {
                                     </CustomSelect>
                                   </Grid>
 
-                                  <Grid item xs={12} sm={6}>
+                                  <Grid size={{ xs: 12, sm: 6, md: 2 }}>
                                     <CustomTextField
                                       label="Person Name *"
                                       value={detail.dropoffName || ""}
@@ -5822,7 +5798,7 @@ const OrderForm = () => {
                                     />
                                   </Grid>
 
-                                  <Grid item xs={12} sm={6}>
+                                  <Grid size={{ xs: 12, sm: 6, md: 2 }}>
                                     <CustomTextField
                                       label="CNIC / ID"
                                       value={detail.dropOffCnic || ""}
@@ -5836,7 +5812,7 @@ const OrderForm = () => {
                                     />
                                   </Grid>
 
-                                  <Grid item xs={12} sm={6}>
+                                  <Grid size={{ xs: 12, sm: 6, md: 2 }}>
                                     <CustomTextField
                                       label="Mobile Number"
                                       value={detail.dropOffMobile || ""}
@@ -5850,7 +5826,7 @@ const OrderForm = () => {
                                     />
                                   </Grid>
 
-                                  <Grid item xs={12} sm={6}>
+                                  <Grid size={{ xs: 12, sm: 6, md: 2 }}>
                                     <CustomTextField
                                       label="Plate No (Optional)"
                                       value={detail.plateNo || ""}
@@ -5864,7 +5840,7 @@ const OrderForm = () => {
                                     />
                                   </Grid>
 
-                                  <Grid item xs={12} sm={6}>
+                                  <Grid size={{ xs: 12, sm: 6, md: 2 }}>
                                     <CustomTextField
                                       label="Drop Date"
                                       type="date"

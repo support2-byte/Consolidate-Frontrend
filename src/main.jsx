@@ -41,6 +41,7 @@ import BugReportPage from "./pages/SystemData/BugReport";
 import UsersManagement from "./pages/Admin/UserModule";
 import PermissionEditor from "./pages/Admin/PermissionEditor";
 import Unauthorized from "./pages/Unauthorized";
+import { LoadingProvider } from "./context/LoadingContext";
 
 const router = createBrowserRouter([
   { path: "/login", element: <Login /> },
@@ -333,10 +334,12 @@ const router = createBrowserRouter([
 ReactDOM.createRoot(document.getElementById("root")).render(
   <AuthProvider>
     <AppProvider>
-      <ThemeProvider>
-        <RouterProvider router={router} />
-        <ToastContainer stacked position="bottom-right" theme="dark" />
-      </ThemeProvider>
+      <LoadingProvider>
+        <ThemeProvider>
+          <RouterProvider router={router} />
+          <ToastContainer stacked position="bottom-right" theme="dark" />
+        </ThemeProvider>
+      </LoadingProvider>
     </AppProvider>
   </AuthProvider>,
 );

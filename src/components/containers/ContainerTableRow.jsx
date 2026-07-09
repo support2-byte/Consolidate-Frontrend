@@ -222,7 +222,7 @@ const ContainerTableRow = ({
                 )}
               </IconButton>
             </Tooltip>
-            <Tooltip
+            {/* <Tooltip
               title={
                 container.derived_status !== "Cleared"
                   ? "Container must be Cleared to mark Returned"
@@ -247,7 +247,7 @@ const ContainerTableRow = ({
                   Mark Returned
                 </Button>
               </span>
-            </Tooltip>
+            </Tooltip> */}
           </>
         )}
       </TableCell>

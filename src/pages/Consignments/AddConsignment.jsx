@@ -1027,6 +1027,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     };
     fetchContainers();
   }, []);
+
   useEffect(() => {
     const ids = (values.containers || [])
       .map((c) => c.id || c.cid)
@@ -4803,11 +4804,11 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
           {snackbar.message}
         </Alert>
       </Snackbar>
-      <Box sx={{ backgroundColor: "#f5f7fa", minHeight: "100vh" }}>
+      <Box sx={{ backgroundColor: "#f5f7fa", pb: 4 }}>
         <Slide in timeout={1000}>
           <Card sx={{ boxShadow: 4, borderRadius: 3, overflow: "hidden" }}>
             <form onSubmit={mode === "edit" ? handleEditCon : handleCreate}>
-              <CardContent sx={{ p: 4 }}>
+              <CardContent sx={{ p: 3 }}>
                 <Box
                   sx={{
                     display: "flex",
@@ -5464,7 +5465,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                                 values,
                                 orders,
                               )
-                            } // Fixed: Pass includedOrders
+                            }
                             disabled={saving || !values.consignment_number}
                             sx={{
                               borderColor: "#f58220",
@@ -5530,9 +5531,9 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                     </Fade>
                   </AccordionDetails>
                 </Accordion>
+
                 <Divider sx={{ my: 3 }} />
 
-                {/* Containers Section */}
                 <Accordion
                   sx={{
                     boxShadow: 2,
@@ -5753,14 +5754,13 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                     )}
                   </AccordionDetails>
                 </Accordion>
-                {/* Container Selection Modal */}
+
                 <Dialog
                   open={containerModalOpen}
                   onClose={() => setContainerModalOpen(false)}
                   maxWidth="xl"
                   fullWidth
                 >
-                  {/* <DialogTitle>Select Containers</DialogTitle> */}
                   <DialogContent>
                     {containersLoading ? (
                       <Typography>Loading containers...</Typography>
@@ -5786,7 +5786,8 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                     </Button>
                   </DialogActions>
                 </Dialog>
-                {/* <Accordion sx={{ mt: 2, boxShadow: 2, borderRadius: 2, '&:before': { display: 'none' } }}> */}
+
+                <Divider sx={{ my: 3 }} />
 
                 <Accordion
                   sx={{
@@ -5820,13 +5821,14 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
 
                   <Box
                     sx={{
+                      mt: 3,
                       display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      mb: 2,
+                      gap: 2,
+                      justifyContent: "flex-end",
+                      flexWrap: "wrap",
+                      mr: 3,
                     }}
                   >
-                    {/* Right side - Button */}
                     <Tooltip title="Download simple Shipment note as PDF">
                       <Button
                         variant="outlined"
@@ -5852,7 +5854,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                     </Tooltip>
                   </Box>
 
-                  <AccordionDetails sx={{ p: 3 }}>
+                  <AccordionDetails>
                     <TableContainer
                       component={Paper}
                       sx={{
@@ -6107,45 +6109,45 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                       }
                     }}
                   /> */}
-                  <Box
-                    sx={{
-                      display: "flex",
-                      justifyContent: "space-around",
-                      gap: 2,
-                      mb: 2,
-                    }}
-                  >
-                    <Button
-                      variant="outlined"
-                      onClick={resetForm}
-                      sx={{
-                        borderColor: "#9e9e9e",
-                        color: "#9e9e9e",
-                        "&:hover": { borderColor: "#757575" },
-                      }}
-                    >
-                      Reset
-                    </Button>
-                    <Button
-                      type="submit"
-                      variant="contained"
-                      disabled={saving}
-                      sx={{
-                        backgroundColor: "#f58220",
-                        color: "white",
-                        px: 4,
-                        "&:hover": { backgroundColor: "#e65100" },
-                      }}
-                    >
-                      {saving
-                        ? "Saving..."
-                        : mode === "edit"
-                          ? "Update Consignment"
-                          : "Add Consignment"}
-                    </Button>
-                  </Box>
                 </Accordion>
               </CardContent>
+              <Box
+                sx={{
+                  display: "flex",
+                  justifyContent: "space-around",
+                  gap: 2,
+                  mb: 2,
+                }}
+              >
+                <Button
+                  variant="outlined"
+                  onClick={resetForm}
+                  sx={{
+                    borderColor: "#9e9e9e",
+                    color: "#9e9e9e",
+                    "&:hover": { borderColor: "#757575" },
+                  }}
+                >
+                  Reset
+                </Button>
+                <Button
+                  type="submit"
+                  variant="contained"
+                  disabled={saving}
+                  sx={{
+                    backgroundColor: "#f58220",
+                    color: "white",
+                    px: 4,
+                    "&:hover": { backgroundColor: "#e65100" },
+                  }}
+                >
+                  {saving
+                    ? "Saving..."
+                    : mode === "edit"
+                      ? "Update Consignment"
+                      : "Add Consignment"}
+                </Button>
+              </Box>
             </form>
           </Card>
         </Slide>
