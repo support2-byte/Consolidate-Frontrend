@@ -44,17 +44,14 @@ import {
 import { AppContext } from "../../context/AppContext";
 import {
   Add as AddIcon,
-  Download as DownloadIcon,
   Update as UpdateIcon,
-  Visibility as VisibilityIcon,
   Edit as EditIcon,
-  Delete as DeleteIcon,
-  Info as InfoIcon,
 } from "@mui/icons-material";
+import { TimerReset } from "lucide-react";
 import dayjs from "dayjs";
-import { useNavigate } from "react-router-dom"; // Assuming React Router is used
+import { useNavigate } from "react-router-dom";
 import { styled } from "@mui/material/styles";
-import { api } from "../../api"; // Assuming api
+import { api } from "../../api";
 import EditNoteIcon from "@mui/icons-material/EditNote";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
@@ -62,8 +59,8 @@ import autoTable from "jspdf-autotable";
 import { applyPlugin } from "jspdf-autotable";
 import logoPic from "../../../public/logo.png";
 import { get } from "lodash";
+import { useLoading } from "../../context/LoadingContext";
 applyPlugin(jsPDF);
-// Assuming other imports are present: api, styled, MUI components (Paper, Table, etc.), icons, etc.
 
 // Styled components
 const StyledTableRow = styled(TableRow)(({ theme }) => ({
@@ -84,13 +81,13 @@ const StyledTableHeadCell = styled(TableCell)(({ theme }) => ({
   color: "#fff",
   fontWeight: 400,
   fontSize: 12,
-  // padding: theme.spacing(1.5, 2),
   borderBottom: `2px solid ${theme.palette.primary.dark}`,
 }));
 
 export default function Consignments() {
   const navigate = useNavigate();
   const { statuses } = useContext(AppContext);
+  const { isLoading, setIsLoading } = useLoading();
   const [consignments, setConsignments] = useState([]);
   const [orderBy, setOrderBy] = useState("created_at");
   const [order, setOrder] = useState("desc");
@@ -115,7 +112,6 @@ export default function Consignments() {
     severity: "info",
   });
   const [exporting, setExporting] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
   // Server-side params
@@ -133,7 +129,7 @@ export default function Consignments() {
   );
 
   const getConsignments = useCallback(async () => {
-    setLoading(true);
+    setIsLoading(true);
     setError(null);
     try {
       const response = await api.get("/api/consignments", { params });
@@ -150,7 +146,7 @@ export default function Consignments() {
         severity: "error",
       });
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   }, [params]);
 
@@ -268,7 +264,7 @@ export default function Consignments() {
       });
       const { message } = res.data || {};
       getConsignments();
-      setLoading(false);
+      setIsLoading(false);
 
       setSnackbar({
         open: true,
@@ -276,7 +272,7 @@ export default function Consignments() {
         severity: "success",
       });
     } catch (err) {
-      setLoading(false);
+      setIsLoading(false);
 
       console.error("Error advancing status:", err);
       setSnackbar({
@@ -423,7 +419,7 @@ export default function Consignments() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {loading ? (
+            {isLoading ? (
               <TableRow>
                 <TableCell colSpan={columns.length + 2} align="center">
                   <CircularProgress />
@@ -482,7 +478,7 @@ export default function Consignments() {
                           size="small"
                           onClick={() => handleStatusUpdate(row)}
                         >
-                          <EditNoteIcon fontSize="small" />
+                          <TimerReset fontSize="small" />
                         </IconButton>
                       </Tooltip>
                     </Stack>
@@ -510,12 +506,13 @@ export default function Consignments() {
 
       {/* Status Update Dialog */}
       <Dialog
+        fullWidth
         open={openStatusDialog}
         onClose={() => setOpenStatusDialog(false)}
       >
         <DialogTitle>Update Status</DialogTitle>
         <DialogContent>
-          <FormControl fullWidth>
+          <FormControl fullWidth sx={{ mt: 2 }}>
             <InputLabel>Status</InputLabel>
             <Select
               value={selectedStatus}
@@ -538,6 +535,7 @@ export default function Consignments() {
               handleConfirmStatusUpdate(selectedConsignmentForUpdate)
             }
             sx={{ bgcolor: "#0d6c6a", "&:hover": { bgcolor: "#0a5a59" } }}
+            disabled={isLoading}
           >
             Update
           </Button>

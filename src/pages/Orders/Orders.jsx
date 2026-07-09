@@ -68,10 +68,12 @@ import logoMFD from "../../../public/mfd-logo.png";
 import { api } from "../../api";
 import { Description } from "@mui/icons-material";
 import { AppContext } from "../../context/AppContext";
+import { useLoading } from "../../context/LoadingContext";
 
 const OrdersList = () => {
   const navigate = useNavigate();
   const { places, statuses } = useContext(AppContext);
+  const { isLoading, setIsLoading } = useLoading();
   const [orders, setOrders] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
@@ -79,7 +81,6 @@ const OrdersList = () => {
   const [documents, setDocuments] = useState([]);
   const [documentsLoading, setDocumentsLoading] = useState(false);
   const [rowsPerPage, setRowsPerPage] = useState(10);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showAllColumns, setShowAllColumns] = useState(false);
   const [loadingContainers, setLoadingContainers] = useState(false);
@@ -134,6 +135,7 @@ const OrdersList = () => {
 
     setOpenStatusDialog(true);
   };
+
   const handleCloseStatusDialog = () => {
     setOpenStatusDialog(false);
     setSelectedOrderForUpdate(null);
@@ -172,7 +174,9 @@ const OrdersList = () => {
 
     setSelectedReceiverForUpdateDetails(rec);
   };
+
   const handleConfirmStatusUpdate = async () => {
+    setIsLoading(true);
     if (
       !selectedOrderForUpdate ||
       !selectedReceiverForUpdate ||
@@ -180,7 +184,6 @@ const OrdersList = () => {
     )
       return;
     try {
-      setLoading(true);
       await api.put(
         `/api/orders/${selectedOrderForUpdate.id}/receivers/${selectedReceiverForUpdate.id}/items/${selectedReceiverForUpdateDetails.itemRef}/status`,
         {
@@ -197,7 +200,6 @@ const OrdersList = () => {
       });
       fetchOrders();
     } catch (err) {
-      setLoading(false);
       setSnackbar({
         open: true,
         message:
@@ -207,8 +209,10 @@ const OrdersList = () => {
         severity: "error",
       });
       console.error("Error updating status:", err);
+    } finally {
+      setIsLoading(true);
+      handleCloseStatusDialog();
     }
-    handleCloseStatusDialog();
   };
 
   const handleFilterChange = (e) => {
@@ -218,7 +222,7 @@ const OrdersList = () => {
   };
 
   const fetchOrders = async () => {
-    setLoading(true);
+    setIsLoading(true);
     setError(null);
 
     try {
@@ -303,7 +307,7 @@ const OrdersList = () => {
         severity: "error",
       });
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
   useEffect(() => {
@@ -1445,7 +1449,7 @@ const OrdersList = () => {
     padding: theme.spacing(1.5, 2),
     borderBottom: `2px solid ${theme.palette.primary.dark}`,
   }));
-  if (loading) {
+  if (isLoading) {
     return (
       <Paper sx={{ p: 3, borderRadius: 3, boxShadow: 3, bgcolor: "#fafafa" }}>
         <Stack
@@ -7893,7 +7897,7 @@ applicable law provides otherwise
               variant="outlined"
               startIcon={<DownloadIcon />}
               onClick={exportOrders}
-              disabled={loading || exporting || total === 0}
+              disabled={isLoading || exporting || total === 0}
               sx={{
                 borderRadius: 2,
                 borderColor: "#0d6c6a",
@@ -8270,7 +8274,7 @@ applicable law provides otherwise
                         {totalWeight.toFixed()} kg
                       </StyledTableCell>
                     </TableCell>
-                    {/* <StyledTableCell sx={{bgcolor:"#555",color:"#fff"}} >{}</StyledTableCell> */}
+
                     <StyledTableCell>
                       <Stack direction="row" spacing={0}>
                         <IconButton
@@ -8541,7 +8545,11 @@ applicable law provides otherwise
           </DialogContent>
           <DialogActions>
             <Button onClick={handleCloseStatusDialog}>Cancel</Button>
-            <Button onClick={handleConfirmStatusUpdate} variant="contained">
+            <Button
+              onClick={handleConfirmStatusUpdate}
+              disabled={isLoading}
+              variant="contained"
+            >
               Update & Notify
             </Button>
           </DialogActions>
