@@ -6,11 +6,6 @@ export const CONTAINER_STATUS_OPTIONS = [
   "Returned",
 ];
 
-export const LOCATION_OPTIONS = [
-  { value: "karachi_port", label: "Karachi Port" },
-  { value: "dubai_port", label: "Dubai Port" },
-];
-
 export const CURRENCY_OPTIONS = [
   "USD",
   "EUR",
