@@ -338,6 +338,7 @@ const OrderForm = () => {
     selectedSenderOwner: "",
     selectedReceiver: "",
     dropOffDetails: {},
+    sendEmailNotification: false,
   });
 
   const editableInEdit = [
@@ -2678,6 +2679,11 @@ const OrderForm = () => {
       }
     });
 
+    formDataToSend.append(
+      "send_email_notification",
+      formData.sendEmailNotification ? "true" : "false",
+    );
+
     try {
       const endpoint = isEditMode ? `/api/orders/${orderId}` : "/api/orders";
       const method = isEditMode ? "put" : "post";
@@ -3132,7 +3138,6 @@ const OrderForm = () => {
                               alignItems: "stretch",
                             }}
                           >
-                            {/* ── Panel 1 owner autocomplete (uses options2 from context) ── */}
                             <Autocomplete
                               options={options2}
                               loading={isLoading}
@@ -3282,6 +3287,22 @@ const OrderForm = () => {
                             helperText={errors[ownerRemarksKey]}
                             multiline
                             rows={2}
+                          />
+                          <FormControlLabel
+                            control={
+                              <Checkbox
+                                checked={!!formData.sendEmailNotification}
+                                onChange={(e) =>
+                                  handleChange({
+                                    target: {
+                                      name: "sendEmailNotification",
+                                      value: e.target.checked,
+                                    },
+                                  })
+                                }
+                              />
+                            }
+                            label={`Send email notification to ${typePrefix} after creating this order`}
                           />
                         </Stack>
                       </>
