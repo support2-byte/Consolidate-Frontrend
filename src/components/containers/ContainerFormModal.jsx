@@ -1,4 +1,4 @@
-import React, { useContext } from "react";
+import React, { useContext, useEffect } from "react";
 import {
   Box,
   Button,
@@ -53,6 +53,21 @@ const ContainerFormModal = ({
   const loadingPlaces = places?.filter((p) => p.is_loading) || [];
   const destinationPlaces = places?.filter((p) => p.is_destination) || [];
 
+  useEffect(() => {
+    if (open && !isEditing) {
+      const updates = {};
+      if (!formData.location && places?.length > 0) {
+        updates.location = places[0].name;
+      }
+      if (!formData.derived_status && CONTAINER_STATUS_OPTIONS.length > 0) {
+        updates.derived_status = CONTAINER_STATUS_OPTIONS[0];
+      }
+      Object.entries(updates).forEach(([name, value]) => {
+        onChange({ target: { name, value } });
+      });
+    }
+  }, [open, places]);
+
   return (
     <Modal open={open} onClose={onClose}>
       <Box sx={modalStyle}>
@@ -98,8 +113,7 @@ const ContainerFormModal = ({
             }}
             required
             disabled={isEditing}
-            helperText="Format: 4 letters + 7 digits (e.g., RGSLU1234567)"
-            sx={{ mb: 1 }}
+            helperText="4 letters + 7 digits (e.g., RGSLU1234567)"
           />
           <StyledSelect
             label="Derived Status"
@@ -113,9 +127,6 @@ const ContainerFormModal = ({
               </MenuItem>
             ))}
           </StyledSelect>
-        </FieldRow>
-
-        <FieldRow sx={{ mb: 1 }}>
           <StyledSelect
             label="Size"
             name="size"
@@ -144,7 +155,7 @@ const ContainerFormModal = ({
           </StyledSelect>
         </FieldRow>
 
-        <Box sx={{ mb: 1 }}>
+        <Box sx={{ my: 2 }}>
           <StyledSelect
             label="Location"
             name="location"
@@ -161,22 +172,19 @@ const ContainerFormModal = ({
 
         {isSoc && (
           <>
-            <Box sx={{ mb: 1 }}>
-              <StyledTextField
-                label="Date of Manufacture"
-                name="dateOfManufacture"
-                type="date"
-                value={formData.dateOfManufacture}
-                onChange={onChange}
-                required
-              />
-            </Box>
             <FieldRow>
               <StyledTextField
                 label="Purchase Date"
                 name="purchaseDate"
                 type="date"
                 value={formData.purchaseDate}
+                onChange={onChange}
+                required
+              />
+              <StyledTextField
+                label="Purchase From"
+                name="purchaseFrom"
+                value={formData.purchaseFrom}
                 onChange={onChange}
                 required
               />
@@ -205,11 +213,12 @@ const ContainerFormModal = ({
                 </StyledSelect>
               </Box>
             </FieldRow>
-            <FieldRow>
+            <FieldRow sx={{ mt: 2 }}>
               <StyledTextField
-                label="Purchase From"
-                name="purchaseFrom"
-                value={formData.purchaseFrom}
+                label="Date of Manufacture"
+                name="dateOfManufacture"
+                type="date"
+                value={formData.dateOfManufacture}
                 onChange={onChange}
                 required
               />
@@ -220,8 +229,6 @@ const ContainerFormModal = ({
                 onChange={onChange}
                 required
               />
-            </FieldRow>
-            <Box sx={{ mb: 1 }}>
               <StyledTextField
                 label="Available At Date"
                 name="availableAtDate"
@@ -230,7 +237,7 @@ const ContainerFormModal = ({
                 onChange={onChange}
                 required
               />
-            </Box>
+            </FieldRow>
           </>
         )}
 
@@ -253,8 +260,6 @@ const ContainerFormModal = ({
                 onChange={onChange}
                 required
               />
-            </FieldRow>
-            <FieldRow>
               <StyledTextField
                 label="Return Date"
                 name="return_date"
@@ -263,14 +268,23 @@ const ContainerFormModal = ({
                 onChange={onChange}
               />
               <StyledTextField
+                label="Free Days"
+                name="freeDays"
+                type="number"
+                value={formData.freeDays}
+                onChange={onChange}
+                required
+              />
+            </FieldRow>
+
+            <FieldRow sx={{ mt: 2 }}>
+              <StyledTextField
                 label="Vendor"
                 name="vendor"
                 value={formData.vendor}
                 onChange={onChange}
                 required
               />
-            </FieldRow>
-            <FieldRow>
               <StyledSelect
                 label="Place of Loading"
                 name="placeOfLoading"
@@ -298,14 +312,6 @@ const ContainerFormModal = ({
                   </MenuItem>
                 ))}
               </StyledSelect>
-              <StyledTextField
-                label="Free Days"
-                name="freeDays"
-                type="number"
-                value={formData.freeDays}
-                onChange={onChange}
-                required
-              />
             </FieldRow>
           </>
         )}
