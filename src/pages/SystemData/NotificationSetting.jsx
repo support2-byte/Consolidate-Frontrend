@@ -20,6 +20,7 @@ import {
   MenuItem,
   FormControl,
   Button,
+  TablePagination,
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import EmailOutlinedIcon from "@mui/icons-material/EmailOutlined";
@@ -38,6 +39,32 @@ const TABS = [
 
 const HIDDEN_COLUMNS = new Set(["id"]);
 const DATE_COLUMNS = new Set(["created_at", "updated_at", "sent_at"]);
+
+// email_queue.status
+const EMAIL_STATUS_COLORS = {
+  sent: { bg: "#e8f5e9", text: "#2e7d32" },
+  pending: { bg: "#fff3e0", text: "#ef6c00" },
+  failed: { bg: "#ffebee", text: "#c62828" },
+  default: { bg: "#f5f5f5", text: "#666" },
+};
+
+// email_queue.email_type
+const EMAIL_TYPE_COLORS = {
+  order_created: { bg: "#ede7f6", text: "#512da8" },
+  order_update: { bg: "#e1f5fe", text: "#0277bd" },
+  order_status_update: { bg: "#e1f5fe", text: "#0277bd" },
+  container_assigned: { bg: "#f3e5f5", text: "#7b1fa2" },
+  default: { bg: "#f5f5f5", text: "#666" },
+};
+
+// email_queue.recipient_type
+const RECIPIENT_TYPE_COLORS = {
+  receiver: { bg: "#fce4ec", text: "#c2185b" },
+  sender: { bg: "#f1f8e9", text: "#689f38" },
+  default: { bg: "#f5f5f5", text: "#666" },
+};
+
+const getColors = (map, key) => map[key] || map.default;
 
 const formatLabel = (key) =>
   key
@@ -59,6 +86,8 @@ const NotificationSettings = () => {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [resendingId, setResendingId] = useState(null);
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(25);
 
   const currentTab = TABS[activeTab];
   const isEmailsTab = currentTab.key === "emails";
@@ -67,7 +96,19 @@ const NotificationSettings = () => {
     fetchData(currentTab);
     setSearch("");
     setStatusFilter("all");
+    setPage(0);
   }, [activeTab]);
+
+  useEffect(() => {
+    setPage(0);
+  }, [search, statusFilter]);
+
+  const handleChangePage = (_, newPage) => setPage(newPage);
+
+  const handleChangeRowsPerPage = (e) => {
+    setRowsPerPage(parseInt(e.target.value, 10));
+    setPage(0);
+  };
 
   const fetchData = async (tab) => {
     setLoading(true);
@@ -146,6 +187,12 @@ const NotificationSettings = () => {
     return result;
   }, [rows, search, statusFilter, isEmailsTab]);
 
+  const paginatedRows = useMemo(
+    () =>
+      filteredRows.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage),
+    [filteredRows, page, rowsPerPage],
+  );
+
   const renderCell = (row, col) => {
     const value = row[col];
 
@@ -159,50 +206,54 @@ const NotificationSettings = () => {
 
     if (col === "status") {
       const status = String(value || "").toLowerCase();
-      const statusColorMap = {
-        sent: "success",
-        failed: "error",
-        pending: "warning",
-      };
+      const { bg, text } = getColors(EMAIL_STATUS_COLORS, status);
       return (
         <Chip
           label={formatLabel(status) || "—"}
           size="small"
-          color={statusColorMap[status] || "default"}
           variant="outlined"
+          sx={{
+            bgcolor: bg,
+            color: text,
+            borderColor: text,
+            fontWeight: 500,
+          }}
         />
       );
     }
 
     if (col === "email_type") {
-      const typeLabelMap = {
-        order_created: "Order Created",
-        shipment_update: "Shipment Update",
-      };
-      const label = typeLabelMap[value] || formatLabel(String(value || ""));
-
+      const type = String(value || "");
+      const { bg, text } = getColors(EMAIL_TYPE_COLORS, type);
       return (
         <Chip
-          label={label}
+          label={formatLabel(type) || "—"}
           size="small"
-          color={value === "order_created" ? "primary" : "secondary"}
           variant="outlined"
+          sx={{
+            bgcolor: bg,
+            color: text,
+            borderColor: text,
+            fontWeight: 500,
+          }}
         />
       );
     }
 
     if (col === "recipient_type") {
       const type = String(value || "").toLowerCase();
-      const recipientColorMap = {
-        sender: "info",
-        receiver: "secondary",
-      };
+      const { bg, text } = getColors(RECIPIENT_TYPE_COLORS, type);
       return (
         <Chip
           label={formatLabel(type) || "—"}
           size="small"
-          color={recipientColorMap[type] || "default"}
           variant="outlined"
+          sx={{
+            bgcolor: bg,
+            color: text,
+            borderColor: text,
+            fontWeight: 500,
+          }}
         />
       );
     }
@@ -285,55 +336,70 @@ const NotificationSettings = () => {
           No {currentTab.label.toLowerCase()} found.
         </Alert>
       ) : (
-        <TableContainer
-          component={Paper}
-          variant="outlined"
-          sx={{ overflowX: "auto" }}
-        >
-          <Table sx={{ minWidth: 900 }}>
-            <TableHead>
-              <TableRow sx={{ bgcolor: "action.hover" }}>
-                {columns.map((col) => (
-                  <TableCell key={col} sx={{ whiteSpace: "nowrap" }}>
-                    <strong>{formatLabel(col)}</strong>
+        <Paper sx={{ borderRadius: 2 }} variant="outlined">
+          <TableContainer sx={{ overflowX: "auto", borderRadius: 2 }}>
+            <Table sx={{ minWidth: 900 }}>
+              <TableHead>
+                <TableRow sx={{ bgcolor: "action.hover" }}>
+                  <TableCell sx={{ whiteSpace: "nowrap" }} width={70}>
+                    <strong>S. No</strong>
                   </TableCell>
-                ))}
-                {isEmailsTab && (
-                  <TableCell
-                    align="right"
-                    sx={{ whiteSpace: "nowrap" }}
-                    width={140}
-                  />
-                )}
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {filteredRows.map((row) => (
-                <TableRow key={row.id} hover>
                   {columns.map((col) => (
                     <TableCell key={col} sx={{ whiteSpace: "nowrap" }}>
-                      {renderCell(row, col)}
+                      <strong>{formatLabel(col)}</strong>
                     </TableCell>
                   ))}
                   {isEmailsTab && (
-                    <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        startIcon={<EmailOutlinedIcon />}
-                        disabled={resendingId === row.id}
-                        onClick={() => handleResend(row.id)}
-                      >
-                        {resendingId === row.id ? "Sending..." : "Email"}
-                      </Button>
-                    </TableCell>
+                    <TableCell
+                      align="right"
+                      sx={{ whiteSpace: "nowrap" }}
+                      width={140}
+                    />
                   )}
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+              </TableHead>
+              <TableBody>
+                {paginatedRows.map((row, idx) => (
+                  <TableRow key={row.id} hover>
+                    <TableCell sx={{ whiteSpace: "nowrap" }}>
+                      <Typography variant="body2" color="text.secondary">
+                        {page * rowsPerPage + idx + 1}
+                      </Typography>
+                    </TableCell>
+                    {columns.map((col) => (
+                      <TableCell key={col} sx={{ whiteSpace: "nowrap" }}>
+                        {renderCell(row, col)}
+                      </TableCell>
+                    ))}
+                    {isEmailsTab && (
+                      <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          startIcon={<EmailOutlinedIcon />}
+                          disabled={resendingId === row.id}
+                          onClick={() => handleResend(row.id)}
+                        >
+                          {resendingId === row.id ? "Sending..." : "Email"}
+                        </Button>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Paper>
       )}
+      <TablePagination
+        component="div"
+        count={filteredRows.length}
+        page={page}
+        onPageChange={handleChangePage}
+        rowsPerPage={rowsPerPage}
+        onRowsPerPageChange={handleChangeRowsPerPage}
+        rowsPerPageOptions={[10, 25, 50, 100]}
+      />
     </Box>
   );
 };

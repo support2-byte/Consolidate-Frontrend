@@ -8073,9 +8073,7 @@ applicable law provides otherwise
                     key="receivers"
                   >
                     Receivers & Containers
-                  </StyledTableHeadCell>, // Multiple receivers with status
-
-                  // <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="loading">POL</StyledTableHeadCell>,
+                  </StyledTableHeadCell>,
                   <StyledTableHeadCell
                     sx={{ bgcolor: "#0d6c6a", color: "#fff" }}
                     key="dest"
@@ -8226,13 +8224,11 @@ applicable law provides otherwise
                                     color: "#fff",
                                   }}
                                 >
-                                  ({order.receivers.length})
+                                  +{order.receivers.length - 1}
                                 </sup>
                               )}
                               <span style={{ padding: 0 }}>
-                                {order.receivers.map(
-                                  (r) => r.receiverName || "",
-                                )}
+                                {order.receivers[0].receiverName || ""}
                               </span>
                             </>
                           ) : (
