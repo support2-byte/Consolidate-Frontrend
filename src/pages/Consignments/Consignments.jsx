@@ -410,6 +410,9 @@ export default function Consignments() {
               <StyledTableHeadCell sx={{ width: 80 }}>
                 Orders
               </StyledTableHeadCell>
+              <StyledTableHeadCell sx={{ width: 110 }}>
+                Delivered Items
+              </StyledTableHeadCell>
               <StyledTableHeadCell sx={{ width: 130 }}>
                 Status
               </StyledTableHeadCell>
@@ -461,6 +464,9 @@ export default function Consignments() {
                   </TableCell>
                   <TableCell sx={{ fontSize: 12 }}>
                     {row.orders?.length || 0}
+                  </TableCell>
+                  <TableCell sx={{ fontSize: 12 }}>
+                    {row.delivered_items ?? 0}/{row.total_items ?? 0}
                   </TableCell>
                   <TableCell>{renderStatus(row.status)}</TableCell>
                   <TableCell>
@@ -519,11 +525,22 @@ export default function Consignments() {
               label="Status"
               onChange={(e) => setSelectedStatus(e.target.value)}
             >
-              {consignmentStatuses.map((s) => (
-                <MenuItem key={s.id} value={s.consignment_status}>
-                  {s.consignment_status}
-                </MenuItem>
-              ))}
+              {consignmentStatuses.map((s) => {
+                const isDeliveredOption = s.consignment_status === "Delivered";
+                const anyItemDelivered =
+                  Number(selectedConsignmentForUpdate?.delivered_items || 0) >
+                  0;
+
+                return (
+                  <MenuItem
+                    key={s.id}
+                    value={s.consignment_status}
+                    disabled={isDeliveredOption && anyItemDelivered}
+                  >
+                    {s.consignment_status}
+                  </MenuItem>
+                );
+              })}
             </Select>
           </FormControl>
         </DialogContent>

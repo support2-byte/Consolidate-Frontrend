@@ -43,6 +43,7 @@ const EMPTY_FORM = {
   consignment_status: "",
   days_offset: 0,
   status: true,
+  send_email: false,
 };
 
 const initialState = {
@@ -188,6 +189,21 @@ export default function StatusesPage() {
     }
   };
 
+  const handleToggleField = async (row, field) => {
+    const updatedRow = { ...row, [field]: !row[field] };
+    dispatch({ type: "UPDATE_ROW", payload: updatedRow });
+    try {
+      const { data } = await api.put(`/api/options/toggleSendEmail/${row.id}`, {
+        [field]: !row[field],
+      });
+      dispatch({ type: "UPDATE_ROW", payload: data.status });
+      toast.success("Email notifications Enabled");
+    } catch (error) {
+      dispatch({ type: "UPDATE_ROW", payload: row });
+      toast.error(`Failed to toggle ${field}.`);
+    }
+  };
+
   const handleAdd = async () => {
     dispatch({ type: "SET_SAVING", payload: true });
     try {
@@ -311,6 +327,12 @@ export default function StatusesPage() {
                   <TableCell sx={{ color: "white", fontWeight: 600 }}>
                     Status
                   </TableCell>
+                  <TableCell
+                    sx={{ color: "white", fontWeight: 600 }}
+                    align="center"
+                  >
+                    Send Email
+                  </TableCell>
                   <TableCell sx={{ color: "white", fontWeight: 600 }}>
                     Days Offset
                   </TableCell>
@@ -352,7 +374,10 @@ export default function StatusesPage() {
                         onEdit={(r) =>
                           dispatch({ type: "OPEN_EDIT", payload: r })
                         }
-                        onToggle={handleToggle}
+                        onToggle={(r) => handleToggleField(r, "status")}
+                        onToggleSendEmail={(r) =>
+                          handleToggleField(r, "send_email")
+                        }
                         onDelete={(r) =>
                           dispatch({ type: "SET_DELETE_ROW", payload: r })
                         }

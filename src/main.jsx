@@ -42,6 +42,7 @@ import UsersManagement from "./pages/Admin/UserModule";
 import PermissionEditor from "./pages/Admin/PermissionEditor";
 import Unauthorized from "./pages/Unauthorized";
 import { LoadingProvider } from "./context/LoadingContext";
+import OrderTrackingPage from "./pages/OrderTrackingPage";
 
 const router = createBrowserRouter([
   { path: "/login", element: <Login /> },
@@ -189,6 +190,17 @@ const router = createBrowserRouter([
         element: (
           <ProtectedRoute permission={{ module: "tracking", action: "view" }}>
             <TrackingPage />
+          </ProtectedRoute>
+        ),
+      },
+
+      {
+        path: "tracking-history",
+        element: (
+          <ProtectedRoute
+            permission={{ module: "order-tracking", action: "view" }}
+          >
+            <OrderTrackingPage />
           </ProtectedRoute>
         ),
       },
