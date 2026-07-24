@@ -14,7 +14,13 @@ import { useSortable } from "@dnd-kit/sortable";
 const TEAL = "#1a7a6e";
 const TEAL_LIGHT = "#e8f5f3";
 
-export function SortableRow({ row, onEdit, onToggle, onDelete }) {
+export function SortableRow({
+  row,
+  onEdit,
+  onToggle,
+  onToggleSendEmail,
+  onDelete,
+}) {
   const {
     attributes,
     listeners,
@@ -68,6 +74,21 @@ export function SortableRow({ row, onEdit, onToggle, onDelete }) {
             border: "none",
           }}
         />
+      </TableCell>
+      <TableCell align="center">
+        <Tooltip title={row.send_email ? "Disable email" : "Enable email"}>
+          <Switch
+            checked={!!row.send_email}
+            onChange={() => onToggleSendEmail(row)}
+            size="small"
+            sx={{
+              "& .MuiSwitch-switchBase.Mui-checked": { color: TEAL },
+              "& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track": {
+                bgcolor: TEAL,
+              },
+            }}
+          />
+        </Tooltip>
       </TableCell>
       <TableCell sx={{ color: "#888" }}>{row.days_offset}</TableCell>
       <TableCell align="right">

@@ -34,6 +34,7 @@ import {
   Logout as LogoutIcon,
   Dashboard as DashboardIcon,
   TrackChanges as TrackChangesIcon,
+  History as HistoryIcon,
   LocalShipping as LocalShippingIcon,
   ShoppingCart as ShoppingCartIcon,
   People as PeopleIcon,
@@ -147,6 +148,12 @@ export default function DashboardLayout() {
       module: "tracking",
     },
     {
+      label: "Tracking History",
+      path: "/tracking-history",
+      icon: <HistoryIcon />,
+      module: "order-tracking",
+    },
+    {
       label: "Notifications",
       path: "/notifications",
       icon: <NotificationsIcon />,
@@ -229,7 +236,7 @@ export default function DashboardLayout() {
       >
         <Box
           component="img"
-          src={mode === "dark" ? "/logo-dark.png" : "/logo.png"}
+          src={mode === "dark" ? "/logo.png" : "/logo-2.png"}
           alt="logo"
           sx={{
             width: collapsed ? 48 : 180,

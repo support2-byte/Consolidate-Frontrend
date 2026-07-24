@@ -729,6 +729,7 @@ const AssignModal = ({
           <TableCell>{rec.id || "—"}</TableCell>
           <TableCell>{fullRec.receiver_name || "—"}</TableCell>
           <TableCell>{fullOrder.booking_ref || "—"}</TableCell>
+          <TableCell>{fullOrder.rgl_booking_number || "—"}</TableCell>
           <TableCell>
             <Tooltip title={address}>
               <span>
@@ -865,6 +866,7 @@ const AssignModal = ({
                   <TableCell>ID</TableCell>
                   <TableCell>Receiver</TableCell>
                   <TableCell>Booking Ref</TableCell>
+                  <TableCell>Form No</TableCell>
                   <TableCell>Address</TableCell>
                   <TableCell>Contact</TableCell>
                   <TableCell>Email</TableCell>

@@ -183,8 +183,10 @@ const CustomSelect = ({
               typeof opt === "object"
                 ? (opt.label ?? opt.value ?? opt.name ?? "")
                 : opt;
+            const safeDisabled =
+              typeof opt === "object" ? !!opt.disabled : false; // NEW
             return (
-              <MenuItem key={safeKey} value={safeValue}>
+              <MenuItem key={safeKey} value={safeValue} disabled={safeDisabled}>
                 {safeText}
               </MenuItem>
             );
@@ -239,6 +241,8 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
   const [saving, setSaving] = useState(false);
   const { consignmentId: urlConsignmentId } = useParams();
   const location = useLocation();
+
+  const [clearedItemIds, setClearedItemIds] = useState(new Set());
 
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
@@ -375,7 +379,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     }
   };
 
-  // === Load All Options + ETA Config ===
   useEffect(() => {
     const initData = async () => {
       try {
@@ -397,7 +400,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
           api.get("api/options/currencies"),
         ]);
 
-        // Process options...
         const third_parties = thirdPartiesRes?.data?.third_parties || [];
         const banks = banksRes?.data?.banks || [];
 
@@ -459,6 +461,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
             "code",
             "name",
           ),
+
           statusOptions: (statuses || [])
             .filter((s) => s.consignment_status)
             .sort((a, b) => a.sorting_number - b.sorting_number)
@@ -568,7 +571,8 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                 ? "Hired"
                 : c?.ownership || "",
           containerType: c?.containerType || c?.container_type || "",
-          status: c?.status || c?.current_status || "Pending",
+          status:
+            c?.assignment_status || c?.status || c?.current_status || "Pending",
           id: c?.id || c?.cid,
         })),
       };
@@ -1226,16 +1230,8 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     api,
     values.origin,
     values.destination,
-    // setSnackbar,
-    // setOrders,
-    // setOrderTotal,
-    // setOrdersLoading,
   ]);
 
-  // ────────────────────────────────────────────────────────────────
-  // Flatten shipments: one row = one container assignment
-  // Recalculate whenever orders change
-  // ────────────────────────────────────────────────────────────────
   const flatShipments = React.useMemo(() => {
     return orders.flatMap((order) =>
       (order.receivers || []).flatMap((receiver) =>
@@ -1271,26 +1267,48 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     );
   }, [orders]);
 
-  const handleRemoveShipment = (shipment) => {
-    setOrders((prev) =>
-      prev.map((order) => ({
-        ...order,
-        receivers: (order.receivers || []).map((receiver) => ({
-          ...receiver,
-          shippingdetails: (receiver.shippingdetails || []).map((detail) => ({
-            ...detail,
-            containerDetails: (detail.containerDetails || []).filter(
-              (cd) =>
-                !(
-                  order.id === shipment.orderId &&
-                  detail.id === shipment.shippingDetailId &&
-                  cd.container?.cid === shipment.containerCid
-                ),
-            ),
-          })),
-        })),
-      })),
+  const hasDeliveredShipment = useMemo(() => {
+    return orders.some((order) =>
+      (order.receivers || []).some((receiver) =>
+        (receiver.shippingdetails || []).some(
+          (detail) => detail.status === "Shipment Delivered",
+        ),
+      ),
     );
+  }, [orders]);
+
+  const handleRemoveShipment = (shipment) => {
+    setOrders((prev) => {
+      const updated = prev
+        .map((order) => ({
+          ...order,
+          receivers: (order.receivers || []).map((receiver) => ({
+            ...receiver,
+            shippingdetails: (receiver.shippingdetails || [])
+              .map((detail) => {
+                if (detail.id !== shipment.shippingDetailId) return detail;
+                const remaining = (detail.containerDetails || []).filter(
+                  (cd) => cd.container?.cid !== shipment.containerCid,
+                );
+                return { ...detail, containerDetails: remaining };
+              })
+              .filter((detail) => (detail.containerDetails || []).length > 0),
+          })),
+        }))
+        .map((order) => ({
+          ...order,
+          receivers: (order.receivers || []).filter(
+            (r) => (r.shippingdetails || []).length > 0,
+          ),
+        }))
+        .filter((order) => (order.receivers || []).length > 0);
+
+      setClearedItemIds((prevSet) =>
+        new Set(prevSet).add(shipment.shippingDetailId),
+      );
+
+      return updated;
+    });
   };
 
   const PrettyList = ({ receivers, title }) => {
@@ -1305,11 +1323,9 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
           backgroundColor: "#fafafa",
           width: 600,
           boxShadow: "none",
-          // '&:hover': { boxShadow: '0 2px 8px rgba(0,0,0,0.08)' },
         }}
       >
         <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
-          {/* Title */}
           <Box
             sx={{
               display: "flex",
@@ -1339,7 +1355,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
             />
           </Box>
 
-          {/* Receivers List */}
           <Stack spacing={1} sx={{ maxHeight: "auto", overflow: "auto" }}>
             {receivers?.length > 0 ? (
               receivers.map((receiver, rIdx) => (
@@ -1546,7 +1561,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
           : container.owner_type === "coc"
             ? "Hired"
             : container.owner_type,
-      status: container.status || container.current_status || "Available",
+      status: container.assignment_status,
       id: container.cid,
     }));
 
@@ -1998,6 +2013,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         containers: uniqueContainers,
         orders: uniqueOrderIds,
         assignments: assignments,
+        cleared_item_ids: [...clearedItemIds],
         total_assigned_weight: calculatedTotals.totalAssignedWeight || 0,
 
         user_id,
@@ -4915,22 +4931,29 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                             value={values.status}
                             onChange={handleStatusChange}
                             label="Status"
-                            options={
-                              mode === "add"
-                                ? [{ value: "Draft", label: "Draft" }]
-                                : values.status &&
-                                    !(options.statusOptions || []).some(
-                                      (o) => o.value === values.status,
-                                    )
-                                  ? [
-                                      {
-                                        value: values.status,
-                                        label: values.status,
-                                      },
-                                      ...(options.statusOptions || []),
-                                    ]
-                                  : options.statusOptions || []
-                            }
+                            options={(mode === "add"
+                              ? [{ value: "Draft", label: "Draft" }]
+                              : values.status &&
+                                  !(options.statusOptions || []).some(
+                                    (o) => o.value === values.status,
+                                  )
+                                ? [
+                                    {
+                                      value: values.status,
+                                      label: values.status,
+                                    },
+                                    ...(options.statusOptions || []),
+                                  ]
+                                : options.statusOptions || []
+                            ).map((opt) =>
+                              opt.value === "Delivered"
+                                ? {
+                                    ...opt,
+                                    disabled: hasDeliveredShipment,
+                                    label: "Delivered",
+                                  }
+                                : opt,
+                            )}
                             disabled={mode === "add"}
                             error={touched.status && Boolean(errors.status)}
                             helperText={

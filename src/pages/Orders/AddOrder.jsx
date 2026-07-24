@@ -254,6 +254,7 @@ const OrderForm = () => {
     qtyDelivered: "",
     status: "",
     remarks: "",
+    sendEmailNotification: true,
   };
   const initialReceiver = {
     receiverName: "",
@@ -269,6 +270,7 @@ const OrderForm = () => {
     status: "Created",
     remarks: "",
     isNew: false,
+    sendEmailNotification: true,
   };
 
   const [formData, setFormData] = useState({
@@ -338,6 +340,7 @@ const OrderForm = () => {
     selectedSenderOwner: "",
     selectedReceiver: "",
     dropOffDetails: {},
+    sendEmailNotification: true,
   });
 
   const editableInEdit = [
@@ -440,12 +443,10 @@ const OrderForm = () => {
     }
   };
 
-  // Helper to convert snake_case to camelCase
   const snakeToCamel = (str) =>
     str.replace(/(_[a-z])/g, (g) => g[1].toUpperCase());
-  // Helper to convert camelCase to snake_case
   const camelToSnake = (str) => str.replace(/([A-Z])/g, "_$1").toLowerCase();
-  // Add these functions
+
   const updateDropOffField = (entryIndex, field, value) => {
     const receiverIndex = formData.selectedReceiverForDropOff;
     setFormData((prev) => {
@@ -957,7 +958,6 @@ const OrderForm = () => {
 
       camelData.selectedSenderOwner = orderData.selected_sender_owner || "";
 
-      // ── Process Receivers + Drop-off Details + ShippingDetails ─────
       const rawReceivers = orderData.receivers || [];
       const panel2Prefix =
         camelData.senderType === "sender" ? "receiver" : "sender";
@@ -966,13 +966,12 @@ const OrderForm = () => {
 
       const mappedReceivers = rawReceivers.map((rec, index) => {
         const camelRec = {
-          ...initialReceiver, // or initialSenderObject depending on type
+          ...initialReceiver,
           id: rec.id,
           shippingDetails: [],
           isNew: false,
         };
 
-        // Basic receiver fields
         Object.keys(rec).forEach((apiKey) => {
           const camelKey = snakeToCamel(apiKey);
           let val = rec[apiKey];
@@ -2199,6 +2198,7 @@ const OrderForm = () => {
     });
     formDataToSend.append("order_items", JSON.stringify(orderItemsToSend));
     formDataToSend.append("order_id", orderId);
+
     try {
       const response = await api.put(
         `/api/orders/${orderId}/shipping`,
@@ -2570,6 +2570,7 @@ const OrderForm = () => {
       status: item.status || firstStatus?.order_status,
       remarks: item.remarks || "",
       containers: Array.isArray(item.containers) ? item.containers.flat() : [],
+      send_email_notification: item.sendEmailNotification !== false,
     }));
 
     formDataToSend.append(panel2ArrayKey, JSON.stringify(panel2ToSend));
@@ -2677,6 +2678,11 @@ const OrderForm = () => {
         }
       }
     });
+
+    formDataToSend.append(
+      "send_email_notification",
+      formData.sendEmailNotification ? "true" : "false",
+    );
 
     try {
       const endpoint = isEditMode ? `/api/orders/${orderId}` : "/api/orders";
@@ -3030,7 +3036,6 @@ const OrderForm = () => {
 
                     const handleOwnerNameChange = (event, newValue) => {
                       if (typeof newValue === "string") {
-                        // Manual entry or existing value
                         handleChange({
                           target: { name: ownerNameKey, value: newValue },
                         });
@@ -3132,7 +3137,6 @@ const OrderForm = () => {
                               alignItems: "stretch",
                             }}
                           >
-                            {/* ── Panel 1 owner autocomplete (uses options2 from context) ── */}
                             <Autocomplete
                               options={options2}
                               loading={isLoading}
@@ -3282,6 +3286,22 @@ const OrderForm = () => {
                             helperText={errors[ownerRemarksKey]}
                             multiline
                             rows={2}
+                          />
+                          <FormControlLabel
+                            control={
+                              <Checkbox
+                                checked={!!formData.sendEmailNotification}
+                                onChange={(e) =>
+                                  handleChange({
+                                    target: {
+                                      name: "sendEmailNotification",
+                                      value: e.target.checked,
+                                    },
+                                  })
+                                }
+                              />
+                            }
+                            label={`Send email notification to ${typePrefix} after creating this order`}
                           />
                         </Stack>
                       </>
@@ -4281,7 +4301,23 @@ const OrderForm = () => {
                               helperText={errors[`${listKey}[${i}].etd`]}
                             />
                           </Box>
-                          {/* Shipping Details Forms */}
+                          <FormControlLabel
+                            control={
+                              <Checkbox
+                                checked={rec.sendEmailNotification !== false}
+                                onChange={(e) =>
+                                  handleChangeFn(
+                                    i,
+                                    "sendEmailNotification",
+                                  )({ target: { value: e.target.checked } })
+                                }
+                                disabled={isFieldDisabled(
+                                  `${recDisabledPrefix}.sendEmailNotification`,
+                                )}
+                              />
+                            }
+                            label={`Send email notification to this ${typePrefix} for this order`}
+                          />
                           {(rec.shippingDetails || []).length === 0 ? (
                             <Box
                               sx={{

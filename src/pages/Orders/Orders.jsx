@@ -109,6 +109,8 @@ const OrdersList = () => {
   const [containers, setContainers] = useState([]);
   const [selectedContainer, setSelectedContainer] = useState("");
 
+  const [docDataLoading, setDocDataLoading] = useState(false);
+
   const [openDirectAssign, setOpenDirectAssign] = useState(false);
   const [directSelectedContainers, setDirectSelectedContainers] =
     useState(null);
@@ -163,6 +165,50 @@ const OrdersList = () => {
       });
     } catch (err) {
       console.error("Copy failed:", err);
+    }
+  };
+
+  const handleDocumentClick = async (action, docName) => {
+    const generator = DOCUMENT_GENERATORS[docName];
+    if (!generator) {
+      setSnackbar({
+        open: true,
+        message: "Document template not found",
+        severity: "warning",
+      });
+      return;
+    }
+    if (!tempOrderId) {
+      setSnackbar({
+        open: true,
+        message: "No order selected",
+        severity: "warning",
+      });
+      return;
+    }
+
+    setDocDataLoading(true);
+    try {
+      const { data } = await api.get(`/api/orders/pdf-data/${tempOrderId}`);
+      const html = generator(data);
+
+      console.log({ html });
+
+      const w = window.open("", "_blank");
+      w.document.write(html);
+      w.document.close();
+      if (action === "print") {
+        w.onload = () => w.print();
+      }
+    } catch (err) {
+      console.error("Error generating document:", err);
+      setSnackbar({
+        open: true,
+        message: err.response?.data?.error || "Failed to generate document",
+        severity: "error",
+      });
+    } finally {
+      setDocDataLoading(false);
     }
   };
 
@@ -1485,28 +1531,21 @@ const OrdersList = () => {
   const numSelected = selectedOrders.length;
   const rowCount = orders.length;
 
-  const getReceiverAddress = (orderData) => {
-    if (orderData.receivers && orderData.receivers.length > 0) {
-      const firstReceiver = orderData.receivers[0];
-      return firstReceiver.receiveraddress || null;
-    }
-    return null;
-  };
-
-  // Helper function to get receiver name
   const getReceiverName = (orderData) => {
     if (orderData.receivers && orderData.receivers.length > 0) {
-      const firstReceiver = orderData.receivers[0];
-      return firstReceiver.receiverName || null;
+      return orderData.receivers[0].receiverName || null;
     }
     return null;
   };
-
-  // Helper function to get receiver email
+  const getReceiverAddress = (orderData) => {
+    if (orderData.receivers && orderData.receivers.length > 0) {
+      return orderData.receivers[0].receiverAddress || null;
+    }
+    return null;
+  };
   const getReceiverEmail = (orderData) => {
     if (orderData.receivers && orderData.receivers.length > 0) {
-      const firstReceiver = orderData.receivers[0];
-      return firstReceiver.receiveremail || null;
+      return orderData.receivers[0].receiverEmail || null;
     }
     return null;
   };
@@ -1524,107 +1563,73 @@ const OrdersList = () => {
     }
   };
 
-  // Helper function to extract all unique containers from order data
   function extractContainers(orderData) {
     const containers = [];
-
-    if (orderData.receivers && orderData.receivers.length > 0) {
-      orderData.receivers.forEach((receiver) => {
-        if (receiver.containers && receiver.containers.length > 0) {
-          receiver.containers.forEach((container) => {
-            if (!containers.includes(container)) {
-              containers.push(container);
-            }
-          });
-        }
-
-        if (receiver.shippingdetails && receiver.shippingdetails.length > 0) {
-          receiver.shippingdetails.forEach((detail) => {
-            if (detail.containerDetails && detail.containerDetails.length > 0) {
-              detail.containerDetails.forEach((containerDetail) => {
-                const containerNum =
-                  containerDetail.container?.container_number ||
-                  containerDetail.container_number;
-                if (containerNum && !containers.includes(containerNum)) {
-                  containers.push(containerNum);
-                }
-              });
-            }
-          });
-        }
+    (orderData.receivers || []).forEach((receiver) => {
+      (receiver.shippingdetails || []).forEach((detail) => {
+        (detail.containerAssignments || []).forEach((a) => {
+          if (a.container_number && !containers.includes(a.container_number)) {
+            containers.push(a.container_number);
+          }
+        });
       });
-    }
-
+      if (containers.length === 0 && receiver.containers?.length) {
+        receiver.containers.forEach((c) => {
+          if (!containers.includes(c)) containers.push(c);
+        });
+      }
+    });
     if (containers.length === 0) {
       containers.push(orderData.associated_container || "_________");
     }
-
     return containers;
   }
 
-  // Helper function to get data specific to a container
   function getContainerData(orderData, containerNumber) {
     const containerData = {
       ...orderData,
       container_number: containerNumber,
       orders: [],
     };
-
-    if (orderData.receivers && orderData.receivers.length > 0) {
-      orderData.receivers.forEach((receiver) => {
-        if (receiver.shippingdetails && receiver.shippingdetails.length > 0) {
-          receiver.shippingdetails.forEach((detail) => {
-            if (detail.containerDetails && detail.containerDetails.length > 0) {
-              detail.containerDetails.forEach((containerDetail) => {
-                const detailContainerNum =
-                  containerDetail.container?.container_number ||
-                  containerDetail.container_number;
-
-                if (detailContainerNum === containerNumber) {
-                  containerData.orders.push({
-                    orderRef:
-                      detail.itemRef || receiver.receiverref || "ORDER-REF",
-                    quantity:
-                      containerDetail.total_number || detail.totalNumber || 0,
-                    weight: containerDetail.assign_weight || detail.weight || 0,
-                  });
-                }
-              });
-            }
+    (orderData.receivers || []).forEach((receiver) => {
+      (receiver.shippingdetails || []).forEach((detail) => {
+        const assignmentsForThisContainer = (
+          detail.containerAssignments || []
+        ).filter((a) => a.container_number === containerNumber);
+        if (assignmentsForThisContainer.length > 0) {
+          assignmentsForThisContainer.forEach((a) => {
+            containerData.orders.push({
+              orderRef: detail.itemRef || orderData.booking_ref || "_________",
+              itemName: detail.itemName || "",
+              quantity: a.assigned_qty || 0,
+              weight: a.assigned_weight_kg || 0,
+            });
           });
         }
       });
-    }
-
+    });
     if (containerData.orders.length === 0) {
+      const firstDetail = orderData.receivers?.[0]?.shippingdetails?.[0];
       containerData.orders.push({
         orderRef: orderData.booking_ref || "_________",
-        quantity: orderData.total_assigned_qty || 0,
-        weight: orderData.weight || 0,
+        itemName: firstDetail?.itemName || "",
+        quantity: firstDetail?.totalNumber || 0,
+        weight: firstDetail?.weight || 0,
       });
     }
-
     return containerData;
   }
 
-  // Generate HTML rows for the orders table
   function generateOrderRows(containerData) {
     if (!containerData.orders || containerData.orders.length === 0) {
-      return `
-            <tr>
-                <td>_________</td>
-                <td>_________</td>
-                <td>_________</td>
-            </tr>
-        `;
+      return `<tr><td>_________</td><td>_________</td><td>_________</td><td>_________</td></tr>`;
     }
-
-    // Since we're now sending only one order per page, this will always be a single row
     return containerData.orders
       .map(
         (order) => `
         <tr>
             <td>${order.orderRef || "_________"}</td>
+            <td>${order.itemName || "_________"}</td>
             <td>${order.quantity || "_________"}</td>
             <td>${order.weight || "_________"}</td>
         </tr>
@@ -1634,38 +1639,22 @@ const OrdersList = () => {
   }
 
   function getContainerCategory(containerData) {
+    const blank = "_________________";
     if (!containerData.receivers || containerData.receivers.length === 0) {
-      return containerData.category || "___TEXTILE_____________";
+      return containerData.category || blank;
     }
-
-    // Loop through receivers to find category for this container
     for (const receiver of containerData.receivers) {
-      if (receiver.shippingdetails && receiver.shippingdetails.length > 0) {
-        for (const detail of receiver.shippingdetails) {
-          if (detail.containerDetails && detail.containerDetails.length > 0) {
-            for (const containerDetail of detail.containerDetails) {
-              const detailContainerNum =
-                containerDetail.container?.container_number ||
-                containerDetail.container_number;
-
-              if (detailContainerNum === containerData.container_number) {
-                // Return the category from shipping detail
-                return (
-                  detail.category ||
-                  detail.subcategory ||
-                  "___TEXTILE_____________"
-                );
-              }
-            }
+      for (const detail of receiver.shippingdetails || []) {
+        for (const a of detail.containerAssignments || []) {
+          if (a.container_number === containerData.container_number) {
+            return detail.itemName || blank;
           }
         }
       }
     }
-
-    return containerData.category || "___TEXTILE_____________";
+    return containerData.category || blank;
   }
 
-  // Generate a single page for a container
   function generateContainerPage(containerData, pageNumber, totalPages) {
     return `
     <div class="page">
@@ -1731,11 +1720,7 @@ const OrdersList = () => {
             <div class="content-margin">
                 <table>
                     <thead>
-                        <tr>
-                            <th>Order No</th>
-                            <th>Qty / Pkgs</th>
-                            <th>Weight (kg)</th>
-                        </tr>
+                        <tr><th>Order No</th><th>Item Name</th><th>Qty / Pkgs</th><th>Weight (kg)</th></tr>
                     </thead>
                     <tbody>
                         ${generateOrderRows(containerData)}
@@ -2039,37 +2024,32 @@ const OrdersList = () => {
       safeOrder.sender_name ||
       "Company Name / Individual Name";
 
-    // Calculate total packages from shipping details
     const calculateTotalPackages = () => {
       if (!safeOrder.receivers || !Array.isArray(safeOrder.receivers)) {
-        return safeOrder.total_packages || "123";
+        return safeOrder.total_packages || 0;
       }
-
       let total = 0;
       safeOrder.receivers.forEach((receiver) => {
-        if (
-          receiver.shippingdetails &&
-          Array.isArray(receiver.shippingdetails)
-        ) {
-          receiver.shippingdetails.forEach((detail) => {
-            total += parseInt(detail.totalNumber) || 0;
-          });
-        }
+        (receiver.shippingdetails || []).forEach((detail) => {
+          total += parseInt(detail.totalNumber) || 0;
+        });
       });
-      return total || "123";
+      return total;
     };
 
-    // Get goods description
     const getGoodsDescription = () => {
       if (safeOrder.goods_description) return safeOrder.goods_description;
-
-      // Try to get from first shipping detail
-      if (safeOrder.receivers && safeOrder.receivers[0]?.shippingdetails?.[0]) {
-        const detail = safeOrder.receivers[0].shippingdetails[0];
-        return `${detail.category || "TEXTILE"} ${detail.subcategory || ""}`.trim();
-      }
-
-      return "TEXTILE";
+      const categories = new Set();
+      (safeOrder.receivers || []).forEach((r) => {
+        (r.shippingdetails || []).forEach((d) => {
+          const label = [d.category, d.subcategory]
+            .filter(Boolean)
+            .join(" ")
+            .trim();
+          if (label) categories.add(label);
+        });
+      });
+      return categories.size ? Array.from(categories).join(", ") : "";
     };
 
     const totalPackages = calculateTotalPackages();
@@ -2221,7 +2201,7 @@ const OrdersList = () => {
         <div style="margin-bottom: 20px;">
             <div style="font-family: Arial; font-size: 15.0px; color: #000000; line-height: 1.6; margin-bottom: 10px;">
                 3. FURTHER UNDERTAKE THAT THIS CONSIGNMENT CONTAIN ONLY
-                <span style="font-weight: bold; font-family: Arial; font-size: 13.6px; color: #ff0000; text-decoration: underline;">${getSafeValue(goodsDescription, "__TEXTILE_____________")}</span>
+                <span style="font-weight: bold; font-family: Arial; font-size: 13.6px; color: #ff0000; text-decoration: underline;">${getSafeValue(goodsDescription, "_________________")}</span>
                 AND DOES NOT CONTAIN ANY CONTRABAND NARCOTIC / DRUGS ETC., AND UNDERTAKE TO BE FULLY HELD GOOD OWNER RESPONSIBLE IF FOUND IN THE CONSIGNMENT AT ANY STAGE.
             </div>
         </div>
@@ -2255,7 +2235,7 @@ const OrdersList = () => {
             </tr>
             <tr>
                 <td style="padding: 2px 0; vertical-align: top;">Name</td>
-                <td style="padding: 2px 0; vertical-align: top;">: ${getReceiverName(safeOrder)} ( ${new Date().toLocaleString()} ) , ${getReceiverEmail(safeOrder)}</td>
+                <td style="padding: 2px 0; vertical-align: top;">: ${getReceiverName(safeOrder)}</td>
             </tr>
         </table>
 
@@ -2563,7 +2543,10 @@ const OrdersList = () => {
                         ${
                           shippingDetails.length
                             ? shippingDetails
-                                .map((d) => d.category || d.subcategory)
+                                .map(
+                                  (d) =>
+                                    d.itemName || d.subcategory || d.category,
+                                )
                                 .filter(Boolean)
                                 .join(", ")
                             : ""
@@ -2807,9 +2790,9 @@ applicable law provides otherwise
         <div style="text-align: right; margin-bottom: 20px;">
             <div style="font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 5px;">${getSafeValue(senderCompany)}</div>
             <div style="font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 5px;">${getSafeValue(senderAddress)}</div>
-            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">Trade Liceness #: ${getSafeValue(senderPassport)}</div>
+            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">Trade Liceness #: ${getSafeValue(trade_license)}</div>
             <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">Passport No: ${getSafeValue(senderPassport)}</div>
-            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">Emirates ID #: ${getSafeValue(senderPassport)}</div>
+            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">Emirates ID #: ${getSafeValue(senderEmiratesID)}</div>
             <div style="font-family: Arial; font-size: 14.1px; color: #ff0000;">Tel #: ${getSafeValue(senderPhone)}</div>
         </div>
 
@@ -2901,7 +2884,7 @@ applicable law provides otherwise
             </tr>
             <tr>
                 <td style="padding: 2px 0; vertical-align: top;">Name</td>
-                <td style="padding: 2px 0; vertical-align: top;">: ${getReceiverName(safeOrder)} ( ${new Date().toLocaleString()} ) , ${getReceiverEmail(safeOrder)}</td>
+                <td style="padding: 2px 0; vertical-align: top;">: ${getReceiverName(safeOrder)}</td>
             </tr>
         </table>
 
@@ -3107,7 +3090,7 @@ applicable law provides otherwise
 
         <!-- Point 2 -->
         <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 20px; text-align: justify;">
-            2. We hereby agree that "<span style="color: #ff0000;">XYZ Exporter</span> & their agents" Cargo Aviation Systems (Pvt) Ltd, are only a Warehousing & Distribution agents on behalf our ourselves to arrange the transport and clearance of the subject shipment and holds no responsibility in event of any prohibited goods, drugs or narcotics found in the consignment at any point of inspection/examination by ports/customs authorities while in process of shipping and clearance.
+            2. We hereby agree that "<span style="color: #ff0000;">${getSafeValue(senderCompany)}</span> & their agents" Cargo Aviation Systems (Pvt) Ltd, are only a Warehousing & Distribution agents on behalf our ourselves to arrange the transport and clearance of the subject shipment and holds no responsibility in event of any prohibited goods, drugs or narcotics found in the consignment at any point of inspection/examination by ports/customs authorities while in process of shipping and clearance.
         </div>
 
         <!-- Point 3 -->
@@ -3150,7 +3133,7 @@ applicable law provides otherwise
             </tr>
             <tr>
                 <td style="padding: 2px 0; vertical-align: top;">Name</td>
-                <td style="padding: 2px 0; vertical-align: top;">: ${getReceiverName(safeOrder)} ( ${new Date().toLocaleString()} ) , ${getReceiverEmail(safeOrder)}</td>
+                <td style="padding: 2px 0; vertical-align: top;">: ${getReceiverName(safeOrder)}</td>
             </tr>
         </table>
     </div>
@@ -3396,7 +3379,7 @@ applicable law provides otherwise
             </tr>
             <tr>
                 <td style="padding: 2px 0; vertical-align: top;">Name</td>
-                <td style="padding: 2px 0; vertical-align: top;">: ${getReceiverName(safeOrder)} ( ${new Date().toLocaleString()} ) , ${getReceiverEmail(safeOrder)}</td>
+                <td style="padding: 2px 0; vertical-align: top;">: ${getReceiverName(safeOrder)}</td>
             </tr>
         </table>
     </div>
@@ -3646,7 +3629,7 @@ applicable law provides otherwise
             </tr>
             <tr>
                 <td style="padding: 2px 0; vertical-align: top;">Name</td>
-                <td style="padding: 2px 0; vertical-align: top;">: ${getReceiverName(safeOrder)} ( ${new Date().toLocaleString()} ) , ${getReceiverEmail(safeOrder)}</td>
+                <td style="padding: 2px 0; vertical-align: top;">: ${getReceiverName(safeOrder)}</td>
             </tr>
         </table>
 
@@ -3901,7 +3884,7 @@ applicable law provides otherwise
             </tr>
             <tr>
                 <td style="padding: 2px 0; vertical-align: top;">Name</td>
-                <td style="padding: 2px 0; vertical-align: top;">: ${getReceiverName(safeOrder)} ( ${new Date().toLocaleString()} ) , ${getReceiverEmail(safeOrder)}</td>
+                <td style="padding: 2px 0; vertical-align: top;">: ${getReceiverName(safeOrder)}</td>
             </tr>
         </table>
 
@@ -4159,7 +4142,7 @@ applicable law provides otherwise
             </tr>
             <tr>
                 <td style="padding: 2px 0; vertical-align: top;">Name</td>
-                <td style="padding: 2px 0; vertical-align: top;">: ${getReceiverName(safeOrder)} ( ${new Date().toLocaleString()} ) , ${getReceiverEmail(safeOrder)}</td>
+                <td style="padding: 2px 0; vertical-align: top;">: ${getReceiverName(safeOrder)}</td>
             </tr>
         </table>
 
@@ -4174,26 +4157,23 @@ applicable law provides otherwise
   };
 
   const WHARFAGEConsignmentsNote = (orderData) => {
-    // Default values if orderData is missing
     const safeOrder = orderData || {};
 
-    // Helper function to safely get values
+    const c = safeOrder.consignment || {};
+
     const getSafeValue = (value, defaultValue = "_________________") => {
       return value && value !== "" && value !== null && value !== undefined
         ? value
         : defaultValue;
     };
 
-    // Get first receiver
     const firstReceiver =
       safeOrder.receivers && safeOrder.receivers.length > 0
         ? safeOrder.receivers[0]
         : {};
 
-    // Get shipping details
     const shippingDetails = firstReceiver.shippingdetails || [];
 
-    // Get container details with their weights
     const getContainerDetails = () => {
       const containerList = [];
       if (firstReceiver.containers && firstReceiver.containers.length > 0) {
@@ -4201,7 +4181,6 @@ applicable law provides otherwise
           let totalQty = 0;
           let totalWeight = 0;
 
-          // Find all shipping details for this container
           shippingDetails.forEach((detail) => {
             if (detail.containerDetails) {
               detail.containerDetails.forEach((cd) => {
@@ -4466,7 +4445,7 @@ applicable law provides otherwise
          <div class="top-boxes">
             <div class="box">
                 <div class="box-label">Custom CRN or Customs Machine number</div>
-                <div class="box-content">${getSafeValue(safeOrder.customs_crn)}</div>
+                <div class="box-content">${getSafeValue(c.customs_crn)}</div>
             </div>
             <div class="box">
                 <div class="box-label">
@@ -4493,14 +4472,14 @@ applicable law provides otherwise
             </div>
             <div class="box">
                 <div class="box-label">Seal No</div>
-                <div class="box-content">${getSafeValue(safeOrder.seal_no)}</div>
+                <div class="box-content">${getSafeValue(c.seal_no || safeOrder.seal_no)}</div>
             </div>
         </div>
 
         <div class="details-grid">
-            <div><strong>VESSEL:</strong> ${getSafeValue(safeOrder.consignment_vessel)}</div>
-            <div><strong>Voyage:</strong> ${getSafeValue(safeOrder.consignment_voyage)}</div>
-            <div><strong>SHIPPING LINE:</strong> ${getSafeValue(safeOrder.shipping_line)}</div>
+            <div><strong>VESSEL:</strong> ${getSafeValue(c.vessel)}</div>
+            <div><strong>Voyage:</strong> ${getSafeValue(c.voyage)}</div>
+            <div><strong>SHIPPING LINE:</strong> ${getSafeValue(c.shipping_line_name)}</div>
 
             <div><strong>Dest:</strong> ${getPlaceName(getSafeValue(safeOrder.final_destination))}</div>
             <div><strong>Shipper:</strong> ${getSafeValue(firstReceiver.receiverName)}</div>
@@ -4616,12 +4595,10 @@ applicable law provides otherwise
       totalWeight += parseFloat(item.weight || 0);
     });
 
-    // If no shipping details, use receiver totals
     if (shippingDetails.length === 0) {
       totalQty =
         parseInt(receiver.totalnumber || 0) ||
-        parseInt(orderData.total_assigned_qty || 0); // Fixed: totalnumber
-      totalWeight = parseFloat(receiver.totalweight || 0); // Fixed: totalweight
+        parseInt(orderData.total_assigned_qty || 0);
     }
 
     // Get container info
@@ -5063,29 +5040,28 @@ applicable law provides otherwise
       totalQty += parseInt(item.totalNumber || 0);
     });
 
-    // If no shipping details, use receiver totals
     if (shippingDetails.length === 0) {
       totalQty =
         parseInt(receiver.totalnumber || 0) ||
-        parseInt(orderData.total_assigned_qty || 425);
+        parseInt(orderData.total_assigned_qty || 0);
     }
 
-    // Get container info for marks
     const containers = receiver.containers || [];
     const containerInfo =
       containers.length > 0 ? containers.join(", ") : "ABC XYZ";
 
-    // Get category/description
     const getDescription = () => {
       if (shippingDetails.length > 0) {
         return (
-          shippingDetails[0].category || shippingDetails[0].subcategory || ""
+          shippingDetails[0].itemName ||
+          shippingDetails[0].subcategory ||
+          shippingDetails[0].category ||
+          ""
         );
       }
       return "";
     };
 
-    // Get order number/item reference
     const getOrderNo = () => {
       if (shippingDetails.length > 0 && shippingDetails[0].itemRef) {
         return shippingDetails[0].itemRef;
@@ -5416,11 +5392,10 @@ applicable law provides otherwise
       totalQty += parseInt(item.totalNumber || 0);
     });
 
-    // If no shipping details, use receiver totals
     if (shippingDetails.length === 0) {
       totalQty =
         parseInt(receiver.totalnumber || 0) ||
-        parseInt(orderData.total_assigned_qty || 425);
+        parseInt(orderData.total_assigned_qty || 0);
     }
 
     // Get container info for marks
@@ -5755,9 +5730,9 @@ applicable law provides otherwise
         ? orderData.receivers[0]
         : {};
     const receiverName = receiver.receiverName || "";
-    const receiverContact = receiver.receivercontact || "";
-    const receiverAddress = receiver.receiveraddress || "";
-    const receiverEmail = receiver.receiveremail || "";
+    const receiverContact = receiver.receiverContact || "";
+    const receiverAddress = receiver.receiverAddress || "";
+    const receiverEmail = receiver.receiverEmail || "";
 
     // Get shipping details
     const shippingDetails = receiver.shippingdetails || [];
@@ -5769,11 +5744,10 @@ applicable law provides otherwise
       totalQty += parseInt(item.totalNumber || 0);
     });
 
-    // If no shipping details, use receiver totals
     if (shippingDetails.length === 0) {
       totalQty =
         parseInt(receiver.totalnumber || 0) ||
-        parseInt(orderData.total_assigned_qty || 425);
+        parseInt(orderData.total_assigned_qty || 0);
     }
 
     // Get container info for marks
@@ -6013,12 +5987,12 @@ applicable law provides otherwise
             <tr class="red-text">
                 <td>
                     Either of the Party from<br>sender or receiver paying the Invoice<br>
-                    <span style="color: black;">Attn: ${senderName.split(" ")[0] || "AFZAL"}</span><br>
+                    <span style="color: black;">Attn: ${senderName.split(" ")[0] || ""}</span><br>
                     Tel: ${senderContact}
                 </td>
                 <td>
                     Individual or company suppose to be the<br>recipient of the consignment<br>
-                    <span style="color: black;">Attn: ${receiverName.split(" ")[0] || "Abbas"}</span><br>
+                    <span style="color: black;">Attn: ${receiverName.split(" ")[0] || ""}</span><br>
                     Tel: ${receiverContact}
                 </td>
             </tr>
@@ -6073,8 +6047,8 @@ applicable law provides otherwise
         ? orderData.receivers[0]
         : {};
     const receiverName = getValue(receiver.receiverName);
-    const receiverContact = getValue(receiver.receivercontact);
-    const receiverAddress = getValue(receiver.receiveraddress);
+    const receiverContact = getValue(receiver.receiverContact);
+    const receiverAddress = getValue(receiver.receiverAddress);
 
     // Get shipping details
     const shippingDetails = receiver.shippingdetails || [];
@@ -6123,15 +6097,14 @@ applicable law provides otherwise
       return sum;
     }, 0);
 
-    // Get vessel name
-    const vesselName = getValue(orderData.consignment_vessel);
-    const voyageNo = getValue(orderData.consignment_voyage);
+    const vesselName = getValue(orderData.consignment?.vessel);
+    const voyageNo = getValue(orderData.consignment?.voyage);
+
     const vesselVoyage =
       vesselName && voyageNo
         ? `${vesselName} / ${voyageNo}`
         : vesselName || voyageNo || "";
 
-    // Get container count
     const containerCount = containers.length
       ? `${containers.length}X40'HC`
       : "";
@@ -6341,7 +6314,10 @@ applicable law provides otherwise
                         ${
                           shippingDetails.length
                             ? shippingDetails
-                                .map((d) => d.category || d.subcategory)
+                                .map(
+                                  (d) =>
+                                    d.itemName || d.subcategory || d.category,
+                                )
                                 .filter(Boolean)
                                 .join(", ")
                             : ""
@@ -6445,37 +6421,44 @@ applicable law provides otherwise
         : "";
     };
 
-    // Format current date
+    const consignment = orderData.consignment || {};
+
     const currentDate = new Date().toLocaleDateString("en-GB", {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
     });
 
-    // Extract data from order object
-    const senderName = getValue(orderData.sender_name);
-    const senderAddress = getValue(orderData.sender_address);
-    const senderContact = getValue(orderData.sender_contact);
+    const senderName = getValue(
+      consignment.shipper?.company_name || orderData.sender_name,
+    );
+    const senderAddress = getValue(
+      consignment.shipper?.address || orderData.sender_address,
+    );
+    const senderContact = getValue(
+      consignment.shipper?.contact_phone || orderData.sender_contact,
+    );
 
-    // Get first receiver data
     const receiver =
       orderData.receivers && orderData.receivers[0]
         ? orderData.receivers[0]
         : {};
-    const receiverName = getValue(receiver.receiverName);
-    const receiverContact = getValue(receiver.receivercontact);
-    const receiverAddress = getValue(receiver.receiveraddress);
+    const receiverName = getValue(
+      consignment.consignee?.company_name || receiver.receiverName,
+    );
+    const receiverContact = getValue(
+      consignment.consignee?.contact_phone || receiver.receiverContact,
+    );
+    const receiverAddress = getValue(
+      consignment.consignee?.address || receiver.receiverAddress,
+    );
 
-    // Get shipping details
-    const shippingDetails = receiver.shippingdetails || [];
+    const shippingDetails =
+      receiver.shippingdetails || receiver.shippingDetails || [];
+    const containers = consignment.containers || receiver.containers || [];
 
-    // Get container details
-    const containers = receiver.containers || [];
-
-    // Build container rows for table
     const getContainerRows = () => {
       if (!shippingDetails.length) return "";
-
       let rows = "";
       shippingDetails.forEach((detail) => {
         if (detail.containerDetails && detail.containerDetails.length) {
@@ -6484,12 +6467,10 @@ applicable law provides otherwise
               containerDetail.container?.container_number ||
               containerDetail.container_number ||
               "";
-            const sealNo = ""; // Seal no not in API
             const pkgs = containerDetail.total_number || "";
             const grossWt = containerDetail.assign_weight
               ? `${containerDetail.assign_weight} KGS`
               : "";
-
             if (containerNum) {
               rows += `<tr><td>${containerNum} / 40'HC</td><td></td><td>${pkgs} PKG</td><td></td><td>${grossWt}</td></tr>`;
             }
@@ -6499,7 +6480,6 @@ applicable law provides otherwise
       return rows;
     };
 
-    // Calculate total packages
     const totalPkgs = shippingDetails.reduce((sum, detail) => {
       if (detail.containerDetails) {
         return (
@@ -6513,319 +6493,154 @@ applicable law provides otherwise
       return sum;
     }, 0);
 
-    // Get vessel name
-    const vesselName = getValue(orderData.consignment_vessel);
-    const voyageNo = getValue(orderData.consignment_voyage);
-    const vesselVoyage =
-      vesselName && voyageNo
-        ? `${vesselName} / ${voyageNo}`
-        : vesselName || voyageNo || "";
+    const vesselVoyage = consignment.vessel_name
+      ? `${consignment.vessel_name}${consignment.voyage ? " / " + consignment.voyage : ""}`
+      : "";
 
-    // Get container count
     const containerCount = containers.length
       ? `${containers.length}X40'HC`
       : "";
 
     return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Bill of Lading - Royal Gulf</title>
-        <style>
-            body {
-                font-family: Arial, Helvetica, sans-serif;
-                font-size: 10px;
-                margin: 0;
-                padding: 20px;
-                background-color: #f0f0f0;
-            }
-            .bl-container {
-                width: 800px;
-                margin: 0 auto;
-                background-color: #fff;
-                padding: 10px;
-                border: 1px solid #ccc;
-                position: relative;
-                min-height: 1050px;
-            }
-            .header {
-                display: flex;
-                justify-content: space-between;
-                align-items: flex-start;
-                margin-bottom: 10px;
-            }
-            .logo-section {
-                display: flex;
-                align-items: center;
-            }
-            .mfd-logo img {
-                width: 180px;
-                height: auto;
-            }
-            .company-name {
-                font-size: 16px;
-                font-weight: bold;
-                color: #2b3a67;
-            }
-            .bl-title {
-                text-align: right;
-                line-height: 1.2;
-            }
-            .bl-title h1 {
-                font-size: 18px;
-                margin: 0;
-            }
-            .grid-container {
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                border-top: 1px solid #000;
-                border-left: 1px solid #000;
-            }
-            .cell {
-                border-right: 1px solid #000;
-                border-bottom: 1px solid #000;
-                padding: 4px;
-                min-height: 40px;
-            }
-            .label {
-                font-size: 8px;
-                color: #555;
-                display: block;
-                margin-bottom: 2px;
-            }
-            .content {
-                font-weight: bold;
-                text-transform: uppercase;
-                white-space: pre-line;
-            }
-            .full-width {
-                grid-column: span 2;
-            }
-            .four-cols {
-                display: grid;
-                grid-template-columns: 1fr 1fr 1fr 1fr;
-            }
-            .description-area {
-                min-height: 300px;
-                padding: 15px;
-                border-left: 1px solid #000;
-                border-right: 1px solid #000;
-                position: relative;
-            }
-            .table-data {
-                width: 100%;
-                border-collapse: collapse;
-                margin-top: 20px;
-            }
-            .table-data th {
-                text-align: left;
-                font-size: 9px;
-                border-bottom: 1px solid #000;
-                padding: 5px;
-            }
-            .table-data td {
-                padding: 5px;
-                font-weight: bold;
-            }
-            .footer {
-                margin-top: 10px;
-                border-top: 2px solid #000;
-                padding-top: 10px;
-            }
-            .red-bar {
-                height: 10px;
-                background-color: #e63946;
-                margin-top: 20px;
-            }
-            .empty-placeholder {
-                height: 20px;
-            }
-        </style>
-    </head>
-    <body>
+  <!DOCTYPE html>
+  <html>
+  <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Bill of Lading - Royal Gulf</title>
+      <style>
+          body { font-family: Arial, Helvetica, sans-serif; font-size: 10px; margin: 0; padding: 20px; background-color: #f0f0f0; }
+          .bl-container { width: 800px; margin: 0 auto; background-color: #fff; padding: 10px; border: 1px solid #ccc; position: relative; min-height: 1050px; }
+          .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+          .logo-section { display: flex; align-items: center; }
+          .mfd-logo img { width: 180px; height: auto; }
+          .company-name { font-size: 16px; font-weight: bold; color: #2b3a67; }
+          .bl-title { text-align: right; line-height: 1.2; }
+          .bl-title h1 { font-size: 18px; margin: 0; }
+          .grid-container { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid #000; border-left: 1px solid #000; }
+          .cell { border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px; min-height: 40px; }
+          .label { font-size: 8px; color: #555; display: block; margin-bottom: 2px; }
+          .content { font-weight: bold; text-transform: uppercase; white-space: pre-line; }
+          .full-width { grid-column: span 2; }
+          .four-cols { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; }
+          .description-area { min-height: 300px; padding: 15px; border-left: 1px solid #000; border-right: 1px solid #000; position: relative; }
+          .table-data { width: 100%; border-collapse: collapse; margin-top: 20px; }
+          .table-data th { text-align: left; font-size: 9px; border-bottom: 1px solid #000; padding: 5px; }
+          .table-data td { padding: 5px; font-weight: bold; }
+          .red-bar { height: 10px; background-color: #e63946; margin-top: 20px; }
+      </style>
+  </head>
+  <body>
+  <div class="bl-container">
+      <div class="header">
+          <div class="logo-section">
+              <div class="mfd-logo"><img src="${logoPic}" alt="Royal Gulf"></div>
+              <div class="company-name">ROYAL GULF SHIPPING & LOGISTICS LLC</div>
+          </div>
+          <div class="bl-title">
+              <h1>Bill of Lading</h1>
+              <div>Multimodal Transport<br>or Port-to-Port Shipment</div>
+          </div>
+      </div>
 
-    <div class="bl-container">
-        <div class="header">
-            <div class="logo-section">
-                <div class="mfd-logo"><img src="${logoPic}" alt="Royal Gulf"></div>
-                <div class="company-name">ROYAL GULF SHIPPING & LOGISTICS LLC</div>
-            </div>
-            <div class="bl-title">
-                <h1>Bill of Lading</h1>
-                <div>Multimodal Transport<br>or Port-to-Port Shipment</div>
-            </div>
-        </div>
+      <div class="grid-container">
+          <div class="cell">
+              <span class="label">Shipper</span>
+              <div class="content">
+                  ${senderName ? `${senderName}<br>` : ""}
+                  ${senderAddress ? senderAddress.replace(/, /g, ",<br>") + "<br>" : ""}
+                  ${senderContact ? `Tel: ${senderContact}` : ""}
+              </div>
+          </div>
+          <div class="cell">
+              <span class="label">B/L No.</span>
+              <div class="content" style="font-size: 14px;">${getValue(orderData.booking_ref)}</div>
+          </div>
+          <div class="cell">
+              <span class="label">Consignee</span>
+              <div class="content">
+                  ${receiverName ? `${receiverName}<br>` : ""}
+                  ${receiverAddress ? receiverAddress.replace(/, /g, ",<br>") + "<br>" : ""}
+                  ${receiverContact ? `Tel: ${receiverContact}` : ""}
+              </div>
+          </div>
+          <div class="cell"><span class="label">Export Reference / Forwarding Agent</span><div class="content"></div></div>
+          <div class="cell">
+              <span class="label">Notify Party</span>
+              <div class="content">
+                  ${receiverName ? `${receiverName}<br>` : ""}
+                  ${receiverAddress ? receiverAddress.replace(/, /g, ",<br>") + "<br>" : ""}
+              </div>
+          </div>
+          <div class="cell"><span class="label">Destination Agent</span><div class="content"></div></div>
+      </div>
 
-        <div class="grid-container">
-            <div class="cell">
-                <span class="label">Shipper</span>
-                <div class="content">
-                    ${senderName ? `${senderName}<br>` : ""}
-                    ${senderAddress ? senderAddress.replace(/, /g, ",<br>") + "<br>" : ""}
-                    ${senderContact ? `Tel: ${senderContact}` : ""}
-                </div>
-            </div>
-            <div class="cell">
-                <span class="label">B/L No. (also to be used as payment ref.)</span>
-                <div class="content" style="font-size: 14px;">${getValue(orderData.booking_ref)}</div>
-            </div>
+      <div class="grid-container" style="border-top: none;">
+          <div class="four-cols full-width">
+              <div class="cell"><span class="label">Port of Loading</span><div class="content">${getPlaceName(orderData.place_of_loading)}</div></div>
+              <div class="cell"><span class="label">Pre-carriage by</span><div class="content"></div></div>
+              <div class="cell"><span class="label">Ocean Vessel / Voyage</span><div class="content">${vesselVoyage}</div></div>
+              <div class="cell"><span class="label">Freight payable at</span><div class="content"></div></div>
+          </div>
+          <div class="four-cols full-width">
+              <div class="cell"><span class="label">Place of Receipt</span><div class="content"></div></div>
+              <div class="cell"><span class="label">Port of Discharge</span><div class="content">${getPlaceName(orderData.place_of_delivery)}</div></div>
+              <div class="cell"><span class="label">Place of Delivery</span><div class="content">${getPlaceName(orderData.place_of_delivery)}</div></div>
+              <div class="cell"><span class="label">Final Destination</span><div class="content">${getPlaceName(orderData.place_of_delivery)}</div></div>
+          </div>
+      </div>
 
-            <div class="cell">
-                <span class="label">Consignee</span>
-                <div class="content">
-                    ${receiverName ? `${receiverName}<br>` : ""}
-                    ${receiverAddress ? receiverAddress.replace(/, /g, ",<br>") + "<br>" : ""}
-                    ${receiverContact ? `Tel: ${receiverContact}` : ""}
-                </div>
-            </div>
-            <div class="cell">
-                <span class="label">Export Reference / Forwarding Agent</span>
-                <div class="content"></div>
-            </div>
+      <div class="description-area">
+          <div style="display: flex; justify-content: space-between;">
+              <div style="width: 20%;">
+                  <span class="label">Marks & Nos. / No of Pkgs</span>
+                  <div class="content" style="margin-top: 20px;">${totalPkgs ? totalPkgs + " PKGS" : ""}</div>
+              </div>
+              <div style="width: 30%;">
+                  <span class="label">Description of Goods</span>
+                  <div class="content" style="margin-top: 20px;">
+    ${shippingDetails
+      .map((d) => d.itemName || d.subcategory || d.category)
+      .filter(Boolean)
+      .join(", ")}
+</div>
+              </div>
+              <div style="width: 20%; text-align: right;">
+                  <span class="label">Gross Weight</span>
+                  <div class="content" style="margin-top: 20px;">
+                      ${consignment.gross_weight ? consignment.gross_weight + " KGS" : ""}
+                  </div>
+              </div>
+          </div>
+          ${
+            getContainerRows()
+              ? `
+          <table class="table-data">
+              <thead><tr><th>CONTAINER NO. SIZE</th><th>SEAL NO.</th><th>PKGS</th><th>NET WT</th><th>GROSS WT</th></tr></thead>
+              <tbody>${getContainerRows()}</tbody>
+          </table>`
+              : ""
+          }
+      </div>
 
-            <div class="cell">
-                <span class="label">Notify Party</span>
-                <div class="content">
-                    ${receiverName ? `${receiverName}<br>` : ""}
-                    ${receiverAddress ? receiverAddress.replace(/, /g, ",<br>") + "<br>" : ""}
-                    ${receiverContact ? `Tel: ${receiverContact}` : ""}
-                </div>
-            </div>
-            <div class="cell">
-                <span class="label">Destination Agent</span>
-                <div class="content"></div>
-            </div>
-        </div>
+      <div class="grid-container">
+          <div class="cell"><span class="label">Freight Details</span><div class="content"></div></div>
+          <div class="cell"><span class="label">Total Number of Pkgs</span><div class="content">${containerCount}</div></div>
+      </div>
 
-        <div class="grid-container" style="border-top: none;">
-            <div class="four-cols full-width">
-                <div class="cell"><span class="label">Port of Loading</span><div class="content">${getPlaceName(orderData.place_of_loading) || getValue(orderData.place_of_loading)}</div></div>
-                <div class="cell"><span class="label">Pre-carriage by</span><div class="content"></div></div>
-                <div class="cell"><span class="label">Ocean Vessel / Voyage</span><div class="content">${vesselVoyage}</div></div>
-                <div class="cell"><span class="label">Freight payable at</span><div class="content"></div></div>
-            </div>
-            <div class="four-cols full-width">
-                <div class="cell"><span class="label">Place of Receipt</span><div class="content"></div></div>
-                <div class="cell"><span class="label">Port of Discharge</span><div class="content">${getPlaceName(orderData.final_destination) || getValue(orderData.final_destination)}</div></div>
-                <div class="cell"><span class="label">Place of Delivery</span><div class="content">${getPlaceName(orderData.final_destination) || getValue(orderData.final_destination)}</div></div>
-                <div class="cell"><span class="label">Final Destination</span><div class="content">${getPlaceName(orderData.final_destination) || getValue(orderData.final_destination)}</div></div>
-            </div>
-        </div>
-
-        <div class="description-area">
-            <div style="display: flex; justify-content: space-between;">
-                <div style="width: 20%;">
-                    <span class="label">Marks & Nos. / No of Pkgs</span>
-                    <div class="content" style="margin-top: 20px;">${totalPkgs ? totalPkgs + " PKGS" : ""}</div>
-                </div>
-                <div style="width: 30%; text-align: left;">
-                    <span class="label">Description of Goods</span>
-                    <div class="content" style="margin-top: 20px; text-decoration: underline;">
-                        ${containers.length ? containers.length + "X40'HC FCL CONTAINER SAID TO CONTAIN" : ""}
-                    </div>
-                    <div class="content" style="margin-top: 10px;">
-                        ${containers.length ? containers.length + "X40'HC CONTAINER" : ""}<br>
-                        ${totalPkgs ? "STC " + totalPkgs + " PACKAGES" : ""}<br>
-                        ${
-                          shippingDetails.length
-                            ? shippingDetails
-                                .map((d) => d.category || d.subcategory)
-                                .filter(Boolean)
-                                .join(", ")
-                            : ""
-                        }
-                    </div>
-                    <div class="content" style="margin-top: 30px; font-size: 11px;">
-                        ALL SORT OF DESTINATION CHARGES ON CONSIGNEE'S ACCOUNT
-                    </div>
-                </div>
-                <div style="width: 20%; text-align: right;">
-                    <span class="label">Gross Weight / Measurement</span>
-                    <div class="content" style="margin-top: 20px;">
-                        ${
-                          shippingDetails.reduce(
-                            (sum, d) => sum + (parseFloat(d.weight) || 0),
-                            0,
-                          )
-                            ? "GROSS WT<br>" +
-                              shippingDetails
-                                .reduce(
-                                  (sum, d) => sum + (parseFloat(d.weight) || 0),
-                                  0,
-                                )
-                                .toFixed(2) +
-                              " KGS"
-                            : ""
-                        }
-                    </div>
-                    <div class="content" style="margin-top: 40px;">CY/CY</div>
-                </div>
-            </div>
-
-            ${
-              getContainerRows()
-                ? `
-            <table class="table-data">
-                <thead>
-                    <tr>
-                        <th>CONTAINER NO. SIZE</th>
-                        <th>SEAL NO.</th>
-                        <th>PKGS</th>
-                        <th>NET WT</th>
-                        <th>GROSS WT</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${getContainerRows()}
-                </tbody>
-            </table>
-            `
-                : ""
-            }
-            <div style="display: flex;justify-content: end;">
-                    <p style="width: 200px;padding: 5px;border: 2px solid #000;font-size: 8px;font-weight: bold;">
-                        All Terminal Charges & Demurrage Etc at the port of Discharge/ Destination as per line's tariff & At the Account of Consignee.
-                    </p>
-            </div>
-        </div>
-
-        
-
-        <div class="grid-container">
-            <div class="cell"><span class="label">Freight Details</span><div class="content"></div></div>
-            <div class="cell"><span class="label">Total Number of Pkgs</span><div class="content">${containerCount}</div></div>
-        </div>
-
-        <div style="margin-top: 20px; display: flex; justify-content: space-between;">
-            <div style="width: 60%;">
-                <p style="font-size: 7px;">RECEIVED for shpment specified above in apparent good order and condition unless otherwise stated
-The Gods to be delivered at above mentioned Port of Discharge or Place of Delivery, whichever applies
-SUBJECT TO Terms and Conditions contained on reverse side hereof, to which Merchant agrees by
-accepting this Bill of Lading
-IN WITNESS WHEREOF the number of onginal Bills of lading stated on this side next to this clause
-have been signed, one of which being accomplished, the others to stand void, unless compulsorily
-applicable law provides otherwise
-*Applicable only when used for MULTI MODAL TRANSPORTATION.</p>
-                <div class="content" style="margin-top: 10px;">LONDON , ${currentDate}</div>
-            </div>
-            <div style="text-align: right; width: 40%;">    
-                <div class="content" style="margin-top: 10px;">
-                    MESSIAH FREIGHT &<br>DISTRIBUTORS UK LTD
-                </div>
-            </div>
-        </div>
-
-        <div class="red-bar"></div>
-        <div style="text-align: right; font-weight: bold; color: #2b3a67; font-size: 12px; margin-top: 5px;">
-            MESSIAH FREIGHT & DISTRIBUTORS UK LTD
-        </div>
-    </div>
-
-    </body>
-    </html>
-    `;
+      <div style="margin-top: 20px; display: flex; justify-content: space-between;">
+          <div style="width: 60%;">
+              <div class="content" style="margin-top: 10px;">Karachi , ${currentDate}</div>
+          </div>
+          <div style="text-align: right; width: 40%;">
+              <div class="content" style="margin-top: 10px;">ROYAL GULF SHIPPING<br>& LOGISTICS LLC</div>
+          </div>
+      </div>
+      <div class="red-bar"></div>
+  </div>
+  </body>
+  </html>
+  `;
   };
 
   const KYCDubaiCompany = (orderData) => {
@@ -6853,8 +6668,8 @@ applicable law provides otherwise
         ? orderData.receivers[0]
         : {};
     const receiverName = getValue(receiver.receiverName);
-    const receiverContact = getValue(receiver.receivercontact);
-    const receiverAddress = getValue(receiver.receiveraddress);
+    const receiverContact = getValue(receiver.receiverContact);
+    const receiverAddress = getValue(receiver.receiverAddress);
 
     // Get shipping details
     const shippingDetails = receiver.shippingdetails || [];
@@ -7063,8 +6878,8 @@ applicable law provides otherwise
         ? orderData.receivers[0]
         : {};
     const receiverName = getValue(receiver.receiverName);
-    const receiverContact = getValue(receiver.receivercontact);
-    const receiverAddress = getValue(receiver.receiveraddress);
+    const receiverContact = getValue(receiver.receiverContact);
+    const receiverAddress = getValue(receiver.receiverAddress);
 
     // Get shipping details
     const shippingDetails = receiver.shippingdetails || [];
@@ -7273,8 +7088,8 @@ applicable law provides otherwise
         ? orderData.receivers[0]
         : {};
     const receiverName = getValue(receiver.receiverName);
-    const receiverContact = getValue(receiver.receivercontact);
-    const receiverAddress = getValue(receiver.receiveraddress);
+    const receiverContact = getValue(receiver.receiverContact);
+    const receiverAddress = getValue(receiver.receiverAddress);
 
     // Get shipping details
     const shippingDetails = receiver.shippingdetails || [];
@@ -7456,180 +7271,40 @@ applicable law provides otherwise
                 `;
   };
 
-  const handleDocumentAction = (action, docName, orderData) => {
-    // Static document mapping
-    const documents = {
-      "3rd Party Shipper Undertaking for ANF.pdf": {
-        title: "3rd Party Shipper Undertaking for ANF",
-        content: PartyShipperUndertakingForANF(orderData),
-        fileExt: ".html",
-        mimeType: "text/html",
-      },
-      "3rd Party Shipper Indemnity for each order format.pdf": {
-        title: "3rd Party Shipper Indemnity for each order format",
-        content: PartyShipperIndemnityForEachOrderFormat(orderData),
-        fileExt: ".html",
-        mimeType: "text/html",
-      },
-      "Dubai Letter of Idemnity for Customs.pdf": {
-        title: "Dubai Letter of Idemnity for Customs",
-        content: DubaiLetterOfIndemnityForCustoms(orderData),
-        fileExt: ".html",
-        mimeType: "text/html",
-      },
-      "Karachi Govt. Customs Stamp paper undertaking format.pdf": {
-        title: "Karachi Govt. Customs Stamp paper undertaking format",
-        content: KarachiGovtCustomsStampPaperUndertakingFormat(orderData),
-        fileExt: ".html",
-        mimeType: "text/html",
-      },
-      "Karachi, Undertaking for Customs, Each sender should give.pdf": {
-        title: "Karachi, Undertaking for Customs, Each sender should give",
-        content: KarachiUndertakingForCustomsEachSenderShouldGive(orderData),
-        fileExt: ".html",
-        mimeType: "text/html",
-      },
-      "Receiver Undertaking for Dubai Customs.pdf": {
-        title: "Receiver Undertaking for Dubai Customs",
-        content: ReceiverUndertakingForDubaiCustoms(orderData),
-        fileExt: ".html",
-        mimeType: "text/html",
-      },
-      "Receiver Undertaking Dubai ANF.pdf": {
-        title: "Receiver Undertaking Dubai ANF",
-        content: ReceiverUndertakingDubaiANF(orderData),
-        fileExt: ".html",
-        mimeType: "text/html",
-      },
-      "Sender Undertaking for 3rd Party Shipper.pdf": {
-        title: "Sender Undertaking for 3rd Party Shipper",
-        content: SenderUndertakingForThirdPartyShipper(orderData),
-        fileExt: ".html",
-        mimeType: "text/html",
-      },
-      "WHARFAGE - CONSIGNMENT NOTE.pdf": {
-        title: "WHARFAGE - CONSIGNMENT NOTE",
-        content: WHARFAGEConsignmentsNote(orderData),
-        fileExt: ".pdf",
-        mimeType: "application/pdf",
-      },
-      "Order Acknowledgement Printabe Version.pdf": {
-        title: "Order Acknowledgement - Printabe Version",
-        content: OrderAcknowledgementPrintableVersion(orderData),
-        fileExt: ".xlsx",
-        mimeType:
-          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      },
-      "Order Confirmation & Acceptance Dubai Receiver": {
-        title: "Order Confirmation & Acceptance Dubai Receiver",
-        content: OrderConfirmationAndAcceptanceDubaiReceiver(orderData),
-        fileExt: ".xlsx",
-        mimeType:
-          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      },
-      "Order Confirmation & Acceptance UK Receiver.pdf": {
-        title: "Order Confirmation & Acceptance UK Receiver",
-        content: OrderConfirmationAndAcceptanceUKReceiver(orderData),
-        fileExt: ".xlsx",
-        mimeType:
-          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      },
-      "Order Confirmation & Acceptance Karachi Receiver.pdf": {
-        title: "Order Confirmation & Acceptance Karachi Receiver",
-        content: OrderConfirmationAndAcceptanceKarachiReceiver(orderData),
-        fileExt: ".xlsx",
-        mimeType:
-          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      },
-      "Messiah Bill of Lading.pdf": {
-        title: "Messiah Bill of Lading",
-        content: MessiahBillofLading(orderData),
-        fileExt: ".pdf",
-        mimeType: "application/pdf",
-      },
-      "RGSL Bill of Lading.pdf": {
-        title: "RGSL Bill of Lading",
-        content: RGSLBillofLading(orderData),
-        fileExt: ".pdf",
-        mimeType: "application/pdf",
-      },
-      "KYC Dubai Company.pdf": {
-        title: "KYC Dubai Company",
-        content: KYCDubaiCompany(orderData),
-        fileExt: ".xlsx",
-        mimeType:
-          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      },
-      "KYC UK Company.pdf": {
-        title: "KYC UK Company",
-        content: KYCUKCompany(orderData),
-        fileExt: ".xlsx",
-        mimeType:
-          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      },
-      "KYC Karachi Company.pdf": {
-        title: "KYC Karachi Company",
-        content: KYCKarachiCompany(orderData),
-        fileExt: ".xlsx",
-        mimeType:
-          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      },
-      "CAS Bill of Lading.pdf": {
-        title: "CAS Bill of Lading",
-        content: CASBillofLading(orderData),
-        fileExt: ".pdf",
-        mimeType: "application/pdf",
-      },
-    };
-
-    const doc = documents[docName];
-
-    if (!doc) {
-      setSnackbar({
-        open: true,
-        message: "Document template not found",
-        severity: "warning",
-      });
-      return;
-    }
-
-    if (action === "view") {
-      const previewWindow = window.open("", "_blank");
-      previewWindow.document.write(doc.content);
-      previewWindow.document.close();
-    } else if (action === "print") {
-      const printWindow = window.open("", "_blank");
-      printWindow.document.write(doc.content);
-      printWindow.document.close();
-      printWindow.onload = () => {
-        printWindow.print();
-      };
-    }
-    // else if (action === 'download') {
-    //     // Correct file name with proper extension
-    //     const fileName = docName.replace(/\$|\.pdf$|\.xlsx$/, '') + doc.fileExt;
-
-    //     const blob = new Blob([doc.content], { type: doc.mimeType });
-    //     const url = URL.createObjectURL(blob);
-    //     const link = document.createElement('a');
-    //     link.href = url;
-    //     link.download = fileName;
-    //     document.body.appendChild(link);
-    //     link.click();
-    //     document.body.removeChild(link);
-    //     URL.revokeObjectURL(url);
-
-    //     setSnackbar({
-    //         open: true,
-    //         message: `Downloading as ${doc.fileExt} file`,
-    //         severity: 'info',
-    //     });
-    // }
+  const DOCUMENT_GENERATORS = {
+    "3rd Party Shipper Undertaking for ANF.pdf": PartyShipperUndertakingForANF,
+    "3rd Party Shipper Indemnity for each order format.pdf":
+      PartyShipperIndemnityForEachOrderFormat,
+    "Dubai Letter of Idemnity for Customs.pdf":
+      DubaiLetterOfIndemnityForCustoms,
+    "Karachi Govt. Customs Stamp paper undertaking format.pdf":
+      KarachiGovtCustomsStampPaperUndertakingFormat,
+    "Karachi, Undertaking for Customs, Each sender should give.pdf":
+      KarachiUndertakingForCustomsEachSenderShouldGive,
+    "Receiver Undertaking for Dubai Customs.pdf":
+      ReceiverUndertakingForDubaiCustoms,
+    "Receiver Undertaking Dubai ANF.pdf": ReceiverUndertakingDubaiANF,
+    "Sender Undertaking for 3rd Party Shipper.pdf":
+      SenderUndertakingForThirdPartyShipper,
+    "WHARFAGE - CONSIGNMENT NOTE.pdf": WHARFAGEConsignmentsNote,
+    "Order Acknowledgement Printabe Version.pdf":
+      OrderAcknowledgementPrintableVersion,
+    "Order Confirmation & Acceptance Dubai Receiver":
+      OrderConfirmationAndAcceptanceDubaiReceiver,
+    "Order Confirmation & Acceptance UK Receiver.pdf":
+      OrderConfirmationAndAcceptanceUKReceiver,
+    "Order Confirmation & Acceptance Karachi Receiver.pdf":
+      OrderConfirmationAndAcceptanceKarachiReceiver,
+    "Messiah Bill of Lading.pdf": MessiahBillofLading,
+    "RGSL Bill of Lading.pdf": RGSLBillofLading,
+    "KYC Dubai Company.pdf": KYCDubaiCompany,
+    "KYC UK Company.pdf": KYCUKCompany,
+    "KYC Karachi Company.pdf": KYCKarachiCompany,
+    "CAS Bill of Lading.pdf": CASBillofLading,
   };
+
   return (
     <>
-      {/* Documents Modal - New Separate Modal */}
-      {/* Documents Modal - Static Design Only */}
       <Dialog
         open={openDocumentsModal}
         onClose={handleCloseDocumentsModal}
@@ -7753,25 +7428,9 @@ applicable law provides otherwise
                           <Tooltip title="View Document">
                             <IconButton
                               size="small"
-                              onClick={() => {
-                                // Get the current order from selectedOrder or tempOrderId
-                                const currentOrder =
-                                  selectedOrder ||
-                                  orders.find((o) => o.id === tempOrderId);
-                                if (currentOrder) {
-                                  handleDocumentAction(
-                                    "view",
-                                    docName,
-                                    currentOrder,
-                                  );
-                                } else {
-                                  setSnackbar({
-                                    open: true,
-                                    message: "No order selected",
-                                    severity: "warning",
-                                  });
-                                }
-                              }}
+                              onClick={() =>
+                                handleDocumentClick("view", docName)
+                              }
                               sx={{
                                 color: "#0d6c6a",
                                 "&:hover": {
@@ -7785,25 +7444,9 @@ applicable law provides otherwise
                           <Tooltip title="Print Document">
                             <IconButton
                               size="small"
-                              onClick={() => {
-                                // Get the current order from selectedOrder or tempOrderId
-                                const currentOrder =
-                                  selectedOrder ||
-                                  orders.find((o) => o.id === tempOrderId);
-                                if (currentOrder) {
-                                  handleDocumentAction(
-                                    "print",
-                                    docName,
-                                    currentOrder,
-                                  );
-                                } else {
-                                  setSnackbar({
-                                    open: true,
-                                    message: "No order selected",
-                                    severity: "warning",
-                                  });
-                                }
-                              }}
+                              onClick={() =>
+                                handleDocumentClick("print", docName)
+                              }
                               sx={{
                                 color: "#f58220",
                                 "&:hover": {
@@ -7814,18 +7457,6 @@ applicable law provides otherwise
                               <PrintIcon fontSize="small" />
                             </IconButton>
                           </Tooltip>
-                          {/* <Tooltip title="Download">
-                                                        <IconButton
-                                                            size="small"
-                                                            onClick={() => handleDocumentAction('download', docName)}
-                                                            sx={{
-                                                                color: '#0d6c6a',
-                                                                '&:hover': { bgcolor: 'rgba(13, 108, 106, 0.1)' }
-                                                            }}
-                                                        >
-                                                            <FileDownloadIcon fontSize="small" />
-                                                        </IconButton>
-                                                    </Tooltip> */}
                         </Stack>
                       </TableCell>
                     </TableRow>
@@ -8159,7 +7790,7 @@ applicable law provides otherwise
                 );
                 const categoryList = [
                   ...new Set(productsSummary.map((p) => p.category)),
-                ].join(", "); // Unique categories
+                ].join(", ");
 
                 return (
                   <StyledTableRow

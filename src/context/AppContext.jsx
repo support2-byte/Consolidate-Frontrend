@@ -8,10 +8,12 @@ export const AppProvider = ({ children }) => {
   const [customers, setCustomers] = useState([]);
   const [places, setPlaces] = useState([]);
   const [statuses, setStatuses] = useState([]);
+  const [modules, setModules] = useState([]);
 
   const [placesLoading, setPlacesLoading] = useState(false);
   const [statusLoading, setStatusLoading] = useState(false);
   const [loadingCustomers, setLoadingCustomers] = useState(true);
+  const [modulesLoading, setModulesLoading] = useState(false);
 
   const isInitialized = useRef(false);
 
@@ -74,6 +76,24 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  const fetchModules = async () => {
+    try {
+      setModulesLoading(true);
+      const response = await api.get("/api/options/modules");
+
+      if (response.status === 200) {
+        setModules(response.data.modules);
+      } else {
+        toast.error("Failed to load system statuses.");
+      }
+    } catch (error) {
+      console.error("Modules Fetch Error:", error);
+      toast.error("An error occurred while fetching modules.");
+    } finally {
+      setStatusLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (isInitialized.current) return;
     isInitialized.current = true;
@@ -81,6 +101,7 @@ export const AppProvider = ({ children }) => {
     fetchCustomers();
     fetchPlaces();
     fetchStatuses();
+    fetchModules();
   }, []);
 
   return (
@@ -97,6 +118,8 @@ export const AppProvider = ({ children }) => {
         setStatuses,
         statusLoading,
         fetchStatuses,
+        modules,
+        setModules,
       }}
     >
       {children}

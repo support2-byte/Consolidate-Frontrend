@@ -334,12 +334,8 @@ const ItemRefLayout = ({ trackingData, places, timelineSteps }) => {
   const receiver = trackingData.receivers?.[0] || {};
   const item = receiver.items?.[0] || {};
 
-  const pol =
-    places.find((o) => o.id === Number(trackingData.place_of_loading))?.name ||
-    "";
-  const pod =
-    places.find((o) => o.id === Number(trackingData.place_of_delivery))?.name ||
-    "";
+  const pol = trackingData.place_of_loading;
+  const pod = trackingData.place_of_delivery;
 
   const currentStatus = receiver.status || timelineSteps[0];
 
