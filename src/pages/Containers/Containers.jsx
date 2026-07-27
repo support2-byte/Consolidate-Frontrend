@@ -116,18 +116,17 @@ const ContainerModule = ({
     severity: "info",
   });
 
-  // State for Add Container form
   const [formData, setFormData] = useState({
     ownership: "soc",
     containerNo: "",
     size: "",
     type: "",
-    derived_status: "", // Default to empty string
+    derived_status: "",
     dateAdded: new Date().toISOString().split("T")[0],
     dateOfManufacture: new Date().toISOString().split("T")[0],
     purchaseDate: new Date().toISOString().split("T")[0],
     purchasePrice: "",
-    purchaseFrom: "", // Default to empty string
+    purchaseFrom: "",
     ownershipDetails: "Self-Owned",
     availableAt: "",
     currency: "USD",
@@ -146,7 +145,7 @@ const ContainerModule = ({
 
   const showToast = (message, severity = "info") => {
     setSnackbar({ open: true, message, severity });
-    setError(null); // Clear any existing error on new toast
+    setError(null);
   };
 
   const handleError = (
@@ -160,7 +159,6 @@ const ContainerModule = ({
     showToast(message, "error");
   };
 
-  // Fetch dynamic options from backend
   const fetchOptions = async () => {
     setLoadingOptions(true);
     try {
@@ -185,21 +183,18 @@ const ContainerModule = ({
     }
   };
 
-  // Validate container number format
   const validateContainerNumber = (containerNo) => {
     const regex = /^[A-Z]{4}\d{7}$/;
     return regex.test(containerNo);
   };
 
-  // Validate date
   const validateDate = (dateString) => {
     const date = new Date(dateString);
     return date instanceof Date && !isNaN(date);
   };
 
-  // Validate number
   const validateNumber = (value, fieldName) => {
-    if (value === "" || value === null || value === undefined) return true; // Allow empty for optional
+    if (value === "" || value === null || value === undefined) return true;
     const num = parseFloat(value);
     if (isNaN(num) || num < 0) {
       throw new Error(`${fieldName} must be a valid non-negative number`);
@@ -207,7 +202,6 @@ const ContainerModule = ({
     return true;
   };
 
-  // Fetch all containers from backend
   const fetchContainers = async () => {
     if (!navigator.onLine) {
       handleError(

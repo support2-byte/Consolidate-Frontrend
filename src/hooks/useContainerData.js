@@ -323,6 +323,7 @@ export const useContainerData = (propContainers = []) => {
 
   const [dataState, dataDispatch] = useReducer(dataReducer, initialDataState);
   const [formState, formDispatch] = useReducer(formReducer, initialFormState);
+  const [existingAttachments, setExistingAttachments] = useState([]);
   const [historyState, historyDispatch] = useReducer(
     historyReducer,
     initialHistoryState,
@@ -330,6 +331,8 @@ export const useContainerData = (propContainers = []) => {
   const [uiState, uiDispatch] = useReducer(uiReducer, initialUIState);
 
   const [debouncedContainerNumber, setDebouncedContainerNumber] = useState("");
+
+  const [selectedFiles, setSelectedFiles] = useState([]);
 
   const jobStatusOptions = useMemo(
     () => [
@@ -515,6 +518,25 @@ export const useContainerData = (propContainers = []) => {
     formDispatch(formActions.updateForm(e.target.name, e.target.value));
   }, []);
 
+  const handleFileChange = (e) => {
+    const incoming = Array.from(e.target.files);
+    const combined = [...selectedFiles, ...incoming].slice(0, 5);
+
+    const oversized = incoming.find((f) => f.size > 5 * 1024 * 1024);
+    if (oversized) {
+      handleError(new Error(`${oversized.name} exceeds the 5MB limit`));
+      return;
+    }
+    if (selectedFiles.length + incoming.length > 5) {
+      handleError(new Error("You can upload a maximum of 5 files"));
+    }
+    setSelectedFiles(combined);
+  };
+
+  const removeFile = (index) => {
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const openHistory = useCallback(
     (cid, containerNumber) => {
       historyDispatch(historyActions.openHistory(cid, containerNumber));
@@ -555,6 +577,7 @@ export const useContainerData = (propContainers = []) => {
         placeOfDelivery: container.place_of_destination || "",
       };
 
+      setExistingAttachments(container.attachments || []);
       formDispatch(formActions.setEditing(containerData, formData));
     } catch (error) {
       console.log("Something went wrong", error);
@@ -563,7 +586,27 @@ export const useContainerData = (propContainers = []) => {
 
   const resetForm = useCallback(() => {
     formDispatch(formActions.resetForm());
+    setExistingAttachments([]);
+    setSelectedFiles([]);
   }, []);
+
+  const removeExistingAttachment = useCallback(
+    async (attachmentId) => {
+      if (!formState.editingContainer?.cid) return;
+      try {
+        await api.delete(
+          `/api/containers/${formState.editingContainer.cid}/attachments/${attachmentId}`,
+        );
+        setExistingAttachments((prev) =>
+          prev.filter((a) => a.id !== attachmentId),
+        );
+        showToast("Attachment removed", "success");
+      } catch (err) {
+        handleError(err, "Failed to remove attachment");
+      }
+    },
+    [formState.editingContainer, showToast, handleError],
+  );
 
   const handleFormSubmit = useCallback(async () => {
     try {
@@ -579,25 +622,40 @@ export const useContainerData = (propContainers = []) => {
     uiDispatch(uiActions.setLoading("loadingForm", true));
     try {
       const payload = buildContainerPayload(formState.formData);
+      const fd = new FormData();
+      Object.entries(payload).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) fd.append(key, value);
+      });
+      selectedFiles.forEach((file) => fd.append("files", file));
+
       if (formState.isEditing && formState.editingContainer) {
-        await api.put(
-          `/api/containers/${formState.editingContainer.cid}`,
-          payload,
-        );
+        await api.put(`/api/containers/${formState.editingContainer.cid}`, fd, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
         showToast("Container updated successfully", "success");
       } else {
-        await api.post("/api/containers", payload);
+        await api.post("/api/containers", fd, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
         showToast("Container added successfully", "success");
       }
       resetForm();
+      setSelectedFiles([]);
       await fetchContainers();
     } catch (err) {
       handleError(err, "Failed to save container");
     } finally {
       uiDispatch(uiActions.setLoading("loadingForm", false));
     }
-  }, [formState, places, handleError, showToast, resetForm, fetchContainers]);
-
+  }, [
+    formState,
+    places,
+    selectedFiles,
+    handleError,
+    showToast,
+    resetForm,
+    fetchContainers,
+  ]);
   const handleQuickEdit = useCallback((container) => {
     uiDispatch(
       uiActions.startQuickEdit(container.cid, {
@@ -698,6 +756,9 @@ export const useContainerData = (propContainers = []) => {
     tempData: uiState.tempData,
     jobStatusOptions,
     debouncedContainerNumber,
+    selectedFiles,
+    existingAttachments,
+    setExistingAttachments,
     getPlaceName,
     showToast,
     setOpenAddModal: (open) =>
@@ -738,5 +799,9 @@ export const useContainerData = (propContainers = []) => {
     openHistory,
     handleSnackbarClose,
     fetchContainers,
+    handleFileChange,
+    removeFile,
+    setSelectedFiles,
+    removeExistingAttachment,
   };
 };
