@@ -80,6 +80,8 @@ const ContainerModule = ({ propContainers = [] }) => {
     generatingPDF,
     error,
     snackbar,
+    selectedFiles,
+    existingAttachments,
     handleSnackbarClose,
     handleFilterChange,
     handleFormChange,
@@ -94,6 +96,10 @@ const ContainerModule = ({ propContainers = [] }) => {
     setCurrentPage,
     setRowsPerPage,
     getPlaceName,
+    handleFileChange,
+    removeFile,
+
+    removeExistingAttachment,
   } = state;
 
   return (
@@ -282,6 +288,11 @@ const ContainerModule = ({ propContainers = [] }) => {
           types={types}
           ownershipTypes={ownershipTypes}
           places={places}
+          onFileChange={handleFileChange}
+          selectedFiles={selectedFiles}
+          onRemoveFile={removeFile}
+          existingAttachments={existingAttachments}
+          onRemoveExistingAttachment={removeExistingAttachment}
         />
 
         <HistoryModal
