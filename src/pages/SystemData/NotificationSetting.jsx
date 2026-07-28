@@ -28,6 +28,7 @@ import {
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import EmailOutlinedIcon from "@mui/icons-material/EmailOutlined";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import VisibilityOutlinedIcon from "@mui/icons-material/VisibilityOutlined";
 import CloseIcon from "@mui/icons-material/Close";
 import { toast } from "react-toastify";
@@ -314,6 +315,22 @@ const NotificationSettings = () => {
     ? renderTemplate(previewTemplateKey, buildTemplateData(previewRow))
     : null;
 
+  const handleDelete = async (id) => {
+    try {
+      const { data } = await api.delete(`/api/notifications/${id}/delete`);
+
+      if (!data.success) {
+        return toast.error(data.message);
+      }
+
+      setRows((prev) => prev.filter((row) => row.id !== id));
+
+      toast.success(data.message);
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Something went wrong!");
+    }
+  };
+
   return (
     <Box sx={{ maxWidth: "100%", mx: "auto", py: 4, px: { xs: 2, md: 4 } }}>
       <Typography variant="h4" sx={{ mb: 1 }}>
@@ -425,8 +442,19 @@ const NotificationSettings = () => {
                           startIcon={<EmailOutlinedIcon />}
                           disabled={resendingId === row.id}
                           onClick={() => handleResend(row.id)}
+                          sx={{ mr: 1 }}
                         >
                           {resendingId === row.id ? "Sending..." : "Email"}
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="error"
+                          startIcon={<DeleteOutlineIcon />}
+                          disabled={resendingId === row.id}
+                          onClick={() => handleDelete(row.id)}
+                        >
+                          {resendingId === row.id ? "Deleting..." : "Delete"}
                         </Button>
                       </TableCell>
                     )}
