@@ -229,19 +229,18 @@ const OrdersList = () => {
       !selectedStatus
     )
       return;
+
     try {
       await api.put(
         `/api/orders/${selectedOrderForUpdate.id}/receivers/${selectedReceiverForUpdate.id}/items/${selectedReceiverForUpdateDetails.itemRef}/status`,
         {
           status: selectedStatus,
           itemRefs: [selectedReceiverForUpdateDetails.itemRef],
-          notifyClient: true,
-          notifyParties: true,
         },
       );
       setSnackbar({
         open: true,
-        message: `Status updated to "${selectedStatus}" for "${selectedReceiverForUpdate.receiverName}" successfully! Notifications sent as per rules.`,
+        message: `Status updated to "${selectedStatus}" successfully!`,
         severity: "success",
       });
       fetchOrders();
@@ -256,7 +255,44 @@ const OrdersList = () => {
       });
       console.error("Error updating status:", err);
     } finally {
-      setIsLoading(true);
+      setIsLoading(false);
+      handleCloseStatusDialog();
+    }
+  };
+
+  const handleNotify = async () => {
+    setIsLoading(true);
+    if (
+      !selectedOrderForUpdate ||
+      !selectedReceiverForUpdate ||
+      !selectedStatus
+    )
+      return;
+
+    try {
+      await api.post(`/api/orders/${selectedOrderForUpdate.id}/notify`, {
+        status: selectedStatus,
+        itemRefs: [selectedReceiverForUpdateDetails.itemRef],
+        notifyClient: true,
+        notifyParties: true,
+      });
+      setSnackbar({
+        open: true,
+        message: `Notifications queued for status "${selectedStatus}".`,
+        severity: "success",
+      });
+    } catch (err) {
+      setSnackbar({
+        open: true,
+        message:
+          err.response?.data?.details ||
+          err.response?.message ||
+          "Failed to queue notifications",
+        severity: "error",
+      });
+      console.error("Error triggering notifications:", err);
+    } finally {
+      setIsLoading(false);
       handleCloseStatusDialog();
     }
   };
@@ -8181,7 +8217,14 @@ applicable law provides otherwise
               disabled={isLoading}
               variant="contained"
             >
-              Update & Notify
+              Update Status
+            </Button>
+            <Button
+              onClick={handleNotify}
+              disabled={isLoading}
+              variant="contained"
+            >
+              Notify
             </Button>
           </DialogActions>
         </Dialog>
