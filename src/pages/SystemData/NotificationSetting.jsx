@@ -96,7 +96,7 @@ const buildTemplateData = (row) => ({
   route: "Sample Route (e.g. Dubai, UAE → Karachi, PK)",
   eta: "Sample ETA",
   lastUpdated: formatDate(row.created_at),
-  trackLink: "https://ordertracking.royalgulfshipping.com/",
+  trackLink: "https://trackorder.royalgulfshipping.com/",
 });
 
 const renderTemplate = (templateKey, data) => {
@@ -114,7 +114,8 @@ const NotificationSettings = () => {
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [resendingId, setResendingId] = useState(null);
+  const [sendingId, setSendingId] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(25);
   const [previewRow, setPreviewRow] = useState(null);
@@ -167,7 +168,7 @@ const NotificationSettings = () => {
   };
 
   const handleResend = async (rowId) => {
-    setResendingId(rowId);
+    setSendingId(rowId);
     try {
       const res = await api.post(`${currentTab.endpoint}/${rowId}/resend`);
       if (res.data?.success) {
@@ -183,7 +184,7 @@ const NotificationSettings = () => {
         err.response?.data?.message || err.message || "Failed to send email",
       );
     } finally {
-      setResendingId(null);
+      setSendingId(null);
     }
   };
 
@@ -316,6 +317,11 @@ const NotificationSettings = () => {
     : null;
 
   const handleDelete = async (id) => {
+    const row = rows.find((r) => r.id === id);
+    if (row && String(row.status).toLowerCase() === "sent") {
+      return toast.error("Sent emails cannot be deleted.");
+    }
+    setDeletingId(id);
     try {
       const { data } = await api.delete(`/api/notifications/${id}/delete`);
 
@@ -328,6 +334,8 @@ const NotificationSettings = () => {
       toast.success(data.message);
     } catch (error) {
       toast.error(error.response?.data?.message || "Something went wrong!");
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -436,25 +444,32 @@ const NotificationSettings = () => {
                         >
                           View
                         </Button>
+
                         <Button
                           size="small"
                           variant="outlined"
                           startIcon={<EmailOutlinedIcon />}
-                          disabled={resendingId === row.id}
+                          disabled={
+                            sendingId === row.id || deletingId === row.id
+                          }
                           onClick={() => handleResend(row.id)}
                           sx={{ mr: 1 }}
                         >
-                          {resendingId === row.id ? "Sending..." : "Email"}
+                          {sendingId === row.id ? "Sending..." : "Email"}
                         </Button>
                         <Button
                           size="small"
                           variant="outlined"
                           color="error"
                           startIcon={<DeleteOutlineIcon />}
-                          disabled={resendingId === row.id}
+                          disabled={
+                            sendingId === row.id ||
+                            deletingId === row.id ||
+                            String(row.status).toLowerCase() === "sent"
+                          }
                           onClick={() => handleDelete(row.id)}
                         >
-                          {resendingId === row.id ? "Deleting..." : "Delete"}
+                          {deletingId === row.id ? "Deleting..." : "Delete"}
                         </Button>
                       </TableCell>
                     )}
