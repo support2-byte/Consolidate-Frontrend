@@ -70,7 +70,7 @@ export const EMAIL_TEMPLATES = {
           <a class="cta" href="{{trackLink}}" target="_blank" rel="noopener noreferrer">View Live Tracking</a>
           <p class="muted" style="font-size: 10px">
             If the button above is not working, please visit the following link:
-            https://ordertracking.royalgulfshipping.com/ and paste your reference ID to track your shipment.
+            https://trackorder.royalgulfshipping.com/ and paste your reference ID to track your shipment.
           </p>
           <p class="muted">You’re receiving this because you subscribed to shipment notifications on our website.</p>
         </div>
@@ -151,7 +151,7 @@ export const EMAIL_TEMPLATES = {
           <a class="cta" href="{{trackLink}}" target="_blank" rel="noopener noreferrer">View Live Tracking</a>
           <p class="muted" style="font-size: 10px">
             If the button above is not working, please visit the following link:
-            https://ordertracking.royalgulfshipping.com/ and paste your reference ID to track your shipment.
+            https://trackorder.royalgulfshipping.com/ and paste your reference ID to track your shipment.
           </p>
           <p class="muted">You’re receiving this because you subscribed to shipment notifications on our website.</p>
         </div>
