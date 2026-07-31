@@ -380,8 +380,6 @@ export default function Consignments() {
         sx={{
           borderRadius: 2,
           overflow: "auto",
-          display: "table-cell",
-          width: "100%",
           maxHeight: 600,
         }}
       >
