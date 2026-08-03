@@ -4261,7 +4261,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                   const fullCommodity = subcategory
                     ? `${commodity} - ${subcategory}`
                     : commodity;
-                  console.log({ order, receiver });
 
                   detailedData.push({
                     sno: serialNumber++,
