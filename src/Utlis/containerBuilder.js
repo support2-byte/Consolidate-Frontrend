@@ -237,8 +237,9 @@ export const buildReceiversData = (consignmentOrderIds, allOrdersMap) => {
           subcategory: detail.subcategory || "N/A",
           totalNumber: Number(detail.totalNumber || 0),
           weight: Number(detail.weight || 0),
-          bookingRef: orderData.booking_ref || "N/A",
+          formNo: orderData.rgl_booking_number || "N/A",
           senderName: orderData.sender_name || "N/A",
+          marksAndNumber: receiver.marksAndNumber || "N/A",
         });
       });
     });
