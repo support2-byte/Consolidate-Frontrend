@@ -60,7 +60,6 @@ import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import InfoIcon from "@mui/icons-material/Info";
 import dayjs from "dayjs";
 import * as Yup from "yup";
-// import CircularProgress
 import { styled } from "@mui/material/styles";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import ExpandMoreIconMui from "@mui/icons-material/ExpandMore";
@@ -95,6 +94,28 @@ import { AppContext } from "../../context/AppContext";
 import { getStatusColors } from "../../Utlis/statusColors";
 
 applyPlugin(jsPDF);
+
+const getRowBoundaries = (container, scale) => {
+  const containerRect = container.getBoundingClientRect();
+  return Array.from(container.querySelectorAll("tr")).map((row) => {
+    const r = row.getBoundingClientRect();
+    return {
+      top: (r.top - containerRect.top) * scale,
+      bottom: (r.bottom - containerRect.top) * scale,
+    };
+  });
+};
+
+const getSafeSliceEnd = (rowBoundaries, startY, desiredEnd) => {
+  let safeEnd = desiredEnd;
+  for (const row of rowBoundaries) {
+    if (row.top >= startY && row.top < desiredEnd && row.bottom > desiredEnd) {
+      safeEnd = row.top;
+      break;
+    }
+  }
+  return safeEnd > startY ? safeEnd : desiredEnd;
+};
 
 const CustomTextField = ({
   name,
@@ -2749,7 +2770,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         undefined,
         "FAST",
       );
-      croppedCanvas.remove();
 
       startY += sliceHeightPx;
     }
@@ -3146,10 +3166,8 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       </div>
     `;
 
-      // Add to DOM
       document.body.appendChild(tempElement);
 
-      // Generate canvas for this receiver
       const canvas = await html2canvas(tempElement, {
         scale: 2.0,
         useCORS: true,
@@ -3164,19 +3182,15 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         removeContainer: true,
       });
 
-      // Remove from DOM
       document.body.removeChild(tempElement);
 
-      // Calculate dimensions
       const pxPerMm = canvas.width / contentWidthMm;
       const canvasHeightMm = canvas.height / pxPerMm;
 
-      // Add new page for each receiver (except first)
       if (i > 0) {
         pdf.addPage();
       }
 
-      // Add image to PDF
       const imgData = canvas.toDataURL("image/png", 1);
       pdf.addImage(
         imgData,
@@ -3837,16 +3851,16 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       },
     });
 
+    const rowBoundaries = getRowBoundaries(tempElement, scale);
+
     document.body.removeChild(tempElement);
 
-    // Save as PNG
     const canvasDataURL = canvas.toDataURL("image/png", 0.85);
     const canvasLink = document.createElement("a");
     canvasLink.download = `Manifest_${data.consignment_number}_Canvas_${Date.now()}.png`;
     canvasLink.href = canvasDataURL;
     canvasLink.click();
 
-    // Create PDF with improved page break handling
     const pdf = new jsPDF("p", "mm", "a4");
     const marginMm = 14;
     const contentWidthMm = 210 - 2 * marginMm;
@@ -3859,14 +3873,12 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     let currentY = 0;
     let pageNum = 1;
 
-    // Function to check if we need to break before a container
     const needsContainerBreak = (
       containerStartY,
       containerHeightPx,
       currentPageY,
     ) => {
       const remainingSpace = maxPageHeightPx - currentPageY;
-      // If container height is more than remaining space, start on new page
       return containerHeightPx > remainingSpace;
     };
 
@@ -3874,19 +3886,16 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       let sliceHeightPx = maxPageHeightPx;
       let shouldBreak = false;
 
-      // Check if we need to break for containers
       const containerDivs = tempElement.querySelectorAll(".container-header");
       containerDivs.forEach((containerDiv) => {
         const rect = containerDiv.getBoundingClientRect();
         const containerStartY = rect.top * scale;
         const containerEndY = containerStartY + rect.height * scale;
 
-        // If container starts on current page but might not fit
         if (
           containerStartY >= currentY &&
           containerStartY < currentY + maxPageHeightPx
         ) {
-          // Calculate container height including its table
           const containerSection = containerDiv.parentElement;
           const containerRect = containerSection.getBoundingClientRect();
           const containerHeightPx = containerRect.height * scale;
@@ -3898,14 +3907,17 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
               currentY,
             )
           ) {
-            sliceHeightPx = containerStartY - currentY - 10; // Leave small gap
+            sliceHeightPx = containerStartY - currentY - 10;
             shouldBreak = true;
           }
         }
       });
 
-      // Ensure we don't exceed canvas height
       sliceHeightPx = Math.min(sliceHeightPx, canvas.height - currentY);
+
+      const desiredEnd = currentY + sliceHeightPx;
+      const safeEnd = getSafeSliceEnd(rowBoundaries, currentY, desiredEnd);
+      sliceHeightPx = safeEnd - currentY;
 
       const croppedCanvas = document.createElement("canvas");
       croppedCanvas.width = canvas.width;
@@ -3942,7 +3954,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         "FAST",
       );
 
-      // Add page number
       pdf.setFontSize(9);
       pdf.setTextColor(128, 128, 128);
       pdf.text(`Page ${pageNum}`, 210 / 2, 297 - 10, { align: "center" });
@@ -4154,8 +4165,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       };
     };
 
-    // 4. FUNCTION TO CALCULATE COMMODITY SUMMARY FOR A SINGLE CONTAINER
-    // 4. FUNCTION TO CALCULATE COMMODITY SUMMARY FOR A SINGLE CONTAINER
     const calculateCommoditySummary = (orders) => {
       const commodityMap = {};
 
@@ -4172,7 +4181,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                   const subcategory = item.subcategory || "";
                   const commodityType = item.type || "N/A";
 
-                  // Use commodity + subcategory as key for proper grouping
                   const commodityKey = subcategory
                     ? `${commodity}|${subcategory}`
                     : commodity;
@@ -4191,7 +4199,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
 
                   commodityMap[commodityKey].totalOrders.add(order.id);
 
-                  // Use assign_total_box and assign_weight
                   let packagesForItem = 0;
                   let weightForItem = 0;
 
@@ -4282,7 +4289,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       return detailedData;
     };
 
-    // Vessel name get karne ka function
     const getVesselName = (vesselId) => {
       if (!vesselId) return "N/A";
       const vesselOption = options.vesselOptions?.find(
@@ -4666,7 +4672,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     </div>
     `;
 
-    // Rest of the code remains same (canvas generation and PDF creation)
     document.body.appendChild(tempElement);
 
     const scale = 1.5;
@@ -4690,9 +4695,10 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       },
     });
 
+    const rowBoundaries = getRowBoundaries(tempElement, scale);
+
     document.body.removeChild(tempElement);
 
-    // Save as PNG
     const canvasDataURL = canvas.toDataURL("image/png", 0.85);
     const canvasLink = document.createElement("a");
     canvasLink.download = `Manifest_${data.consignment_number}_${Date.now()}.png`;
@@ -4712,10 +4718,12 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
 
     let startY = 0;
     while (startY < canvas.height) {
-      const sliceHeightPx = Math.min(
-        contentHeightPerPagePx,
-        canvas.height - startY,
+      const desiredEnd = Math.min(
+        startY + contentHeightPerPagePx,
+        canvas.height,
       );
+      const safeEnd = getSafeSliceEnd(rowBoundaries, startY, desiredEnd);
+      const sliceHeightPx = safeEnd - startY;
 
       const croppedCanvas = document.createElement("canvas");
       croppedCanvas.width = canvas.width;
@@ -4733,22 +4741,22 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         sliceHeightPx,
       );
 
-      const croppedDataURL = croppedCanvas.toDataURL("image/png", 0.85);
+      const croppedDataURL = croppedCanvas.toDataURL("image/jpeg", 0.85);
       const drawHeightMm = sliceHeightPx / pxPerMm;
 
-      if (startY > 0) {
-        pdf.addPage();
-      }
+      if (startY > 0) pdf.addPage();
       pdf.addImage(
         croppedDataURL,
-        "PNG",
+        "JPEG",
         marginMm,
         marginMm,
         contentWidthMm,
         drawHeightMm,
+        undefined,
+        "FAST",
       );
-      croppedCanvas.remove();
 
+      croppedCanvas.remove();
       startY += sliceHeightPx;
     }
 
