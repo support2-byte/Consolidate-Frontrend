@@ -1161,17 +1161,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
 
       setOrdersLoading(true);
       try {
-        // const params = {
-        //   page:  1,
-        //   limit: orderRowsPerPage || 1000,
-        //   container_id: addedContainerIds.join(','), // backend pre-filters orders
-        //   ...(filters?.booking_ref && { booking_ref: filters.booking_ref }),
-        //   ...(filters?.status && { status: filters.status }),
-        //   includeContainer: true,
-        //   includeReceivers: true,
-        //   includeShippingDetails: true,
-        // };
-
         const response = await api.get("/api/orders/consignmentsOrders", {
           params: {
             page: 1,
@@ -1193,7 +1182,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         const fetchedOrders = response.data?.data || [];
         const fetchedTotal = response.data?.pagination?.total || 0;
 
-        // Apply client-side filtering (keeps only matching details + containers)
         const filteredOrders = filterOrdersByContainers(
           fetchedOrders,
           addedContainerIds,
@@ -1202,7 +1190,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         setOrders(filteredOrders);
         setOrderTotal(filteredOrders.length);
 
-        // Auto-select all visible rows
         if (filteredOrders.length > 0) {
           handleSelectAllClick({ target: { checked: true } });
         }
@@ -2411,7 +2398,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
 
           manifestData.push({
             sno: serialNo++,
-            bookingNo: bookingNumber, // booking_ref se aaya hua
+            bookingNo: bookingNumber,
             containerNo: containerNo,
             sender: order.sender_name || "N/A",
             receiver: receiver.receiver_name || "N/A",
@@ -2443,7 +2430,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
 
     const vesselName = getVesselName(data.vessel);
 
-    // Get container info
     const containerNo =
       data.containers && data.containers.length > 0
         ? data.containers[0].containerNo
@@ -2469,9 +2455,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       '"Helvetica Neue", Helvetica, Arial, sans-serif';
     tempElement.style.boxSizing = "border-box";
 
-    // ==============================================
-    // CREATE HTML CONTENT
-    // ==============================================
     tempElement.innerHTML = `<style>
         body {
             font-family: Arial, sans-serif;
@@ -2711,14 +2694,12 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
 
     document.body.removeChild(tempElement);
 
-    // Save as PNG
     const canvasDataURL = canvas.toDataURL("image/png", 0.85);
     const canvasLink = document.createElement("a");
     canvasLink.download = `Consignment_Note_${data.consignment_number}_Canvas_${Date.now()}.png`;
     canvasLink.href = canvasDataURL;
     canvasLink.click();
 
-    // Create PDF
     const innerWidthMm = 210 - 2 * 14;
     const pxPerMm = canvas.width / innerWidthMm;
     const extraBottomSpaceMm = 8;
@@ -2796,7 +2777,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
           order.receivers.forEach((receiver) => {
             receiverGroups.push({
               orderId: order.id,
-              orderNumber: order.booking_ref || `ORD-${order.id}`,
+              orderNumber: order.rgl_booking_number || `ORD-${order.id}`,
               sender: order.sender_name || "N/A",
               receiver: receiver.receiver_name || "N/A",
               receiverData: receiver,
@@ -2821,7 +2802,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         .toUpperCase();
     };
 
-    // Vessel name get karne ka function
     const getVesselName = (vesselId) => {
       if (!vesselId) return "N/A";
       const vesselOption = options.vesselOptions?.find(
@@ -2832,10 +2812,8 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
 
     const vesselName = getVesselName(data.vessel);
 
-    // Load logo as base64
     const logoBase64 = await loadImageAsBase64(logoPic);
 
-    // Common data for all HBLs
     const commonData = {
       consignment_number: data.consignment_number || "N/A",
       originName: data.originName || "N/A",
@@ -2845,6 +2823,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       consigneeName: data.consigneeName || "N/A",
       consigneeAddress: data.consigneeAddress || "N/A",
       bankName: data.bankName || "N/A",
+      sealNo: data.seal_no || "N/A",
       created_at: data.created_at || "N/A",
       generated_date: new Date()
         .toLocaleDateString("en-GB", {
@@ -2860,24 +2839,20 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       voyage: data.voyage || "N/A",
     };
 
-    // PDF create karo
     const pdf = new jsPDF("p", "mm", "a4");
     const marginMm = 14;
     const contentWidthMm = 210 - 2 * marginMm;
 
-    // Har receiver ke liye alag page banao
     for (let i = 0; i < receiverGroups.length; i++) {
       const receiverGroup = receiverGroups[i];
       const receiver = receiverGroup.receiverData;
       const shippingDetails = receiverGroup.shippingDetails;
 
-      // Calculate receiver-specific stats
       let receiverPackages = 0;
       let receiverWeight = 0;
       let itemRef = "";
 
       shippingDetails.forEach((item) => {
-        // Use assign_total_box and assign_weight instead of totalNumber and weight
         let packagesForItem = 0;
         let weightForItem = 0;
 
@@ -2899,13 +2874,11 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         }
       });
 
-      // Container info
       const containerInfo =
         data.containers && data.containers.length > 0
           ? data.containers[0]
           : { containerNo: "N/A", seal_no: "N/A" };
 
-      // Create HTML for this receiver ONLY
       const tempElement = document.createElement("div");
       tempElement.style.width = "780px";
       tempElement.style.padding = "25px";
@@ -2917,30 +2890,28 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       tempElement.style.fontSize = "10px";
       tempElement.style.color = "#333";
 
-      // Single receiver HTML
       tempElement.innerHTML = `
       <style>
-      .terms {
-  font-size: 10px;
-  line-height: 1.4;
-}
+        .terms {
+          font-size: 10px;
+          line-height: 1.4;
+        }
 
-.terms ol {
-  margin: 6px 0;
-  padding-left: 0;
-  list-style-position: inside; /* 🔥 MAIN FIX */
-}
+        .terms ol {
+          margin: 6px 0;
+          padding-left: 0;
+          list-style-position: inside; /* 🔥 MAIN FIX */
+        }
 
-.terms li {
-  margin-bottom: 4px;
-}
+        .terms li {
+          margin-bottom: 4px;
+        }
 
-.terms .footer {
-  font-size: 7px;
-  margin-top: 10px;
-}
-
-</style>
+        .terms .footer {
+          font-size: 7px;
+          margin-top: 10px;
+        }
+      </style>
       <div style="width: 780px; margin: 0 auto; background: white;">
         <!-- HBL Design Header -->
         <div class="header" style="display: flex; justify-content: space-between; margin-bottom: 10px;">
@@ -2991,12 +2962,12 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
           <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 70px;">
             <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">SHIPPER</span>
             <div class="placeholder" style="font-weight: bold; font-size: 9px;">${commonData.shipperName}</div>
-            <div class="placeholder" style="font-size: 8px; color: #666;">${commonData.shipperAddress}</div>
+            <div class="placeholder" style="font-size: 8px; color: #666;">${commonData.shipperName}</div>
           </div>
           <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 70px;">
             <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">CONSIGNEE</span>
-            <div class="placeholder" style="font-weight: bold; font-size: 9px;">${receiverGroup.receiver}</div>
-            <div class="placeholder" style="font-size: 8px; color: #666;">${receiver.receiver_address || "N/A"}</div>
+            <div class="placeholder" style="font-weight: bold; font-size: 9px;">${commonData.consigneeName}</div>
+            <div class="placeholder" style="font-size: 8px; color: #666;">${commonData.consigneeAddress || "N/A"}</div>
           </div>
           <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 70px;">
             <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">NOTIFY PARTY</span>
@@ -3044,7 +3015,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
           </div>
           <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
             <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">SEAL NO.</span>
-            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${containerInfo.seal_no || "N/A"}</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${commonData.sealNo || "N/A"}</span>
           </div>
           <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
             <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">TOTAL PACKAGES</span>
@@ -3126,41 +3097,41 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         <!-- Terms and Footer -->
         <div class="bottom-section" style="display: grid; grid-template-columns: 2fr 1fr; gap: 15px; margin-top: 10px; border-top: 1px solid #000; padding-top: 8px;">
           <div class="terms">
-  <strong>
-    By confirming this order for shipment, the Shipper/Consignee agrees to the following terms:
-  </strong>
+            <strong>
+              By confirming this order for shipment, the Shipper/Consignee agrees to the following terms:
+            </strong>
 
-  <ol style="margin-left: 4px;">
-    <li>Carriage is performed under Royal Gulf Shipping & Logistics LLC’s standard terms and applicable international conventions. All cargo details supplied must be true and complete.</li>
+            <ol style="margin-left: 4px;">
+              <li>Carriage is performed under Royal Gulf Shipping & Logistics LLC’s standard terms and applicable international conventions. All cargo details supplied must be true and complete.</li>
 
-    <li>Transit times are estimates only. Delays may occur due to weather, customs, port congestion, operational issues or carrier schedules.</li>
+              <li>Transit times are estimates only. Delays may occur due to weather, customs, port congestion, operational issues or carrier schedules.</li>
 
-    <li>Customs scanning, inspections, dog checks, or port delays may incur extra charges payable by the Merchant.</li>
+              <li>Customs scanning, inspections, dog checks, or port delays may incur extra charges payable by the Merchant.</li>
 
-    <li>In case of loss/damage, liability shall not exceed the freight value or USD 50 per package unless a higher value is declared and agreed in writing beforehand.</li>
+              <li>In case of loss/damage, liability shall not exceed the freight value or USD 50 per package unless a higher value is declared and agreed in writing beforehand.</li>
 
-    <li>The Merchant confirms lawful ownership of goods and accepts full responsibility for any illegal, prohibited or undeclared items shipped.</li>
+              <li>The Merchant confirms lawful ownership of goods and accepts full responsibility for any illegal, prohibited or undeclared items shipped.</li>
 
-    <li>Royal Gulf is not liable for any damage during customs/port inspections at origin, transit or destination.</li>
+              <li>Royal Gulf is not liable for any damage during customs/port inspections at origin, transit or destination.</li>
 
-    <li>Cargo is carried at Merchant’s risk unless the Merchant arranges separate insurance. Royal Gulf is not liable for indirect or consequential losses.</li>
+              <li>Cargo is carried at Merchant’s risk unless the Merchant arranges separate insurance. Royal Gulf is not liable for indirect or consequential losses.</li>
 
-    <li>Claims must be notified immediately in writing and within legal time limits. Late claims may be void.</li>
+              <li>Claims must be notified immediately in writing and within legal time limits. Late claims may be void.</li>
 
-    <li>Royal Gulf may use third-party carriers or subcontractors; all their protections and liability limits apply equally to Royal Gulf.</li>
+              <li>Royal Gulf may use third-party carriers or subcontractors; all their protections and liability limits apply equally to Royal Gulf.</li>
 
-    <li>This HBL applies only to order ref ${receiverGroup.orderNumber}.</li>
+              <li>This HBL applies only to order ref ${receiverGroup.orderNumber}.</li>
 
-    <li>Governed by UAE law; disputes fall under Dubai courts unless agreed otherwise.</li>
-  </ol>
+              <li>Governed by UAE law; disputes fall under Dubai courts unless agreed otherwise.</li>
+            </ol>
 
-  <p class="footer">
-    Receiver: ${receiverGroup.receiver} |
-    Order: ${receiverGroup.orderNumber} |
-    Container: ${containerInfo.containerNo} |
-    Page ${i + 1} of ${receiverGroups.length}
-  </p>
-</div>
+            <p class="footer">
+              Receiver: ${receiverGroup.receiver} |
+              Order: ${receiverGroup.orderNumber} |
+              Container: ${containerInfo.containerNo} |
+              Page ${i + 1} of ${receiverGroups.length}
+            </p>
+          </div>
 
           <div class="signature-box" style="border-left: 1px solid #ccc; padding-left: 10px;">
           <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #000;">For and on behalf of</span>
@@ -3274,7 +3245,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
           const subcategory = detail.subcategory || "";
           const commodityType = detail.type || "";
 
-          // Commodity key without type for grouping
           const commodityKey = `${commodity}|${subcategory}`;
           const displayKey = subcategory
             ? `${commodity} - ${subcategory}`
@@ -3284,16 +3254,14 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
             summary[commodityKey] = {
               commodity: displayKey,
               commodityType: commodityType,
-              totalOrders: new Set(), // Use Set for unique order IDs
+              totalOrders: new Set(),
               totalPkgs: 0,
               totalWeight: 0,
             };
           }
 
-          // Add order ID to Set (unique orders count)
           summary[commodityKey].totalOrders.add(order.id);
 
-          // Calculate assign boxes and weight for THIS detail only
           let assignBoxesForThisDetail = 0;
           let assignWeightForThisDetail = 0;
 
@@ -3313,7 +3281,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       return summary;
     }, {});
 
-    // Convert Set sizes to numbers
     Object.values(commoditySummary).forEach((item) => {
       item.totalOrders = item.totalOrders.size;
     });
@@ -3330,11 +3297,9 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       { totalOrders: 0, totalPkgs: 0, totalWeight: 0 },
     );
 
-    // Group data by container
     const containerGroups = {};
     let serialNo = 1;
 
-    // Get containers from data response
     const containersData = data.containers || [];
 
     allReceivers.forEach((order) => {
@@ -3351,13 +3316,11 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
               order.container_number ||
               "N/A";
 
-            // Get container size from container details
             containerSize =
               detail.containerDetails[0]?.container?.size ||
               detail.containerDetails[0]?.size ||
               "N/A";
 
-            // Get container type from container details
             containerType =
               detail.containerDetails[0]?.container?.containerType ||
               detail.containerDetails[0]?.containerType ||
@@ -3367,7 +3330,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
               order.receiver_containers_json || order.container_number || "N/A";
           }
 
-          // Try to get size and type from main data containers array
           if (containerNo !== "N/A" && containersData.length > 0) {
             const matchedContainer = containersData.find(
               (c) => c.containerNo === containerNo,
@@ -3378,7 +3340,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
             }
           }
 
-          // Try to get size from order data if not found
           if (containerSize === "N/A") {
             containerSize = order.container_size || "N/A";
           }
@@ -3406,14 +3367,14 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
             containerGroups[containerNo] = {
               containerNumber: containerNo,
               containerSize: containerSize,
-              containerType: containerType, // Added container type
+              containerType: containerType,
               data: [],
             };
           }
 
           containerGroups[containerNo].data.push({
             sno: serialNo++,
-            orderNo: order.booking_ref || order.rgl_booking_number || "N/A",
+            orderNo: order.rgl_booking_number || "N/A",
             containerNo: containerNo,
             sender: order.sender_name || "N/A",
             receiver: receiver.receivername || "N/A",
@@ -3421,12 +3382,12 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
             pkgs: pkgs,
             weight: assignWeight,
             commodity: fullCommodity,
+            marksAndNumber: receiver.marksandnumber,
           });
         });
       });
     });
 
-    // Calculate totals for each container
     Object.keys(containerGroups).forEach((containerNo) => {
       const containerData = containerGroups[containerNo].data;
       const containerTotal = containerData.reduce(
@@ -3441,7 +3402,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       containerGroups[containerNo].containerTotal = containerTotal;
     });
 
-    // Calculate overall manifest totals
     const manifestTotals = Object.values(containerGroups).reduce(
       (total, container) => {
         total.totalPkgs += container.containerTotal.totalPkgs;
@@ -3451,7 +3411,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       { totalPkgs: 0, totalWeight: 0 },
     );
 
-    // Vessel name get karne ka function
     const getVesselName = (vesselId) => {
       if (!vesselId) return "N/A";
       const vesselOption = options.vesselOptions?.find(
@@ -3462,7 +3421,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
 
     const vesselName = getVesselName(data.vessel);
 
-    // Create the content for the PDF with original styling
     tempElement.innerHTML = `
     <style>
       * { box-sizing: border-box; }
@@ -3765,8 +3723,9 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                             <th style="text-align: center; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 5%;">S.NO</th>
                             <th style="text-align: center; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 10%;">ORDER NO</th>
                             <th style="text-align: center; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 10%;">Tracking ID</th>
-                            <th style="text-align: center; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 18%;">SENDER</th>
-                            <th style="text-align: center; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 18%;">RECEIVER</th>
+                            <th style="text-align: center; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 14%;">SENDER</th>
+                            <th style="text-align: center; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 14%;">RECEIVER</th>
+                            <th style="text-align: center; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 14%;">RECEIVER MARKS & NUMBER</th>
                             <th style="text-align: right; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 7%;"; text-align: right;">PKGS</th>
                             <th style="text-align: right; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 8%;"; text-align: right;">WEIGHT (KGS)</th>
                             <th style="text-align: center; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 12%;">COMMODITY</th>
@@ -3782,6 +3741,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                                 <td style="font-weight: normal; padding: 8px; border: 1px solid #ddd;">${item.trackingId}</td>
                                 <td style="font-weight: normal; padding: 8px; border: 1px solid #ddd;">${item.sender}</td>
                                 <td style="font-weight: normal; padding: 8px; border: 1px solid #ddd;">${item.receiver}</td>
+                                <td style="font-weight: normal; padding: 8px; border: 1px solid #ddd;">${item.marksAndNumber}</td>
                                 <td style="font-weight: normal; text-align: right; padding: 8px; border: 1px solid #ddd;">${item.pkgs.toLocaleString()}</td>
                                 <td style="font-weight: normal; text-align: right; padding: 8px; border: 1px solid #ddd;">${Number(
                                   item.weight,
@@ -3795,7 +3755,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                           )
                           .join("")}
                         <tr style="background-color: #f5f5f5; font-weight: bold;">
-                            <td colspan="5" style="text-align: right; padding: 10px; border: 1px solid #ddd;">Container Total:</td>
+                            <td colspan="6" style="text-align: right; padding: 10px; border: 1px solid #ddd;">Container Total:</td>
                             <td style="text-align: right; padding: 10px; border: 1px solid #ddd;">${container.containerTotal.totalPkgs.toLocaleString()}</td>
                             <td style="text-align: right; padding: 10px; border: 1px solid #ddd;">${Number(
                               container.containerTotal.totalWeight,
@@ -4020,7 +3980,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         };
       });
     } else {
-      // Agar containers nahi hai to ek default bana lo
       containerOrdersMap["DEFAULT"] = {
         container: {
           containerNo: "DEFAULT",
@@ -4061,14 +4020,12 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
           });
         }
 
-        // Method 2: Check receiver_containers_json field (backup)
         if (!assignedContainerNo && order.receiver_containers_json) {
           assignedContainerNo = order.receiver_containers_json;
         }
 
         let containerInfo = { containerNo: "N/A", seal_no: "N/A", size: "N/A" };
 
-        // Method 3: Check containers array in receiver
         if (
           !assignedContainerNo &&
           order.receivers &&
@@ -4270,7 +4227,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       }));
     };
 
-    // 5. FUNCTION TO GET DETAILED MANIFEST FOR A SINGLE CONTAINER
     const getDetailedManifestData = (orders) => {
       const detailedData = [];
       let serialNumber = 1;
@@ -4284,7 +4240,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                 receiver.shippingdetails.length > 0
               ) {
                 receiver.shippingdetails.forEach((item) => {
-                  // Calculate packages and weight from containerDetails
                   let packages = 0;
                   let weight = 0;
 
@@ -4306,13 +4261,14 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                   const fullCommodity = subcategory
                     ? `${commodity} - ${subcategory}`
                     : commodity;
+                  console.log({ order, receiver });
 
                   detailedData.push({
                     sno: serialNumber++,
-                    orderNumber: order.booking_ref || `ORD-${order.id}`,
+                    orderNumber: order.rgl_booking_number || `ORD-${order.id}`,
                     sender: order.sender_name || "N/A",
-                    receiver: receiver.receiver_name || "N/A",
-                    marksNos: item.type || "N/A",
+                    receiver: receiver.receivername || "N/A",
+                    marksNos: receiver.marksandnumber || "N/A",
                     packages: packages,
                     weight: weight,
                     commodity: fullCommodity,
@@ -4354,19 +4310,16 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     let allContainersHTML = "";
     let containerCounter = 0;
 
-    // Loop through each container and generate its tables
     Object.keys(containerOrdersMap).forEach((containerNo) => {
       const containerData = containerOrdersMap[containerNo];
       const orders = containerData.orders;
 
-      // Calculate data for this specific container
       const containerStats = calculateContainerStats(orders);
       const commoditySummary = calculateCommoditySummary(orders);
       const detailedData = getDetailedManifestData(orders);
 
       containerCounter++;
 
-      // Add page break for containers after the first one
       const pageBreakClass = containerCounter > 1 ? "page-break" : "";
 
       allContainersHTML += `
@@ -4456,7 +4409,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
               : ""
           }
           
-          <!-- TABLE 3: Detailed Manifest -->
           ${
             orders.length > 0
               ? `
