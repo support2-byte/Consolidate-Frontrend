@@ -2,7 +2,6 @@ import React, { useContext } from "react";
 import {
   Box,
   Typography,
-  Paper,
   Stepper,
   Step,
   StepLabel,
@@ -68,23 +67,18 @@ const ShipmentTimeline = ({
         STATUS_SYNC_MAP[s.consignment_status] = s.order_status;
     });
 
-  let latestRawStatus = currentStatus;
+  const sortedHistory =
+    statusHistory && statusHistory.length > 0
+      ? [...statusHistory].sort((a, b) => new Date(b.time) - new Date(a.time))
+      : [];
 
-  if (statusHistory?.length > 0) {
-    const sortedHistory = [...statusHistory].sort(
-      (a, b) => new Date(b.time) - new Date(a.time),
-    );
-    const latestEntry = sortedHistory[0];
-    latestRawStatus =
-      latestEntry.status ||
-      latestEntry.details?.newStatus ||
-      latestEntry.details?.new_status ||
-      currentStatus;
-  }
+  const latestEntry = sortedHistory[0];
+  const latestRawStatus = latestEntry?.status || currentStatus;
 
   const normalizedCurrent = STATUS_SYNC_MAP[latestRawStatus] ?? latestRawStatus;
   let currentIndex = TIMELINE_STEPS.indexOf(normalizedCurrent);
-  if (currentIndex === -1) currentIndex = TIMELINE_STEPS.length - 3;
+  if (currentIndex === -1)
+    currentIndex = Math.max(TIMELINE_STEPS.length - 3, 0);
 
   const effectiveIndex = currentIndex;
 
@@ -149,37 +143,35 @@ const ShipmentTimeline = ({
         </Typography>
         <Typography variant="body1" color="text.secondary" sx={{ mt: 1 }}>
           Progress: ≈{" "}
-          {Math.round(((effectiveIndex + 1) / TIMELINE_STEPS.length) * 100)}%
-          complete
+          {TIMELINE_STEPS.length > 0
+            ? Math.round(((effectiveIndex + 1) / TIMELINE_STEPS.length) * 100)
+            : 0}
+          % complete
         </Typography>
       </Box>
 
-      {statusHistory?.length > 0 && (
+      {sortedHistory.length > 0 && (
         <Box sx={{ m: 6 }}>
           <Typography variant="subtitle1" fontWeight={600} gutterBottom>
             Recent Status Updates
           </Typography>
           <Box sx={{ pl: 3, borderLeft: "3px solid #16a34a" }}>
-            {statusHistory
-              .slice()
-              .sort((a, b) => new Date(b.time) - new Date(a.time))
-              .map((entry, idx) => (
-                <Box key={idx} sx={{ mb: 2.5 }}>
-                  <Typography variant="body1" fontWeight={500}>
-                    {entry.status ||
-                      entry.details?.newStatus ||
-                      entry.details?.new_status ||
-                      "Update"}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {new Date(entry.time).toLocaleString("en-GB", {
-                      dateStyle: "medium",
-                      timeStyle: "short",
-                    })}
-                    {entry.notes && ` — ${entry.notes.trim()}`}
-                  </Typography>
-                </Box>
-              ))}
+            {sortedHistory.map((entry) => (
+              <Box key={entry.tracking_id} sx={{ mb: 2.5 }}>
+                <Typography variant="body1" fontWeight={500}>
+                  {entry.status || "Update"}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {new Date(entry.time).toLocaleString("en-GB", {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  })}
+                  {entry.created_by && entry.created_by !== "system" && (
+                    <> — updated by {entry.created_by}</>
+                  )}
+                </Typography>
+              </Box>
+            ))}
           </Box>
         </Box>
       )}

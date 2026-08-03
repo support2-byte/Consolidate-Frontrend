@@ -120,20 +120,17 @@ export const usePDFGenerators = ({
       margin,
     );
 
-    // FIX: data rows now have all 8 values matching the 8-column header:
-    // S.NO | ORDER NO | SENDER | RECEIVER | MARKS & NOS | PKGS | WEIGHT | COMMODITY
     const detailRows = receiversData.map((r, i) => [
       (i + 1).toString(),
-      r.bookingRef,
+      r.formNo,
       r.senderName,
       r.receiverName,
-      (i + 1).toString(), // Marks & Nos — sequential mark number per line
+      r.marksAndNumber || "N/A",
       r.totalNumber.toString(),
       r.weight.toFixed(2),
       r.category + (r.subcategory !== "N/A" ? ` - ${r.subcategory}` : ""),
     ]);
 
-    // TOTAL row: colSpan 5 covers S.NO → MARKS & NOS, then PKGS, WEIGHT, COMMODITY(blank)
     detailRows.push([
       {
         content: "TOTAL",
@@ -469,7 +466,9 @@ export const usePDFGenerators = ({
               totalNumber: Number(detail.totalNumber || 0),
               weight: Number(detail.weight || 0),
               bookingRef: od.booking_ref || "N/A",
+              formNo: od.rgl_booking_number || "N/A",
               senderName: od.sender_name || "N/A",
+              marksAndNumber: receiver.marksAndNumber || "N/A",
             });
           });
         });
@@ -501,7 +500,6 @@ export const usePDFGenerators = ({
     }
   };
 
-  // ─── Single job manifest PDF ──────────────────────────────────────────────
   const generateSingleJobManifestPDF = async (
     jobEvents,
     containerNumber,

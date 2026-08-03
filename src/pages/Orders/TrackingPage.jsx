@@ -43,8 +43,11 @@ const TrackingPage = () => {
   const [trackingData, setTrackingData] = useState(null);
   const [trackType, setTrackType] = useState("item_ref");
 
+  const EXCLUDED_TIMELINE_STATUSES = ["Rejected", "Canceled", "Cancelled"];
+
   const orderedStatuses = (statuses || [])
     .filter((s) => s.status)
+    .filter((s) => !EXCLUDED_TIMELINE_STATUSES.includes(s.order_status))
     .sort((a, b) => a.sorting_number - b.sorting_number)
     .map((s) => s.order_status);
 

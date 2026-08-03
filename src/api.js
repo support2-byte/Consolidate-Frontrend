@@ -18,13 +18,6 @@ api.interceptors.response.use(
   async (error) => {
     const original = error.config;
 
-    console.log("[Interceptor]", {
-      status: error.response?.status,
-      error: error.response?.data?.error,
-      url: original?.url,
-      retry: original?._retry,
-    });
-
     if (
       error.response?.status !== 401 ||
       original._retry ||
