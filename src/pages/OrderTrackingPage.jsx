@@ -133,10 +133,7 @@ export default function OrderTrackingPage() {
   return (
     <Box sx={{ p: 3 }}>
       <Box sx={{ mb: 3 }}>
-        <Typography
-          variant="h5"
-          sx={{ fontWeight: 700, color: ORANGE, letterSpacing: -0.5 }}
-        >
+        <Typography variant="h4" fontWeight="bold" color="#f58220">
           Order Tracking History
         </Typography>
       </Box>

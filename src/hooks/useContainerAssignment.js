@@ -196,10 +196,7 @@ export function useContainerAssignment({
         );
       }
       const targets = [];
-      console.log(
-        "orders for assignment:",
-        selectedOrders.map((id) => orders.find((o) => o.id === id)),
-      );
+
       for (const orderId of selectedOrders) {
         const order = orders.find((o) => o.id === orderId);
         if (!order?.receivers?.length) continue;

@@ -189,8 +189,6 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
     }
   };
 
-  console.log({ receivers });
-
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle

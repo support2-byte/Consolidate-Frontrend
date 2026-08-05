@@ -1,19 +1,36 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 import {
-  Box, Typography, Table, TableBody, TableCell, TableHead, TableRow, Paper, Button,
-  TextField, Dialog, DialogTitle, DialogContent, DialogActions
-} from '@mui/material';
-import { api } from '../../api';
-import AddIcon from '@mui/icons-material/Add';
-import EditIcon from '@mui/icons-material/Edit';
-import DeleteIcon from '@mui/icons-material/Delete';
-import IconButton from '@mui/material/IconButton';
+  Box,
+  Typography,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+  Paper,
+  Button,
+  TextField,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+} from "@mui/material";
+import { api } from "../../api";
+import AddIcon from "@mui/icons-material/Add";
+import EditIcon from "@mui/icons-material/Edit";
+import DeleteIcon from "@mui/icons-material/Delete";
+import IconButton from "@mui/material/IconButton";
 
 const PaymentTypes = () => {
   const [openDialog, setOpenDialog] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [selectedType, setSelectedType] = useState(null);
-  const [formData, setFormData] = useState({ name: '', type: '', percent: '', days: '' });
+  const [formData, setFormData] = useState({
+    name: "",
+    type: "",
+    percent: "",
+    days: "",
+  });
   const [paymentTypes, setPaymentTypes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -26,12 +43,11 @@ const PaymentTypes = () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await api.get('api/options/payment-types/crud'); // Updated endpoint for full list
-      const data = await response.data.paymentTypes; // For axios, use .data
-      console.log('Fetched payment types:', data);
-      setPaymentTypes(data || []); // Expect { paymentTypes: [...] }
+      const response = await api.get("api/options/payment-types/crud");
+      const data = await response.data.paymentTypes;
+      setPaymentTypes(data || []);
     } catch (err) {
-      console.error('Error fetching payment types:', err);
+      console.error("Error fetching payment types:", err);
       setError(err.message);
     } finally {
       setLoading(false);
@@ -41,92 +57,123 @@ const PaymentTypes = () => {
   const handleOpenDialog = (type = null) => {
     setEditMode(!!type);
     setSelectedType(type);
-    setFormData(type || { name: '', type: '', percent: '', days: '' });
+    setFormData(type || { name: "", type: "", percent: "", days: "" });
     setOpenDialog(true);
   };
 
   const handleCloseDialog = () => {
     setOpenDialog(false);
     setSelectedType(null);
-    setFormData({ name: '', type: '', percent: '', days: '' });
+    setFormData({ name: "", type: "", percent: "", days: "" });
   };
 
   const handleSave = async () => {
     try {
       let response;
       if (editMode) {
-        response = await api.put(`api/options/payment-types/${selectedType.id}`, formData); // Updated endpoint
+        response = await api.put(
+          `api/options/payment-types/${selectedType.id}`,
+          formData,
+        ); // Updated endpoint
       } else {
-        response = await api.post('api/options/payment-types', formData); // Updated endpoint
+        response = await api.post("api/options/payment-types", formData); // Updated endpoint
       }
-      if (response.status >= 400) { // For axios, check status
+      if (response.status >= 400) {
+        // For axios, check status
         const errorData = response.data;
-        throw new Error(errorData.error || 'Failed to save payment type');
+        throw new Error(errorData.error || "Failed to save payment type");
       }
       await fetchPaymentTypes(); // Refresh list
       handleCloseDialog();
     } catch (err) {
-      console.error('Error saving payment type:', err);
+      console.error("Error saving payment type:", err);
       alert(err.message); // Replace with proper error handling (e.g., Snackbar)
     }
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this payment type?')) {
+    if (!window.confirm("Are you sure you want to delete this payment type?")) {
       return;
     }
     try {
       const response = await api.delete(`api/options/payment-types/${id}`); // Updated endpoint
-      if (response.status >= 400) { // For axios, check status
+      if (response.status >= 400) {
+        // For axios, check status
         const errorData = response.data;
-        throw new Error(errorData.error || 'Failed to delete payment type');
+        throw new Error(errorData.error || "Failed to delete payment type");
       }
       await fetchPaymentTypes(); // Refresh list
     } catch (err) {
-      console.error('Error deleting payment type:', err);
+      console.error("Error deleting payment type:", err);
       alert(err.message); // Replace with proper error handling (e.g., Snackbar)
     }
   };
 
   if (loading) {
-    return <Box sx={{ p: 3 }}><Typography>Loading...</Typography></Box>;
+    return (
+      <Box sx={{ p: 3 }}>
+        <Typography>Loading...</Typography>
+      </Box>
+    );
   }
 
   if (error) {
-    return <Box sx={{ p: 3 }}><Typography color="error">Error: {error}</Typography></Box>;
+    return (
+      <Box sx={{ p: 3 }}>
+        <Typography color="error">Error: {error}</Typography>
+      </Box>
+    );
   }
 
   return (
     <Box sx={{ p: 3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          mb: 3,
+        }}
+      >
         <Typography variant="h3">Payment Types</Typography>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={() => handleOpenDialog()}>
+        <Button
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={() => handleOpenDialog()}
+        >
           Add
         </Button>
       </Box>
-      <Paper sx={{ p: 2, overflowX: 'auto' }}>
+      <Paper sx={{ p: 2, overflowX: "auto" }}>
         <Table>
-          <TableHead sx={{background:'#0d6c6a',color:'#fff'}}>
-                    <TableRow>
-                      <TableCell sx={{color:'#fff'}}>Payment Type Name</TableCell>
-              <TableCell sx={{color:'#fff'}}>Type</TableCell>
-             <TableCell sx={{color:'#fff'}}>Percent</TableCell>
-             <TableCell sx={{color:'#fff'}}>Days</TableCell>
-            <TableCell sx={{color:'#fff'}}>Actions</TableCell>
+          <TableHead sx={{ background: "#0d6c6a", color: "#fff" }}>
+            <TableRow>
+              <TableCell sx={{ color: "#fff" }}>Payment Type Name</TableCell>
+              <TableCell sx={{ color: "#fff" }}>Type</TableCell>
+              <TableCell sx={{ color: "#fff" }}>Percent</TableCell>
+              <TableCell sx={{ color: "#fff" }}>Days</TableCell>
+              <TableCell sx={{ color: "#fff" }}>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {paymentTypes.map((type) => (
               <TableRow key={type.id} hover>
                 <TableCell>{type.name}</TableCell>
-                <TableCell align="center">{type.type || ''}</TableCell>
-                <TableCell align="center">{type.percent || '0%'}</TableCell>
+                <TableCell align="center">{type.type || ""}</TableCell>
+                <TableCell align="center">{type.percent || "0%"}</TableCell>
                 <TableCell align="center">{type.days || 0}</TableCell>
                 <TableCell align="center">
-                  <IconButton size="small" onClick={() => handleOpenDialog(type)}>
+                  <IconButton
+                    size="small"
+                    onClick={() => handleOpenDialog(type)}
+                  >
                     <EditIcon />
                   </IconButton>
-                  <IconButton size="small" color="error" onClick={() => handleDelete(type.id)}>
+                  <IconButton
+                    size="small"
+                    color="error"
+                    onClick={() => handleDelete(type.id)}
+                  >
                     <DeleteIcon />
                   </IconButton>
                 </TableCell>
@@ -134,8 +181,16 @@ const PaymentTypes = () => {
             ))}
           </TableBody>
         </Table>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 2, p: 1 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+        <Box
+          sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            mt: 2,
+            p: 1,
+          }}
+        >
+          <Box sx={{ display: "flex", alignItems: "center" }}>
             <Typography variant="body2">1 - 8 of 8</Typography>
           </Box>
           <Button variant="outlined" size="small" disabled>
@@ -148,8 +203,15 @@ const PaymentTypes = () => {
       </Paper>
 
       {/* Dialog for Add/Edit */}
-      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>{editMode ? 'Edit Payment Type' : 'Add Payment Type'}</DialogTitle>
+      <Dialog
+        open={openDialog}
+        onClose={handleCloseDialog}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          {editMode ? "Edit Payment Type" : "Add Payment Type"}
+        </DialogTitle>
         <DialogContent>
           <TextField
             fullWidth
@@ -172,7 +234,9 @@ const PaymentTypes = () => {
             label="Percent"
             type="number"
             value={formData.percent}
-            onChange={(e) => setFormData({ ...formData, percent: e.target.value })}
+            onChange={(e) =>
+              setFormData({ ...formData, percent: e.target.value })
+            }
             sx={{ mt: 2 }}
             required
           />
@@ -188,7 +252,9 @@ const PaymentTypes = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseDialog}>Cancel</Button>
-          <Button onClick={handleSave} variant="contained">Save</Button>
+          <Button onClick={handleSave} variant="contained">
+            Save
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>

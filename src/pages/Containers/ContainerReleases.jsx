@@ -73,9 +73,6 @@ export default function ContainerReleases() {
 
       const res = await api.get("/api/containers/container-consignments");
 
-      console.log("API Response:", res.data);
-      console.log("Assignments:", res.data?.data);
-
       setAssignments(res.data?.data || []);
     } catch (err) {
       console.error(err);

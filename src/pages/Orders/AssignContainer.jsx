@@ -679,16 +679,8 @@ const AssignModal = ({
                         setSelectedContainersPerDetail={
                           setSelectedContainersPerDetail
                         }
-                        // enhancedHandleAssign={enhancedHandleAssign}
                         availableContainers={ordersAvailableContainers}
-                        // Optional callback when user clicks "Preview Assignment"
-                        onAssignPreview={(previewData) => {
-                          console.log(
-                            "User wants to preview/assign:",
-                            previewData,
-                          );
-                          // You can show confirmation, or directly call your assign API here
-                        }}
+                        onAssignPreview={(previewData) => {}}
                       />
                     </Grid>
                   </Grid>

@@ -56,7 +56,6 @@ export default function VendorForm({ mode = "add" }) {
       const fetchvendor = async () => {
         try {
           const res = await api.get(`/api/vendors/${id}`);
-          console.log('vendor data:', res.data);
           const c = res.data;
           setForm({
             contact_name: c.contact_name || '',
@@ -122,7 +121,6 @@ export default function VendorForm({ mode = "add" }) {
         showToast("All contacts must have a name", "error");
         return;
       }
-      console.log("Saving contacts:", { zoho_id: id, contacts });
       const res = await api.post(`/api/vendors/${id}/contacts`, { zoho_id: id, contacts });
       setContacts(
         res.data.map((cp) => ({
@@ -162,14 +160,8 @@ export default function VendorForm({ mode = "add" }) {
         if (fileInputRef.current) fileInputRef.current.value = "";
         return;
       }
-      // Create a new File object to avoid mutations
       const fileCopy = new File([selectedFile], selectedFile.name, { type: selectedFile.type });
-      console.log("File selected:", {
-        name: fileCopy.name,
-        size: fileCopy.size,
-        type: fileCopy.type,
-        isFile: fileCopy instanceof File,
-      });
+      
       setFile(fileCopy);
     } else {
       setFile(null);
@@ -189,26 +181,16 @@ export default function VendorForm({ mode = "add" }) {
       return;
     }
 
-    console.log('File before FormData append:', {
-      name: file.name,
-      size: file.size,
-      type: file.type,
-      isFile: file instanceof File,
-    });
-
     try {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('zoho_id', id);
 
-      console.log('FormData fields:', [...formData.entries()].map(([key, value]) => ({ key, value: value.name || value })));
-      console.log('Current documents state:', documents);
-
+  
       const res = await api.post(`/api/vendors/${id}/documents`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-      console.log('Document upload response:', res.data);
-
+    
       if (!res.data.document_id) {
         console.error('Response missing document_id:', res.data);
         showToast('Invalid document response from server', 'error');
@@ -224,7 +206,6 @@ export default function VendorForm({ mode = "add" }) {
           return validDocs;
         }
         const updatedDocs = [...validDocs, res.data];
-        console.log('Updated documents state:', updatedDocs);
         return updatedDocs;
       });
 
@@ -285,7 +266,6 @@ export default function VendorForm({ mode = "add" }) {
         showToast("vendor updated successfully!", "success");
       } else {
         const res = await api.post("/api/vendors", form);
-        console.log("New vendor created:", res.data);
         navigate(`/vendors/${res.data.zoho_id}/edit`);
         showToast("vendor created successfully!", "success");
       }

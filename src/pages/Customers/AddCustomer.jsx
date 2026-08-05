@@ -56,13 +56,11 @@ export default function CustomerForm({ mode = "add" }) {
     ]);
   }, [id, mode]);
 
-  // Other useEffect for fetchCustomer (unchanged, omitting documents)
   useEffect(() => {
     if (mode === "edit" && id) {
       const fetchCustomer = async () => {
         try {
           const res = await api.get(`/api/customers/${id}`);
-          console.log("Customer data:", res.data);
           const c = res.data;
           setForm({
             contact_name: c.contact_name || "",
@@ -132,7 +130,6 @@ export default function CustomerForm({ mode = "add" }) {
         showToast("All contacts must have a name", "error");
         return;
       }
-      console.log("Saving contacts:", { zoho_id: id, contacts });
       const res = await api.post(`/api/customers/${id}/contacts`, {
         zoho_id: id,
         contacts,
@@ -176,16 +173,10 @@ export default function CustomerForm({ mode = "add" }) {
         if (fileInputRef.current) fileInputRef.current.value = "";
         return;
       }
-      // Create a new File object to avoid mutations
       const fileCopy = new File([selectedFile], selectedFile.name, {
         type: selectedFile.type,
       });
-      console.log("File selected:", {
-        name: fileCopy.name,
-        size: fileCopy.size,
-        type: fileCopy.type,
-        isFile: fileCopy instanceof File,
-      });
+
       setFile(fileCopy);
     } else {
       setFile(null);
@@ -204,32 +195,14 @@ export default function CustomerForm({ mode = "add" }) {
       showToast("Please select a valid file to upload", "error");
       return;
     }
-
-    console.log("File before FormData append:", {
-      name: file.name,
-      size: file.size,
-      type: file.type,
-      isFile: file instanceof File,
-    });
-
     try {
       const formData = new FormData();
       formData.append("file", file);
       formData.append("zoho_id", id);
 
-      console.log(
-        "FormData fields:",
-        [...formData.entries()].map(([key, value]) => ({
-          key,
-          value: value.name || value,
-        })),
-      );
-      console.log("Current documents state:", documents);
-
       const res = await api.post(`/api/customers/${id}/documents`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      console.log("Document upload response:", res.data);
 
       if (!res.data.document_id) {
         console.error("Response missing document_id:", res.data);
@@ -248,7 +221,6 @@ export default function CustomerForm({ mode = "add" }) {
           return validDocs;
         }
         const updatedDocs = [...validDocs, res.data];
-        console.log("Updated documents state:", updatedDocs);
         return updatedDocs;
       });
 
@@ -318,7 +290,6 @@ export default function CustomerForm({ mode = "add" }) {
         showToast("Customer updated successfully!", "success");
       } else {
         const res = await api.post("/api/customers", form);
-        console.log("New customer created:", res.data);
         setCustomers((prev) => [{ ...form, ...res.data }, ...prev]);
         navigate(`/customers/${res.data.zoho_id}/edit`);
         showToast("Customer created successfully!", "success");
