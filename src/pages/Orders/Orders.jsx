@@ -69,6 +69,10 @@ import { api } from "../../api";
 import { Description } from "@mui/icons-material";
 import { AppContext } from "../../context/AppContext";
 import { useLoading } from "../../context/LoadingContext";
+import CollectionsModal from "../../components/orders/CollectionsModal";
+import MoreVertIcon from "@mui/icons-material/MoreVert";
+import Menu from "@mui/material/Menu";
+import { toast } from "react-toastify";
 
 const OrdersList = () => {
   const navigate = useNavigate();
@@ -125,6 +129,29 @@ const OrdersList = () => {
   ] = useState(null);
 
   const [selectedStatus, setSelectedStatus] = useState("");
+
+  const [openCollectionsModal, setOpenCollectionsModal] = useState(false);
+  const [collectionsOrder, setCollectionsOrder] = useState(null);
+
+  const [actionMenuAnchor, setActionMenuAnchor] = useState(null);
+  const [actionMenuOrder, setActionMenuOrder] = useState(null);
+  const [menuPosition, setMenuPosition] = useState(null);
+
+  const handleOpenActionMenu = (e, order) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    setActionMenuOrder(order);
+    setMenuPosition({
+      top: e.clientY,
+      left: e.clientX,
+    });
+  };
+
+  const handleCloseActionMenu = () => {
+    setMenuPosition(null);
+    setActionMenuOrder(null);
+  };
 
   const handleStatusUpdate = (orderId, order) => {
     setSelectedOrderForUpdate(orderId);
@@ -190,9 +217,23 @@ const OrdersList = () => {
     setDocDataLoading(true);
     try {
       const { data } = await api.get(`/api/orders/pdf-data/${tempOrderId}`);
-      const html = generator(data);
 
-      console.log({ html });
+      const normalizedData = {
+        ...data,
+        sender_name: data.sender?.name || "",
+        sender_contact: data.sender?.contact || "",
+        sender_address: data.sender?.address || "",
+        sender_email: data.sender?.email || "",
+        sender_ref: data.sender?.ref || "",
+        sender_kyc_approved: data.sender?.kycApproved || false,
+        sender_kyc_name: data.sender?.name || "",
+        sender_emirates_id: data.sender?.emiratesId || "",
+        sender_passport_number: data.sender?.passportNumber || "",
+        sender_trade_license: data.sender?.tradeLicense || "",
+        sender_signature_url: data.sender?.signatureUrl || "",
+      };
+
+      const html = generator(normalizedData);
 
       const w = window.open("", "_blank");
       w.document.write(html);
@@ -803,12 +844,9 @@ const OrdersList = () => {
     }
   };
 
-  // useEffect(() => {
-  //     fetchOrders();
-  // }, [page, rowsPerPage, filters]);
   useEffect(() => {
     fetchContainers();
-  }, [openAssignModal]); // Fetch when modal opens
+  }, [openAssignModal]);
 
   const handleChangePage = (event, newPage) => {
     setPage(newPage);
@@ -846,31 +884,21 @@ const OrdersList = () => {
       "Ready for Delivery": { bg: "#fce4ec", text: "#c2185b" },
       "Shipment Delivered": { bg: "#e8f5e8", text: "#2e7d32" },
       Loaded: { bg: "#e8f5e8", text: "#2e7d32" },
-      // 'Shipment Processing': { bg: '#fff3e0', text: '#ef6c00' },
-      // 'Shipment In Transit': { bg: '#e1f5fe', text: '#0277bd' },
       "Assigned to Job": { bg: "#fff3e0", text: "#f57c00" },
-      "Arrived at Sort Facility": { bg: "#f1f8e9", text: "#689f38" },
-      "Ready for Delivery": { bg: "#fce4ec", text: "#c2185b" },
-      "Shipment Delivered": { bg: "#e8f5e8", text: "#2e7d32" },
-      // Fallback for unknown
+
       default: { bg: "#f5f5f5", text: "#666" },
     };
     return colorMap[status] || colorMap.default;
   };
   const StyledTooltip = styled(Tooltip)(({ theme }) => ({
     [`& .MuiTooltip-tooltip`]: {
-      // backgroundColor: theme.palette.common.white,
-      // color: theme.palette.text.primary,
-      // boxShadow: theme.shadows[3],
       borderRadius: theme.shape.borderRadius,
       fontSize: theme.typography.body2.fontSize,
       width: 600,
-      // border: `1px solid ${theme.palette.divider}`,
     },
-    [`& .MuiTooltip-arrow`]: {
-      // color: theme.palette.common.white,
-    },
+    [`& .MuiTooltip-arrow`]: {},
   }));
+
   const StyledList = styled(List)(({ theme }) => ({
     padding: theme.spacing(1),
     "& .MuiListItem-root": {
@@ -905,7 +933,6 @@ const OrdersList = () => {
     setAssigning(true);
 
     try {
-      // Validate container status
       const status = (directSelectedContainers.current_status || "").trim();
 
       if (status !== "Available" && status !== "Assigned to Job") {
@@ -914,7 +941,6 @@ const OrdersList = () => {
         );
       }
 
-      // Build targets
       const targets = [];
 
       for (const orderId of selectedOrders) {
@@ -944,8 +970,6 @@ const OrdersList = () => {
           "No receivers with remaining quantity found in selected orders",
         );
       }
-
-      // Assign selected container to first available target
 
       const containerId =
         directSelectedContainers.cid ||
@@ -1447,7 +1471,6 @@ const OrdersList = () => {
     return Array.from(containerSet).map((num) => ({ primary: num }));
   };
 
-  // Enhanced PrettyContainersList remains the same, but now feed it the parsed list
   const PrettyContainersList = ({ items, title }) => {
     return (
       <Box sx={{ p: 1, maxWidth: 280 }}>
@@ -1502,10 +1525,6 @@ const OrdersList = () => {
     );
   };
 
-  // Example usage in your component (assuming 'order' is the JSON data):
-  // const containerList = parseContainersToList(order);
-  // <PrettyContainersList items={containerList} title="Containers" />
-  // Styled components (unchanged)
   const StyledTableRow = styled(TableRow)(({ theme }) => ({
     "&:nth-of-type(odd)": {
       backgroundColor: theme.palette.action.hover,
@@ -1584,6 +1603,13 @@ const OrdersList = () => {
       return orderData.receivers[0].receiverEmail || null;
     }
     return null;
+  };
+
+  const getReceiverKyc = (orderData) => {
+    if (orderData.receivers && orderData.receivers.length > 0) {
+      return orderData.receivers[0];
+    }
+    return {};
   };
 
   const handleFilterText = (e) => {
@@ -1774,7 +1800,15 @@ const OrdersList = () => {
                 <div class="signature-item">
                     <span class="signature-label">Signature</span>
                     <span class="signature-colon">:</span>
-                    <span class="signature-line"></span>
+                    <img
+                      style="
+                        width:150px;
+                        height:auto;
+                        filter: grayscale(100%) contrast(100%);
+                        mix-blend-mode: multiply;
+                      "
+                      src="${containerData.sender_signature_url}"
+                    />
                 </div>
                 <div class="signature-item">
                     <span class="signature-label">Name</span>
@@ -3425,17 +3459,14 @@ applicable law provides otherwise
   };
 
   const ReceiverUndertakingForDubaiCustoms = (orderData) => {
-    // Default values if orderData is missing
     const safeOrder = orderData || {};
 
-    // Helper function to safely get values
     const getSafeValue = (value, defaultValue = "_________________") => {
       return value && value !== "" && value !== null && value !== undefined
         ? value
         : defaultValue;
     };
 
-    // Get sender/receiver details
     const senderName = safeOrder.sender_name || "";
     const senderCNIC = safeOrder.sender_cnic || "_____-_______-_";
     const trade_license = safeOrder.trade_license || "________";
@@ -3448,7 +3479,8 @@ applicable law provides otherwise
       safeOrder.sender_name ||
       "Company Name / Individual Name";
 
-    // Calculate total packages from shipping details
+    const receiverKyc = getReceiverKyc(safeOrder);
+
     const calculateTotalPackages = () => {
       if (!safeOrder.receivers || !Array.isArray(safeOrder.receivers)) {
         return safeOrder.total_packages || "123";
@@ -3680,17 +3712,14 @@ applicable law provides otherwise
   };
 
   const ReceiverUndertakingDubaiANF = (orderData) => {
-    // Default values if orderData is missing
     const safeOrder = orderData || {};
 
-    // Helper function to safely get values
     const getSafeValue = (value, defaultValue = "_________________") => {
       return value && value !== "" && value !== null && value !== undefined
         ? value
         : defaultValue;
     };
 
-    // Get sender/receiver details
     const senderName = safeOrder.sender_name || "";
     const senderCNIC = safeOrder.sender_cnic || "_____-_______-_";
     const trade_license = safeOrder.trade_license || "________";
@@ -3703,7 +3732,8 @@ applicable law provides otherwise
       safeOrder.sender_name ||
       "Company Name / Individual Name";
 
-    // Calculate total packages from shipping details
+    const receiverKyc = getReceiverKyc(safeOrder);
+
     const calculateTotalPackages = () => {
       if (!safeOrder.receivers || !Array.isArray(safeOrder.receivers)) {
         return safeOrder.total_packages || "123";
@@ -6864,8 +6894,9 @@ applicable law provides otherwise
                         <div class="col-input">To be fetched from system database</div>
                     </div>
 
-                    <div class="row"><div class="col-num">7</div><div class="col-label">Passport No:</div><div class="col-input">To be fetched... COPY ATTACHED</div></div>
-                    <div class="row"><div class="col-num">8</div><div class="col-label">Emirates ID #:</div><div class="col-input">To be fetched... COPY ATTACHED</div></div>
+                    <div class="row"><div class="col-num">7</div><div class="col-label">Passport No:</div><div class="col-input">${safeOrder.sender_kyc_approved ? safeOrder.sender_passport_number || "N/A" : "Not Approved"}</div></div>
+                    <div class="row"><div class="col-num">8</div><div class="col-label">Emirates ID #:</div><div class="col-input">${safeOrder.sender_kyc_approved ? safeOrder.sender_emirates_id || "N/A" : "Not Approved"}</div></div>
+
                     <div class="row"><div class="col-num">9</div><div class="col-label">Visa No:</div><div class="col-input">To be fetched... COPY ATTACHED</div></div>
 
                     <div class="declaration">
@@ -6878,8 +6909,13 @@ applicable law provides otherwise
                             Date: <span class="option">${currentDate}</span>
                         </div>
                         <div>
-                            Signature <span class="sig-line"></span><br><br>
-                            Name <span class="sig-line"></span>
+                            Signature ${
+                              safeOrder.sender_kyc_approved &&
+                              safeOrder.sender_signature_url
+                                ? `<img src="${safeOrder.sender_signature_url}" style="height:40px;vertical-align:middle;margin-left:5px;" />`
+                                : `<span class="sig-line"></span>`
+                            }<br><br>
+                            Name <span style="margin-left:5px;">${safeOrder.sender_kyc_approved ? safeOrder.sender_kyc_name || "" : ""}</span>
                         </div>
                     </div>
                 </div>
@@ -7074,8 +7110,10 @@ applicable law provides otherwise
                         <div class="col-input">To be fetched from system database</div>
                     </div>
 
-                    <div class="row"><div class="col-num">7</div><div class="col-label">Passport No:</div><div class="col-input">To be fetched... COPY ATTACHED</div></div>
-                    <div class="row"><div class="col-num">8</div><div class="col-label">Emirates ID #:</div><div class="col-input">To be fetched... COPY ATTACHED</div></div>
+                    <<div class="row"><div class="col-num">7</div><div class="col-label">Passport No:</div><div class="col-input">${safeOrder.sender_kyc_approved ? safeOrder.sender_passport_number || "N/A" : "Not Approved"}</div></div>
+                    <div class="row"><div class="col-num">8</div><div class="col-label">Emirates ID #:</div><div class="col-input">${safeOrder.sender_kyc_approved ? safeOrder.sender_emirates_id || "N/A" : "Not Approved"}</div></div>
+
+
                     <div class="row"><div class="col-num">9</div><div class="col-label">Visa No:</div><div class="col-input">To be fetched... COPY ATTACHED</div></div>
 
                     <div class="declaration">
@@ -7088,8 +7126,13 @@ applicable law provides otherwise
                             Date: <span class="option">${currentDate}</span>
                         </div>
                         <div>
-                            Signature <span class="sig-line"></span><br><br>
-                            Name <span class="sig-line"></span>
+                            Signature ${
+                              safeOrder.sender_kyc_approved &&
+                              safeOrder.sender_signature_url
+                                ? `<img src="${safeOrder.sender_signature_url}" style="height:40px;vertical-align:middle;margin-left:5px;" />`
+                                : `<span class="sig-line"></span>`
+                            }<br><br>
+                            Name <span style="margin-left:5px;">${safeOrder.sender_kyc_approved ? safeOrder.sender_kyc_name || "" : ""}</span>
                         </div>
                     </div>
                 </div>
@@ -7282,8 +7325,9 @@ applicable law provides otherwise
                         <div class="col-input">To be fetched from system database</div>
                     </div>
 
-                    <div class="row"><div class="col-num">7</div><div class="col-label">Passport No:</div><div class="col-input">To be fetched... COPY ATTACHED</div></div>
-                    <div class="row"><div class="col-num">8</div><div class="col-label">Emirates ID #:</div><div class="col-input">To be fetched... COPY ATTACHED</div></div>
+                    <div class="row"><div class="col-num">7</div><div class="col-label">Passport No:</div><div class="col-input">${safeOrder.sender_kyc_approved ? safeOrder.sender_passport_number || "N/A" : "Not Approved"}</div></div>
+                    <div class="row"><div class="col-num">8</div><div class="col-label">Emirates ID #:</div><div class="col-input">${safeOrder.sender_kyc_approved ? safeOrder.sender_emirates_id || "N/A" : "Not Approved"}</div></div>
+
                     <div class="row"><div class="col-num">9</div><div class="col-label">Visa No:</div><div class="col-input">To be fetched... COPY ATTACHED</div></div>
 
                     <div class="declaration">
@@ -7296,8 +7340,13 @@ applicable law provides otherwise
                             Date: <span class="option">${currentDate}</span>
                         </div>
                         <div>
-                            Signature <span class="sig-line"></span><br><br>
-                            Name <span class="sig-line"></span>
+                            Signature ${
+                              safeOrder.sender_kyc_approved &&
+                              safeOrder.sender_signature_url
+                                ? `<img src="${safeOrder.sender_signature_url}" style="height:40px;vertical-align:middle;margin-left:5px;" />`
+                                : `<span class="sig-line"></span>`
+                            }<br><br>
+                            Name <span style="margin-left:5px;">${safeOrder.sender_kyc_approved ? safeOrder.sender_kyc_name || "" : ""}</span>
                         </div>
                     </div>
                 </div>
@@ -7545,7 +7594,6 @@ applicable law provides otherwise
             >
               Add Selected to Container ({numSelected})
             </Button>
-            {/* New Direct Assign Button */}
             <Button
               variant="contained"
               disabled={numSelected === 0 || loadingContainers}
@@ -7674,7 +7722,6 @@ applicable law provides otherwise
           </FormControl>
         </Stack>
 
-        {/* Table - FIXED: No whitespace between <TableHead> and <TableBody> */}
         <TableContainer
           sx={{
             borderRadius: 2,
@@ -7707,14 +7754,7 @@ applicable law provides otherwise
                 <StyledTableHeadCell
                   padding="checkbox"
                   sx={{ bgcolor: "#0d6c6a", color: "#fff" }}
-                >
-                  {/*     <Checkbox
-                        color="primary"
-                        indeterminate={numSelected > 0 && numSelected < rowCount}
-                        checked={rowCount > 0 && numSelected === rowCount}
-                        onChange={handleSelectAllClick}
-                    /> */}
-                </StyledTableHeadCell>
+                ></StyledTableHeadCell>
                 {[
                   <StyledTableHeadCell
                     sx={{ bgcolor: "#0d6c6a", color: "#fff" }}
@@ -7740,9 +7780,7 @@ applicable law provides otherwise
                     key="receivers"
                   >
                     Receivers & Containers
-                  </StyledTableHeadCell>, // Multiple receivers with status
-
-                  // <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="loading">POL</StyledTableHeadCell>,
+                  </StyledTableHeadCell>,
                   <StyledTableHeadCell
                     sx={{ bgcolor: "#0d6c6a", color: "#fff" }}
                     key="dest"
@@ -7755,19 +7793,12 @@ applicable law provides otherwise
                   >
                     Sender
                   </StyledTableHeadCell>,
-                  // <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff', width: 100 }} key="containers"></StyledTableHeadCell>,
-                  // New column for Products (weight, category, item products, total number)
-                  // <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="created_by">Created By</StyledTableHeadCell>,
                   <StyledTableHeadCell
                     sx={{ bgcolor: "#0d6c6a", color: "#fff", fontSize: 10 }}
                     key="total_items"
                   >
                     Total Items & Weight
                   </StyledTableHeadCell>,
-                  // <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff',  }} key="total_weight">Weight</StyledTabl  eHeadCell>,
-
-                  // <StyledTableHeadCell sx={{ bgcolor: '#0d6c6a', color: '#fff' }} key="updated_at">Updated At</StyledTableHeadCell>,
-                  // <TableCell key="assoc">Associated Container</TableCell>,
                   <StyledTableHeadCell
                     sx={{ bgcolor: "#0d6c6a", color: "#fff" }}
                     key="actions"
@@ -7780,28 +7811,6 @@ applicable law provides otherwise
             <TableBody>
               {orders.map((order) => {
                 const isItemSelected = isSelected(order.id);
-                // renderReceivers( order.receivers);
-                const containersList = order.receivers.forEach((receiver) => {
-                  if (
-                    receiver.shippingdetails &&
-                    Array.isArray(receiver.shippingdetails)
-                  ) {
-                    receiver.shippingdetails.forEach((shippingDetail) => {
-                      if (
-                        shippingDetail.containerDetails &&
-                        Array.isArray(shippingDetail.containerDetails)
-                      ) {
-                        shippingDetail.containerDetails.forEach(
-                          (containerDetail) => {
-                            if (containerDetail && containerDetail) {
-                              // return containersList.push({primary: containerDetail.container.container_number.trim() } );
-                            }
-                          },
-                        );
-                      }
-                    });
-                  }
-                });
                 const status =
                   order.overall_status || order.status || "Created";
                 const colors = getStatusColors(status);
@@ -7869,9 +7878,7 @@ applicable law provides otherwise
                             "& .MuiTooltip-tooltip": {
                               border: "1px solid #e0e0e0",
                               background: "transparent",
-                              width: 600, // set your preferred width
-                              //   maxHeight: 400,
-                              //   overflow: 'auto',
+                              width: 600,
                             },
                           },
                         }}
@@ -7908,7 +7915,6 @@ applicable law provides otherwise
                         </Typography>
                       </StyledTooltip>
                     </TableCell>
-                    {/* <StyledTableCell>{getPlaceName(order?.place_of_loading)}</StyledTableCell> */}
                     <StyledTableCell>
                       {getPlaceName(order.place_of_delivery)}
                     </StyledTableCell>
@@ -7916,7 +7922,6 @@ applicable law provides otherwise
                       {order.sender_name?.substring(0, 20)}
                     </StyledTableCell>
 
-                    {/* <StyledTableCell>{order.created_by.substring(10, 0) || ''}...</StyledTableCell> */}
                     <TableCell
                       sx={{ flexWrap: "wrap", display: "list-item", p: 0 }}
                     >
@@ -7941,51 +7946,19 @@ applicable law provides otherwise
                         {totalWeight.toFixed()} kg
                       </StyledTableCell>
                     </TableCell>
-
                     <StyledTableCell>
-                      <Stack direction="row" spacing={0}>
-                        <IconButton
-                          size="10"
-                          color="#e2e8f0"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleStatusUpdate(order);
-                          }}
-                          title="Update Status"
-                        >
-                          <UpdateIcon />
-                        </IconButton>
-                        <IconButton
-                          size="small"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDocuments(order.id);
-                          }}
-                          title="Documents"
-                        >
-                          <DescriptionIcon />
-                        </IconButton>
-                        <IconButton
-                          size="small"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleView(order.id);
-                          }}
-                          title="View Details"
-                        >
-                          <VisibilityIcon />
-                        </IconButton>
-                        <IconButton
-                          size="small"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleEdit(order.id);
-                          }}
-                          title="Edit"
-                        >
-                          <EditIcon />
-                        </IconButton>
-                      </Stack>
+                      <IconButton
+                        size="small"
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleOpenActionMenu(e, order);
+                        }}
+                        title="Actions"
+                      >
+                        <MoreVertIcon />
+                      </IconButton>
                     </StyledTableCell>
                   </StyledTableRow>
                 );
@@ -7993,13 +7966,12 @@ applicable law provides otherwise
             </TableBody>
           </Table>
         </TableContainer>
-        {/* Pagination (unchanged, but uses fixed total) */}
         <TablePagination
           rowsPerPageOptions={[5, 10, 25, 50, 75, 100, 125]}
           component="div"
-          count={total} // ← must be correct number!
+          count={total}
           rowsPerPage={rowsPerPage}
-          page={page} // 0-based in MUI TablePagination
+          page={page}
           onPageChange={handleChangePage}
           onRowsPerPageChange={handleChangeRowsPerPage}
           labelRowsPerPage="Rows per page:"
@@ -8026,7 +7998,6 @@ applicable law provides otherwise
               "&:focus": { outline: "2px solid #0d6c6a" },
             },
           }}
-          // aria-label="Consignments table pagination"
         />
         <OrderModalView
           openModal={openModal}
@@ -8036,7 +8007,6 @@ applicable law provides otherwise
           modalError={modalError}
           places={filterPlaces}
         />
-        {/* Snackbar for notifications */}
         <Snackbar
           open={snackbar.open}
           autoHideDuration={6000}
@@ -8068,6 +8038,17 @@ applicable law provides otherwise
           onUpdateReceiver={handleUpdateReceiver}
           fetchOrders={fetchOrders}
           places={places}
+        />
+        <CollectionsModal
+          open={openCollectionsModal}
+          onClose={() => setOpenCollectionsModal(false)}
+          order={collectionsOrder}
+          getPlaceName={getPlaceName}
+          onSave={async (collectionsPayload) => {
+            toast.success("Collections saved");
+            setOpenCollectionsModal(false);
+            fetchOrders();
+          }}
         />
         <Dialog
           open={openDirectAssign}
@@ -8228,6 +8209,69 @@ applicable law provides otherwise
             </Button>
           </DialogActions>
         </Dialog>
+        <Menu
+          open={!!menuPosition}
+          onClose={handleCloseActionMenu}
+          anchorReference="anchorPosition"
+          anchorPosition={menuPosition}
+        >
+          <MenuItem
+            onClick={() => {
+              handleStatusUpdate(actionMenuOrder);
+              handleCloseActionMenu();
+            }}
+          >
+            <UpdateIcon fontSize="small" sx={{ mr: 1.5 }} />
+            Update Status
+          </MenuItem>
+          <MenuItem
+            onClick={() => {
+              handleDocuments(actionMenuOrder.id);
+              handleCloseActionMenu();
+            }}
+          >
+            <DescriptionIcon fontSize="small" sx={{ mr: 1.5 }} />
+            Documents
+          </MenuItem>
+          <MenuItem
+            onClick={() => {
+              handleView(actionMenuOrder.id);
+              handleCloseActionMenu();
+            }}
+          >
+            <VisibilityIcon fontSize="small" sx={{ mr: 1.5 }} />
+            View Details
+          </MenuItem>
+          <MenuItem
+            onClick={() => {
+              handleEdit(actionMenuOrder.id);
+              handleCloseActionMenu();
+            }}
+          >
+            <EditIcon fontSize="small" sx={{ mr: 1.5 }} />
+            Edit
+          </MenuItem>
+          <MenuItem
+            onClick={async () => {
+              const orderToOpen = actionMenuOrder;
+              handleCloseActionMenu();
+              try {
+                const { data } = await api.get(`/api/orders/${orderToOpen.id}`);
+                setCollectionsOrder(data);
+                setOpenCollectionsModal(true);
+              } catch (err) {
+                setSnackbar({
+                  open: true,
+                  message: "Failed to load order for collections",
+                  severity: "error",
+                });
+              }
+            }}
+          >
+            <CargoIcon fontSize="small" sx={{ mr: 1.5 }} />
+            Add Collections
+          </MenuItem>
+        </Menu>
       </Paper>
     </>
   );
