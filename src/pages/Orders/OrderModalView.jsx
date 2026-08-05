@@ -58,6 +58,12 @@ import { api } from "../../api";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { applyPlugin } from "jspdf-autotable";
+import { BRAND } from "../../constants/containers";
+import {
+  manifestTableStyles,
+  pdfAddFooters,
+  pdfDrawSectionHeader,
+} from "../../Utlis/containerBuilder";
 applyPlugin(jsPDF);
 
 const T = {
@@ -238,30 +244,68 @@ const OrderModalView = ({
     const doc = new jsPDF("p", "mm", "a4");
     const pw = doc.internal.pageSize.getWidth();
     const m = 14;
-    const bp = [13, 108, 106];
-    const bl = [220, 245, 243];
-    let y = 30;
+    const { teal, orange, lightGrey, borderGrey } = BRAND;
+    let y;
+
+    const PAGE_BOTTOM = 270;
+    const checkPageBreak = (needed = 20) => {
+      if (y + needed > PAGE_BOTTOM) {
+        doc.addPage();
+        y = 20;
+      }
+    };
 
     const logo = await loadImageAsBase64("./logo-2.png");
-    if (logo) doc.addImage(logo, "PNG", m, 4, 60, 12);
+    if (logo) doc.addImage(logo, "PNG", m, 5, 55, 12);
 
     doc
       .setFont("helvetica", "bold")
-      .setFontSize(16)
-      .setTextColor(...bp);
-    doc.text("ORDER DETAILS REPORT", pw - m, 10, { align: "right" });
-    doc.setFont("helvetica", "normal").setFontSize(9);
-    doc.text(`Booking Ref: ${order.booking_ref}`, pw - m, 17, {
-      align: "right",
-    });
-    doc.text(`Generated: ${new Date().toLocaleString()}`, pw - m, 22, {
+      .setFontSize(10)
+      .setTextColor(...orange);
+    doc.text(`Booking Ref: ${order.booking_ref}`, pw - m, 8, {
       align: "right",
     });
 
+    doc.setFont("helvetica", "normal").setFontSize(8).setTextColor(60, 60, 60);
+    [
+      `Status: ${order.status || "N/A"}`,
+      `Generated: ${new Date().toLocaleString()}`,
+    ].forEach((line, i) =>
+      doc.text(line, pw - m, 13 + i * 4, { align: "right" }),
+    );
+
+    doc
+      .setFont("helvetica", "bold")
+      .setFontSize(13)
+      .setTextColor(...teal);
+    doc.text("ROYAL GULF SHIPPING & LOGISTICS LLC", m, 24);
+    doc
+      .setFont("helvetica", "normal")
+      .setFontSize(7.5)
+      .setTextColor(120, 120, 120);
+    doc.text("Dubai • London • Karachi • Shenzhen", m, 27.5);
+
+    doc
+      .setFont("helvetica", "bold")
+      .setFontSize(14)
+      .setTextColor(...teal);
+    doc.text("ORDER DETAILS REPORT", m, 34);
+    doc
+      .setDrawColor(...teal)
+      .setLineWidth(0.6)
+      .line(m, 37, pw - m, 37);
+
+    y = 44;
+
+    const primaryDropOff = order.receivers?.[0]?.drop_off_details?.[0];
+
     const cards = [
-      ["Order ID", order.id],
+      ["Order Form Number", order.rgl_booking_number],
       ["Status", order.status],
-      ["Drop Method", order.drop_method],
+      [
+        "Drop Method",
+        order.drop_method || primaryDropOff?.drop_method || "N/A",
+      ],
       ["Point of Origin", getPlaceName(order.point_of_origin)],
       ["Total Assigned Qty", order.total_assigned_qty],
       ["Collection Scope", order.collection_scope],
@@ -273,11 +317,9 @@ const OrderModalView = ({
         row = Math.floor(i / 2);
       const x = m + col * (cw + 6),
         cy = y + row * (ch + 6);
-      doc
-        .setDrawColor(220, 220, 220)
-        .setFillColor(...bl)
-        .roundedRect(x, cy, cw, ch, 2, 2, "FD");
-      doc.setFillColor(...bp).rect(x, cy, cw, 5, "F");
+      doc.setDrawColor(...borderGrey).setFillColor(...lightGrey);
+      doc.roundedRect(x, cy, cw, ch, 2, 2, "FD");
+      doc.setFillColor(...teal).rect(x, cy, cw, 5, "F");
       doc
         .setFont("helvetica", "bold")
         .setFontSize(9)
@@ -291,17 +333,7 @@ const OrderModalView = ({
     y += Math.ceil(cards.length / 2) * (ch + 6) + 5;
 
     const drawKV = (y, title, details) => {
-      doc
-        .setFont("helvetica", "bold")
-        .setFontSize(14)
-        .setTextColor(...bp)
-        .text(title, m, y);
-      y += 4;
-      doc
-        .setDrawColor(...bp)
-        .setLineWidth(0.6)
-        .line(m, y, pw - m, y);
-      y += 6;
+      y = pdfDrawSectionHeader(doc, title, y, m);
       const colW = (pw - m * 2 - 10) / 2;
       const rh = 8;
       details.forEach((pair, i) => {
@@ -311,17 +343,19 @@ const OrderModalView = ({
           dy = y + row * rh;
         doc
           .setFont("helvetica", "bold")
-          .setFontSize(10)
-          .setTextColor(...bp)
+          .setFontSize(9)
+          .setTextColor(...teal)
           .text(pair[0], x, dy);
         doc
           .setFont("helvetica", "normal")
+          .setFontSize(9)
           .setTextColor(50, 50, 50)
           .text(String(pair[1] || "N/A"), x, dy + 4);
       });
       return y + Math.ceil(details.length / 2) * rh + 6;
     };
 
+    checkPageBreak(30);
     y = drawKV(y, "ORDER INFORMATION", [
       ["Booking Ref", order.booking_ref],
       ["RGL Booking #", order.rgl_booking_number],
@@ -330,6 +364,7 @@ const OrderModalView = ({
       ["Place of Delivery", getPlaceName(order.place_of_delivery)],
     ]);
 
+    checkPageBreak(30);
     y = drawKV(y, "SENDER INFORMATION", [
       ["Sender Name", order.sender_name],
       ["Contact Number", order.sender_contact],
@@ -339,12 +374,8 @@ const OrderModalView = ({
     ]);
 
     if (order.receivers?.length) {
-      doc
-        .setFont("helvetica", "bold")
-        .setFontSize(14)
-        .setTextColor(...bp)
-        .text("RECEIVERS", m, y);
-      y += 6;
+      checkPageBreak(20);
+      y = pdfDrawSectionHeader(doc, "RECEIVERS", y, m);
       autoTable(doc, {
         startY: y,
         head: [
@@ -369,20 +400,25 @@ const OrderModalView = ({
           r.receiver_contact,
           r.receiver_address,
         ]),
-        headStyles: { fillColor: bp, textColor: 255 },
-        bodyStyles: { fontSize: 9, cellPadding: 2 },
+        ...manifestTableStyles,
         margin: { left: m, right: m },
+        didParseCell(data) {
+          if (data.section === "body" && data.row.index % 2 === 1)
+            data.cell.styles.fillColor = lightGrey;
+        },
       });
       y = doc.lastAutoTable.finalY + 6;
 
       for (const rec of order.receivers) {
         if (!rec.shippingdetails?.length) continue;
+        checkPageBreak(30);
         doc
-          .setFont("helvetica", "normal")
+          .setFont("helvetica", "bold")
           .setFontSize(9)
-          .setTextColor(...bp)
+          .setTextColor(...teal)
           .text(`Products for: ${rec.receiver_name}`, m, y);
         y += 6;
+
         autoTable(doc, {
           startY: y,
           head: [
@@ -405,21 +441,28 @@ const OrderModalView = ({
             s.weight,
             s.pickupLocation,
             s.deliveryAddress,
-            s.consignmentStatus,
+            s.status,
           ]),
-          headStyles: { fillColor: bp, textColor: 255 },
-          bodyStyles: { fontSize: 8, cellPadding: 2 },
+          ...manifestTableStyles,
+          styles: { ...manifestTableStyles.styles, fontSize: 8 },
           margin: { left: m, right: m },
+          didParseCell(data) {
+            if (data.section === "body" && data.row.index % 2 === 1)
+              data.cell.styles.fillColor = lightGrey;
+          },
         });
         y = doc.lastAutoTable.finalY + 6;
+
         rec.shippingdetails.forEach((sd, di) => {
           if (!sd.containerDetails?.length) return;
+          checkPageBreak(30);
           doc
-            .setFont("helvetica", "normal")
+            .setFont("helvetica", "bold")
             .setFontSize(9)
-            .setTextColor(...bp)
+            .setTextColor(...teal)
             .text(`Container Assignments – Item ${di + 1}`, m, y);
           y += 4;
+
           autoTable(doc, {
             startY: y,
             head: [
@@ -438,24 +481,23 @@ const OrderModalView = ({
               cd.assign_total_box,
               cd.remaining_items,
             ]),
-            headStyles: { fillColor: bp, textColor: 255 },
-            bodyStyles: { fontSize: 8, cellPadding: 2 },
+            ...manifestTableStyles,
+            styles: { ...manifestTableStyles.styles, fontSize: 8 },
             margin: { left: m, right: m },
-            theme: "grid",
           });
           y = doc.lastAutoTable.finalY + 6;
         });
       }
     }
-
+    checkPageBreak(26);
     if (order.order_remarks) {
       doc
-        .setFillColor(248, 249, 250)
+        .setFillColor(...lightGrey)
         .roundedRect(m, y, pw - m * 2, 20, 2, 2, "F");
       doc
         .setFont("helvetica", "bold")
         .setFontSize(10)
-        .setTextColor(...bp)
+        .setTextColor(...teal)
         .text("Order Remarks", m + 3, y + 6);
       doc
         .setFont("helvetica", "normal")
@@ -469,13 +511,8 @@ const OrderModalView = ({
       y += 26;
     }
 
-    const fy = 275;
-    doc.setDrawColor(...bp).line(m, fy, pw - m, fy);
-    doc.setFont("helvetica", "normal").setFontSize(9).setTextColor(80, 80, 80);
-    doc.text(`Generated: ${new Date().toLocaleString()}`, m, fy + 6);
-    doc.text(`Page ${doc.getCurrentPageInfo().pageNumber}`, pw - m, fy + 6, {
-      align: "right",
-    });
+    pdfAddFooters(doc, pw, m, `Booking Ref: ${order.booking_ref || "N/A"}`);
+
     doc.save(`Order_${order.booking_ref || "Unknown"}.pdf`);
   };
 
@@ -822,6 +859,7 @@ const OrderModalView = ({
                           {[
                             "Status",
                             "Container #",
+                            "Consignment #",
                             "Assigned Weight",
                             "Assigned Boxes",
                             "Remaining",
@@ -865,6 +903,9 @@ const OrderModalView = ({
                             </TableCell>
                             <TableCell sx={{ fontWeight: 600 }}>
                               {cd.container?.container_number || "N/A"}
+                            </TableCell>
+                            <TableCell sx={{ fontWeight: 600 }}>
+                              {cd.consignment_number || "N/A"}
                             </TableCell>
                             <TableCell>
                               {cd.assign_weight
@@ -972,6 +1013,182 @@ const OrderModalView = ({
                             </Grid>
                           ))}
                         </Grid>
+                      </Box>
+                    </Grid>
+                  ))}
+                </Grid>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </Stack>
+    );
+  };
+
+  const renderCollections = () => {
+    const receivers = selectedOrder?.receivers || [];
+    const hasAny = receivers.some((r) => r.collections?.length > 0);
+    if (!hasAny)
+      return (
+        <Alert severity="info" sx={{ borderRadius: 2 }}>
+          No collections recorded for this order.
+        </Alert>
+      );
+
+    return (
+      <Stack spacing={2.5}>
+        {receivers.map((rec, ri) => {
+          const cols = rec.collections || [];
+          if (!cols.length) return null;
+          return (
+            <Card
+              key={rec.id || ri}
+              variant="outlined"
+              sx={{ borderRadius: 2.5 }}
+            >
+              <Box
+                sx={{
+                  px: 2.5,
+                  py: 1.5,
+                  bgcolor: T.orangeLight,
+                  borderBottom: "1px solid #ffe0b2",
+                }}
+              >
+                <Typography
+                  variant="subtitle1"
+                  fontWeight={700}
+                  color={T.orangeDark}
+                >
+                  {rec.receiver_name || `Receiver ${ri + 1}`}
+                </Typography>
+                <Typography variant="caption" color={T.grey600}>
+                  {cols.length} collection{cols.length > 1 ? "s" : ""}
+                </Typography>
+              </Box>
+              <CardContent sx={{ p: 2.5 }}>
+                <Grid container spacing={2}>
+                  {cols.map((c, ci) => (
+                    <Grid item xs={12} md={6} key={c.id || ci}>
+                      <Box
+                        sx={{
+                          p: 2,
+                          border: `1px dashed ${T.orange}55`,
+                          borderRadius: 2,
+                          bgcolor: T.grey50,
+                        }}
+                      >
+                        <Typography
+                          variant="caption"
+                          fontWeight={700}
+                          color={T.orange}
+                          sx={{
+                            display: "block",
+                            mb: 1.5,
+                            textTransform: "uppercase",
+                            letterSpacing: 0.5,
+                          }}
+                        >
+                          Collection {ci + 1}
+                        </Typography>
+                        <Grid container spacing={1}>
+                          {[
+                            ["Method", c.collectionMethod],
+                            ["Scope", c.collectionScope],
+                            ["Emirates ID / CNIC", c.clientReceiverId],
+                            ["Phone Number", c.clientReceiverMobile],
+                            ["Vehicle Plate No", c.plateNo],
+                            [
+                              "Delivery Date",
+                              c.deliveryDate
+                                ? formatDate(c.deliveryDate)
+                                : null,
+                            ],
+                          ].map(([label, val]) => (
+                            <Grid item xs={12} sm={6} key={label}>
+                              <FieldCard label={label} value={val} />
+                            </Grid>
+                          ))}
+                        </Grid>
+
+                        {c.items?.length > 0 && (
+                          <Box sx={{ mt: 1.5 }}>
+                            <Typography
+                              variant="caption"
+                              fontWeight={700}
+                              color={T.grey600}
+                              sx={{
+                                textTransform: "uppercase",
+                                letterSpacing: 0.5,
+                              }}
+                            >
+                              Items Collected
+                            </Typography>
+                            <Stack
+                              direction="row"
+                              flexWrap="wrap"
+                              gap={0.5}
+                              sx={{ mt: 0.5 }}
+                            >
+                              {c.items.map((it, iri) => (
+                                <Chip
+                                  key={iri}
+                                  label={`${it.itemRef} (${it.qtyDelivered})`}
+                                  size="small"
+                                  variant="outlined"
+                                  sx={{
+                                    borderColor: T.teal,
+                                    color: T.teal,
+                                    fontWeight: 600,
+                                  }}
+                                />
+                              ))}
+                            </Stack>
+                          </Box>
+                        )}
+
+                        {c.gatepass?.length > 0 && (
+                          <Box sx={{ mt: 1.5 }}>
+                            <Typography
+                              variant="caption"
+                              fontWeight={700}
+                              color={T.grey600}
+                              sx={{
+                                textTransform: "uppercase",
+                                letterSpacing: 0.5,
+                              }}
+                            >
+                              Gatepass
+                            </Typography>
+                            <Stack
+                              direction="row"
+                              flexWrap="wrap"
+                              gap={1}
+                              sx={{ mt: 0.75 }}
+                            >
+                              {c.gatepass.map((g, gi) => (
+                                <a
+                                  key={gi}
+                                  href={g.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  <Box
+                                    component="img"
+                                    src={g.url}
+                                    alt="gatepass"
+                                    sx={{
+                                      width: 56,
+                                      height: 56,
+                                      objectFit: "cover",
+                                      borderRadius: 1,
+                                      border: `1px solid ${T.grey200}`,
+                                    }}
+                                  />
+                                </a>
+                              ))}
+                            </Stack>
+                          </Box>
+                        )}
                       </Box>
                     </Grid>
                   ))}
@@ -1323,38 +1540,20 @@ const OrderModalView = ({
                     </Card>
                   )}
 
-                  {/* <Card
+                  <Card
                     variant="outlined"
                     sx={{ borderRadius: 2.5, border: `1px solid ${T.grey200}` }}
                   >
                     <CardContent sx={{ p: 3 }}>
                       <SectionHeader
                         icon={
-                          <CheckCircleOutlineIcon
-                            sx={{ color: T.teal, fontSize: 20 }}
-                          />
+                          <InventoryIcon sx={{ color: T.teal, fontSize: 20 }} />
                         }
-                        title="Delivery Details"
+                        title="Collections"
                       />
-                      <FieldGrid
-                        cols={3}
-                        data={{
-                          "Collection Method": selectedOrder.collection_method,
-                          "Collection Scope": selectedOrder.collection_scope,
-                          "Full / Partial": selectedOrder.full_partial,
-                          "Qty Delivered": selectedOrder.qty_delivered,
-                          "Delivery Date": formatDate(
-                            selectedOrder.delivery_date,
-                          ),
-                          "Drop Date": formatDate(selectedOrder.drop_date),
-                          "Receiver Name": selectedOrder.client_receiver_name,
-                          "Receiver ID": selectedOrder.client_receiver_id,
-                          "Receiver Mobile":
-                            selectedOrder.client_receiver_mobile,
-                        }}
-                      />
+                      {renderCollections()}
                     </CardContent>
-                  </Card> */}
+                  </Card>
                 </Stack>
               </TabPanel>
 

@@ -48,6 +48,7 @@ import html2canvas from "html2canvas";
 import logoPic from "../../../public/logo-2.png";
 import { AppContext } from "../../context/AppContext";
 import { useLoading } from "../../context/LoadingContext";
+import { FieldRow } from "../../components/containers/FormFields";
 
 const CustomTextField = ({ disabled, ...props }) => (
   <TextField
@@ -1216,267 +1217,6 @@ const OrderForm = () => {
       };
       img.onerror = () => resolve(null);
     });
-
-  const generateOrderPDF = async (order) => {
-    if (!order) return;
-
-    const doc = new jsPDF("p", "mm", "a4");
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const margin = 14;
-    const brandPrimary = [13, 108, 106]; // #0d6c6a
-    const brandLight = [220, 245, 243];
-    let y = 30;
-
-    // -------- HEADER --------
-    const logoBase64 = await loadImageAsBase64("./logo-2.png");
-    if (logoBase64) doc.addImage(logoBase64, "PNG", margin, 4, 60, 12);
-
-    doc.setFont("helvetica", "bold").setFontSize(16);
-    doc.setTextColor(...brandPrimary);
-    doc.text("ORDER DETAILS REPORT", pageWidth - margin, 10, {
-      align: "right",
-    });
-
-    doc.setFont("helvetica", "normal").setFontSize(9);
-    doc.text(`Booking Ref: ${order.booking_ref}`, pageWidth - margin, 17, {
-      align: "right",
-    });
-    doc.text(
-      `Generated: ${new Date().toLocaleString()}`,
-      pageWidth - margin,
-      22,
-      { align: "right" },
-    );
-
-    // -------- SUMMARY CARDS --------
-    const cards = [
-      ["Order ID", order.id],
-      ["Status", order.status],
-      ["Drop Method", order.drop_method],
-      ["Point of Origin", order.point_of_origin],
-      ["Total Assigned Qty", order.total_assigned_qty],
-      ["Collection Scope", order.collection_scope],
-    ];
-    const cardWidth = (pageWidth - margin * 2 - 6) / 2;
-    const cardHeight = 16;
-
-    cards.forEach((item, i) => {
-      const col = i % 2;
-      const row = Math.floor(i / 2);
-      const x = margin + col * (cardWidth + 6);
-      const cardY = y + row * (cardHeight + 6);
-
-      doc.setDrawColor(220, 220, 220);
-      doc.setFillColor(...brandLight);
-      doc.roundedRect(x, cardY, cardWidth, cardHeight, 2, 2, "FD");
-
-      doc.setFillColor(...brandPrimary);
-      doc.rect(x, cardY, cardWidth, 5, "F");
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(9);
-      doc.setTextColor(255, 255, 255);
-      doc.text(item[0], x + 2, cardY + 4);
-
-      doc.setFont("helvetica", "normal");
-      doc.setTextColor(50, 50, 50);
-      doc.text(String(item[1]), x + 3, cardY + 11);
-    });
-
-    y += Math.ceil(cards.length / 2) * (cardHeight + 6) + 5;
-
-    // -------- ORDER DETAILS --------
-    const orderDetails = [
-      ["Booking Ref", order.booking_ref],
-      ["RGL Booking #", order.rgl_booking_number],
-      ["Place of Loading", order.place_of_loading],
-      ["Final Destination", order.final_destination],
-      ["Place of Delivery", order.place_of_delivery],
-      ["ETA", order.eta || "N/A"],
-      ["ETD", order.etd || "N/A"],
-      ["Shipping Line", order.shipping_line || "N/A"],
-      ["Plate No", order.plate_no],
-      ["Drop Off CNIC", order.drop_off_cnic],
-      ["Drop Off Mobile", order.drop_off_mobile],
-      [
-        "Drop Date",
-        order.drop_date ? new Date(order.drop_date).toLocaleString() : "N/A",
-      ],
-    ];
-
-    const drawKeyValueSection = (y, title, details) => {
-      doc.setFont("helvetica", "bold").setFontSize(14);
-      doc.setTextColor(...brandPrimary);
-      doc.text(title, margin, y);
-      y += 4;
-
-      doc.setDrawColor(...brandPrimary);
-      doc.setLineWidth(0.6);
-      doc.line(margin, y, pageWidth - margin, y);
-      y += 6;
-
-      const colWidth = (pageWidth - margin * 2 - 10) / 2;
-      const rowHeight = 8;
-
-      details.forEach((pair, index) => {
-        const col = index % 2;
-        const row = Math.floor(index / 2);
-        const x = margin + col * (colWidth + 10);
-        const dy = y + row * rowHeight;
-
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(10);
-        doc.setTextColor(...brandPrimary);
-        doc.text(pair[0], x, dy);
-
-        doc.setFont("helvetica", "normal");
-        doc.setTextColor(50, 50, 50);
-        doc.text(String(pair[1] || "N/A"), x, dy + 4);
-      });
-
-      return y + Math.ceil(details.length / 2) * rowHeight + 6;
-    };
-
-    y = drawKeyValueSection(y, "ORDER INFORMATION", orderDetails);
-
-    // -------- SENDER DETAILS --------
-    const senderDetails = [
-      ["Sender Name", order.sender_name],
-      ["Contact Number", order.sender_contact],
-      ["Email", order.sender_email],
-      ["Address", order.sender_address],
-      ["Sender Ref", order.sender_ref],
-      ["Sender Remarks", order.sender_remarks],
-      ["Selected Sender Owner", order.selected_sender_owner],
-    ];
-    y = drawKeyValueSection(y, "SENDER INFORMATION", senderDetails);
-
-    // -------- RECEIVERS TABLE --------
-    if (order.receivers?.length) {
-      doc.setFont("helvetica", "bold").setFontSize(14);
-      doc.setTextColor(...brandPrimary);
-      doc.text("RECEIVERS", margin, y);
-      y += 6;
-
-      autoTable(doc, {
-        startY: y,
-        head: [
-          [
-            "Receiver",
-            "Status",
-            "Consignment #",
-            "Qty",
-            "Weight",
-            "Contact",
-            "Address",
-            "Containers",
-          ],
-        ],
-        body: order.receivers.map((r) => [
-          r.receiver_name,
-          r.status,
-          r.consignment_number,
-          r.total_number,
-          r.total_weight,
-          r.receiver_contact,
-          r.receiver_address,
-          r.containers?.map((c) => c.join(", ")).join("; ") || "N/A",
-        ]),
-        headStyles: { fillColor: brandPrimary, textColor: 255 },
-        bodyStyles: { fontSize: 9, cellPadding: 3 },
-        margin: { left: margin, right: margin },
-      });
-
-      y = doc.lastAutoTable.finalY + 6;
-
-      // -------- RECEIVER SHIPPING DETAILS TABLE --------
-      for (const receiver of order.receivers) {
-        if (!receiver.shippingDetails?.length) continue;
-
-        doc.setFont("helvetica", "bold").setFontSize(12);
-        doc.setTextColor(...brandPrimary);
-        doc.text(`Products Details for: ${receiver.receiver_name}`, margin, y);
-        y += 6;
-
-        autoTable(doc, {
-          startY: y,
-          head: [
-            [
-              "Category",
-              "Subcategory",
-              "Type",
-              "Total #",
-              "Weight",
-              "Pickup",
-              "Delivery",
-              "Item Ref",
-              "Assigned Qty",
-            ],
-          ],
-          body: receiver.shippingDetails.map((s) => [
-            s.category,
-            s.subcategory,
-            s.type,
-            s.totalNumber,
-            s.weight,
-            s.pickupLocation,
-            s.deliveryAddress,
-            s.itemRef,
-            s.assignedQty,
-          ]),
-          headStyles: { fillColor: brandPrimary, textColor: 255 },
-          bodyStyles: { fontSize: 9, cellPadding: 3 },
-          margin: { left: margin, right: margin },
-        });
-
-        y = doc.lastAutoTable.finalY + 6;
-      }
-    }
-
-    // -------- REMARKS --------
-    const drawBoxText = (y, title, text) => {
-      if (!text) return y;
-
-      const boxHeight = 20;
-      doc.setFillColor(248, 249, 250);
-      doc.roundedRect(margin, y, pageWidth - margin * 2, boxHeight, 2, 2, "F");
-
-      doc.setFont("helvetica", "bold").setFontSize(10);
-      doc.setTextColor(...brandPrimary);
-      doc.text(title, margin + 3, y + 6);
-
-      doc.setFont("helvetica", "normal").setFontSize(9);
-      doc.setTextColor(50, 50, 50);
-      const wrapped = doc.splitTextToSize(text, pageWidth - margin * 2 - 6);
-      doc.text(wrapped, margin + 3, y + 11);
-
-      return y + boxHeight + 6;
-    };
-
-    y = drawBoxText(y, "Order Remarks", order.order_remarks);
-
-    // -------- ATTACHMENTS --------
-    const attachmentsText = order.attachments?.length
-      ? order.attachments.join(", ")
-      : "None";
-    y = drawBoxText(y, "Attachments", attachmentsText);
-
-    // -------- FOOTER --------
-    const footerY = 275;
-    doc.setDrawColor(...brandPrimary);
-    doc.line(margin, footerY, pageWidth - margin, footerY);
-    doc.setFont("helvetica", "normal").setFontSize(9);
-    doc.setTextColor(80, 80, 80);
-    doc.text(`Generated: ${new Date().toLocaleString()}`, margin, footerY + 6);
-    doc.text(
-      `Page ${doc.getCurrentPageInfo().pageNumber}`,
-      pageWidth - margin,
-      footerY + 6,
-      { align: "right" },
-    );
-
-    // -------- SAVE PDF --------
-    doc.save(`Order_${order.booking_ref || "Unknown"}.pdf`);
-  };
 
   const getPlaceName = (placeId) => {
     if (!placeId) return "N/A";
@@ -5712,11 +5452,11 @@ const OrderForm = () => {
                         control={<Radio />}
                         label="Drop Off"
                       />
-                      <FormControlLabel
+                      {/* <FormControlLabel
                         value="Collection"
                         control={<Radio />}
                         label="Collection"
-                      />
+                      /> */}
                       <FormControlLabel
                         value="Third Party"
                         control={<Radio />}
@@ -5908,29 +5648,28 @@ const OrderForm = () => {
                     </Stack>
                   )}
 
-                  {/* ====================== COLLECTION ====================== */}
-                  {formData.transportType === "Collection" && (
+                  {/* {formData.transportType === "Collection" && (
                     <Stack spacing={3}>
                       <Typography variant="h6" color="#f58220">
                         Collection Details
                       </Typography>
 
-                      <CustomSelect
-                        label="Collection Method"
-                        name="collectionMethod"
-                        value={formData.collectionMethod || ""}
-                        onChange={handleChange}
-                      >
-                        <MenuItem value="">Select Method</MenuItem>
-                        <MenuItem value="Delivered by RGSL">
-                          Delivered by RGSL
-                        </MenuItem>
-                        <MenuItem value="Collected by Client">
-                          Collected by Client
-                        </MenuItem>
-                      </CustomSelect>
+                      <FieldRow>
+                        <CustomSelect
+                          label="Collection Method"
+                          name="collectionMethod"
+                          value={formData.collectionMethod || ""}
+                          onChange={handleChange}
+                        >
+                          <MenuItem value="">Select Method</MenuItem>
+                          <MenuItem value="Delivered by RGSL">
+                            Delivered by RGSL
+                          </MenuItem>
+                          <MenuItem value="Collected by Client">
+                            Collected by Client
+                          </MenuItem>
+                        </CustomSelect>
 
-                      <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
                         <CustomSelect
                           label="Scope"
                           name="collection_scope"
@@ -5940,7 +5679,8 @@ const OrderForm = () => {
                           <MenuItem value="Full">Full</MenuItem>
                           <MenuItem value="Partial">Partial</MenuItem>
                         </CustomSelect>
-
+                      </FieldRow>
+                      <FieldRow>
                         {formData.collection_scope === "Partial" && (
                           <CustomTextField
                             label="Qty Delivered"
@@ -5950,29 +5690,24 @@ const OrderForm = () => {
                             onChange={handleChange}
                           />
                         )}
-                      </Box>
-
-                      <Stack spacing={2}>
                         <CustomTextField
                           label="Client Receiver Name"
                           name="clientReceiverName"
                           value={formData.clientReceiverName || ""}
                           onChange={handleChange}
                         />
-                        <Box sx={{ display: "flex", gap: 2 }}>
-                          <CustomTextField
-                            label="Receiver ID"
-                            name="clientReceiverId"
-                            value={formData.clientReceiverId || ""}
-                            onChange={handleChange}
-                          />
-                          <CustomTextField
-                            label="Receiver Mobile"
-                            name="clientReceiverMobile"
-                            value={formData.clientReceiverMobile || ""}
-                            onChange={handleChange}
-                          />
-                        </Box>
+                        <CustomTextField
+                          label="Receiver ID"
+                          name="clientReceiverId"
+                          value={formData.clientReceiverId || ""}
+                          onChange={handleChange}
+                        />
+                        <CustomTextField
+                          label="Receiver Mobile"
+                          name="clientReceiverMobile"
+                          value={formData.clientReceiverMobile || ""}
+                          onChange={handleChange}
+                        />
                         <CustomTextField
                           label="Plate No (Optional)"
                           name="plateNo"
@@ -5987,9 +5722,7 @@ const OrderForm = () => {
                           onChange={handleChange}
                           InputLabelProps={{ shrink: true }}
                         />
-                      </Stack>
-
-                      {/* Gatepass Upload */}
+                      </FieldRow>
                       <Button
                         variant="outlined"
                         component="label"
@@ -6005,9 +5738,8 @@ const OrderForm = () => {
                         />
                       </Button>
                     </Stack>
-                  )}
+                  )} */}
 
-                  {/* ====================== THIRD PARTY ====================== */}
                   {formData.transportType === "Third Party" && (
                     <Stack spacing={3}>
                       <Typography variant="h6" color="#f58220">
@@ -6194,7 +5926,13 @@ const OrderForm = () => {
                           variant="outlined"
                         />
                         <Typography variant="body2" color="text.secondary">
-                          Delivered: {rec.qtyDelivered || 0} /{" "}
+                          Delivered:{" "}
+                          {(rec.shippingDetails || []).reduce(
+                            (sum, sd) =>
+                              sum + (parseInt(sd.deliveredQty || 0) || 0),
+                            0,
+                          )}{" "}
+                          /{" "}
                           {(rec.shippingDetails || []).reduce(
                             (sum, sd) =>
                               sum + (parseInt(sd.totalNumber || 0) || 0),
