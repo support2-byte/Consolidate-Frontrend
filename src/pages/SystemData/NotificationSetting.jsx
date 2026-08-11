@@ -36,6 +36,7 @@ import { api } from "../../api";
 import {
   EMAIL_TEMPLATES,
   TEMPLATE_BY_EMAIL_TYPE,
+  KYC_TEMPLATE_BY_COMPANY,
 } from "../../constants/emailTemplate";
 
 const TABS = [
@@ -112,6 +113,12 @@ const buildTemplateData = (row) => ({
   eta: "Sample ETA",
   lastUpdated: formatDate(row.created_at),
   trackLink: "https://trackorder.royalgulfshipping.com/",
+});
+
+const buildKycTemplateData = (row) => ({
+  recipientName: row.recipient_name || "Valued Customer",
+  formUrl: row.form_url || "#",
+  year: new Date().getFullYear(),
 });
 
 const renderTemplate = (templateKey, data) => {
@@ -345,16 +352,21 @@ const NotificationSettings = () => {
   };
 
   const previewTemplateKey = previewRow
-    ? TEMPLATE_BY_EMAIL_TYPE[previewRow.email_type] || "shipment_update"
+    ? isKycTab
+      ? KYC_TEMPLATE_BY_COMPANY[previewRow.company] || "kyc_rgsl"
+      : TEMPLATE_BY_EMAIL_TYPE[previewRow.email_type] || "shipment_update"
     : null;
 
   const previewHtml = previewRow
-    ? renderTemplate(previewTemplateKey, buildTemplateData(previewRow))
+    ? renderTemplate(
+        previewTemplateKey,
+        isKycTab
+          ? buildKycTemplateData(previewRow)
+          : buildTemplateData(previewRow),
+      )
     : null;
 
   const handleDelete = async (id) => {
-    // Sent emails can't be deleted, but this guard only applies to the
-    // Emails tab (KYC emails don't carry the same "sent" restriction).
     if (isEmailsTab || isKycTab) {
       const row = rows.find((r) => r.id === id);
       if (row && String(row.status).toLowerCase() === "sent") {
@@ -517,6 +529,15 @@ const NotificationSettings = () => {
                     )}
                     {isKycTab && (
                       <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>
+                        <Button
+                          size="small"
+                          variant="text"
+                          startIcon={<VisibilityOutlinedIcon />}
+                          onClick={() => setPreviewRow(row)}
+                          sx={{ mr: 1 }}
+                        >
+                          View
+                        </Button>
                         <Button
                           size="small"
                           variant="outlined"
