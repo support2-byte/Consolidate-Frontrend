@@ -135,7 +135,14 @@ const PaymentTypes = () => {
           mb: 3,
         }}
       >
-        <Typography variant="h3">Payment Types</Typography>
+        <Typography
+          variant="h4"
+          component="h1"
+          gutterBottom
+          sx={{ color: "#0d6c6a" }}
+        >
+          Payment Types
+        </Typography>
         <Button
           variant="contained"
           startIcon={<AddIcon />}

@@ -18,7 +18,7 @@ import {
   Box,
 } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
-import { api } from "../../api"; // Adjust path
+import { api } from "../../api";
 import { useParams, useNavigate } from "react-router-dom";
 import { Snackbar, Alert } from "@mui/material";
 import { v4 as uuidv4 } from "uuid";

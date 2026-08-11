@@ -242,12 +242,14 @@ export default function BugReportPage() {
         <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
           <Box>
             <Typography
-              variant="h5"
-              sx={{ fontWeight: 700, color: "text.primary" }}
+              variant="h4"
+              component="h1"
+              gutterBottom
+              sx={{ color: "#0d6c6a" }}
             >
               Bug Reports
             </Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" color="textSecondary">
               Manage, review, and track application anomalies.
             </Typography>
           </Box>

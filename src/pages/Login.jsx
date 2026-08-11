@@ -189,6 +189,14 @@ export default function Login() {
               }
               label="Remember me"
             />
+            <Typography
+              variant="body2"
+              color="error"
+              sx={{ cursor: "pointer" }}
+              onClick={() => navigate("/forgot-password")}
+            >
+              Forgot Password?
+            </Typography>
           </Box>
 
           <Button

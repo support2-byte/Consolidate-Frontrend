@@ -95,7 +95,7 @@ const DashboardCharts = () => {
         />
         <Grid container spacing={2} sx={{ mb: 3 }}>
           {[1, 2, 3, 4, 5, 6].map((i) => (
-            <Grid item xs={6} sm={4} md={2} key={i}>
+            <Grid size={{ xs: 6, sm: 4, md: 2 }} key={i}>
               <Skeleton
                 variant="rounded"
                 height={100}
@@ -106,7 +106,7 @@ const DashboardCharts = () => {
         </Grid>
         <Grid container spacing={1.5} sx={{ mb: 3 }}>
           {[1, 2, 3, 4, 5, 6].map((i) => (
-            <Grid item xs={6} sm={4} md={2} key={i}>
+            <Grid size={{ xs: 6, sm: 4, md: 2 }} key={i}>
               <Skeleton
                 variant="rounded"
                 height={100}
@@ -204,7 +204,7 @@ const DashboardCharts = () => {
 
       <Grid container spacing={2} sx={{ mb: 3 }}>
         {topCounts.map((item, idx) => (
-          <Grid item size={{ xs: 6, sm: 4, md: 2 }} key={idx}>
+          <Grid size={{ xs: 6, sm: 4, md: 2 }} key={idx}>
             <StyledCard
               sx={{
                 bgcolor: `${item.color}08`,
@@ -320,7 +320,7 @@ const DashboardCharts = () => {
       </Box>
 
       <Grid container spacing={3}>
-        <Grid item size={{ xs: 12, md: 6 }}>
+        <Grid size={{ xs: 12, md: 6 }}>
           <StyledCard>
             <Box
               sx={{
@@ -434,11 +434,12 @@ const DashboardCharts = () => {
               </Table>
             </TableContainer>
             <Typography
+              component="div"
               sx={{ textAlign: "right", mb: 1, mr: 1, cursor: "pointer" }}
               onClick={() => navigate("/orders")}
             >
               <Chip
-                label={"View All"}
+                label="View All"
                 size="small"
                 sx={{
                   px: 2,
@@ -452,7 +453,7 @@ const DashboardCharts = () => {
             </Typography>
           </StyledCard>
         </Grid>
-        <Grid item size={{ xs: 12, md: 6 }}>
+        <Grid size={{ xs: 12, md: 6 }}>
           <StyledCard>
             <Box
               sx={{
@@ -543,6 +544,7 @@ const DashboardCharts = () => {
               </Table>
             </TableContainer>
             <Typography
+              component="div"
               sx={{ textAlign: "right", mb: 1, mr: 1, cursor: "pointer" }}
               onClick={() => navigate("/consignments")}
             >

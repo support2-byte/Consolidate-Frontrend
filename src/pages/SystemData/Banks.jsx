@@ -256,7 +256,12 @@ const Banks = () => {
         }}
       >
         <Box>
-          <Typography variant="h4" component="h1" gutterBottom>
+          <Typography
+            variant="h4"
+            component="h1"
+            gutterBottom
+            sx={{ color: "#0d6c6a" }}
+          >
             Manage Banks
           </Typography>
           <Typography variant="body2" color="textSecondary">

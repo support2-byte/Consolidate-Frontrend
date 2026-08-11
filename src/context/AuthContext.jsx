@@ -86,6 +86,7 @@ export function AuthProvider({ children }) {
     [user],
   );
 
+  const isSuperAdmin = useCallback(() => hasRole("super admin"), [hasRole]);
   const isAdmin = useCallback(() => hasRole("admin"), [hasRole]);
   const isManager = useCallback(() => hasRole("manager"), [hasRole]);
   const isStaff = useCallback(() => hasRole("staff"), [hasRole]);
@@ -115,6 +116,7 @@ export function AuthProvider({ children }) {
     logout,
     hasRole,
     can,
+    isSuperAdmin,
     isAdmin,
     isManager,
     isStaff,

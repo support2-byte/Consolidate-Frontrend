@@ -278,7 +278,12 @@ const ThirdParties = () => {
         }}
       >
         <Box>
-          <Typography variant="h4" component="h1" gutterBottom>
+          <Typography
+            variant="h4"
+            component="h1"
+            gutterBottom
+            sx={{ color: "#0d6c6a" }}
+          >
             Manage Third Parties
           </Typography>
         </Box>
