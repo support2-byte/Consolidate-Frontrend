@@ -268,8 +268,10 @@ export default function StatusesPage() {
         }}
       >
         <Typography
-          variant="h5"
-          sx={{ fontWeight: 700, color: ORANGE, letterSpacing: -0.5 }}
+          variant="h4"
+          component="h1"
+          gutterBottom
+          sx={{ color: "#0d6c6a" }}
         >
           Shipment Statuses
         </Typography>

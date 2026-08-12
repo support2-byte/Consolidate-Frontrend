@@ -38,6 +38,7 @@ import {
   LocalShipping as LocalShippingIcon,
   ShoppingCart as ShoppingCartIcon,
   People as PeopleIcon,
+  Fingerprint as FingerPrintIcon,
   Settings as SettingsIcon,
   ExpandLess as ExpandLessIcon,
   ExpandMore as ExpandMoreIcon,
@@ -50,12 +51,15 @@ import {
   DirectionsBoat as DirectionsBoatIcon,
   LocationOn as LocationOnIcon,
   Notifications as NotificationsIcon,
+  Business as BusinessIcon,
+  Article as ArticleIcon,
   Lock,
+  LockReset as LockResetIcon,
 } from "@mui/icons-material";
 import { Link as RouterLink } from "react-router-dom";
 import { useThemeContext } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
-import AdminResetPasswordDialog from "./ForgetPassword";
+import AdminResetPasswordDialog from "./ResetPassword";
 import { BugIcon } from "lucide-react";
 
 const expandedWidth = 260;
@@ -112,6 +116,12 @@ export default function DashboardLayout() {
       module: "customers",
     },
     {
+      label: "KYC",
+      path: "/kyc",
+      icon: <FingerPrintIcon />,
+      module: "kyc",
+    },
+    {
       label: "Vendors",
       path: "/vendors",
       icon: <PeopleIcon />,
@@ -148,13 +158,13 @@ export default function DashboardLayout() {
       module: "tracking",
     },
     {
-      label: "Tracking History",
+      label: "Order Tracking",
       path: "/tracking-history",
       icon: <HistoryIcon />,
       module: "order-tracking",
     },
     {
-      label: "Notifications",
+      label: "Email Notifications",
       path: "/notifications",
       icon: <NotificationsIcon />,
       module: "notifications",
@@ -162,6 +172,18 @@ export default function DashboardLayout() {
   ].filter((item) => !item.module || can(item.module, "view"));
 
   const adminSubItems = [
+    {
+      text: "Companies",
+      icon: <BusinessIcon />,
+      path: "/admin/companies",
+      module: "companies",
+    },
+    {
+      text: "Document Templates",
+      icon: <ArticleIcon />,
+      path: "/admin/document-templates",
+      module: "document-templates",
+    },
     {
       text: "Payment Types",
       icon: <PaymentIcon />,
@@ -500,7 +522,6 @@ export default function DashboardLayout() {
                         height: { xs: 34, md: 40 },
                         fontSize: { xs: "0.9rem", md: "1.1rem" },
                         fontWeight: "bold",
-                        fontSize: "1.1rem",
                       }}
                     >
                       {user.email?.charAt(0)?.toUpperCase()}
@@ -514,26 +535,78 @@ export default function DashboardLayout() {
                   onClose={handleProfileClose}
                   PaperProps={{
                     elevation: 4,
-                    sx: { mt: 1, minWidth: 200, borderRadius: 2 },
+                    sx: (theme) => ({
+                      mt: 1,
+                      minWidth: 240,
+                      borderRadius: 2,
+                      overflow: "hidden",
+                      border: `1px solid ${theme.palette.divider}`,
+                    }),
                   }}
                 >
-                  <MenuItem
-                    disabled
-                    sx={{ fontWeight: "bold", color: "#f58220" }}
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      px: 2,
+                      py: 1.5,
+                      bgcolor: (theme) =>
+                        theme.palette.mode === "dark"
+                          ? "rgba(15,118,110,0.12)"
+                          : "rgba(15,118,110,0.06)",
+                    }}
                   >
-                    {user.role?.toUpperCase() || "User"}
+                    <Avatar
+                      sx={{
+                        bgcolor: "primary.main",
+                        width: 36,
+                        height: 36,
+                        fontSize: 14,
+                        mr: 1,
+                      }}
+                    >
+                      {(user.email || "?").slice(0, 2).toUpperCase()}
+                    </Avatar>
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          color: "#f58220",
+                          fontWeight: 700,
+                          letterSpacing: 0.4,
+                        }}
+                      >
+                        {user.roleName?.toUpperCase() || "USER"}
+                      </Typography>
+                      <Typography
+                        variant="body2"
+                        noWrap
+                        title={user.email}
+                        sx={{ fontWeight: 500 }}
+                      >
+                        {user.email}
+                      </Typography>
+                    </Box>
+                  </Box>
+
+                  <MenuItem
+                    onClick={() => setForgetPasswordOpen(true)}
+                    sx={{ py: 1.5 }}
+                  >
+                    <LockResetIcon
+                      fontSize="small"
+                      sx={{ mr: 1.5, color: "secondary.main" }}
+                    />
+                    Change Password
                   </MenuItem>
-                  <MenuItem disabled sx={{ fontSize: "0.9rem" }}>
-                    {user.email}
-                  </MenuItem>
-                  <Divider />
-                  <MenuItem onClick={() => setForgetPasswordOpen(true)}>
-                    Reset Password
-                  </MenuItem>
-                  <Divider />
+
                   <MenuItem
                     onClick={handleLogoutClick}
-                    sx={{ color: "error.main" }}
+                    sx={{
+                      py: 1.5,
+                      color: "error.main",
+                      "&:hover": { bgcolor: "error.main", color: "#fff" },
+                    }}
                   >
                     <LogoutIcon fontSize="small" sx={{ mr: 1.5 }} />
                     Logout
@@ -547,7 +620,7 @@ export default function DashboardLayout() {
 
       <AdminResetPasswordDialog
         open={forgetPasswordOpen}
-        targetUserEmail={user?.email}
+        userEmail={user?.email}
         onClose={handleForgetClose}
       />
 

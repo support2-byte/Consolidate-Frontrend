@@ -19,7 +19,6 @@ import DashboardCharts from "./pages/DashboardCharts";
 import Customers from "./pages/Customers/Customers";
 import ContainerForm from "./pages/Containers/AddContainer";
 import ContainerReleases from "./pages/Containers/ContainerReleases";
-import NotificationManage from "./pages/SystemData/ManageNotifications";
 import NotificationSettings from "./pages/SystemData/NotificationSetting";
 import Vendors from "./pages/Vendors/Vendors";
 import Orders from "./pages/Orders/Orders";
@@ -43,9 +42,17 @@ import PermissionEditor from "./pages/Admin/PermissionEditor";
 import Unauthorized from "./pages/Unauthorized";
 import { LoadingProvider } from "./context/LoadingContext";
 import OrderTrackingPage from "./pages/OrderTrackingPage";
+import KycCustomers from "./pages/Customers/KycCustomers";
+import KycLogsPage from "./pages/Customers/KycLogsPage";
+import KycCustomerDetailPage from "./pages/Customers/KycCustomerDetailPage";
+import KycSubmissionsPage from "./pages/Customers/KycSubmissions";
+import ForgotPassword from "./pages/ForgotPassword";
+import CompaniesPage from "./pages/SystemData/CompaniesPage";
+import DocumentTemplatesPage from "./pages/SystemData/DocumentTemplatesPage";
 
 const router = createBrowserRouter([
   { path: "/login", element: <Login /> },
+  { path: "/forgot-password", element: <ForgotPassword /> },
   { path: "/register", element: <Register /> },
   { path: "/unauthorized", element: <Unauthorized /> },
 
@@ -215,22 +222,48 @@ const router = createBrowserRouter([
           </ProtectedRoute>
         ),
       },
-      {
-        path: "notifications/:id",
-        element: (
-          <ProtectedRoute
-            permission={{ module: "notifications", action: "view" }}
-          >
-            <NotificationManage />
-          </ProtectedRoute>
-        ),
-      },
 
       {
         path: "users",
         element: (
           <ProtectedRoute permission={{ module: "users", action: "view" }}>
             <UsersManagement />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "kyc",
+        element: (
+          <ProtectedRoute permission={{ module: "kyc", action: "view" }}>
+            <KycCustomers />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "kyc-logs",
+        element: (
+          <ProtectedRoute permission={{ module: "kyc-logs", action: "view" }}>
+            <KycLogsPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "kyc-submission",
+        element: (
+          <ProtectedRoute
+            permission={{ module: "kyc-submission-details", action: "view" }}
+          >
+            <KycCustomerDetailPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "kyc-submissions",
+        element: (
+          <ProtectedRoute
+            permission={{ module: "kyc-submissions", action: "view" }}
+          >
+            <KycSubmissionsPage />
           </ProtectedRoute>
         ),
       },
@@ -249,6 +282,26 @@ const router = createBrowserRouter([
         path: "admin",
         element: <Outlet />,
         children: [
+          {
+            path: "companies",
+            element: (
+              <ProtectedRoute
+                permission={{ module: "companies", action: "view" }}
+              >
+                <CompaniesPage />
+              </ProtectedRoute>
+            ),
+          },
+          {
+            path: "document-templates",
+            element: (
+              <ProtectedRoute
+                permission={{ module: "document-templates", action: "view" }}
+              >
+                <DocumentTemplatesPage />
+              </ProtectedRoute>
+            ),
+          },
           {
             path: "payment-types",
             element: (

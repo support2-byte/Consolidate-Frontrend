@@ -36,6 +36,7 @@ import { api } from "../../api";
 import {
   EMAIL_TEMPLATES,
   TEMPLATE_BY_EMAIL_TYPE,
+  KYC_TEMPLATE_BY_COMPANY,
 } from "../../constants/emailTemplate";
 
 const TABS = [
@@ -46,6 +47,14 @@ const TABS = [
     label: "Subscriptions",
     endpoint: "api/notifications/subscriptions",
   },
+  {
+    index: 2,
+    key: "kyc",
+    label: "KYC Emails",
+    endpoint: "api/kyc/emails",
+    resendEndpoint: "api/kyc/emails",
+    deleteEndpoint: "api/kyc/emails",
+  },
 ];
 
 const HIDDEN_COLUMNS = new Set(["id"]);
@@ -55,6 +64,13 @@ const EMAIL_STATUS_COLORS = {
   sent: { bg: "#e8f5e9", text: "#2e7d32" },
   pending: { bg: "#fff3e0", text: "#ef6c00" },
   failed: { bg: "#ffebee", text: "#c62828" },
+  default: { bg: "#f5f5f5", text: "#666" },
+};
+
+const COMPANY_COLORS = {
+  RGSL: { bg: "#e6f3f1", text: "#0f4f47" },
+  MF: { bg: "#eef0fb", text: "#1a2060" },
+  CAS: { bg: "#e8eef5", text: "#03182d" },
   default: { bg: "#f5f5f5", text: "#666" },
 };
 
@@ -99,6 +115,12 @@ const buildTemplateData = (row) => ({
   trackLink: "https://trackorder.royalgulfshipping.com/",
 });
 
+const buildKycTemplateData = (row) => ({
+  recipientName: row.recipient_name || "Valued Customer",
+  formUrl: row.form_url || "#",
+  year: new Date().getFullYear(),
+});
+
 const renderTemplate = (templateKey, data) => {
   const template = EMAIL_TEMPLATES[templateKey];
   if (!template) return null;
@@ -122,6 +144,8 @@ const NotificationSettings = () => {
 
   const currentTab = TABS[activeTab];
   const isEmailsTab = currentTab.key === "emails";
+  const isKycTab = currentTab.key === "kyc";
+  const hasRowActions = isEmailsTab || isKycTab;
 
   useEffect(() => {
     fetchData(currentTab);
@@ -170,10 +194,16 @@ const NotificationSettings = () => {
   const handleResend = async (rowId) => {
     setSendingId(rowId);
     try {
-      const res = await api.post(`${currentTab.endpoint}/${rowId}/resend`);
+      const base = currentTab.resendEndpoint || currentTab.endpoint;
+      const res = await api.post(`${base}/${rowId}/resend`);
       if (res.data?.success) {
+        const updatedRow = res.data.row;
         setRows((prev) =>
-          prev.map((r) => (r.id === rowId ? { ...r, status: "sent" } : r)),
+          prev.map((r) =>
+            r.id === rowId
+              ? { ...r, ...(updatedRow || { status: "sent" }) }
+              : r,
+          ),
         );
         toast.success("Email sent");
       } else {
@@ -271,6 +301,19 @@ const NotificationSettings = () => {
       );
     }
 
+    if (col === "company") {
+      const code = String(value || "");
+      const { bg, text } = getColors(COMPANY_COLORS, code);
+      return (
+        <Chip
+          label={code || "—"}
+          size="small"
+          variant="outlined"
+          sx={{ bgcolor: bg, color: text, borderColor: text, fontWeight: 500 }}
+        />
+      );
+    }
+
     if (col === "recipient_type") {
       const type = String(value || "").toLowerCase();
       const { bg, text } = getColors(RECIPIENT_TYPE_COLORS, type);
@@ -309,21 +352,32 @@ const NotificationSettings = () => {
   };
 
   const previewTemplateKey = previewRow
-    ? TEMPLATE_BY_EMAIL_TYPE[previewRow.email_type] || "shipment_update"
+    ? isKycTab
+      ? KYC_TEMPLATE_BY_COMPANY[previewRow.company] || "kyc_rgsl"
+      : TEMPLATE_BY_EMAIL_TYPE[previewRow.email_type] || "shipment_update"
     : null;
 
   const previewHtml = previewRow
-    ? renderTemplate(previewTemplateKey, buildTemplateData(previewRow))
+    ? renderTemplate(
+        previewTemplateKey,
+        isKycTab
+          ? buildKycTemplateData(previewRow)
+          : buildTemplateData(previewRow),
+      )
     : null;
 
   const handleDelete = async (id) => {
-    const row = rows.find((r) => r.id === id);
-    if (row && String(row.status).toLowerCase() === "sent") {
-      return toast.error("Sent emails cannot be deleted.");
+    if (isEmailsTab || isKycTab) {
+      const row = rows.find((r) => r.id === id);
+      if (row && String(row.status).toLowerCase() === "sent") {
+        return toast.error("Sent emails cannot be deleted.");
+      }
     }
+
     setDeletingId(id);
     try {
-      const { data } = await api.delete(`/api/notifications/${id}/delete`);
+      const base = currentTab.deleteEndpoint || "api/notifications";
+      const { data } = await api.delete(`${base}/${id}/delete`);
 
       if (!data.success) {
         return toast.error(data.message);
@@ -341,8 +395,8 @@ const NotificationSettings = () => {
 
   return (
     <Box sx={{ maxWidth: "100%", mx: "auto", py: 4, px: { xs: 2, md: 4 } }}>
-      <Typography variant="h4" sx={{ mb: 1 }}>
-        Notifications
+      <Typography variant="h4" fontWeight="bold" color="#f58220">
+        Email Notifications
       </Typography>
       <Typography color="text.secondary" sx={{ mb: 4 }}>
         View queued emails and manage notification subscriptions.
@@ -411,7 +465,7 @@ const NotificationSettings = () => {
                       <strong>{formatLabel(col)}</strong>
                     </TableCell>
                   ))}
-                  {isEmailsTab && (
+                  {hasRowActions && (
                     <TableCell
                       align="right"
                       sx={{ whiteSpace: "nowrap" }}
@@ -456,6 +510,45 @@ const NotificationSettings = () => {
                           sx={{ mr: 1 }}
                         >
                           {sendingId === row.id ? "Sending..." : "Email"}
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="error"
+                          startIcon={<DeleteOutlineIcon />}
+                          disabled={
+                            sendingId === row.id ||
+                            deletingId === row.id ||
+                            String(row.status).toLowerCase() === "sent"
+                          }
+                          onClick={() => handleDelete(row.id)}
+                        >
+                          {deletingId === row.id ? "Deleting..." : "Delete"}
+                        </Button>
+                      </TableCell>
+                    )}
+                    {isKycTab && (
+                      <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>
+                        <Button
+                          size="small"
+                          variant="text"
+                          startIcon={<VisibilityOutlinedIcon />}
+                          onClick={() => setPreviewRow(row)}
+                          sx={{ mr: 1 }}
+                        >
+                          View
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          startIcon={<EmailOutlinedIcon />}
+                          disabled={
+                            sendingId === row.id || deletingId === row.id
+                          }
+                          onClick={() => handleResend(row.id)}
+                          sx={{ mr: 1 }}
+                        >
+                          {sendingId === row.id ? "Sending..." : "Resend"}
                         </Button>
                         <Button
                           size="small"

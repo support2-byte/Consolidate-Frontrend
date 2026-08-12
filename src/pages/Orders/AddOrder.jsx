@@ -61,7 +61,6 @@ const CustomTextField = ({ disabled, ...props }) => (
       flex: 1,
       minWidth: 0,
       "& .MuiOutlinedInput-root": {
-        borderRadius: 2,
         transition: "all 0.3s ease",
         backgroundColor: "#fff",
         "& fieldset": { borderColor: "#ddd" },
@@ -995,7 +994,6 @@ const OrderForm = () => {
           }
         });
 
-        // Shipping Details
         const shippingDetailsRaw =
           rec.shippingDetails || rec.shippingdetails || [];
         camelRec.shippingDetails = shippingDetailsRaw.map((sd) => {
@@ -1008,7 +1006,6 @@ const OrderForm = () => {
             }
           });
 
-          // Container Details inside shipping detail
           camelSd.containerDetails = (
             sd.containerDetails ||
             sd.container_details ||
@@ -1331,7 +1328,6 @@ const OrderForm = () => {
     const senderEmail = order.sender_email || "N/A";
     const senderRef = order.sender_ref || "N/A";
 
-    // Get first receiver data
     const receiver =
       order.receivers && order.receivers[0] ? order.receivers[0] : {};
     const receiverName = receiver.receiver_name || "N/A";
@@ -1339,11 +1335,9 @@ const OrderForm = () => {
     const receiverAddress = receiver.receiver_address || "N/A";
     const receiverEmail = receiver.receiver_email || "N/A";
 
-    // Get shipping details
     const shippingDetails =
       receiver.shippingDetails || receiver.shippingdetails || [];
 
-    // Calculate totals
     let totalQty = 0;
     let totalWeight = 0;
 
@@ -1352,7 +1346,6 @@ const OrderForm = () => {
       totalWeight += parseFloat(item.weight || 0);
     });
 
-    // If no shipping details, use receiver totals
     if (shippingDetails.length === 0) {
       totalQty = parseInt(receiver.total_number || 0);
       totalWeight = parseFloat(receiver.total_weight || 0);
@@ -1867,11 +1860,10 @@ const OrderForm = () => {
             err.response?.data?.error || "Failed to remove shipping detail",
           severity: "error",
         });
-        return; // Don't update local state if DB delete failed
+        return;
       }
     }
 
-    // Update local state
     setFormData((prev) => ({
       ...prev,
       receivers: prev.receivers.map((r, i) =>
@@ -4013,7 +4005,6 @@ const OrderForm = () => {
                           >
                             Shipping Details
                           </Typography>
-                          {/* ETA, ETD at receiver/sender level */}
                           <Box
                             sx={{
                               display: "flex",
@@ -4489,6 +4480,40 @@ const OrderForm = () => {
                                           ]
                                         }
                                       />
+                                      <CustomTextField
+                                        label="Delivery Address"
+                                        value={sd.deliveryAddress || ""}
+                                        onChange={(e) =>
+                                          handleShippingChangeFn(
+                                            i,
+                                            j,
+                                            "deliveryAddress",
+                                          )(e)
+                                        }
+                                        error={
+                                          !!errors[
+                                            `${listKey}[${i}].shippingDetails[${j}].deliveryAddress`
+                                          ]
+                                        }
+                                        helperText={
+                                          errors[
+                                            `${listKey}[${i}].shippingDetails[${j}].deliveryAddress`
+                                          ]
+                                        }
+                                        fullWidth
+                                      />
+                                    </Box>
+                                    <Box
+                                      sx={{
+                                        display: "flex",
+                                        flexDirection: {
+                                          xs: "column",
+                                          sm: "row",
+                                        },
+                                        gap: 2,
+                                        alignItems: "stretch",
+                                      }}
+                                    >
                                       <CustomSelect
                                         label="Category"
                                         value={sd.category || ""}
@@ -4522,18 +4547,6 @@ const OrderForm = () => {
                                           </MenuItem>
                                         ))}
                                       </CustomSelect>
-                                    </Box>
-                                    <Box
-                                      sx={{
-                                        display: "flex",
-                                        flexDirection: {
-                                          xs: "column",
-                                          sm: "row",
-                                        },
-                                        gap: 2,
-                                        alignItems: "stretch",
-                                      }}
-                                    >
                                       <CustomSelect
                                         label="Subcategory"
                                         value={sd.subcategory || ""}
@@ -4602,18 +4615,6 @@ const OrderForm = () => {
                                           </MenuItem>
                                         ))}
                                       </CustomSelect>
-                                    </Box>
-                                    <Box
-                                      sx={{
-                                        display: "flex",
-                                        flexDirection: {
-                                          xs: "column",
-                                          sm: "row",
-                                        },
-                                        gap: 2,
-                                        alignItems: "stretch",
-                                      }}
-                                    >
                                       <CustomTextField
                                         label="Weight"
                                         value={sd.weight || ""}
@@ -4633,18 +4634,6 @@ const OrderForm = () => {
                                           ]
                                         }
                                       />
-                                    </Box>
-                                    <Box
-                                      sx={{
-                                        display: "flex",
-                                        flexDirection: {
-                                          xs: "column",
-                                          sm: "row",
-                                        },
-                                        gap: 2,
-                                        alignItems: "stretch",
-                                      }}
-                                    >
                                       <CustomTextField
                                         label="Total Number"
                                         value={sd.totalNumber || ""}
@@ -4713,40 +4702,6 @@ const OrderForm = () => {
                                           </MenuItem>
                                         ))}
                                       </CustomSelect>
-                                    </Box>
-                                    <Box
-                                      sx={{
-                                        display: "flex",
-                                        flexDirection: {
-                                          xs: "column",
-                                          sm: "row",
-                                        },
-                                        gap: 2,
-                                        alignItems: "stretch",
-                                      }}
-                                    >
-                                      <CustomTextField
-                                        label="Delivery Address"
-                                        value={sd.deliveryAddress || ""}
-                                        onChange={(e) =>
-                                          handleShippingChangeFn(
-                                            i,
-                                            j,
-                                            "deliveryAddress",
-                                          )(e)
-                                        }
-                                        error={
-                                          !!errors[
-                                            `${listKey}[${i}].shippingDetails[${j}].deliveryAddress`
-                                          ]
-                                        }
-                                        helperText={
-                                          errors[
-                                            `${listKey}[${i}].shippingDetails[${j}].deliveryAddress`
-                                          ]
-                                        }
-                                        fullWidth
-                                      />
                                       <CustomTextField
                                         label="Ref Number"
                                         value={
@@ -4756,7 +4711,6 @@ const OrderForm = () => {
                                         disabled={true}
                                       />
                                     </Box>
-
                                     {!hasContainers ? (
                                       <Typography
                                         variant="body2"
@@ -5409,7 +5363,6 @@ const OrderForm = () => {
                 </Stack>
               </AccordionDetails>
             </Accordion>
-            {/* ==================== TRANSPORT PANEL ==================== */}
             <Accordion
               expanded={expanded.has("panel3")}
               onChange={handleAccordionChange("panel3")}
@@ -5436,7 +5389,6 @@ const OrderForm = () => {
 
               <AccordionDetails sx={{ p: 3, bgcolor: "#fff" }}>
                 <Stack spacing={4}>
-                  {/* Transport Type */}
                   <FormControl component="fieldset">
                     <Typography variant="h6" color="#f58220" gutterBottom>
                       Transport Type *
@@ -5452,11 +5404,6 @@ const OrderForm = () => {
                         control={<Radio />}
                         label="Drop Off"
                       />
-                      {/* <FormControlLabel
-                        value="Collection"
-                        control={<Radio />}
-                        label="Collection"
-                      /> */}
                       <FormControlLabel
                         value="Third Party"
                         control={<Radio />}
@@ -5465,7 +5412,6 @@ const OrderForm = () => {
                     </RadioGroup>
                   </FormControl>
 
-                  {/* ====================== DROP OFF ====================== */}
                   {formData.transportType === "Drop Off" && (
                     <Stack spacing={3}>
                       <Typography variant="h6" color="#f58220">
@@ -5647,98 +5593,6 @@ const OrderForm = () => {
                         )}
                     </Stack>
                   )}
-
-                  {/* {formData.transportType === "Collection" && (
-                    <Stack spacing={3}>
-                      <Typography variant="h6" color="#f58220">
-                        Collection Details
-                      </Typography>
-
-                      <FieldRow>
-                        <CustomSelect
-                          label="Collection Method"
-                          name="collectionMethod"
-                          value={formData.collectionMethod || ""}
-                          onChange={handleChange}
-                        >
-                          <MenuItem value="">Select Method</MenuItem>
-                          <MenuItem value="Delivered by RGSL">
-                            Delivered by RGSL
-                          </MenuItem>
-                          <MenuItem value="Collected by Client">
-                            Collected by Client
-                          </MenuItem>
-                        </CustomSelect>
-
-                        <CustomSelect
-                          label="Scope"
-                          name="collection_scope"
-                          value={formData.collection_scope || "Partial"}
-                          onChange={handleChange}
-                        >
-                          <MenuItem value="Full">Full</MenuItem>
-                          <MenuItem value="Partial">Partial</MenuItem>
-                        </CustomSelect>
-                      </FieldRow>
-                      <FieldRow>
-                        {formData.collection_scope === "Partial" && (
-                          <CustomTextField
-                            label="Qty Delivered"
-                            name="qtyDelivered"
-                            type="number"
-                            value={formData.qtyDelivered || ""}
-                            onChange={handleChange}
-                          />
-                        )}
-                        <CustomTextField
-                          label="Client Receiver Name"
-                          name="clientReceiverName"
-                          value={formData.clientReceiverName || ""}
-                          onChange={handleChange}
-                        />
-                        <CustomTextField
-                          label="Receiver ID"
-                          name="clientReceiverId"
-                          value={formData.clientReceiverId || ""}
-                          onChange={handleChange}
-                        />
-                        <CustomTextField
-                          label="Receiver Mobile"
-                          name="clientReceiverMobile"
-                          value={formData.clientReceiverMobile || ""}
-                          onChange={handleChange}
-                        />
-                        <CustomTextField
-                          label="Plate No (Optional)"
-                          name="plateNo"
-                          value={formData.plateNo || ""}
-                          onChange={handleChange}
-                        />
-                        <CustomTextField
-                          label="Delivery Date"
-                          type="date"
-                          name="deliveryDate"
-                          value={formData.deliveryDate || ""}
-                          onChange={handleChange}
-                          InputLabelProps={{ shrink: true }}
-                        />
-                      </FieldRow>
-                      <Button
-                        variant="outlined"
-                        component="label"
-                        sx={{ borderColor: "#f58220", color: "#f58220" }}
-                      >
-                        Upload Gatepass (Optional)
-                        <input
-                          type="file"
-                          hidden
-                          multiple
-                          accept="image/*"
-                          onChange={handleGatepassUpload}
-                        />
-                      </Button>
-                    </Stack>
-                  )} */}
 
                   {formData.transportType === "Third Party" && (
                     <Stack spacing={3}>
@@ -5970,7 +5824,6 @@ const OrderForm = () => {
                         ))}
                     </Stack>
                   )}
-                  {/* New: Global Totals */}
                   <Divider />
                   <Stack
                     direction="row"
@@ -6164,7 +6017,6 @@ const OrderForm = () => {
               </AccordionDetails>
             </Accordion>
           </Stack>
-          {/* Bottom Buttons */}
           <Stack
             direction="row"
             justifyContent="flex-end"
@@ -6185,7 +6037,6 @@ const OrderForm = () => {
           </Stack>
         </Box>
       </Paper>
-      {/* Preview Modal */}
       <Dialog
         open={previewOpen}
         onClose={() => setPreviewOpen(false)}
@@ -6310,7 +6161,6 @@ const OrderForm = () => {
           )}
         </DialogContent>
 
-        {/* Optional footer with actions */}
         <DialogActions>
           <Button onClick={() => setPreviewOpen(false)}>Close</Button>
           {previewSrc && (
@@ -6326,7 +6176,6 @@ const OrderForm = () => {
           )}
         </DialogActions>
       </Dialog>
-      {/* Snackbar for notifications */}
       <Snackbar
         open={snackbar.open}
         autoHideDuration={6000}

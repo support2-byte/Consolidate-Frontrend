@@ -34,6 +34,7 @@ import {
   Checkbox,
   Collapse,
   Divider,
+  Tabs,
   Tab,
 } from "@mui/material";
 import Avatar from "@mui/material/Avatar";
@@ -65,6 +66,7 @@ import AssignModal from "./AssignContainer";
 import logoPic from "../../../public/logo-2.png";
 import logoCAS from "../../../public/cas-logo.png";
 import logoMFD from "../../../public/mfd-logo.png";
+import logoRickmers from "../../../public/RICKMERS-LOGO.jpg";
 import { api } from "../../api";
 import { Description } from "@mui/icons-material";
 import { AppContext } from "../../context/AppContext";
@@ -136,6 +138,8 @@ const OrdersList = () => {
   const [actionMenuAnchor, setActionMenuAnchor] = useState(null);
   const [actionMenuOrder, setActionMenuOrder] = useState(null);
   const [menuPosition, setMenuPosition] = useState(null);
+
+  const [docTab, setDocTab] = useState(0);
 
   const handleOpenActionMenu = (e, order) => {
     e.preventDefault();
@@ -220,17 +224,23 @@ const OrdersList = () => {
 
       const normalizedData = {
         ...data,
-        sender_name: data.sender?.name || "",
-        sender_contact: data.sender?.contact || "",
-        sender_address: data.sender?.address || "",
-        sender_email: data.sender?.email || "",
-        sender_ref: data.sender?.ref || "",
-        sender_kyc_approved: data.sender?.kycApproved || false,
-        sender_kyc_name: data.sender?.name || "",
-        sender_emirates_id: data.sender?.emiratesId || "",
-        sender_passport_number: data.sender?.passportNumber || "",
-        sender_trade_license: data.sender?.tradeLicense || "",
-        sender_signature_url: data.sender?.signatureUrl || "",
+        sender_name: data.sender?.name || data.sender_name || "",
+        sender_contact: data.sender?.contact || data.sender_contact || "",
+        sender_address: data.sender?.address || data.sender_address || "",
+        sender_email: data.sender?.email || data.sender_email || "",
+        sender_ref: data.sender?.ref || data.sender_ref || "",
+        sender_cnic: data.sender?.cnic || data.sender_cnic || "",
+        sender_passport_number:
+          data.sender?.passportNumber || data.sender_passport_number || "",
+        sender_trade_license:
+          data.sender?.tradeLicense || data.sender_trade_license || "",
+        sender_emirates_id:
+          data.sender?.emiratesId || data.sender_emirates_id || "",
+        sender_kyc_approved:
+          data.sender?.kycApproved ?? data.sender_kyc_approved ?? false,
+        sender_kyc_name: data.sender?.name || data.sender_name || "",
+        sender_signature_url:
+          data.sender?.signatureUrl || data.sender_signature_url || "",
       };
 
       const html = generator(normalizedData);
@@ -2076,18 +2086,16 @@ const OrdersList = () => {
     // Default values if orderData is missing
     const safeOrder = orderData || {};
 
-    // Helper function to safely get values
     const getSafeValue = (value, defaultValue = "_________________") => {
       return value && value !== "" && value !== null && value !== undefined
         ? value
         : defaultValue;
     };
 
-    // Get sender/receiver details
     const senderName = safeOrder.sender_name || "";
-    const senderCNIC = safeOrder.sender_cnic || "_____-_______-_";
-    const senderPassport = safeOrder.sender_passport || "________";
-    const senderPhone = safeOrder.sender_phone || "03xx-xxxxxxx";
+    const senderEmiratesID = safeOrder.sender_emirates_id || "________";
+    const senderPassport = safeOrder.sender_passport_number || "________";
+    const senderPhone = safeOrder.sender_contact || "03xx-xxxxxxx";
     const senderAddress = safeOrder.sender_address || "Address in Karachi";
     const senderCompany =
       safeOrder.sender_company ||
@@ -2212,7 +2220,7 @@ const OrdersList = () => {
         <div style="text-align: right; margin-bottom: 40px;">
             <div style="font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 5px;">${getSafeValue(senderCompany)}</div>
             <div style="font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 5px;">${getSafeValue(senderAddress)}</div>
-            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">CNIC # : ${getSafeValue(senderCNIC)}</div>
+            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">CNIC # : ${getSafeValue(senderEmiratesID)}</div>
             <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">Passport No : ${getSafeValue(senderPassport)}</div>
             <div style="font-family: Arial; font-size: 14.1px; color: #ff0000;">Tel #: ${getSafeValue(senderPhone)}</div>
         </div>
@@ -2248,7 +2256,7 @@ const OrdersList = () => {
                 <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Passport No : <span style="color: #ff0000;">${getSafeValue(senderPassport)}</span></span>
             </div>
             <div style="margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">CNIC : <span style="color: #ff0000;">${getSafeValue(senderCNIC)}</span></span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">CNIC : <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></span>
             </div>
         </div>
 
@@ -2297,15 +2305,21 @@ const OrdersList = () => {
             </tr>
             <tr>
                 <td style="padding: 2px 0; vertical-align: top;">CNIC ID #</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderCNIC)}</span></td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></td>
             </tr>
             <tr>
-                <td style="padding: 2px 0; vertical-align: top;">Signature</td>
-                <td style="padding: 2px 0; vertical-align: top;">: (Digitally Signed Login Credentials & OTP Verified)</td>
-            </tr>
+    <td style="padding: 2px 0; vertical-align: top;">Signature</td>
+    <td style="padding: 2px 0; vertical-align: top;">
+        ${
+          safeOrder.sender_signature_url
+            ? `<img src="${safeOrder.sender_signature_url}" style="height:40px;filter: grayscale(100%) contrast(100%);mix-blend-mode: multiply;" />`
+            : ": (Digitally Signed Login Credentials & OTP Verified)"
+        }
+    </td>
+</tr>
             <tr>
                 <td style="padding: 2px 0; vertical-align: top;">Name</td>
-                <td style="padding: 2px 0; vertical-align: top;">: ${getReceiverName(safeOrder)}</td>
+                <td style="padding: 2px 0; vertical-align: top;">: ${getSafeValue(senderName)}</td>
             </tr>
         </table>
 
@@ -2713,31 +2727,290 @@ applicable law provides otherwise
     `;
   };
 
+  const CargoGatePass = (orderData) => {
+    const safeOrder = orderData || {};
+    const getValue = (value, fallback = "") =>
+      value !== null && value !== undefined && value !== "" ? value : fallback;
+
+    const receiver =
+      safeOrder.receivers && safeOrder.receivers[0]
+        ? safeOrder.receivers[0]
+        : {};
+    const dropOff =
+      receiver.drop_off_details && receiver.drop_off_details[0]
+        ? receiver.drop_off_details[0]
+        : {};
+
+    const shippingDetails = receiver.shippingdetails || [];
+    const containers = receiver.containers || [];
+
+    const totalQty = shippingDetails.reduce(
+      (sum, item) => sum + (parseInt(item.totalNumber) || 0),
+      0,
+    );
+
+    const currentDate = new Date().toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+
+    const marksAndNo = [
+      containers.length ? containers.join(", ") : "",
+      getValue(dropOff.dropoff_name),
+      getValue(dropOff.drop_off_mobile),
+    ]
+      .filter(Boolean)
+      .join(" | ");
+
+    const itemRows = shippingDetails.length
+      ? shippingDetails
+          .map(
+            (item, idx) => `
+        <tr>
+            <td class="idx-col">${idx + 1}</td>
+            <td>
+                <div class="item-name">${getValue(item.category, "ITEM")}${item.subcategory ? " - " + item.subcategory : ""}</div>
+                <div class="item-sub">TRUCK # ${getValue(safeOrder.truck_number || dropOff.plate_no, "N/A")}</div>
+                <div class="item-sub">DRIVER # ${getValue(dropOff.dropoff_name, "N/A")}</div>
+                <div class="item-sub">ID # ${getValue(safeOrder.booking_ref)}</div>
+                <div class="item-sub">${getValue(dropOff.drop_off_mobile)}</div>
+            </td>
+            <td class="qty-col">${(item.totalNumber || 0).toFixed(2)}</td>
+        </tr>
+      `,
+          )
+          .join("")
+      : `<tr><td class="idx-col">1</td><td>No items</td><td class="qty-col">0.00</td></tr>`;
+
+    return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cargo Gatepass</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+            padding: 20px;
+        }
+        .document {
+            width: 800px;
+            margin: 0 auto;
+            background-color: #fff;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        .top-banner {
+            background-color: #1a4731;
+            color: white;
+            text-align: center;
+            padding: 14px;
+            font-size: 26px;
+            font-weight: bold;
+            letter-spacing: 2px;
+        }
+        .header-section {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding: 20px 25px 10px 25px;
+            border-bottom: 1px solid #ccc;
+        }
+        .logo-block { display: flex; align-items: flex-start; gap: 12px; }
+        .logo-block img { width: 60px; height: auto; }
+        .company-info { font-size: 11px; line-height: 1.4; color: #333; }
+        .company-info .company-title {
+            font-weight: bold;
+            font-size: 13px;
+            color: #1a4731;
+        }
+        .gatepass-title {
+            text-align: right;
+            font-size: 22px;
+            font-weight: bold;
+            color: #1a3d6d;
+            line-height: 1.2;
+        }
+        .meta-section {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px 25px;
+            border-bottom: 1px solid #ccc;
+            font-size: 12px;
+        }
+        .meta-col { width: 48%; }
+        .meta-row { display: flex; margin-bottom: 4px; }
+        .meta-label { width: 110px; color: #333; }
+        .meta-value { font-weight: bold; }
+        .bill-to-header {
+            background-color: #f0f0f0;
+            padding: 6px 25px;
+            font-weight: bold;
+            font-size: 12px;
+            border-bottom: 1px solid #ccc;
+        }
+        .bill-to-name {
+            padding: 8px 25px;
+            font-weight: bold;
+            color: #c0392b;
+            font-size: 13px;
+        }
+        table.items-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 5px;
+        }
+        table.items-table th {
+            background-color: #fafafa;
+            text-align: left;
+            font-size: 11px;
+            padding: 6px 25px;
+            border-top: 1px solid #ccc;
+            border-bottom: 1px solid #ccc;
+        }
+        table.items-table td {
+            padding: 8px 25px;
+            font-size: 12px;
+            vertical-align: top;
+            border-bottom: 1px solid #eee;
+        }
+        .idx-col { width: 30px; color: #c0392b; }
+        .qty-col { text-align: right; color: #c0392b; font-weight: bold; }
+        .item-name { color: #2980b9; font-weight: bold; }
+        .item-sub { color: #2980b9; font-size: 11px; }
+        .totals-section {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 25px;
+            font-size: 12px;
+            border-bottom: 1px solid #ccc;
+        }
+        .totals-right { text-align: right; }
+        .totals-right .total-row {
+            font-weight: bold;
+            margin-top: 4px;
+        }
+        .thanks-note {
+            padding: 15px 25px;
+            font-size: 12px;
+            color: #333;
+        }
+        .footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: #1a4731;
+            color: white;
+            padding: 12px 25px;
+            font-size: 12px;
+            margin-top: 40px;
+        }
+        .footer .contact-line { display: flex; gap: 20px; }
+        @media print {
+            @page { size: A4; margin: 0; }
+            body { background: white; padding: 0; }
+            .document { box-shadow: none; width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <div class="document">
+        <div class="top-banner">STORAGE & DISTRIBUTION</div>
+
+        <div class="header-section">
+            <div class="logo-block">
+                <img src="${logoPic}" alt="Royal Gulf" />
+                <div class="company-info">
+                    <div class="company-title">Royal Gulf Shipping & Logistics<br>LLC - RGSL</div>
+                    Plot # 613-1130<br>
+                    Ras Al Khor Industrial Area Shed #1-4<br>
+                    Dubai Dubai 27011<br>
+                    United Arab Emirates
+                </div>
+            </div>
+            <div class="gatepass-title">CARGO<br>GATEPASS</div>
+        </div>
+
+        <div class="meta-section">
+            <div class="meta-col">
+                <div class="meta-row"><div class="meta-label">GatePass #</div><div class="meta-value">${getValue(safeOrder.booking_ref)}</div></div>
+                <div class="meta-row"><div class="meta-label">GatePass Date</div><div class="meta-value">${currentDate}</div></div>
+                <div class="meta-row"><div class="meta-label">Terms</div><div class="meta-value">Due on Receipt</div></div>
+                <div class="meta-row"><div class="meta-label">Due Date</div><div class="meta-value">${currentDate}</div></div>
+                <div class="meta-row"><div class="meta-label">Marks & No</div><div class="meta-value">${getValue(marksAndNo, "N/A")}</div></div>
+            </div>
+            <div class="meta-col">
+                <div class="meta-row"><div class="meta-label">Driver Name</div><div class="meta-value">${getValue(dropOff.dropoff_name, "N/A")}</div></div>
+                <div class="meta-row"><div class="meta-label">Truck No</div><div class="meta-value">${getValue(safeOrder.truck_number || dropOff.plate_no, "N/A")}</div></div>
+            </div>
+        </div>
+
+        <div class="bill-to-header">Bill To</div>
+        <div class="bill-to-name">${getValue(receiver.receiverName, "N/A")}</div>
+
+        <table class="items-table">
+            <thead>
+                <tr>
+                    <th class="idx-col">#</th>
+                    <th>Item & Description</th>
+                    <th class="qty-col">Qty</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${itemRows}
+            </tbody>
+        </table>
+
+        <div class="totals-section">
+            <div>Items in Total ${totalQty.toFixed(2)}</div>
+            <div class="totals-right">
+                <div>Sub Total &nbsp;&nbsp; ${totalQty.toFixed(2)}</div>
+                <div class="total-row">Total Qty &nbsp;&nbsp; QTY${totalQty.toFixed(2)}</div>
+            </div>
+        </div>
+
+        <div class="thanks-note">Thanks for your business.</div>
+
+        <div class="footer">
+            <div class="contact-line">
+                <span>☎ +971 4 333 1785</span>
+                <span>📱 +971 50 972 4214</span>
+            </div>
+            <div>✉ info@royalgulfshipping.com</div>
+        </div>
+    </div>
+</body>
+</html>
+  `;
+  };
+
   const DubaiLetterOfIndemnityForCustoms = (orderData) => {
-    // Default values if orderData is missing
     const safeOrder = orderData || {};
 
-    // Helper function to safely get values
     const getSafeValue = (value, defaultValue = "_________________") => {
       return value && value !== "" && value !== null && value !== undefined
         ? value
         : defaultValue;
     };
 
-    // Get sender/receiver details
     const senderName = safeOrder.sender_name || "";
-    const senderCNIC = safeOrder.sender_cnic || "_____-_______-_";
-    const trade_license = safeOrder.trade_license || "________";
-    const senderPassport = safeOrder.sender_passport || "________";
-    const senderEmiratesID = safeOrder.sender_emirates_id || "________";
-    const senderPhone = safeOrder.sender_phone || "03xx-xxxxxxx";
+    const trade_license = safeOrder.sender_trade_license || "________";
+    const senderPassport = safeOrder.sender_kyc_approved
+      ? safeOrder.sender_passport_number || "________"
+      : "Not Approved";
+    const senderEmiratesID = safeOrder.sender_kyc_approved
+      ? safeOrder.sender_emirates_id || "________"
+      : "Not Approved";
+    const senderPhone = safeOrder.sender_contact || "03xx-xxxxxxx";
     const senderAddress = safeOrder.sender_address || "Address in Karachi";
     const senderCompany =
       safeOrder.sender_company ||
       safeOrder.sender_name ||
       "Company Name / Individual Name";
 
-    // Calculate total packages from shipping details
     const calculateTotalPackages = () => {
       if (!safeOrder.receivers || !Array.isArray(safeOrder.receivers)) {
         return safeOrder.total_packages || "123";
@@ -2757,11 +3030,9 @@ applicable law provides otherwise
       return total || "123";
     };
 
-    // Get goods description
     const getGoodsDescription = () => {
       if (safeOrder.goods_description) return safeOrder.goods_description;
 
-      // Try to get from first shipping detail
       if (safeOrder.receivers && safeOrder.receivers[0]?.shippingdetails?.[0]) {
         const detail = safeOrder.receivers[0].shippingdetails[0];
         return `${detail.category || "TEXTILE"} ${detail.subcategory || ""}`.trim();
@@ -2897,7 +3168,7 @@ applicable law provides otherwise
                 <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Passport No : <span style="color: #ff0000;">${getSafeValue(senderPassport)}</span></span>
             </div>
             <div style="margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">CNIC : <span style="color: #ff0000;">${getSafeValue(senderCNIC)}</span></span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">CNIC : <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></span>
             </div>
         </div>
 
@@ -2946,15 +3217,22 @@ applicable law provides otherwise
             </tr>
             <tr>
                 <td style="padding: 2px 0; vertical-align: top;">CNIC ID #</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderCNIC)}</span></td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></td>
             </tr>
             <tr>
-                <td style="padding: 2px 0; vertical-align: top;">Signature</td>
-                <td style="padding: 2px 0; vertical-align: top;">: (Digitally Signed Login Credentials & OTP Verified)</td>
+                <td style="padding: 2px 0;">Signature</td>
+                <td style="padding: 2px 0; vertical-align: top;">
+                    ${
+                      safeOrder.sender_kyc_approved &&
+                      safeOrder.sender_signature_url
+                        ? `<img src="${safeOrder.sender_signature_url}" style="height:50px;filter: grayscale(100%) contrast(100%);mix-blend-mode: multiply;" />`
+                        : ": (Digitally Signed Login Credentials & OTP Verified)"
+                    }
+                </td>
             </tr>
             <tr>
                 <td style="padding: 2px 0; vertical-align: top;">Name</td>
-                <td style="padding: 2px 0; vertical-align: top;">: ${getReceiverName(safeOrder)}</td>
+                <td style="padding: 2px 0; vertical-align: top;">: ${getSafeValue(senderName)}</td>
             </tr>
         </table>
 
@@ -2969,28 +3247,24 @@ applicable law provides otherwise
   };
 
   const KarachiGovtCustomsStampPaperUndertakingFormat = (orderData) => {
-    // Default values if orderData is missing
     const safeOrder = orderData || {};
 
-    // Helper function to safely get values
     const getSafeValue = (value, defaultValue = "_________________") => {
       return value && value !== "" && value !== null && value !== undefined
         ? value
         : defaultValue;
     };
 
-    // Get sender/receiver details
     const senderName = safeOrder.sender_name || "";
     const senderCNIC = safeOrder.sender_cnic || "_____-_______-_";
-    const senderPassport = safeOrder.sender_passport || "________";
-    const senderPhone = safeOrder.sender_phone || "03xx-xxxxxxx";
+    const senderPassport = safeOrder.sender_passport_number || "________";
+    const senderPhone = safeOrder.sender_contact || "03xx-xxxxxxx";
     const senderAddress = safeOrder.sender_address || "Address in Karachi";
     const senderCompany =
       safeOrder.sender_company ||
       safeOrder.sender_name ||
       "Company Name / Individual Name";
 
-    // Calculate total packages from shipping details
     const calculateTotalPackages = () => {
       if (!safeOrder.receivers || !Array.isArray(safeOrder.receivers)) {
         return safeOrder.total_packages || "123";
@@ -3010,11 +3284,9 @@ applicable law provides otherwise
       return total || "123";
     };
 
-    // Get goods description
     const getGoodsDescription = () => {
       if (safeOrder.goods_description) return safeOrder.goods_description;
 
-      // Try to get from first shipping detail
       if (safeOrder.receivers && safeOrder.receivers[0]?.shippingdetails?.[0]) {
         const detail = safeOrder.receivers[0].shippingdetails[0];
         return `${detail.category || "TEXTILE"} ${detail.subcategory || ""}`.trim();
@@ -3144,7 +3416,7 @@ applicable law provides otherwise
                 <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Passport No : <span style="color: #ff0000;">${getSafeValue(senderPassport)}</span></span>
             </div>
             <div style="margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">CNIC : <span style="color: #ff0000;">${getSafeValue(senderCNIC)}</span></span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">CNIC : <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></span>
             </div>
         </div>
 
@@ -3199,11 +3471,18 @@ applicable law provides otherwise
             </tr>
             <tr>
                 <td style="padding: 2px 0; vertical-align: top;">Signature</td>
-                <td style="padding: 2px 0; vertical-align: top;">: (Digitally Signed Login Credentials & OTP Verified)</td>
+                <td style="padding: 2px 0; vertical-align: top;">
+                    ${
+                      safeOrder.sender_kyc_approved &&
+                      safeOrder.sender_signature_url
+                        ? `<img src="${safeOrder.sender_signature_url}" style="height:40px;filter: grayscale(100%) contrast(100%);mix-blend-mode: multiply;" />`
+                        : ": (Digitally Signed Login Credentials & OTP Verified)"
+                    }
+                </td>
             </tr>
             <tr>
                 <td style="padding: 2px 0; vertical-align: top;">Name</td>
-                <td style="padding: 2px 0; vertical-align: top;">: ${getReceiverName(safeOrder)}</td>
+                <td style="padding: 2px 0; vertical-align: top;">: ${getSafeValue(senderName)}</td>
             </tr>
         </table>
     </div>
@@ -3223,11 +3502,10 @@ applicable law provides otherwise
         : defaultValue;
     };
 
-    // Get sender/receiver details
     const senderName = safeOrder.sender_name || "";
     const senderCNIC = safeOrder.sender_cnic || "_____-_______-_";
-    const senderPassport = safeOrder.sender_passport || "________";
-    const senderPhone = safeOrder.sender_phone || "03xx-xxxxxxx";
+    const senderPassport = safeOrder.sender_passport_number || "________";
+    const senderPhone = safeOrder.sender_contact || "03xx-xxxxxxx";
     const senderAddress = safeOrder.sender_address || "Address in Karachi";
     const senderCompany =
       safeOrder.sender_company ||
@@ -3390,7 +3668,7 @@ applicable law provides otherwise
                 <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Passport No : <span style="color: #ff0000;">${getSafeValue(senderPassport)}</span></span>
             </div>
             <div style="margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">CNIC : <span style="color: #ff0000;">${getSafeValue(senderCNIC)}</span></span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">CNIC : <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></span>
             </div>
         </div>
 
@@ -3445,11 +3723,18 @@ applicable law provides otherwise
             </tr>
             <tr>
                 <td style="padding: 2px 0; vertical-align: top;">Signature</td>
-                <td style="padding: 2px 0; vertical-align: top;">: (Digitally Signed Login Credentials & OTP Verified)</td>
+                <td style="padding: 2px 0; vertical-align: top;">
+                    ${
+                      safeOrder.sender_kyc_approved &&
+                      safeOrder.sender_signature_url
+                        ? `<img src="${safeOrder.sender_signature_url}" style="height:40px;filter: grayscale(100%) contrast(100%);mix-blend-mode: multiply;" />`
+                        : ": (Digitally Signed Login Credentials & OTP Verified)"
+                    }
+                </td>
             </tr>
             <tr>
                 <td style="padding: 2px 0; vertical-align: top;">Name</td>
-                <td style="padding: 2px 0; vertical-align: top;">: ${getReceiverName(safeOrder)}</td>
+                <td style="padding: 2px 0; vertical-align: top;">: ${getSafeValue(senderName)}</td>
             </tr>
         </table>
     </div>
@@ -3468,11 +3753,14 @@ applicable law provides otherwise
     };
 
     const senderName = safeOrder.sender_name || "";
-    const senderCNIC = safeOrder.sender_cnic || "_____-_______-_";
-    const trade_license = safeOrder.trade_license || "________";
-    const senderPassport = safeOrder.sender_passport || "________";
-    const senderEmiratesID = safeOrder.sender_emirates_id || "________";
-    const senderPhone = safeOrder.sender_phone || "03xx-xxxxxxx";
+    const trade_license = safeOrder.sender_trade_license || "________";
+    const senderPassport = safeOrder.sender_kyc_approved
+      ? safeOrder.sender_passport_number || "________"
+      : "Not Approved";
+    const senderEmiratesID = safeOrder.sender_kyc_approved
+      ? safeOrder.sender_emirates_id || "________"
+      : "Not Approved";
+    const senderPhone = safeOrder.sender_contact || "03xx-xxxxxxx";
     const senderAddress = safeOrder.sender_address || "Address in Karachi";
     const senderCompany =
       safeOrder.sender_company ||
@@ -3640,7 +3928,7 @@ applicable law provides otherwise
                 <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Passport No : <span style="color: #ff0000;">${getSafeValue(senderPassport)}</span></span>
             </div>
             <div style="margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">CNIC : <span style="color: #ff0000;">${getSafeValue(senderCNIC)}</span></span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">CNIC : <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></span>
             </div>
         </div>
 
@@ -3692,12 +3980,19 @@ applicable law provides otherwise
                 <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></td>
             </tr>
             <tr>
-                <td style="padding: 2px 0; vertical-align: top;">Signature</td>
-                <td style="padding: 2px 0; vertical-align: top;">: (Digitally Signed Login Credentials & OTP Verified)</td>
+                <td style="padding: 2px 0;">Signature</td>
+                <td style="padding: 2px 0; vertical-align: top;">
+                    ${
+                      safeOrder.sender_kyc_approved &&
+                      safeOrder.sender_signature_url
+                        ? `<img src="${safeOrder.sender_signature_url}" style="height:50PX;filter: grayscale(100%) contrast(100%);mix-blend-mode: multiply;" />`
+                        : ": (Digitally Signed Login Credentials & OTP Verified)"
+                    }
+                </td>
             </tr>
             <tr>
                 <td style="padding: 2px 0; vertical-align: top;">Name</td>
-                <td style="padding: 2px 0; vertical-align: top;">: ${getReceiverName(safeOrder)}</td>
+                <td style="padding: 2px 0; vertical-align: top;">: ${getSafeValue(senderName)}</td>
             </tr>
         </table>
 
@@ -3721,11 +4016,14 @@ applicable law provides otherwise
     };
 
     const senderName = safeOrder.sender_name || "";
-    const senderCNIC = safeOrder.sender_cnic || "_____-_______-_";
-    const trade_license = safeOrder.trade_license || "________";
-    const senderPassport = safeOrder.sender_passport || "________";
-    const senderEmiratesID = safeOrder.sender_emirates_id || "________";
-    const senderPhone = safeOrder.sender_phone || "03xx-xxxxxxx";
+    const trade_license = safeOrder.sender_trade_license || "________";
+    const senderPassport = safeOrder.sender_kyc_approved
+      ? safeOrder.sender_passport_number || "________"
+      : "Not Approved";
+    const senderEmiratesID = safeOrder.sender_kyc_approved
+      ? safeOrder.sender_emirates_id || "________"
+      : "Not Approved";
+    const senderPhone = safeOrder.sender_contact || "03xx-xxxxxxx";
     const senderAddress = safeOrder.sender_address || "Address in Karachi";
     const senderCompany =
       safeOrder.sender_company ||
@@ -3893,7 +4191,7 @@ applicable law provides otherwise
                 <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Passport No : <span style="color: #ff0000;">${getSafeValue(senderPassport)}</span></span>
             </div>
             <div style="margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">CNIC : <span style="color: #ff0000;">${getSafeValue(senderCNIC)}</span></span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">CNIC : <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></span>
             </div>
         </div>
 
@@ -3945,12 +4243,19 @@ applicable law provides otherwise
                 <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></td>
             </tr>
             <tr>
-                <td style="padding: 2px 0; vertical-align: top;">Signature</td>
-                <td style="padding: 2px 0; vertical-align: top;">: (Digitally Signed Login Credentials & OTP Verified)</td>
+                <td style="padding: 2px 0;">Signature</td>
+                <td style="padding: 2px 0; vertical-align: top;">
+                    ${
+                      safeOrder.sender_kyc_approved &&
+                      safeOrder.sender_signature_url
+                        ? `<img src="${safeOrder.sender_signature_url}" style="height:50px;filter: grayscale(100%) contrast(100%);mix-blend-mode: multiply;" />`
+                        : ": (Digitally Signed Login Credentials & OTP Verified)"
+                    }
+                </td>
             </tr>
             <tr>
                 <td style="padding: 2px 0; vertical-align: top;">Name</td>
-                <td style="padding: 2px 0; vertical-align: top;">: ${getReceiverName(safeOrder)}</td>
+                <td style="padding: 2px 0; vertical-align: top;">: ${getSafeValue(senderName)}</td>
             </tr>
         </table>
 
@@ -3975,23 +4280,22 @@ applicable law provides otherwise
         : defaultValue;
     };
 
-    // Get sender/receiver details
     const senderName = safeOrder.sender_name || "";
     const senderCNIC = safeOrder.sender_cnic || "_____-_______-_";
-    const trade_license = safeOrder.trade_license || "________";
-    const senderPassport = safeOrder.sender_passport || "________";
+    const trade_license = safeOrder.sender_trade_license || "________";
+    const senderPassport = safeOrder.sender_passport_number || "________";
     const senderEmiratesID = safeOrder.sender_emirates_id || "________";
-    const consignmentNumber = safeOrder.consignment_number || "________";
-    const consignmentVessel = safeOrder.consignment_vessel || "________";
-    const consignmentVoyage = safeOrder.consignment_voyage || "________";
-    const senderPhone = safeOrder.sender_phone || "03xx-xxxxxxx";
+    const consignmentNumber =
+      safeOrder.consignment?.consignment_number || "________";
+    const consignmentVessel = safeOrder.consignment?.vessel || "________";
+    const consignmentVoyage = safeOrder.consignment?.voyage || "________";
+    const senderPhone = safeOrder.sender_contact || "03xx-xxxxxxx";
     const senderAddress = safeOrder.sender_address || "Address in Karachi";
     const senderCompany =
       safeOrder.sender_company ||
       safeOrder.sender_name ||
       "Company Name / Individual Name";
 
-    // Calculate total packages from shipping details
     const calculateTotalPackages = () => {
       if (!safeOrder.receivers || !Array.isArray(safeOrder.receivers)) {
         return safeOrder.total_packages || "123";
@@ -4151,7 +4455,7 @@ applicable law provides otherwise
                 <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Passport No : <span style="color: #ff0000;">${getSafeValue(senderPassport)}</span></span>
             </div>
             <div style="margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">CNIC : <span style="color: #ff0000;">${getSafeValue(senderCNIC)}</span></span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">CNIC : <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></span>
             </div>
         </div>
 
@@ -4204,11 +4508,18 @@ applicable law provides otherwise
             </tr>
             <tr>
                 <td style="padding: 2px 0; vertical-align: top;">Signature</td>
-                <td style="padding: 2px 0; vertical-align: top;">: (Digitally Signed Login Credentials & OTP Verified)</td>
+                <td style="padding: 2px 0; vertical-align: top;">
+                    ${
+                      safeOrder.sender_kyc_approved &&
+                      safeOrder.sender_signature_url
+                        ? `<img src="${safeOrder.sender_signature_url}" style="height:40px;filter: grayscale(100%) contrast(100%);mix-blend-mode: multiply;" />`
+                        : ": (Digitally Signed Login Credentials & OTP Verified)"
+                    }
+                </td>
             </tr>
             <tr>
                 <td style="padding: 2px 0; vertical-align: top;">Name</td>
-                <td style="padding: 2px 0; vertical-align: top;">: ${getReceiverName(safeOrder)}</td>
+                <td style="padding: 2px 0; vertical-align: top;">: ${getSafeValue(senderName)}</td>
             </tr>
         </table>
 
@@ -4272,18 +4583,16 @@ applicable law provides otherwise
 
     const containerDetails = getContainerDetails();
 
-    // Calculate totals
     const totalPackages = containerDetails.reduce(
       (sum, c) => sum + c.quantity,
       0,
     );
     const totalWeight = containerDetails.reduce((sum, c) => sum + c.weight, 0);
 
-    // Get all truck numbers
     const getTruckNumbers = () => {
       const trucks = [];
-      if (firstReceiver.dropoffdetails) {
-        firstReceiver.dropoffdetails.forEach((drop) => {
+      if (firstReceiver.drop_off_details) {
+        firstReceiver.drop_off_details.forEach((drop) => {
           if (drop.plate_no && !trucks.includes(drop.plate_no)) {
             trucks.push(drop.plate_no);
           }
@@ -4292,7 +4601,6 @@ applicable law provides otherwise
       return trucks.join(", ");
     };
 
-    // Get commodities
     const getCommodities = () => {
       const commodities = [];
       shippingDetails.forEach((detail) => {
@@ -4667,21 +4975,30 @@ applicable law provides otherwise
         parseInt(orderData.total_assigned_qty || 0);
     }
 
-    // Get container info
     const containers = receiver.containers || [];
-    const containerInfo = containers.length > 0 ? containers.join(", ") : "N/A"; // Show all containers
+    const containerInfo = containers.length > 0 ? containers.join(", ") : "N/A";
 
-    // Get sender CNIC from sender_address (parse if needed)
-    const extractCNIC = (address) => {
-      if (!address) return "";
-      const cnicMatch =
-        address.match(/CNIC[:\s]*([0-9-]+)/i) ||
-        address.match(/[0-9]{5}-[0-9]{7}-[0-9]/);
-      return cnicMatch ? cnicMatch[1] || cnicMatch[0] : "";
-    };
+    const senderKycApproved = orderData.sender_kyc_approved || false;
+    const senderPassport = senderKycApproved
+      ? orderData.sender_passport_number || "N/A"
+      : "Not Approved";
+    const senderEmiratesId = senderKycApproved
+      ? orderData.sender_emirates_id || "N/A"
+      : "Not Approved";
+    const senderSignatureUrl = senderKycApproved
+      ? orderData.sender_signature_url || ""
+      : "";
 
-    const senderCNIC =
-      extractCNIC(orderData.sender_address) || orderData.sender_cnic || "";
+    const receiverKycApproved = receiver.kycApproved || false;
+    const receiverPassport = receiverKycApproved
+      ? receiver.passportNumber || "N/A"
+      : "Not Approved";
+    const receiverEmiratesId = receiverKycApproved
+      ? receiver.emiratesId || "N/A"
+      : "Not Approved";
+    const receiverSignatureUrl = receiverKycApproved
+      ? receiver.signatureUrl || ""
+      : "";
 
     return `
     <!DOCTYPE html>
@@ -4871,7 +5188,6 @@ applicable law provides otherwise
 
             .signature-box {
                 text-align: center;
-                border-top: 1px solid #333;
                 padding-top: 10px;
                 width: 45%;
             }
@@ -4918,16 +5234,16 @@ applicable law provides otherwise
                     <td>
                         <strong>${senderName}</strong><br><br>
                         Contact Person: ${senderName}<br>
-                        Passport No: <br>
-                        CNIC: ${senderCNIC || ""}<br>
+                        Passport No: ${senderPassport}<br>
+                        CNIC: ${senderEmiratesId}<br>
                         Tel: ${senderContact}<br>
                         E-Mail: ${senderEmail}
                     </td>
                     <td>
                         <strong>${receiverName}</strong><br><br>
                         Contact Person: ${receiverName}<br>
-                        Passport No: <br>
-                        Emirates ID: <br>
+                        Passport No: ${receiverPassport}<br>
+                        CNIC: ${receiverEmiratesId}<br>
                         Tel: ${receiverContact}<br>
                         E-Mail: ${receiverEmail}
                     </td>
@@ -4967,11 +5283,11 @@ applicable law provides otherwise
                 <tr>
                     <td style="text-align: center;">${item.totalNumber || 0}</td>
                     <td>${item.category || item.subcategory || "N/A"}</td>
-                    <td style="text-align: center;">${item.itemRef || orderData.booking_ref || "N/A"}</td>
+                    <td style="text-align: center;">${orderData.booking_ref || "N/A"}</td>
                     <td>${containerInfo}</td>
                     <td>${getPlaceName(orderData.place_of_loading) || "N/A"}</td>
                     <td>${getPlaceName(orderData.final_destination) || "N/A"}</td>
-                </tr> 
+                </tr>
                 `,
                         )
                         .join("")
@@ -5013,12 +5329,22 @@ applicable law provides otherwise
 
             <div class="signature-section">
                 <div class="signature-box">
+                ${
+                  senderSignatureUrl
+                    ? `<img src="${senderSignatureUrl}" style="border-bottom: 1px solid #333;height:50px;margin-top:5px;filter: grayscale(100%) contrast(100%);mix-blend-mode: multiply;" /><br>`
+                    : ""
+                }
                     <strong>Sender's Signature</strong><br>
-                    ${senderName}
+                    
                 </div>
                 <div class="signature-box">
+                ${
+                  receiverSignatureUrl
+                    ? `<img src="${receiverSignatureUrl}" style="border-bottom: 1px solid #333;height:50px;margin-top:5px;filter: grayscale(100%) contrast(100%);mix-blend-mode: multiply;" /><br>`
+                    : ""
+                }
                     <strong>Receiver's Signature</strong><br>
-                    ${receiverName}
+                    
                 </div>
             </div>
 
@@ -5129,9 +5455,6 @@ applicable law provides otherwise
     };
 
     const getOrderNo = () => {
-      if (shippingDetails.length > 0 && shippingDetails[0].itemRef) {
-        return shippingDetails[0].itemRef;
-      }
       return orderData.booking_ref || "5017";
     };
 
@@ -5274,8 +5597,8 @@ applicable law provides otherwise
                     ${senderName}<br>
                     ${senderAddress.replace(/, /g, ",<br>")}<br>
                     Contact Person: ${senderName}<br>
-                    Passport No: XXXXXX<br>
-                    CNIC: XXXXXX<br>
+                    Passport No: ${orderData.sender_kyc_approved ? orderData.sender_passport_number || "N/A" : "Not Approved"}<br>
+                    CNIC : ${orderData.sender_kyc_approved ? orderData.sender_emirates_id || "N/A" : "Not Approved"}<br>
                     Tel: ${senderContact}<br>
                     E-Mail: ${senderEmail}
                 </td>
@@ -5283,8 +5606,8 @@ applicable law provides otherwise
                     ${receiverName}<br>
                     ${receiverAddress.replace(/, /g, ",<br>")}<br>
                     Contact Person: ${receiverName}<br>
-                    Passport No:<br>
-                    Emirates ID #<br>
+                    Passport No: ${receiver.kycApproved ? receiver.passportNumber || "N/A" : "Not Approved"}<br>
+                    Emirates ID #: ${receiver.kycApproved ? receiver.emiratesId || "N/A" : "Not Approved"}<br>
                     Tel: ${receiverContact}<br>
                     E-Mail: ${receiverEmail}
                 </td>
@@ -5367,10 +5690,17 @@ applicable law provides otherwise
         <table style="margin-top: 10px;">
             <tr>
                 <td style="width: 15%; border-bottom: none;"><b>Signature:</b></td>
-                <td rowspan="2" style="text-align: center; padding: 8px;">
-                    Digitally Signed through verified login and OTP for ID verification<br>
-                    <b>Time & Date Stamp:</b> ${currentDate} ${new Date().toLocaleTimeString()}<br>
-                    <b>Email Addressed Used:</b> ${senderEmail}
+                <td rowspan="2" style="text-align: center; padding: 8px; vertical-align: middle;">
+                    <div style="display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 2px;">
+                        ${
+                          orderData.sender_kyc_approved &&
+                          orderData.sender_signature_url
+                            ? `<img src="${orderData.sender_signature_url}" style="height:40px; max-width:180px; object-fit:contain; filter: grayscale(100%) contrast(100%); mix-blend-mode: multiply; margin-bottom:2px; left: 0" />`
+                            : `<span>Digitally Signed through verified login and OTP for ID verification</span>`
+                        }
+                        <span><b>Time & Date Stamp:</b> ${currentDate} ${new Date().toLocaleTimeString()}</span>
+                        <span><b>Email Addressed Used:</b> ${senderEmail}</span>
+                    </div>
                 </td>
             </tr>
             <tr>
@@ -5479,11 +5809,7 @@ applicable law provides otherwise
       return "";
     };
 
-    // Get order number/item reference
     const getOrderNo = () => {
-      if (shippingDetails.length > 0 && shippingDetails[0].itemRef) {
-        return shippingDetails[0].itemRef;
-      }
       return orderData.booking_ref || "5017";
     };
 
@@ -5626,8 +5952,8 @@ applicable law provides otherwise
                     ${senderName}<br>
                     ${senderAddress.replace(/, /g, ",<br>")}<br>
                     Contact Person: ${senderName}<br>
-                    Passport No: XXXXXX<br>
-                    CNIC: XXXXXX<br>
+                    Passport No: ${orderData.sender_kyc_approved ? orderData.sender_passport_number || "N/A" : "Not Approved"}<br>
+                    CNIC : ${orderData.sender_kyc_approved ? orderData.sender_emirates_id || "N/A" : "Not Approved"}<br>
                     Tel: ${senderContact}<br>
                     E-Mail: ${senderEmail}
                 </td>
@@ -5635,8 +5961,8 @@ applicable law provides otherwise
                     ${receiverName}<br>
                     ${receiverAddress.replace(/, /g, ",<br>")}<br>
                     Contact Person: ${receiverName}<br>
-                    Passport No:<br>
-                    Emirates ID #<br>
+                    Passport No: ${receiver.kycApproved ? receiver.passportNumber || "N/A" : "Not Approved"}<br>
+                    Emirates ID #: ${receiver.kycApproved ? receiver.emiratesId || "N/A" : "Not Approved"}<br>
                     Tel: ${receiverContact}<br>
                     E-Mail: ${receiverEmail}
                 </td>
@@ -5719,10 +6045,17 @@ applicable law provides otherwise
         <table style="margin-top: 10px;">
             <tr>
                 <td style="width: 15%; border-bottom: none;"><b>Signature:</b></td>
-                <td rowspan="2" style="text-align: center; padding: 8px;">
-                    Digitally Signed through verified login and OTP for ID verification<br>
-                    <b>Time & Date Stamp:</b> ${currentDate} ${new Date().toLocaleTimeString()}<br>
-                    <b>Email Addressed Used:</b> ${senderEmail}
+                <td rowspan="2" style="text-align: center; padding: 8px; vertical-align: middle;">
+                    <div style="display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 2px;">
+                        ${
+                          orderData.sender_kyc_approved &&
+                          orderData.sender_signature_url
+                            ? `<img src="${orderData.sender_signature_url}" style="height:40px; max-width:180px; object-fit:contain; filter: grayscale(100%) contrast(100%); mix-blend-mode: multiply; margin-bottom:2px; left: 0" />`
+                            : `<span>Digitally Signed through verified login and OTP for ID verification</span>`
+                        }
+                        <span><b>Time & Date Stamp:</b> ${currentDate} ${new Date().toLocaleTimeString()}</span>
+                        <span><b>Email Addressed Used:</b> ${senderEmail}</span>
+                    </div>
                 </td>
             </tr>
             <tr>
@@ -5831,11 +6164,7 @@ applicable law provides otherwise
       return "";
     };
 
-    // Get order number/item reference
     const getOrderNo = () => {
-      if (shippingDetails.length > 0 && shippingDetails[0].itemRef) {
-        return shippingDetails[0].itemRef;
-      }
       return orderData.booking_ref || "5017";
     };
 
@@ -5974,21 +6303,21 @@ applicable law provides otherwise
                 <td colspan="2">FROM</td>
             </tr>
             <tr>
-                <td class="red-text" style="white-space: pre-line;     border: 1px solid #aaa;">
+                <td class="red-text" style="white-space: pre-line;border: 1px solid #aaa;">
                     ${senderName}<br>
                     ${senderAddress.replace(/, /g, ",<br>")}<br>
                     Contact Person: ${senderName}<br>
-                    Passport No: XXXXXX<br>
-                    CNIC: XXXXXX<br>
+                    Passport No: ${orderData.sender_kyc_approved ? orderData.sender_passport_number || "N/A" : "Not Approved"}<br>
+                    CNIC : ${orderData.sender_kyc_approved ? orderData.sender_emirates_id || "N/A" : "Not Approved"}<br>
                     Tel: ${senderContact}<br>
                     E-Mail: ${senderEmail}
                 </td>
-                <td class="red-text" colspan="2" style="white-space: pre-line;     border: 1px solid #aaa;">
+                <td class="red-text" colspan="2" style="white-space: pre-line;border: 1px solid #aaa;">
                     ${receiverName}<br>
                     ${receiverAddress.replace(/, /g, ",<br>")}<br>
                     Contact Person: ${receiverName}<br>
-                    Passport No:<br>
-                    Emirates ID #<br>
+                    Passport No: ${receiver.kycApproved ? receiver.passportNumber || "N/A" : "Not Approved"}<br>
+                    Emirates ID #: ${receiver.kycApproved ? receiver.emiratesId || "N/A" : "Not Approved"}<br>
                     Tel: ${receiverContact}<br>
                     E-Mail: ${receiverEmail}
                 </td>
@@ -6071,10 +6400,17 @@ applicable law provides otherwise
         <table style="margin-top: 10px;">
             <tr>
                 <td style="width: 15%; border-bottom: none;"><b>Signature:</b></td>
-                <td rowspan="2" style="text-align: center; padding: 8px;">
-                    Digitally Signed through verified login and OTP for ID verification<br>
-                    <b>Time & Date Stamp:</b> ${currentDate} ${new Date().toLocaleTimeString()}<br>
-                    <b>Email Addressed Used:</b> ${senderEmail}
+                <td rowspan="2" style="text-align: center; padding: 8px; vertical-align: middle;">
+                    <div style="display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 2px;">
+                        ${
+                          orderData.sender_kyc_approved &&
+                          orderData.sender_signature_url
+                            ? `<img src="${orderData.sender_signature_url}" style="height:40px; max-width:180px; object-fit:contain; filter: grayscale(100%) contrast(100%); mix-blend-mode: multiply; margin-bottom:2px; left: 0" />`
+                            : `<span>Digitally Signed through verified login and OTP for ID verification</span>`
+                        }
+                        <span><b>Time & Date Stamp:</b> ${currentDate} ${new Date().toLocaleTimeString()}</span>
+                        <span><b>Email Addressed Used:</b> ${senderEmail}</span>
+                    </div>
                 </td>
             </tr>
             <tr>
@@ -6163,8 +6499,8 @@ applicable law provides otherwise
       return sum;
     }, 0);
 
-    const vesselName = getValue(orderData.consignment?.vessel);
-    const voyageNo = getValue(orderData.consignment?.voyage);
+    const vesselName = getValue(orderData.consignment_vessel);
+    const voyageNo = getValue(orderData.consignment_voyage);
 
     const vesselVoyage =
       vesselName && voyageNo
@@ -6453,15 +6789,15 @@ applicable law provides otherwise
         <div style="margin-top: 20px; display: flex; justify-content: space-between;">
             <div style="width: 60%;">
                 <p style="font-size: 7px;">RECEIVED for shpment specified above in apparent good order and condition unless otherwise stated
-The Gods to be delivered at above mentioned Port of Discharge or Place of Delivery, whichever applies
-SUBJECT TO Terms and Conditions contained on reverse side hereof, to which Merchant agrees by
-accepting this Bill of Lading
-IN WITNESS WHEREOF the number of onginal Bills of lading stated on this side next to this clause
-have been signed, one of which being accomplished, the others to stand void, unless compulsorily
-applicable law provides otherwise
-*Applicable only when used for MULTI MODAL TRANSPORTATION.</p>
-                <div class="content" style="margin-top: 10px;">LONDON , ${currentDate}</div>
-            </div>
+                  The Gods to be delivered at above mentioned Port of Discharge or Place of Delivery, whichever applies
+                  SUBJECT TO Terms and Conditions contained on reverse side hereof, to which Merchant agrees by
+                  accepting this Bill of Lading
+                  IN WITNESS WHEREOF the number of onginal Bills of lading stated on this side next to this clause
+                  have been signed, one of which being accomplished, the others to stand void, unless compulsorily
+                  applicable law provides otherwise
+                  *Applicable only when used for MULTI MODAL TRANSPORTATION.</p>
+            <div class="content" style="margin-top: 10px;">LONDON , ${currentDate}</div>
+          </div>
             <div style="text-align: right; width: 40%;">    
                 <div class="content" style="margin-top: 10px;">
                     MESSIAH FREIGHT &<br>DISTRIBUTORS UK LTD
@@ -6559,8 +6895,8 @@ applicable law provides otherwise
       return sum;
     }, 0);
 
-    const vesselVoyage = consignment.vessel_name
-      ? `${consignment.vessel_name}${consignment.voyage ? " / " + consignment.voyage : ""}`
+    const vesselVoyage = consignment.vessel
+      ? `${consignment.vessel}${consignment.voyage ? " / " + consignment.voyage : ""}`
       : "";
 
     const containerCount = containers.length
@@ -6665,11 +7001,11 @@ applicable law provides otherwise
               <div style="width: 30%;">
                   <span class="label">Description of Goods</span>
                   <div class="content" style="margin-top: 20px;">
-    ${shippingDetails
-      .map((d) => d.itemName || d.subcategory || d.category)
-      .filter(Boolean)
-      .join(", ")}
-</div>
+                      ${shippingDetails
+                        .map((d) => d.itemName || d.subcategory || d.category)
+                        .filter(Boolean)
+                        .join(", ")}
+                  </div>
               </div>
               <div style="width: 20%; text-align: right;">
                   <span class="label">Gross Weight</span>
@@ -6710,11 +7046,14 @@ applicable law provides otherwise
   };
 
   const KYCDubaiCompany = (orderData) => {
+    const safeOrder = orderData || {};
     const getValue = (value) => {
       return value && value !== "" && value !== null && value !== undefined
         ? value
         : "";
     };
+
+    // Format current date
 
     // Format current date
     const currentDate = new Date().toLocaleDateString("en-GB", {
@@ -6755,7 +7094,7 @@ applicable law provides otherwise
               containerDetail.container?.container_number ||
               containerDetail.container_number ||
               "";
-            const sealNo = ""; // Seal no not in API
+            const sealNo = "";
             const pkgs = containerDetail.total_number || "";
             const grossWt = containerDetail.assign_weight
               ? `${containerDetail.assign_weight} KGS`
@@ -6770,7 +7109,6 @@ applicable law provides otherwise
       return rows;
     };
 
-    // Calculate total packages
     const totalPkgs = shippingDetails.reduce((sum, detail) => {
       if (detail.containerDetails) {
         return (
@@ -6931,20 +7269,17 @@ applicable law provides otherwise
         ? value
         : "";
     };
-
-    // Format current date
+    const safeOrder = orderData || {};
     const currentDate = new Date().toLocaleDateString("en-GB", {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
     });
 
-    // Extract data from order object
     const senderName = getValue(orderData.sender_name);
     const senderAddress = getValue(orderData.sender_address);
     const senderContact = getValue(orderData.sender_contact);
 
-    // Get first receiver data
     const receiver =
       orderData.receivers && orderData.receivers[0]
         ? orderData.receivers[0]
@@ -6953,13 +7288,10 @@ applicable law provides otherwise
     const receiverContact = getValue(receiver.receiverContact);
     const receiverAddress = getValue(receiver.receiverAddress);
 
-    // Get shipping details
     const shippingDetails = receiver.shippingdetails || [];
 
-    // Get container details
     const containers = receiver.containers || [];
 
-    // Build container rows for table
     const getContainerRows = () => {
       if (!shippingDetails.length) return "";
 
@@ -6971,7 +7303,7 @@ applicable law provides otherwise
               containerDetail.container?.container_number ||
               containerDetail.container_number ||
               "";
-            const sealNo = ""; // Seal no not in API
+            const sealNo = "";
             const pkgs = containerDetail.total_number || "";
             const grossWt = containerDetail.assign_weight
               ? `${containerDetail.assign_weight} KGS`
@@ -6986,7 +7318,6 @@ applicable law provides otherwise
       return rows;
     };
 
-    // Calculate total packages
     const totalPkgs = shippingDetails.reduce((sum, detail) => {
       if (detail.containerDetails) {
         return (
@@ -7000,7 +7331,6 @@ applicable law provides otherwise
       return sum;
     }, 0);
 
-    // Get vessel name
     const vesselName = getValue(orderData.consignment_vessel);
     const voyageNo = getValue(orderData.consignment_voyage);
     const vesselVoyage =
@@ -7008,7 +7338,6 @@ applicable law provides otherwise
         ? `${vesselName} / ${voyageNo}`
         : vesselName || voyageNo || "";
 
-    // Get container count
     const containerCount = containers.length
       ? `${containers.length}X40'HC`
       : "";
@@ -7110,7 +7439,7 @@ applicable law provides otherwise
                         <div class="col-input">To be fetched from system database</div>
                     </div>
 
-                    <<div class="row"><div class="col-num">7</div><div class="col-label">Passport No:</div><div class="col-input">${safeOrder.sender_kyc_approved ? safeOrder.sender_passport_number || "N/A" : "Not Approved"}</div></div>
+                    <div class="row"><div class="col-num">7</div><div class="col-label">Passport No:</div><div class="col-input">${safeOrder.sender_kyc_approved ? safeOrder.sender_passport_number || "N/A" : "Not Approved"}</div></div>
                     <div class="row"><div class="col-num">8</div><div class="col-label">Emirates ID #:</div><div class="col-input">${safeOrder.sender_kyc_approved ? safeOrder.sender_emirates_id || "N/A" : "Not Approved"}</div></div>
 
 
@@ -7142,26 +7471,388 @@ applicable law provides otherwise
                 `;
   };
 
+  const RickmersBillOfLadingSample = (orderData) => {
+    const safeOrder = orderData || {};
+    const getValue = (value, fallback = "") =>
+      value !== null && value !== undefined && value !== "" ? value : fallback;
+
+    const receiver =
+      safeOrder.receivers && safeOrder.receivers[0]
+        ? safeOrder.receivers[0]
+        : {};
+    const shippingDetails = receiver.shippingdetails || [];
+    const containers = receiver.containers || [];
+
+    const totalPkgs = shippingDetails.reduce(
+      (sum, item) => sum + (parseInt(item.totalNumber) || 0),
+      0,
+    );
+    const totalWeight = shippingDetails.reduce(
+      (sum, item) => sum + (parseFloat(item.weight) || 0),
+      0,
+    );
+
+    const goodsDescription = shippingDetails.length
+      ? shippingDetails
+          .map((d) => d.category || d.subcategory || d.itemName)
+          .filter(Boolean)
+          .join(", ")
+      : "USED CLOTHING";
+
+    const containerNumber = containers.length ? containers[0] : "________";
+
+    return `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Rickmers Bill of Lading Sample</title>
+          <style>
+              * { margin: 0; padding: 0; box-sizing: border-box; }
+              body {
+                  font-family: 'Courier New', monospace;
+                  font-size: 11px;
+                  background-color: #f5f5f5;
+                  padding: 20px;
+                  color: #000;
+              }
+              .page {
+                  width: 900px;
+                  margin: 0 auto 20px auto;
+                  background: #fff;
+                  padding: 25px 30px;
+                  box-shadow: 0 0 10px rgba(0,0,0,0.1);
+                  position: relative;
+              }
+              .page:not(:last-child) { page-break-after: always; }
+              .page-number {
+                  position: absolute;
+                  top: 15px;
+                  right: 20px;
+                  font-size: 10px;
+              }
+              .header-row {
+                  display: flex;
+                  justify-content: space-between;
+                  align-items: flex-start;
+                  margin-bottom: 10px;
+              }
+              .logo-block img { height: 50px; }
+              .center-title {
+                  text-align: center;
+                  flex-grow: 1;
+              }
+              .center-title .nn {
+                  color: #1a3d8f;
+                  font-weight: bold;
+                  font-size: 14px;
+                  letter-spacing: 1px;
+              }
+              .center-title .bl-sub {
+                  color: #1a3d8f;
+                  font-size: 10px;
+              }
+              .booking-info { text-align: right; font-size: 10px; }
+              table.bl-table {
+                  width: 100%;
+                  border-collapse: collapse;
+                  border: 1px solid #999;
+                  margin-top: 10px;
+              }
+              table.bl-table td {
+                  border: 1px solid #999;
+                  padding: 4px 6px;
+                  vertical-align: top;
+                  font-size: 10px;
+              }
+              .label {
+                  color: #1a3d8f;
+                  font-size: 8.5px;
+                  display: block;
+                  margin-bottom: 2px;
+              }
+              .remarks-cell { font-size: 8px; line-height: 1.3; }
+              .section-title {
+                  color: #1a3d8f;
+                  font-size: 8.5px;
+                  margin-bottom: 3px;
+              }
+              .goods-table td { text-align: center; font-size: 10px; }
+              .goods-table .desc-cell { text-align: left; }
+              .note-text {
+                  font-size: 9px;
+                  margin-top: 8px;
+              }
+              .footer-note {
+                  margin-top: 15px;
+                  font-size: 9px;
+                  line-height: 1.5;
+              }
+              .signature-block {
+                  margin-top: 30px;
+                  text-align: right;
+                  font-size: 10px;
+              }
+              @media print {
+                  @page { size: A4 landscape; margin: 0; }
+                  body { background: white; padding: 0; }
+                  .page { box-shadow: none; }
+              }
+          </style>
+      </head>
+      <body>
+          <div class="page">
+              <div class="page-number">PAGE: 1 OF 2</div>
+              <div class="header-row">
+                  <div class="logo-block">
+                      <img src="${logoRickmers}" alt="Rickmers Container Line" />
+                  </div>
+                  <div class="center-title">
+                      <div class="nn">NON NEGOTIABLE</div>
+                      <div class="bl-sub">SEA WAYBILL</div>
+                      <div class="bl-sub">BILL OF LADING</div>
+                  </div>
+                  <div class="booking-info">
+                      BOOKING NO.<br><b>${getValue(safeOrder.booking_ref, "________")}</b><br><br>
+                      SEA WAYBILL NO.<br><b>${getValue(safeOrder.rgl_booking_number, "RGSLKHIJEA0000")}</b>
+                  </div>
+              </div>
+
+              <table class="bl-table">
+                  <tr>
+                      <td style="width:50%;">
+                          <span class="label">SHIPPER/EXPORTER</span>
+                          <b>${getValue(safeOrder.sender_name, "N/A").toUpperCase()}</b><br>
+                          ${getValue(safeOrder.sender_address, "").toUpperCase()}
+                      </td>
+                      <td style="width:50%;">
+                          <span class="label">EXPORT REFERENCES (for the Merchant's and/or Carrier's reference only. See back clause 8. (4))</span>
+                      </td>
+                  </tr>
+                  <tr>
+                      <td>
+                          <span class="label">CONSIGNEE</span>
+                          <b>${getValue(receiver.receiverName, "N/A").toUpperCase()}</b><br>
+                          ${getValue(receiver.receiverAddress, "").toUpperCase()}
+                      </td>
+                      <td rowspan="2">
+                          <span class="label">FORWARDING AGENT-REFERENCES<br>FMC/NO</span>
+                          <b>ROYAL GULF SHIPPING & LOGISTICS</b><br>
+                          DUBAI , UAE . TEL:043331785
+                      </td>
+                  </tr>
+                  <tr>
+                      <td>
+                          <span class="label">NOTIFY PARTY (It is agreed that no responsibility shall be attached to the Carrier or its Agents for failure to notify)</span>
+                          ${getValue(receiver.receiverName, "N/A").toUpperCase()}<br>
+                          ${getValue(receiver.receiverAddress, "").toUpperCase()}
+                      </td>
+                  </tr>
+                  <tr>
+                      <td colspan="2" class="remarks-cell">
+                          RECEIVED by the Carrier in apparent good order and condition (unless otherwise stated herein) the total number or quantity of Containers or other packages or units indicated in the box entitled "Carrier's Receipt" for Carriage subject to all the terms and conditions hereof from the Place of Receipt or Port of Loading to the Port of Discharge or Place of Delivery, as applicable. Delivery of the Goods to the Carrier for Carriage hereunder constitutes acceptance by the Merchant (as defined hereinafter) of all the terms and conditions, whether printed, stamped or otherwise incorporated on this side and on the reverse side of this Bill of Lading and the terms and conditions of the Carrier's applicable tariff(s) as if they were all signed by the Merchant.
+                      </td>
+                  </tr>
+                  <tr>
+                      <td>
+                          <span class="label">PRE CARRIAGE BY</span><br>
+                          <span class="label" style="margin-top:6px;">PLACE OF RECEIPT</span>
+                          ${getPlaceName(safeOrder.place_of_loading)}
+                      </td>
+                      <td>
+                          <span class="label">TYPE OF MOVEMENT (BY): USE DESCRIPTION OF PACKAGES AND GOODS FIELD)</span>
+                          FCL / FCL
+                      </td>
+                  </tr>
+                  <tr>
+                      <td>
+                          <span class="label">OCEAN VESSEL/VOYAGE NO. FLAG</span>
+                          ${getValue(safeOrder.consignment?.vessel, "________")}<br><br>
+                          <span class="label">PORT OF LOADING</span>
+                          ${getPlaceName(safeOrder.place_of_loading)}
+                      </td>
+                      <td>
+                          <span class="label">FINAL DESTINATION (for the Merchant's reference only)</span>
+                      </td>
+                  </tr>
+                  <tr>
+                      <td>
+                          <span class="label">PORT OF DISCHARGE</span>
+                          ${getPlaceName(safeOrder.final_destination)}
+                      </td>
+                      <td>
+                          <span class="label">PLACE OF DELIVERY</span>
+                          ${getPlaceName(safeOrder.place_of_delivery)}
+                      </td>
+                  </tr>
+              </table>
+
+              <div class="note-text">(CHECK "NM" COLUMN IF HAZARDOUS MATERIAL)</div>
+              <div class="note-text" style="color:#1a3d8f;">PARTICULARS DECLARED BY SHIPPER BUT NOT ACKNOWLEDGED BY THE CARRIER</div>
+
+              <table class="bl-table goods-table">
+                  <tr>
+                      <td style="width:20%;"><span class="label">CNTR. NOS. SEAL NOS. MARKS & NUMBERS</span></td>
+                      <td style="width:12%;"><span class="label">QUANTITY (DECLARATION ONLY)</span></td>
+                      <td style="width:3%;">H<br>M</td>
+                      <td style="width:35%;" class="desc-cell"><span class="label">DESCRIPTION OF GOODS</span></td>
+                      <td style="width:15%;"><span class="label">GROSS WEIGHT</span></td>
+                      <td style="width:15%;"><span class="label">GROSS MEASUREMENT</span></td>
+                  </tr>
+                  <tr>
+                      <td>${containerNumber}</td>
+                      <td>${totalPkgs || 0}<br>PKGS</td>
+                      <td></td>
+                      <td class="desc-cell">
+                          SHIPPER'S LOAD AND COUNT<br>
+                          1X40FT CONTAINER(S)<br><br>
+                          ${goodsDescription}<br><br>
+                          14 COMBINED FREE DAYS AT DESTINATION
+                      </td>
+                      <td>${totalWeight ? totalWeight.toFixed(2) + "KGS" : "________"}</td>
+                      <td></td>
+                  </tr>
+              </table>
+
+              <div class="note-text" style="font-weight:bold;">** TO BE CONTINUED ON ATTACHED LIST **</div>
+
+              <table class="bl-table" style="margin-top:15px;">
+                  <tr>
+                      <td style="width:33%;">
+                          <span class="label" style="color:#c0392b;">Declared Cargo Value US $</span>
+                          <span style="font-size:8px;">If Merchant enters a value, Carrier's limitation of liability shall not apply and the ad valorem rate will be charged.</span>
+                      </td>
+                      <td style="width:34%;">
+                          <span class="label">FREIGHT & CHARGES PAYABLE AT / BY</span>
+                          KARACHI - PAKISTAN<br>DUBAI
+                      </td>
+                      <td style="width:33%;">
+                          <span class="label">(if) ORIGINAL BILL(S) HAVE BEEN SIGNED</span>
+                      </td>
+                  </tr>
+                  <tr>
+                      <td colspan="3">
+                          <table style="width:100%; border-collapse:collapse;">
+                              <tr>
+                                  <td style="border:1px solid #999; padding:3px; font-size:8.5px;">CODE</td>
+                                  <td style="border:1px solid #999; padding:3px; font-size:8.5px;">TARIFF ITEM</td>
+                                  <td style="border:1px solid #999; padding:3px; font-size:8.5px;">FREIGHTED AS</td>
+                                  <td style="border:1px solid #999; padding:3px; font-size:8.5px;">RATE</td>
+                                  <td style="border:1px solid #999; padding:3px; font-size:8.5px;">PREPAID</td>
+                                  <td style="border:1px solid #999; padding:3px; font-size:8.5px;">COLLECT</td>
+                              </tr>
+                              <tr>
+                                  <td style="border:1px solid #999; padding:8px;"></td>
+                                  <td style="border:1px solid #999; padding:8px;"></td>
+                                  <td style="border:1px solid #999; padding:8px;"></td>
+                                  <td style="border:1px solid #999; padding:8px;"></td>
+                                  <td style="border:1px solid #999; padding:8px;">PREPAID</td>
+                                  <td style="border:1px solid #999; padding:8px;"></td>
+                              </tr>
+                          </table>
+                      </td>
+                  </tr>
+              </table>
+
+              <div class="signature-block">
+                  DATE CARGO RECEIVED<br><br>
+                  DATE LADEN ON BOARD<br>
+                  <b>${new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }).toUpperCase()}</b><br><br>
+                  PLACE OF BILL(S)ISSUE<br>
+                  <b>${getPlaceName(safeOrder.place_of_loading).toUpperCase()}</b><br><br>
+                  DATED<br><br>
+                  SIGNED<br>BY: <b>RICKMERS CONTAINER LINE</b><br>
+                  KARACHI - PAKISTAN.<br>
+                  as agent for and on behalf of
+              </div>
+
+              <div class="footer-note" style="text-align:right; margin-top:20px;">
+                  RICKMERS CONTAINER LINE<br>
+                  (KARACHI), AS CARRIER
+              </div>
+          </div>
+
+          <div class="page">
+              <div class="page-number">PAGE: 2 OF 2</div>
+              <div class="header-row">
+                  <div class="logo-block">
+                      <img src="${logoRickmers}" alt="Rickmers Container Line" />
+                  </div>
+                  <div class="center-title">
+                      <div class="nn">NON NEGOTIABLE</div>
+                      <div class="bl-sub">BILL OF LADING</div>
+                  </div>
+              </div>
+
+              <div style="display:flex; justify-content:space-between; font-size:10px; border-top:1px solid #999; border-bottom:1px solid #999; padding:5px 0; margin-top:10px;">
+                  <div>VESSEL VOYAGE: ${getValue(safeOrder.consignment?.vessel, "________")} ${getValue(safeOrder.consignment?.voyage, "")}</div>
+                  <div>B/L NO.: ${getValue(safeOrder.rgl_booking_number, "________")}</div>
+              </div>
+
+              <table class="bl-table" style="margin-top:10px;">
+                  <tr>
+                      <td style="width:20%;"><span class="label">CNTR/SEAL NOS. MARKS & NUMBERS</span></td>
+                      <td style="width:15%;"><span class="label">QUANTITY FOR CUSTOMS DECLARATION ONLY</span></td>
+                      <td style="width:3%;">H<br>M</td>
+                      <td style="width:35%;" class="desc-cell"><span class="label">DESCRIPTION OF GOODS</span></td>
+                      <td style="width:13%;"><span class="label">GROSS WEIGHT</span></td>
+                      <td style="width:14%;"><span class="label">MEASUREMENT</span></td>
+                  </tr>
+                  <tr>
+                      <td></td>
+                      <td></td>
+                      <td></td>
+                      <td class="desc-cell">
+                          E FORM ${getValue(safeOrder.sender_ref, "________")}<br>
+                          DATED: ${new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                      </td>
+                      <td></td>
+                      <td></td>
+                  </tr>
+              </table>
+
+              <div class="footer-note">
+                  OCEAN FREIGHT PREPAID<br>
+                  DESTINATION CHARGES COLLECT PER LINE TARIFF AND OTHER CHARGES TO BE COLLECTED FROM<br>
+                  THE PARTY WHO LAWFULLY DEMANDS DELIVERY OF THE CARGO WITHOUT PREJUDICE TO THE<br>
+                  CARRIER'S RIGHTS AGAINST THE MERCHANT (SEE BACK CLAUSE 1) AS SET OUT AT BACK<br>
+                  CLAUSE 13(1)
+              </div>
+
+              <div class="signature-block" style="margin-top:200px;">
+                  SIGNED<br>BY: <b>RICKMERS CONTAINER LINE</b><br>
+                  as agent for and on behalf of
+              </div>
+
+              <div class="footer-note" style="text-align:right; margin-top:20px;">
+                  RICKMERS CONTAINER LINE<br>
+                  (KARACHI), AS CARRIER
+              </div>
+          </div>
+      </body>
+      </html>
+    `;
+  };
+
   const KYCKarachiCompany = (orderData) => {
+    const safeOrder = orderData || {};
     const getValue = (value) => {
       return value && value !== "" && value !== null && value !== undefined
         ? value
         : "";
     };
 
-    // Format current date
     const currentDate = new Date().toLocaleDateString("en-GB", {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
     });
 
-    // Extract data from order object
     const senderName = getValue(orderData.sender_name);
     const senderAddress = getValue(orderData.sender_address);
     const senderContact = getValue(orderData.sender_contact);
 
-    // Get first receiver data
     const receiver =
       orderData.receivers && orderData.receivers[0]
         ? orderData.receivers[0]
@@ -7170,13 +7861,10 @@ applicable law provides otherwise
     const receiverContact = getValue(receiver.receiverContact);
     const receiverAddress = getValue(receiver.receiverAddress);
 
-    // Get shipping details
     const shippingDetails = receiver.shippingdetails || [];
 
-    // Get container details
     const containers = receiver.containers || [];
 
-    // Build container rows for table
     const getContainerRows = () => {
       if (!shippingDetails.length) return "";
 
@@ -7188,7 +7876,7 @@ applicable law provides otherwise
               containerDetail.container?.container_number ||
               containerDetail.container_number ||
               "";
-            const sealNo = ""; // Seal no not in API
+            const sealNo = "";
             const pkgs = containerDetail.total_number || "";
             const grossWt = containerDetail.assign_weight
               ? `${containerDetail.assign_weight} KGS`
@@ -7203,7 +7891,6 @@ applicable law provides otherwise
       return rows;
     };
 
-    // Calculate total packages
     const totalPkgs = shippingDetails.reduce((sum, detail) => {
       if (detail.containerDetails) {
         return (
@@ -7217,7 +7904,6 @@ applicable law provides otherwise
       return sum;
     }, 0);
 
-    // Get vessel name
     const vesselName = getValue(orderData.consignment_vessel);
     const voyageNo = getValue(orderData.consignment_voyage);
     const vesselVoyage =
@@ -7225,7 +7911,6 @@ applicable law provides otherwise
         ? `${vesselName} / ${voyageNo}`
         : vesselName || voyageNo || "";
 
-    // Get container count
     const containerCount = containers.length
       ? `${containers.length}X40'HC`
       : "";
@@ -7374,7 +8059,7 @@ applicable law provides otherwise
     "WHARFAGE - CONSIGNMENT NOTE.pdf": WHARFAGEConsignmentsNote,
     "Order Acknowledgement Printabe Version.pdf":
       OrderAcknowledgementPrintableVersion,
-    "Order Confirmation & Acceptance Dubai Receiver":
+    "Order Confirmation & Acceptance Dubai Receiver.pdf":
       OrderConfirmationAndAcceptanceDubaiReceiver,
     "Order Confirmation & Acceptance UK Receiver.pdf":
       OrderConfirmationAndAcceptanceUKReceiver,
@@ -7386,6 +8071,8 @@ applicable law provides otherwise
     "KYC UK Company.pdf": KYCUKCompany,
     "KYC Karachi Company.pdf": KYCKarachiCompany,
     "CAS Bill of Lading.pdf": CASBillofLading,
+    "GP#0121725 - Cargo GatePass.pdf": CargoGatePass,
+    "Rickmers Bill of Lading Sample.pdf": RickmersBillOfLadingSample,
   };
 
   return (
@@ -7396,179 +8083,250 @@ applicable law provides otherwise
         maxWidth="md"
         fullWidth
         PaperProps={{
-          sx: { borderRadius: 2, minHeight: "60vh" },
+          sx: { borderRadius: 2 },
         }}
       >
-        <DialogTitle
-          sx={{
-            bgcolor: "#0d6c6a",
-            color: "#fff",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
-          <Typography variant="h6" component="div">
-            Documents - Order #{tempOrderId || "123"}
-          </Typography>
-          <IconButton
-            onClick={handleCloseDocumentsModal}
-            sx={{ color: "#fff" }}
-          >
-            <CloseIcon />
-          </IconButton>
-        </DialogTitle>
-
-        <DialogContent sx={{ mt: 2 }}>
-          <TableContainer
-            component={Paper}
-            variant="outlined"
-            sx={{ borderRadius: 2 }}
-          >
-            <Table size="small">
-              <TableHead>
-                <TableRow sx={{ bgcolor: "#f5f5f5" }}>
-                  <TableCell sx={{ fontWeight: "bold", width: 50 }}>
-                    #
-                  </TableCell>
-                  <TableCell sx={{ fontWeight: "bold" }}>
-                    Document Name
-                  </TableCell>
-                  <TableCell sx={{ fontWeight: "bold" }}>Type</TableCell>
-                  <TableCell sx={{ fontWeight: "bold", width: 120 }}>
-                    Actions
-                  </TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {/* Static document list as per your requirement */}
-                {[
-                  "3rd Party Shipper Undertaking for ANF.pdf",
-                  "3rd Party Shipper Indemnity for each order format.pdf",
-                  "CAS Bill of Lading.pdf",
-                  "Dubai Letter of Idemnity for Customs.pdf",
-                  "Essential Information.pdf",
-                  "GP#0121725 - Cargo GatePass.pdf",
-                  "Karachi Govt. Customs Stamp paper undertaking format.pdf",
-                  "Karachi, Undertaking for Customs, Each sender should give.pdf",
-                  "KYC Dubai Company.pdf",
-                  "KYC UK Company.pdf",
-                  "KYC Karachi Company.pdf",
-                  "Messiah Bill of Lading.pdf",
+        <DialogContent sx={{ mt: 1, p: 0 }}>
+          {(() => {
+            const docGroups = [
+              {
+                label: "Royal Gulf Shipping & Logistics",
+                color: "#1a7a6e",
+                docs: [
                   "RGSL Bill of Lading.pdf",
                   "Order Acknowledgement Printabe Version.pdf",
                   "Order Confirmation & Acceptance Dubai Receiver.pdf",
-                  "Order Confirmation & Acceptance UK Receiver.pdf",
-                  "Order Confirmation & Acceptance Karachi Receiver.pdf",
+                  "KYC Dubai Company.pdf",
+                  "WHARFAGE - CONSIGNMENT NOTE.pdf",
+                  "Dubai Letter of Idemnity for Customs.pdf",
                   "Receiver Undertaking for Dubai Customs.pdf",
                   "Receiver Undertaking Dubai ANF.pdf",
-                  "Rickmers Bill of Lading Sample.pdf",
-                  "Sender Undertaking for 3rd Party Shipper.pdf",
-                  "WHARFAGE - CONSIGNMENT NOTE.pdf",
-                ].map((docName, index) => {
-                  // Determine file type and icon
-                  const fileExtension =
-                    docName.split(".").pop()?.toLowerCase() || "";
-                  let fileIcon = <InsertDriveFileIcon />;
-                  let fileType = fileExtension.toUpperCase();
-
-                  if (fileExtension === "pdf") {
-                    fileIcon = <PictureAsPdfIcon color="error" />;
-                  } else if (
-                    fileExtension === "docx" ||
-                    fileExtension === "doc"
-                  ) {
-                    fileIcon = <DescriptionIcon color="primary" />;
-                  } else if (
-                    fileExtension === "xlsx" ||
-                    fileExtension === "xls"
-                  ) {
-                    fileIcon = <AssignmentIcon color="success" />;
-                  }
-
-                  return (
-                    <TableRow
-                      key={index}
-                      hover
-                      sx={{ "&:nth-of-type(odd)": { bgcolor: "#fafafa" } }}
-                    >
-                      <TableCell>{index + 1}</TableCell>
-                      <TableCell>
-                        <Box
-                          sx={{ display: "flex", alignItems: "center", gap: 1 }}
-                        >
-                          {fileIcon}
-                          <Typography variant="body2" fontWeight="medium">
-                            {docName}
-                          </Typography>
-                        </Box>
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="caption" color="text.secondary">
-                          {fileType}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Stack direction="row" spacing={1}>
-                          <Tooltip title="View Document">
-                            <IconButton
-                              size="small"
-                              onClick={() =>
-                                handleDocumentClick("view", docName)
-                              }
-                              sx={{
-                                color: "#0d6c6a",
-                                "&:hover": {
-                                  bgcolor: "rgba(13, 108, 106, 0.1)",
-                                },
-                              }}
-                            >
-                              <VisibilityIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Print Document">
-                            <IconButton
-                              size="small"
-                              onClick={() =>
-                                handleDocumentClick("print", docName)
-                              }
-                              sx={{
-                                color: "#f58220",
-                                "&:hover": {
-                                  bgcolor: "rgba(245, 130, 32, 0.1)",
-                                },
-                              }}
-                            >
-                              <PrintIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                        </Stack>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </DialogContent>
-
-        <DialogActions sx={{ px: 3, py: 2, borderTop: "1px solid #e0e0e0" }}>
-          <Button
-            onClick={handleCloseDocumentsModal}
-            variant="outlined"
-            sx={{
-              borderColor: "#0d6c6a",
-              color: "#0d6c6a",
-              "&:hover": {
-                borderColor: "#0d6c6a",
-                bgcolor: "rgba(13, 108, 106, 0.05)",
+                  "GP#0121725 - Cargo GatePass.pdf",
+                ],
               },
-            }}
-          >
-            Close
-          </Button>
-        </DialogActions>
+              {
+                label: "Cargo Aviation System",
+                color: "#5c3d99",
+                docs: [
+                  "CAS Bill of Lading.pdf",
+                  "Order Confirmation & Acceptance Karachi Receiver.pdf",
+                  "KYC Karachi Company.pdf",
+                  "3rd Party Shipper Undertaking for ANF.pdf",
+                  "3rd Party Shipper Indemnity for each order format.pdf",
+                  "Karachi Govt. Customs Stamp paper undertaking format.pdf",
+                  "Karachi, Undertaking for Customs, Each sender should give.pdf",
+                  "Sender Undertaking for 3rd Party Shipper.pdf",
+                ],
+              },
+              {
+                label: "Messiah Freight",
+                color: "#b84c00",
+                docs: [
+                  "Messiah Bill of Lading.pdf",
+                  "Order Confirmation & Acceptance UK Receiver.pdf",
+                  "KYC UK Company.pdf",
+                ],
+              },
+              {
+                label: "Others",
+                color: "#555",
+                docs: [
+                  "Essential Information.pdf",
+                  "Rickmers Bill of Lading Sample.pdf",
+                ],
+              },
+            ];
+
+            const getFileIcon = (docName) => {
+              const ext = docName.split(".").pop()?.toLowerCase() || "";
+              if (ext === "pdf") return <PictureAsPdfIcon color="error" />;
+              if (ext === "docx" || ext === "doc")
+                return <DescriptionIcon color="primary" />;
+              if (ext === "xlsx" || ext === "xls")
+                return <AssignmentIcon color="success" />;
+              return <InsertDriveFileIcon />;
+            };
+
+            const activeGroup = docGroups[docTab];
+
+            return (
+              <>
+                <Box
+                  sx={{ borderBottom: "1px solid #e0e0e0", bgcolor: "#fafafa" }}
+                >
+                  <Tabs
+                    value={docTab}
+                    onChange={(e, v) => setDocTab(v)}
+                    variant="scrollable"
+                    scrollButtons="auto"
+                    TabIndicatorProps={{ style: { height: 3 } }}
+                    sx={{
+                      minHeight: 44,
+                      "& .MuiTab-root": {
+                        minHeight: 44,
+                        textTransform: "none",
+                        fontWeight: 600,
+                        fontSize: "0.8rem",
+                        px: 2,
+                      },
+                    }}
+                  >
+                    {docGroups.map((g, i) => (
+                      <Tab
+                        key={i}
+                        label={
+                          <Box
+                            sx={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 0.75,
+                            }}
+                          >
+                            <Box
+                              sx={{
+                                width: 8,
+                                height: 8,
+                                borderRadius: "50%",
+                                bgcolor: g.color,
+                                flexShrink: 0,
+                              }}
+                            />
+                            {g.label}
+                            <Chip
+                              label={g.docs.length}
+                              size="small"
+                              sx={{
+                                height: 18,
+                                fontSize: "0.65rem",
+                                bgcolor: docTab === i ? g.color : "#e0e0e0",
+                                color: docTab === i ? "#fff" : "#555",
+                                "& .MuiChip-label": { px: 0.75 },
+                              }}
+                            />
+                          </Box>
+                        }
+                      />
+                    ))}
+                  </Tabs>
+                </Box>
+
+                <Box sx={{ p: 2 }}>
+                  <TableContainer
+                    component={Paper}
+                    variant="outlined"
+                    sx={{ borderRadius: 2 }}
+                  >
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow sx={{ bgcolor: "#f5f5f5" }}>
+                          <TableCell sx={{ fontWeight: "bold", width: 40 }}>
+                            #
+                          </TableCell>
+                          <TableCell sx={{ fontWeight: "bold" }}>
+                            Document Name
+                          </TableCell>
+                          <TableCell sx={{ fontWeight: "bold", width: 60 }}>
+                            Type
+                          </TableCell>
+                          <TableCell sx={{ fontWeight: "bold", width: 110 }}>
+                            Actions
+                          </TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {activeGroup.docs.map((docName, index) => (
+                          <TableRow
+                            key={index}
+                            hover
+                            sx={{
+                              "&:nth-of-type(odd)": { bgcolor: "#fafafa" },
+                            }}
+                          >
+                            <TableCell
+                              sx={{ color: "#999", fontSize: "0.75rem" }}
+                            >
+                              {index + 1}
+                            </TableCell>
+                            <TableCell>
+                              <Box
+                                sx={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 1,
+                                }}
+                              >
+                                {getFileIcon(docName)}
+                                <Typography variant="body2" fontWeight="medium">
+                                  {docName}
+                                </Typography>
+                              </Box>
+                            </TableCell>
+                            <TableCell>
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                              >
+                                {docName.split(".").pop()?.toUpperCase()}
+                              </Typography>
+                            </TableCell>
+                            <TableCell>
+                              <Stack direction="row" spacing={0.5}>
+                                <Tooltip title="View">
+                                  <span>
+                                    <IconButton
+                                      size="small"
+                                      disabled={docDataLoading}
+                                      onClick={() =>
+                                        handleDocumentClick("view", docName)
+                                      }
+                                      sx={{
+                                        color: "#0d6c6a",
+                                        "&:hover": {
+                                          bgcolor: "rgba(13,108,106,0.1)",
+                                        },
+                                      }}
+                                    >
+                                      {docDataLoading ? (
+                                        <CircularProgress size={14} />
+                                      ) : (
+                                        <VisibilityIcon fontSize="small" />
+                                      )}
+                                    </IconButton>
+                                  </span>
+                                </Tooltip>
+                                <Tooltip title="Print">
+                                  <span>
+                                    <IconButton
+                                      size="small"
+                                      disabled={docDataLoading}
+                                      onClick={() =>
+                                        handleDocumentClick("print", docName)
+                                      }
+                                      sx={{
+                                        color: "#f58220",
+                                        "&:hover": {
+                                          bgcolor: "rgba(245,130,32,0.1)",
+                                        },
+                                      }}
+                                    >
+                                      <PrintIcon fontSize="small" />
+                                    </IconButton>
+                                  </span>
+                                </Tooltip>
+                              </Stack>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Box>
+              </>
+            );
+          })()}
+        </DialogContent>
       </Dialog>
+
       <Paper sx={{ p: 3, borderRadius: 3, boxShadow: 3, bgcolor: "#fafafa" }}>
         <Stack
           direction="row"
@@ -7644,9 +8402,7 @@ applicable law provides otherwise
             </Button>
           </Stack>
         </Stack>
-        {/* Filters - Updated: booking_ref for search */}
         <Stack direction="row" spacing={2} mb={3} alignItems="center">
-          {/* General search input */}
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             <TextField
               label="Search Orders"
@@ -7685,9 +8441,8 @@ applicable law provides otherwise
                           fetchOrders();
                         }
                       }}
-                      // edge="end"
                       sx={{
-                        color: "primary.main", // always looks clickable
+                        color: "primary.main",
                       }}
                     >
                       {filters.search?.trim() ? <SearchIcon /> : <SearchIcon />}
@@ -7712,7 +8467,7 @@ applicable law provides otherwise
               label="Status"
               onChange={handleFilterChange}
             >
-              <MenuItem value="">All</MenuItem> {/* Added "All" option */}
+              <MenuItem value="">All</MenuItem>
               {statuses.map((status) => (
                 <MenuItem key={status.id} value={status.order_status}>
                   {status.order_status}
@@ -7727,7 +8482,6 @@ applicable law provides otherwise
             borderRadius: 2,
             overflow: "scroll",
             boxShadow: 2,
-            // maxHeight: 600,
             width: "100%",
             "&::-webkit-scrollbar": {
               height: 6,
@@ -7867,8 +8621,6 @@ applicable law provides otherwise
                       {order?.rgl_booking_number}
                     </StyledTableCell>
                     <TableCell colSpan={1.5}>
-                      {" "}
-                      {/* optional: merge visually */}
                       <StyledTooltip
                         title={<CombinedTooltip order={order} />}
                         arrow

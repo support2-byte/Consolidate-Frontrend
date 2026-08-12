@@ -279,8 +279,8 @@ const Places = () => {
           <Typography
             variant="h4"
             component="h1"
-            fontWeight="bold"
             gutterBottom
+            sx={{ color: "#0d6c6a" }}
           >
             Manage Places
           </Typography>

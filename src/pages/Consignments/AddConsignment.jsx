@@ -4853,581 +4853,534 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                       📦 Consignment Details
                     </Typography>
                   </AccordionSummary>
+
                   <AccordionDetails sx={{ p: 3 }}>
                     <Box
-                      sx={{ display: "flex", flexDirection: "column", gap: 3 }}
+                      sx={{
+                        display: "flex",
+                        gap: 2,
+                        mb: 2,
+                        flexDirection: {
+                          xs: "column",
+                          sm: "row",
+                        },
+                      }}
                     >
-                      <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
-                        <Box sx={{ flex: 1, minWidth: 250 }}>
-                          <CustomTextField
-                            name="consignment_number"
-                            value={values.consignment_number}
-                            onChange={handleChange}
-                            onBlur={handleBlur}
-                            label="Consignment #"
-                            startAdornment={
-                              <DescriptionIcon
-                                sx={{ mr: 1, color: "#f58220" }}
-                              />
-                            }
-                            readOnly={mode === "edit"} // Keep readOnly for consignment_number in edit mode
-                            required
-                            error={
-                              touched.consignment_number &&
-                              Boolean(errors.consignment_number)
-                            }
-                            helperText={
-                              touched.consignment_number &&
-                              errors.consignment_number
-                                ? errors.consignment_number
-                                : "Enter unique consignment number"
-                            }
-                          />
-                        </Box>
-                        <Box sx={{ flex: 1, minWidth: 350 }}>
-                          <CustomSelect
-                            name="status"
-                            value={values.status}
-                            onChange={handleStatusChange}
-                            label="Status"
-                            options={(mode === "add"
-                              ? [{ value: "Draft", label: "Draft" }]
-                              : values.status &&
-                                  !(options.statusOptions || []).some(
-                                    (o) => o.value === values.status,
-                                  )
-                                ? [
-                                    {
-                                      value: values.status,
-                                      label: values.status,
-                                    },
-                                    ...(options.statusOptions || []),
-                                  ]
-                                : options.statusOptions || []
-                            ).map((opt) =>
-                              opt.value === "Delivered"
-                                ? {
-                                    ...opt,
-                                    disabled: hasDeliveredShipment,
-                                    label: "Delivered",
-                                  }
-                                : opt,
-                            )}
-                            disabled={mode === "add"}
-                            error={touched.status && Boolean(errors.status)}
-                            helperText={
-                              touched.status && errors.status
-                                ? errors.status
-                                : ""
-                            }
-                            loading={etaLoading}
-                          />
-                          {mode === "edit" && (
-                            <Box
-                              flexDirection={"row"}
-                              justifyContent={"space-between"}
-                              sx={{
-                                flexDirection: "row",
-                                justifyContent: "space-between",
-                              }}
-                            >
-                              <Button
-                                variant="outlined"
-                                size="small"
-                                onClick={advanceStatus}
-                                sx={{
-                                  borderColor: "#f58220",
-                                  color: "#f58220",
-                                  minHeight: "40px",
-                                  marginTop: 1,
-                                }}
-                              >
-                                Change
-                              </Button>
-                              <Button
-                                variant="outlined"
-                                size="small"
-                                onClick={updateStatusChange}
-                                sx={{
-                                  borderColor: "#f58220",
-                                  float: "right",
-                                  color: "#f58220",
-                                  minHeight: "40px",
-                                  alignSelf: "flex-end",
-                                  marginTop: 1,
-                                }}
-                              >
-                                Update
-                              </Button>
-                            </Box>
-                          )}
-                        </Box>
-
-                        {mode === "edit" && (
-                          <Box sx={{ flex: 1, minWidth: 250 }}>
-                            <LocalizationProvider dateAdapter={AdapterDayjs}>
-                              <DatePicker
-                                label="ETA"
-                                value={eta ? dayjs(eta) : dayjs(etaSuggestion)} // Ensure Day.js or null; handle invalid
-                                onChange={(value) => {
-                                  if (value && value?.isValid()) {
-                                    // Guard: Check isValid before format
-                                    const formatted =
-                                      value.format("YYYY-MM-DD");
-                                    setEta(formatted);
-                                    setValues((prev) => ({
-                                      ...prev,
-                                      eta: formatted,
-                                    })); // Sync to form
-                                  } else {
-                                    setEta(null);
-                                    // setValues(prev => ({ ...prev, eta: null }));  // Clear invalid
-                                  }
-                                }}
-                                inputFormat="YYYY-MM-DD"
-                                readOnly={true}
-                                slotProps={{
-                                  textField: {
-                                    helperText: etaLoading
-                                      ? "Calculating ETA..."
-                                      : etaSuggestion && eta !== etaSuggestion
-                                        ? `Suggested: ${dayjs(etaSuggestion).isValid() ? dayjs(etaSuggestion).format("MMM DD, YYYY") : "Invalid date"} based on status (edited)`
-                                        : etaSuggestion
-                                          ? `Suggested: ${dayjs(etaSuggestion).isValid() ? dayjs(etaSuggestion).format("MMM DD, YYYY") : "Invalid date"} based on status`
-                                          : "Set ETA based on status",
-                                  },
-                                }}
-                                disabled={["Delivered", "Cancelled"].includes(
-                                  values.status,
-                                )} // Disable for terminals
-                                name="eta"
-                              />
-                            </LocalizationProvider>
-                          </Box>
-                        )}
-                      </Box>
-                      {/* Eform Row */}
-                      <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
-                        <Box sx={{ flex: 1, minWidth: 250 }}>
-                          <CustomTextField
-                            name="eform"
-                            value={values.eform}
-                            onChange={handleChange}
-                            onBlur={handleBlur}
-                            label="Eform #"
-                            inputProps={{
-                              pattern: "^[A-Z]{3}-\\d{6}$",
-                              placeholder: "ABC-123456",
-                            }}
-                            required
-                            error={touched.eform && Boolean(errors.eform)}
-                            helperText={
-                              touched.eform && errors.eform ? errors.eform : ""
-                            }
-                            tooltip="Format: ABC-123456"
-                          />
-                        </Box>
-                        <Box sx={{ flex: 1, minWidth: 250 }}>
-                          <CustomDatePicker
-                            name="eform_date"
-                            tooltip="Select Date"
-                            value={values.eform_date}
-                            onChange={handleDateChange}
-                            onBlur={() => handleDateBlur("eform_date")}
-                            label="Eform Date"
-                            required
-                            error={
-                              touched.eform_date && Boolean(errors.eform_date)
-                            }
-                            helperText={
-                              touched.eform_date && errors.eform_date
-                                ? errors.eform_date
-                                : ""
-                            }
-                            slotProps={{
-                              textField: {
-                                InputProps: {
-                                  startAdornment: (
-                                    <DateRangeIcon
-                                      sx={{ mr: 1, color: "#f58220" }}
-                                    />
-                                  ),
+                      <CustomTextField
+                        name="consignment_number"
+                        value={values.consignment_number}
+                        onChange={handleChange}
+                        onBlur={handleBlur}
+                        label="Consignment #"
+                        startAdornment={
+                          <DescriptionIcon sx={{ mr: 1, color: "#f58220" }} />
+                        }
+                        readOnly={mode === "edit"}
+                        required
+                        error={
+                          touched.consignment_number &&
+                          Boolean(errors.consignment_number)
+                        }
+                        helperText={
+                          touched.consignment_number &&
+                          errors.consignment_number
+                            ? errors.consignment_number
+                            : "Enter unique consignment number"
+                        }
+                      />
+                      <CustomTextField
+                        name="eform"
+                        value={values.eform}
+                        onChange={handleChange}
+                        onBlur={handleBlur}
+                        label="Eform #"
+                        inputProps={{
+                          pattern: "^[A-Z]{3}-\\d{6}$",
+                          placeholder: "ABC-123456",
+                        }}
+                        required
+                        error={touched.eform && Boolean(errors.eform)}
+                        helperText={
+                          touched.eform && errors.eform ? errors.eform : ""
+                        }
+                        tooltip="Format: ABC-123456"
+                      />
+                      <CustomDatePicker
+                        name="eform_date"
+                        tooltip="Select Date"
+                        value={values.eform_date}
+                        onChange={handleDateChange}
+                        onBlur={() => handleDateBlur("eform_date")}
+                        label="Eform Date"
+                        required
+                        error={touched.eform_date && Boolean(errors.eform_date)}
+                        helperText={
+                          touched.eform_date && errors.eform_date
+                            ? errors.eform_date
+                            : ""
+                        }
+                        slotProps={{
+                          textField: {
+                            InputProps: {
+                              startAdornment: (
+                                <DateRangeIcon
+                                  sx={{ mr: 1, color: "#f58220" }}
+                                />
+                              ),
+                            },
+                          },
+                        }}
+                      />
+                      <CustomTextField
+                        name="remarks"
+                        value={values.remarks}
+                        onChange={handleChange}
+                        label="Remarks"
+                        multiline
+                        startAdornment={
+                          <AttachFileIcon sx={{ mr: 1, color: "#f58220" }} />
+                        }
+                      />
+                      <CustomSelect
+                        name="status"
+                        value={values.status}
+                        onChange={handleStatusChange}
+                        label="Status"
+                        options={(mode === "add"
+                          ? [{ value: "Draft", label: "Draft" }]
+                          : values.status &&
+                              !(options.statusOptions || []).some(
+                                (o) => o.value === values.status,
+                              )
+                            ? [
+                                {
+                                  value: values.status,
+                                  label: values.status,
                                 },
-                              },
-                            }}
-                          />
-                        </Box>
-                      </Box>
-                      {/* Parties Row */}
-                      <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
-                        <Box sx={{ flex: 1, minWidth: 250 }}>
-                          <CustomSelect
-                            name="shipper"
-                            value={values.shipper}
-                            onChange={handlePartyChange}
-                            onBlur={() => handleSelectBlur("shipper")}
-                            label="Shipper"
-                            options={options.shipperOptions || []}
-                            required
-                            error={touched.shipper && Boolean(errors.shipper)}
-                            helperText={
-                              touched.shipper && errors.shipper
-                                ? errors.shipper
-                                : ""
-                            }
-                            tooltip="Select shipper"
-                          />
-                          <CustomTextField
-                            name="shipperAddress"
-                            value={values.shipperAddress}
-                            label="Shipper Address"
-                            multiline
-                            rows={4}
-                            sx={{ mt: 2 }}
-                          />
-                        </Box>
-                        <Box sx={{ flex: 1, minWidth: 250 }}>
-                          <CustomSelect
-                            name="consignee"
-                            value={values.consignee}
-                            onChange={handlePartyChange}
-                            onBlur={() => handleSelectBlur("consignee")}
-                            label="Consignee"
-                            options={options.consigneeOptions || []}
-                            required
-                            error={
-                              touched.consignee && Boolean(errors.consignee)
-                            }
-                            helperText={
-                              touched.consignee && errors.consignee
-                                ? errors.consignee
-                                : ""
-                            }
-                            tooltip="Select consignee"
-                          />
-                          <CustomTextField
-                            name="consigneeAddress"
-                            value={values.consigneeAddress}
-                            label="Consignee Address"
-                            multiline
-                            rows={4}
-                            sx={{ mt: 2 }}
-                          />
-                        </Box>
+                                ...(options.statusOptions || []),
+                              ]
+                            : options.statusOptions || []
+                        ).map((opt) =>
+                          opt.value === "Delivered"
+                            ? {
+                                ...opt,
+                                disabled: hasDeliveredShipment,
+                                label: "Delivered",
+                              }
+                            : opt,
+                        )}
+                        disabled={mode === "add"}
+                        error={touched.status && Boolean(errors.status)}
+                        helperText={
+                          touched.status && errors.status ? errors.status : ""
+                        }
+                        loading={etaLoading}
+                      />
 
-                        <Box sx={{ flex: 1, minWidth: 250 }}>
-                          <CustomTextField
-                            name="remarks"
-                            value={values.remarks}
-                            onChange={handleChange}
-                            label="Remarks"
-                            multiline
-                            rows={2}
-                            startAdornment={
-                              <AttachFileIcon
-                                sx={{ mr: 1, color: "#f58220" }}
-                              />
-                            }
-                          />
+                      {mode === "edit" && (
+                        <Box
+                          flexDirection={"row"}
+                          justifyContent={"space-between"}
+                        >
+                          <Button
+                            variant="outlined"
+                            size="small"
+                            onClick={advanceStatus}
+                            sx={{
+                              borderColor: "#f58220",
+                              color: "#f58220",
+                              minHeight: "40px",
+                              marginTop: 1,
+                            }}
+                          >
+                            Change
+                          </Button>
+                          <Button
+                            variant="outlined"
+                            size="small"
+                            onClick={updateStatusChange}
+                            sx={{
+                              borderColor: "#f58220",
+                              float: "right",
+                              color: "#f58220",
+                              minHeight: "40px",
+                              alignSelf: "flex-end",
+                              marginTop: 1,
+                            }}
+                          >
+                            Update
+                          </Button>
                         </Box>
-                      </Box>
-                      {/* Locations Row */}
-                      <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
-                        <Box sx={{ flex: 1, minWidth: 250 }}>
-                          <CustomSelect
-                            name="origin"
-                            value={values.origin || values.originName}
-                            onChange={handleLocationChange} // FIXED: Use custom handler for name population
-                            onBlur={() => handleSelectBlur("origin")}
-                            label="Origin"
-                            options={options.originOptions || []}
-                            required
-                            error={touched.origin && Boolean(errors.origin)}
-                            helperText={
-                              touched.origin && errors.origin
-                                ? errors.origin
-                                : ""
-                            }
-                            tooltip="Select origin port"
-                          />
-                        </Box>
-                        <Box sx={{ flex: 1, minWidth: 250 }}>
-                          <CustomSelect
-                            name="destination"
-                            value={values.destination || values.destinationName}
-                            onChange={handleLocationChange} // FIXED: Use custom handler
-                            onBlur={() => handleSelectBlur("destination")}
-                            label="Destination"
-                            options={options.destinationOptions || []}
-                            required
-                            error={
-                              touched.destination && Boolean(errors.destination)
-                            }
-                            helperText={
-                              touched.destination && errors.destination
-                                ? errors.destination
-                                : ""
-                            }
-                            tooltip="Select destination port"
-                          />
-                        </Box>
-                        <Box sx={{ flex: 1, minWidth: 250 }}>
-                          <CustomTextField
-                            name="shippingLine"
-                            value={values.shippingLine || ""} // Ensure controlled value (add fallback for undefined)
-                            onChange={handleChange}
-                            onBlur={handleBlur} // Optional: recommended if using Formik for validation on blur
-                            label="Shipping Line"
-                            type="text"
-                            placeholder="e.g., Maersk, MSC, COSCO" // Helpful placeholder
-                            fullWidth
-                            variant="outlined" // Common props for Material-UI style fields
-                            // Remove the 'options' prop completely since it's now a free text input
-                          />
-                        </Box>
-                      </Box>
-                      {/* Payment & Value Row */}
-                      <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
-                        <Box sx={{ flex: 1, minWidth: 250 }}>
-                          <FormControl fullWidth error={!!errors.paymentType}>
-                            <Select
-                              // labelId="payment-type-label"
-                              name="paymentType"
-                              value={values.paymentType || ""} // Fix: Use '' instead of null/undefined
-                              // Updated onChange for MUI Select using your custom state (setValues, touched, validateField)
-                              onChange={(e) => {
-                                const newValue = e.target.value || "";
+                      )}
+
+                      {mode === "edit" && (
+                        <LocalizationProvider dateAdapter={AdapterDayjs}>
+                          <DatePicker
+                            label="ETA"
+                            value={eta ? dayjs(eta) : dayjs(etaSuggestion)}
+                            onChange={(value) => {
+                              if (value && value?.isValid()) {
+                                const formatted = value.format("YYYY-MM-DD");
+                                setEta(formatted);
                                 setValues((prev) => ({
                                   ...prev,
-                                  paymentType: newValue,
+                                  eta: formatted,
                                 }));
-                                // setValues(prev => ({ ...prev, paymentType: newValue })); // Use setValues instead of setFieldValue
-                                if (touched.paymentType) {
-                                  validateField("paymentType", newValue);
-                                }
-                                setTouched((prev) => ({
-                                  ...prev,
-                                  paymentType: true,
-                                })); // Mark as touched
-                              }}
-                              displayEmpty // Shows placeholder when empty
-                              // Optional: For searchable, wrap in Autocomplete if needed (see below)
-                            >
-                              <MenuItem value="" disabled>
-                                <em>Select Payment Type</em>
-                              </MenuItem>
-                              {options.paymentTypeOptions?.map((option) => (
-                                <MenuItem
-                                  key={option.value}
-                                  value={option.value}
-                                >
-                                  {option.label}
-                                </MenuItem>
-                              )) || null}
-                            </Select>
-                            {errors.paymentType && (
-                              <FormHelperText>
-                                {errors.paymentType}
-                              </FormHelperText>
-                            )}
-                            {!errors.paymentType && (
-                              <FormHelperText sx={{ color: "text.secondary" }}>
-                                (Required)
-                              </FormHelperText>
-                            )}
-                          </FormControl>
-                        </Box>
-                        <Box sx={{ flex: 1, minWidth: 250 }}>
-                          <CustomTextField
-                            name="consignment_value"
-                            value={values.consignment_value}
-                            onChange={handleNumberChange}
-                            onBlur={handleBlur}
-                            onFocus={handleNumberFocus}
-                            label="Consignment Value"
-                            type="number"
-                            required
-                            startAdornment={
-                              <AttachFileIcon
-                                sx={{ mr: 1, color: "#f58220" }}
-                              />
-                            }
-                            endAdornment={
-                              <FormControl size="small" sx={{ minWidth: 60 }}>
-                                <Select
-                                  name="currency_code"
-                                  value={
-                                    (options.currencyOptions || []).length >
-                                      0 &&
-                                    (options.currencyOptions || []).some(
-                                      (opt) =>
-                                        opt.value === values.currency_code,
-                                    )
-                                      ? values.currency_code
-                                      : ""
-                                  }
-                                  onChange={handleChange}
-                                >
-                                  {(options.currencyOptions || [])?.length >
-                                  0 ? (
-                                    (options.currencyOptions || []).map(
-                                      (opt) => (
-                                        <MenuItem
-                                          key={opt.value}
-                                          value={opt.value}
-                                        >
-                                          {opt.label}
-                                        </MenuItem>
-                                      ),
-                                    )
-                                  ) : (
-                                    <MenuItem value="">
-                                      Select Currency
-                                    </MenuItem>
-                                  )}
-                                </Select>
-                              </FormControl>
-                            }
-                            error={
-                              touched.consignment_value &&
-                              Boolean(errors.consignment_value)
-                            }
-                            helperText={
-                              touched.consignment_value &&
-                              errors.consignment_value
-                                ? errors.consignment_value
-                                : ""
-                            }
-                          />
-                        </Box>
-                        <Box sx={{ flex: 1, minWidth: 250 }}>
-                          <CustomSelect
-                            name="bank"
-                            value={values.bank}
-                            onChange={handleBankChange} // FIXED: Use custom handler
-                            onBlur={() => handleSelectBlur("bank")}
-                            label="Bank"
-                            options={options.bankOptions || []}
-                            required
-                            error={touched.bank && Boolean(errors.bank)}
-                            helperText={
-                              touched.bank && errors.bank ? errors.bank : ""
-                            }
-                            tooltip="Select associated bank"
-                          />
-                        </Box>
-                      </Box>
-                      {/* Shipping Row */}
-                      <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
-                        <Box sx={{ flex: 1, minWidth: 250 }}>
-                          <CustomSelect
-                            name="vessel"
-                            value={values.vessel ?? ""}
-                            onChange={handleChange}
-                            onBlur={() => handleSelectBlur("vessel")}
-                            label="Vessel"
-                            options={options.vesselOptions || []}
-                            required
-                            error={touched.vessel && Boolean(errors.vessel)}
-                            helperText={
-                              touched.vessel && errors.vessel
-                                ? errors.vessel
-                                : ""
-                            }
-                            tooltip="Select vessel"
-                          />
-                        </Box>
-                        <Box sx={{ flex: 1, minWidth: 250 }}></Box>
-                        <Box sx={{ flex: 1, minWidth: 250 }}>
-                          <CustomTextField
-                            name="voyage"
-                            value={values.voyage}
-                            onChange={handleChange}
-                            onBlur={handleBlur}
-                            label="Voyage"
-                            startAdornment={
-                              <DirectionsBoatIcon
-                                sx={{ mr: 1, color: "#f58220" }}
-                              />
-                            }
-                            required
-                            error={touched.voyage && Boolean(errors.voyage)}
-                            helperText={
-                              touched.voyage && errors.voyage
-                                ? errors.voyage
-                                : ""
-                            }
-                            tooltip="Enter voyage number (min 3 chars)"
-                          />
-                        </Box>
-                      </Box>
-                      {/* Counts & Seal Row */}
-                      <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
-                        <Box sx={{ flex: 1, minWidth: 250 }}>
-                          <CustomTextField
-                            name="seal_no"
-                            value={values.seal_no}
-                            onChange={handleChange}
-                            label="Seal No"
-                            startAdornment={
-                              <LocalPrintshopIcon
-                                sx={{ mr: 1, color: "#f58220" }}
-                              />
-                            }
-                          />
-                        </Box>
-
-                        {/* Net Weight - Auto & Disabled */}
-                        <Box sx={{ flex: 1, minWidth: 300 }}>
-                          <CustomTextField
-                            name="netWeight"
-                            value={values.netWeight || 0}
-                            label="Net Weight"
-                            type="number"
-                            required
-                            disabled
-                            InputProps={{ readOnly: true }}
-                            startAdornment={
-                              <LocalShippingIcon
-                                sx={{ mr: 1, color: "#f58220" }}
-                              />
-                            }
-                            endAdornment={
-                              <Typography
-                                variant="body2"
-                                color="text.secondary"
-                              >
-                                KGS
-                              </Typography>
-                            }
-                            helperText="Auto-calculated from selected orders"
-                            sx={{
-                              "& .MuiInputBase-input.Mui-disabled": {
-                                WebkitTextFillColor: "#000000",
-                                color: "#000000",
-                                fontWeight: "bold",
+                              } else {
+                                setEta(null);
+                              }
+                            }}
+                            inputFormat="YYYY-MM-DD"
+                            readOnly={true}
+                            slotProps={{
+                              textField: {
+                                helperText: etaLoading
+                                  ? "Calculating ETA..."
+                                  : etaSuggestion && eta !== etaSuggestion
+                                    ? `Suggested: ${dayjs(etaSuggestion).isValid() ? dayjs(etaSuggestion).format("MMM DD, YYYY") : "Invalid date"} based on status (edited)`
+                                    : etaSuggestion
+                                      ? `Suggested: ${dayjs(etaSuggestion).isValid() ? dayjs(etaSuggestion).format("MMM DD, YYYY") : "Invalid date"} based on status`
+                                      : "Set ETA based on status",
                               },
                             }}
+                            disabled={["Delivered", "Cancelled"].includes(
+                              values.status,
+                            )}
+                            name="eta"
                           />
-                        </Box>
-                      </Box>
-
-                      {/* Optional: Show summary when orders selected */}
-                      {selectedOrders.length > 0 && (
-                        <Alert
-                          severity="info"
-                          icon={<InfoIcon />}
-                          sx={{ borderLeft: "4px solid #f58220" }}
-                        >
-                          <AlertTitle>Weight Summary</AlertTitle>
-                          Based on <strong>{selectedOrders.length}</strong>{" "}
-                          selected order(s):{" "}
-                          <strong>{calculatedTotals.netWeight} KGS</strong> net
-                        </Alert>
+                        </LocalizationProvider>
                       )}
                     </Box>
+                    <Box
+                      sx={{
+                        display: "flex",
+                        gap: 2,
+                        mb: 2,
+                        flexDirection: {
+                          xs: "column",
+                          sm: "row",
+                        },
+                      }}
+                    >
+                      <Box sx={{ flex: 1, minWidth: 250 }}>
+                        <CustomSelect
+                          name="shipper"
+                          value={values.shipper}
+                          onChange={handlePartyChange}
+                          onBlur={() => handleSelectBlur("shipper")}
+                          label="Shipper"
+                          options={options.shipperOptions || []}
+                          required
+                          error={touched.shipper && Boolean(errors.shipper)}
+                          helperText={
+                            touched.shipper && errors.shipper
+                              ? errors.shipper
+                              : ""
+                          }
+                          tooltip="Select shipper"
+                        />
+                        <CustomTextField
+                          name="shipperAddress"
+                          value={values.shipperAddress}
+                          label="Shipper Address"
+                          multiline
+                          rows={4}
+                          sx={{ mt: 2 }}
+                        />
+                      </Box>
+                      <Box sx={{ flex: 1, minWidth: 250 }}>
+                        <CustomSelect
+                          name="consignee"
+                          value={values.consignee}
+                          onChange={handlePartyChange}
+                          onBlur={() => handleSelectBlur("consignee")}
+                          label="Consignee"
+                          options={options.consigneeOptions || []}
+                          required
+                          error={touched.consignee && Boolean(errors.consignee)}
+                          helperText={
+                            touched.consignee && errors.consignee
+                              ? errors.consignee
+                              : ""
+                          }
+                          tooltip="Select consignee"
+                        />
+                        <CustomTextField
+                          name="consigneeAddress"
+                          value={values.consigneeAddress}
+                          label="Consignee Address"
+                          multiline
+                          rows={4}
+                          sx={{ mt: 2 }}
+                        />
+                      </Box>
+                    </Box>
+                    <Box
+                      sx={{
+                        display: "flex",
+                        gap: 2,
+                        mb: 2,
+                        flexDirection: {
+                          xs: "column",
+                          sm: "row",
+                        },
+                      }}
+                    >
+                      <Box sx={{ flex: 1, minWidth: 250 }}>
+                        <CustomSelect
+                          name="origin"
+                          value={values.origin || values.originName}
+                          onChange={handleLocationChange}
+                          onBlur={() => handleSelectBlur("origin")}
+                          label="Origin"
+                          options={options.originOptions || []}
+                          required
+                          error={touched.origin && Boolean(errors.origin)}
+                          helperText={
+                            touched.origin && errors.origin ? errors.origin : ""
+                          }
+                          tooltip="Select origin port"
+                        />
+                      </Box>
+                      <Box sx={{ flex: 1, minWidth: 250 }}>
+                        <CustomSelect
+                          name="destination"
+                          value={values.destination || values.destinationName}
+                          onChange={handleLocationChange}
+                          onBlur={() => handleSelectBlur("destination")}
+                          label="Destination"
+                          options={options.destinationOptions || []}
+                          required
+                          error={
+                            touched.destination && Boolean(errors.destination)
+                          }
+                          helperText={
+                            touched.destination && errors.destination
+                              ? errors.destination
+                              : ""
+                          }
+                          tooltip="Select destination port"
+                        />
+                      </Box>
+                    </Box>
+                    <Box
+                      sx={{
+                        display: "flex",
+                        gap: 2,
+                        mb: 2,
+                        flexDirection: {
+                          xs: "column",
+                          sm: "row",
+                        },
+                      }}
+                    >
+                      <CustomTextField
+                        name="shippingLine"
+                        value={values.shippingLine || ""}
+                        onChange={handleChange}
+                        onBlur={handleBlur}
+                        label="Shipping Line"
+                        type="text"
+                        placeholder="e.g., Maersk, MSC, COSCO"
+                        fullWidth
+                        variant="outlined"
+                      />
+                      <FormControl fullWidth error={!!errors.paymentType}>
+                        <Select
+                          name="paymentType"
+                          value={values.paymentType || ""}
+                          onChange={(e) => {
+                            const newValue = e.target.value || "";
+                            setValues((prev) => ({
+                              ...prev,
+                              paymentType: newValue,
+                            }));
+                            if (touched.paymentType) {
+                              validateField("paymentType", newValue);
+                            }
+                            setTouched((prev) => ({
+                              ...prev,
+                              paymentType: true,
+                            }));
+                          }}
+                          displayEmpty
+                        >
+                          <MenuItem value="" disabled>
+                            <em>Select Payment Type</em>
+                          </MenuItem>
+                          {options.paymentTypeOptions?.map((option) => (
+                            <MenuItem key={option.value} value={option.value}>
+                              {option.label}
+                            </MenuItem>
+                          )) || null}
+                        </Select>
+                        {errors.paymentType && (
+                          <FormHelperText>{errors.paymentType}</FormHelperText>
+                        )}
+                        {!errors.paymentType && (
+                          <FormHelperText sx={{ color: "text.secondary" }}>
+                            (Required)
+                          </FormHelperText>
+                        )}
+                      </FormControl>
 
-                    {/* Print Buttons */}
+                      <CustomTextField
+                        name="consignment_value"
+                        value={values.consignment_value}
+                        onChange={handleNumberChange}
+                        onBlur={handleBlur}
+                        onFocus={handleNumberFocus}
+                        label="Consignment Value"
+                        type="number"
+                        required
+                        startAdornment={
+                          <AttachFileIcon sx={{ mr: 1, color: "#f58220" }} />
+                        }
+                        endAdornment={
+                          <FormControl size="small" sx={{ minWidth: 60 }}>
+                            <Select
+                              name="currency_code"
+                              value={
+                                (options.currencyOptions || []).length > 0 &&
+                                (options.currencyOptions || []).some(
+                                  (opt) => opt.value === values.currency_code,
+                                )
+                                  ? values.currency_code
+                                  : ""
+                              }
+                              onChange={handleChange}
+                            >
+                              {(options.currencyOptions || [])?.length > 0 ? (
+                                (options.currencyOptions || []).map((opt) => (
+                                  <MenuItem key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                  </MenuItem>
+                                ))
+                              ) : (
+                                <MenuItem value="">Select Currency</MenuItem>
+                              )}
+                            </Select>
+                          </FormControl>
+                        }
+                        error={
+                          touched.consignment_value &&
+                          Boolean(errors.consignment_value)
+                        }
+                        helperText={
+                          touched.consignment_value && errors.consignment_value
+                            ? errors.consignment_value
+                            : ""
+                        }
+                      />
+                      <CustomSelect
+                        name="bank"
+                        value={values.bank}
+                        onChange={handleBankChange}
+                        onBlur={() => handleSelectBlur("bank")}
+                        label="Bank"
+                        options={options.bankOptions || []}
+                        required
+                        error={touched.bank && Boolean(errors.bank)}
+                        helperText={
+                          touched.bank && errors.bank ? errors.bank : ""
+                        }
+                        tooltip="Select associated bank"
+                      />
+                    </Box>
+                    <Box
+                      sx={{
+                        display: "flex",
+                        gap: 2,
+                        mb: 2,
+                        flexDirection: {
+                          xs: "column",
+                          sm: "row",
+                        },
+                      }}
+                    >
+                      <CustomSelect
+                        name="vessel"
+                        value={values.vessel ?? ""}
+                        onChange={handleChange}
+                        onBlur={() => handleSelectBlur("vessel")}
+                        label="Vessel"
+                        options={options.vesselOptions || []}
+                        required
+                        error={touched.vessel && Boolean(errors.vessel)}
+                        helperText={
+                          touched.vessel && errors.vessel ? errors.vessel : ""
+                        }
+                        tooltip="Select vessel"
+                      />
+                      <CustomTextField
+                        name="voyage"
+                        value={values.voyage}
+                        onChange={handleChange}
+                        onBlur={handleBlur}
+                        label="Voyage"
+                        startAdornment={
+                          <DirectionsBoatIcon
+                            sx={{ mr: 1, color: "#f58220" }}
+                          />
+                        }
+                        required
+                        error={touched.voyage && Boolean(errors.voyage)}
+                        helperText={
+                          touched.voyage && errors.voyage ? errors.voyage : ""
+                        }
+                        tooltip="Enter voyage number (min 3 chars)"
+                      />
+
+                      <CustomTextField
+                        name="seal_no"
+                        value={values.seal_no}
+                        onChange={handleChange}
+                        label="Seal No"
+                        startAdornment={
+                          <LocalPrintshopIcon
+                            sx={{ mr: 1, color: "#f58220" }}
+                          />
+                        }
+                      />
+                      <CustomTextField
+                        name="netWeight"
+                        value={values.netWeight || 0}
+                        label="Net Weight"
+                        type="number"
+                        required
+                        disabled
+                        InputProps={{ readOnly: true }}
+                        startAdornment={
+                          <LocalShippingIcon sx={{ mr: 1, color: "#f58220" }} />
+                        }
+                        endAdornment={
+                          <Typography variant="body2" color="text.secondary">
+                            KGS
+                          </Typography>
+                        }
+                        helperText="Auto-calculated from selected orders"
+                        sx={{
+                          "& .MuiInputBase-input.Mui-disabled": {
+                            WebkitTextFillColor: "#000000",
+                            color: "#000000",
+                            fontWeight: "bold",
+                          },
+                        }}
+                      />
+                    </Box>
+                    {selectedOrders.length > 0 && (
+                      <Alert
+                        severity="info"
+                        icon={<InfoIcon />}
+                        sx={{ borderLeft: "4px solid #f58220" }}
+                      >
+                        <AlertTitle>Weight Summary</AlertTitle>
+                        Based on <strong>{selectedOrders.length}</strong>{" "}
+                        selected order(s):{" "}
+                        <strong>{calculatedTotals.netWeight} KGS</strong> net
+                      </Alert>
+                    )}
+
                     <Fade in={true} timeout={800}>
                       <Box
                         sx={{
@@ -6072,25 +6025,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                       </Table>
                     </TableContainer>
                   </AccordionDetails>
-                  {/* <TablePagination
-                    rowsPerPageOptions={[10, 25, 50, 100]}
-                    component="div"
-                    count={orderTotal || 0}
-                    rowsPerPage={orderRowsPerPage}
-                    page={orderPage}
-                    onPageChange={handleChangeOrderPage}
-                    onRowsPerPageChange={handleChangeOrderRowsPerPage}
-                    sx={{
-                      borderTop: '1px solid rgba(224, 224, 224, 1)',
-                      '& .MuiTablePagination-selectLabel, & .MuiTablePagination-displayedRows': {
-                        color: '#f58220',
-                        fontWeight: 'medium',
-                      },
-                      '& .MuiTablePagination-actions button': {
-                        color: '#0d6c6a',
-                      }
-                    }}
-                  /> */}
                 </Accordion>
               </CardContent>
               <Box
