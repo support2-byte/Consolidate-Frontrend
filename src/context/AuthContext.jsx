@@ -6,7 +6,7 @@ import {
   useCallback,
   useMemo,
 } from "react";
-import { api } from "../api";
+import { api, hasSessionFlag, setHasSession, clearHasSession } from "../api";
 
 export const AuthContext = createContext(null);
 
@@ -17,6 +17,13 @@ export function AuthProvider({ children }) {
   const [error, setError] = useState(null);
 
   const loadSession = useCallback(async () => {
+    if (!hasSessionFlag()) {
+      setUser(null);
+      setPermissions([]);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
@@ -29,6 +36,7 @@ export function AuthProvider({ children }) {
       setUser(userData);
       setPermissions(userData.permissions || []);
     } catch (err) {
+      clearHasSession();
       setError(err.message || "Failed to load session");
       setUser(null);
       setPermissions([]);
@@ -44,6 +52,7 @@ export function AuthProvider({ children }) {
   const login = async (email, password) => {
     try {
       await api.post("/auth/login", { email, password });
+      setHasSession();
       await loadSession();
       return true;
     } catch (err) {
@@ -62,6 +71,7 @@ export function AuthProvider({ children }) {
     } catch (err) {
       console.warn("[Logout] API failed:", err.message);
     } finally {
+      clearHasSession();
       setUser(null);
       setPermissions([]);
       setError(null);
@@ -94,6 +104,7 @@ export function AuthProvider({ children }) {
   const refreshSession = useCallback(() => loadSession(), [loadSession]);
 
   const refreshUserOnly = useCallback(async () => {
+    if (!hasSessionFlag()) return;
     try {
       const res = await api.get("/auth/me");
       const userData = res.data?.data;

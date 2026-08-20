@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useContext } from "react";
 import {
   Box,
   Paper,
@@ -18,6 +18,7 @@ import {
   Avatar,
   Chip,
   Switch,
+  Tooltip,
   FormControlLabel,
   CircularProgress,
   Alert,
@@ -29,6 +30,7 @@ import AddIcon from "@mui/icons-material/Add";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import { api } from "../../api";
 import SignaturePad from "../../components/companies/SignaturePad";
+import { AppContext } from "../../context/AppContext";
 
 const EMPTY_FORM = {
   id: null,
@@ -42,39 +44,34 @@ const EMPTY_FORM = {
 };
 
 export default function CompaniesPage() {
-  const [companies, setCompanies] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const { companies, companiesLoading, companiesError, fetchCompanies } =
+    useContext(AppContext);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [logoFile, setLogoFile] = useState(null);
-  const [signatureData, setSignatureData] = useState(null); // base64 data URL from canvas
+  const [signatureData, setSignatureData] = useState(null);
   const [existingSignatureUrl, setExistingSignatureUrl] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [copiedColor, setCopiedColor] = useState(null);
 
-  const fetchCompanies = useCallback(async () => {
-    setLoading(true);
-    setError("");
+  const handleCopyColor = async (hex) => {
     try {
-      const { data } = await api.get("/api/options/companies");
-      setCompanies(data.data || []);
+      await navigator.clipboard.writeText(hex);
+      setCopiedColor(hex);
+      setTimeout(() => setCopiedColor(null), 1000);
     } catch (err) {
-      setError(err.response?.data?.message || "Failed to load companies");
-    } finally {
-      setLoading(false);
+      console.error("Copy failed:", err);
     }
-  }, []);
-
-  useEffect(() => {
-    fetchCompanies();
-  }, [fetchCompanies]);
+  };
 
   const openCreateDialog = () => {
     setForm(EMPTY_FORM);
     setLogoFile(null);
     setSignatureData(null);
     setExistingSignatureUrl(null);
+    setSaveError("");
     setDialogOpen(true);
   };
 
@@ -92,6 +89,7 @@ export default function CompaniesPage() {
     setLogoFile(null);
     setSignatureData(null);
     setExistingSignatureUrl(companyRow.signature_url || null);
+    setSaveError("");
     setDialogOpen(true);
   };
 
@@ -104,10 +102,10 @@ export default function CompaniesPage() {
 
   const handleSave = async () => {
     setSaving(true);
-    setError("");
+    setSaveError("");
 
     if (!form.id && !signatureData) {
-      setError("Please draw a signature before saving.");
+      setSaveError("Please draw a signature before saving.");
       setSaving(false);
       return;
     }
@@ -121,8 +119,6 @@ export default function CompaniesPage() {
     payload.append("secondary_color", form.secondary_color);
     payload.append("status", form.status);
     if (logoFile) payload.append("logo", logoFile);
-    // Backend expects an actual file under "signature" (multer .fields()), not a
-    // base64 string — convert the canvas's data URL into a Blob before appending.
     if (signatureData) {
       const signatureBlob = await (await fetch(signatureData)).blob();
       payload.append("signature", signatureBlob, "signature.png");
@@ -142,7 +138,7 @@ export default function CompaniesPage() {
       fetchCompanies();
     } catch (err) {
       const backendMessage = err.response?.data?.message;
-      setError(
+      setSaveError(
         typeof backendMessage === "string"
           ? backendMessage
           : "Failed to save company",
@@ -172,14 +168,14 @@ export default function CompaniesPage() {
         </Button>
       </Stack>
 
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError("")}>
-          {error}
+      {companiesError && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {companiesError}
         </Alert>
       )}
 
       <Paper variant="outlined">
-        {loading ? (
+        {companiesLoading ? (
           <Box sx={{ display: "flex", justifyContent: "center", p: 4 }}>
             <CircularProgress size={28} />
           </Box>
@@ -230,17 +226,25 @@ export default function CompaniesPage() {
                     <Stack direction="row" spacing={0.5}>
                       {[row.primary_color, row.secondary_color]
                         .filter(Boolean)
-                        .map((c) => (
-                          <Box
-                            key={c}
-                            sx={{
-                              width: 18,
-                              height: 18,
-                              borderRadius: "4px",
-                              bgcolor: c,
-                              border: "1px solid rgba(0,0,0,0.15)",
-                            }}
-                          />
+                        .map((c, idx) => (
+                          <Tooltip
+                            key={`${c}-${idx}`}
+                            title={copiedColor === c ? "Copied!" : c}
+                          >
+                            <Box
+                              onClick={() => handleCopyColor(c)}
+                              sx={{
+                                width: 18,
+                                height: 18,
+                                borderRadius: "4px",
+                                bgcolor: c,
+                                border: "1px solid rgba(0,0,0,0.15)",
+                                cursor: "pointer",
+                                "&:hover": { transform: "scale(1.15)" },
+                                transition: "transform 0.1s",
+                              }}
+                            />
+                          </Tooltip>
                         ))}
                     </Stack>
                   </TableCell>
@@ -281,6 +285,7 @@ export default function CompaniesPage() {
         <DialogTitle>{form.id ? "Edit Company" : "New Company"}</DialogTitle>
         <DialogContent dividers>
           <Stack spacing={2} sx={{ mt: 1 }}>
+            {saveError && <Alert severity="error">{saveError}</Alert>}
             <TextField
               label="Company Name"
               value={form.company}

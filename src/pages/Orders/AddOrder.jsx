@@ -714,6 +714,7 @@ const OrderForm = () => {
   };
 
   const fetchOptions = async () => {
+    if (!places || places.length === 0) return;
     try {
       setIsLoading(true);
       const [companiesRes, categoriesRes, subcategoriesRes] = await Promise.all(
@@ -783,7 +784,7 @@ const OrderForm = () => {
     if (orderId) {
       fetchOrder(orderId);
     }
-  }, [orderId]);
+  }, [orderId, places]);
 
   useEffect(() => {
     if (Object.keys(errors).length > 0) {
@@ -2533,7 +2534,6 @@ const OrderForm = () => {
               direction="row"
               sx={{
                 position: "sticky",
-                zIndex: 9999,
                 top: 63,
                 background: "white",
               }}

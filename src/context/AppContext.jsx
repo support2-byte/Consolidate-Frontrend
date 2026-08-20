@@ -1,19 +1,25 @@
 import { createContext, useEffect, useState, useRef } from "react";
 import { api } from "../api";
 import { toast } from "react-toastify";
+import { useAuth } from "./AuthContext";
 
 export const AppContext = createContext();
 
 export const AppProvider = ({ children }) => {
+  const { isAuthenticated, loading: authLoading } = useAuth();
+
   const [customers, setCustomers] = useState([]);
   const [places, setPlaces] = useState([]);
   const [statuses, setStatuses] = useState([]);
   const [modules, setModules] = useState([]);
+  const [companies, setCompanies] = useState([]);
 
   const [placesLoading, setPlacesLoading] = useState(false);
   const [statusLoading, setStatusLoading] = useState(false);
   const [loadingCustomers, setLoadingCustomers] = useState(true);
   const [modulesLoading, setModulesLoading] = useState(false);
+  const [companiesLoading, setCompaniesLoading] = useState(false);
+  const [companiesError, setCompaniesError] = useState("");
 
   const isInitialized = useRef(false);
 
@@ -90,11 +96,33 @@ export const AppProvider = ({ children }) => {
       console.error("Modules Fetch Error:", error);
       toast.error("An error occurred while fetching modules.");
     } finally {
-      setStatusLoading(false);
+      setModulesLoading(false);
+    }
+  };
+
+  const fetchCompanies = async () => {
+    setCompaniesLoading(true);
+    setCompaniesError("");
+    try {
+      const { data } = await api.get("/api/options/companies");
+      setCompanies(data.data || []);
+    } catch (err) {
+      setCompaniesError(
+        err.response?.data?.message || "Failed to load companies",
+      );
+    } finally {
+      setCompaniesLoading(false);
     }
   };
 
   useEffect(() => {
+    if (authLoading) return;
+    if (!isAuthenticated) {
+      setLoadingCustomers(false);
+      isInitialized.current = false;
+      return;
+    }
+
     if (isInitialized.current) return;
     isInitialized.current = true;
 
@@ -102,7 +130,8 @@ export const AppProvider = ({ children }) => {
     fetchPlaces();
     fetchStatuses();
     fetchModules();
-  }, []);
+    fetchCompanies();
+  }, [authLoading, isAuthenticated]);
 
   return (
     <AppContext.Provider
@@ -120,6 +149,11 @@ export const AppProvider = ({ children }) => {
         fetchStatuses,
         modules,
         setModules,
+        companies,
+        setCompanies,
+        companiesLoading,
+        companiesError,
+        fetchCompanies,
       }}
     >
       {children}

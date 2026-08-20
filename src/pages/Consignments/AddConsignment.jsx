@@ -358,7 +358,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     const place = options.destinationOptions.find(
       (p) => p.value === placeId.toString(),
     );
-    return place ? place.label : placeId;
+    return place ? place.label : placeId.toString();
   };
 
   const handleStatusChange = (newStatusOrEvent) => {
@@ -402,6 +402,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
 
   useEffect(() => {
     const initData = async () => {
+      if (!places || places.length === 0) return;
       try {
         setLoading(true);
 
@@ -529,7 +530,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
             vessel: defaultVessel,
           }));
 
-          // Trigger ETA suggestion after status is set
           if (defaultStatus && Object.keys(offsets).length > 0) {
             setTimeout(() => handleStatusChange(defaultStatus), 100);
           }
@@ -550,11 +550,10 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     };
 
     initData();
-  }, [mode, effectiveConsignmentId]);
+  }, [mode, effectiveConsignmentId, places]);
 
   const loadConsignment = async (id) => {
     try {
-      // setMode('edit');
       const res = await api.get(`/api/consignments/${id}?autoUpdate=false`);
       const { data } = res.data || {};
       const mappedData = {
@@ -1245,17 +1244,16 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       (order.receivers || []).flatMap((receiver) =>
         (receiver.shippingdetails || []).flatMap((detail) =>
           (detail.containerDetails || []).map((containerDetail) => ({
-            // Order level
             orderId: order.id,
             receiverId: receiver.id,
             shippingDetailId: detail.id,
             containerCid: containerDetail.container?.cid,
             bookingRef: order.booking_ref || "-",
             formNo: order.rgl_booking_number || "-",
-            pol: getPlaceName?.(order.place_of_loading) || "-",
-            pod: getPlaceName?.(order.place_of_delivery) || "-",
-            sender: order.sender_name || "-",
-            receiverName: receiver.receivername || "-",
+            pol: String(getPlaceName?.(order.place_of_loading) ?? "-"),
+            pod: String(getPlaceName?.(order.place_of_delivery) ?? "-"),
+            sender: String(order.sender_name ?? "-"),
+            receiverName: String(receiver.receivername ?? "-"),
             category: detail.category || "Unknown",
             subcategory: detail.subcategory || "",
             type: detail.type || "Package",
@@ -2202,7 +2200,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     return errors;
   };
   const hasErrors = Object.values(errors).some(Boolean);
-  if (loading) return <div>Loading...</div>;
+  if (loading || !places || places.length === 0) return <div>Loading...</div>;
 
   const StyledTooltip = styled(Tooltip)(({ theme }) => ({
     [`& .MuiTooltip-tooltip`]: {
@@ -5129,11 +5127,15 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                       <Box sx={{ flex: 1, minWidth: 250 }}>
                         <CustomSelect
                           name="origin"
-                          value={values.origin || values.originName}
+                          value={values.origin}
                           onChange={handleLocationChange}
                           onBlur={() => handleSelectBlur("origin")}
                           label="Origin"
                           options={options.originOptions || []}
+                          disabled={
+                            !options.originOptions ||
+                            options.originOptions.length === 0
+                          }
                           required
                           error={touched.origin && Boolean(errors.origin)}
                           helperText={
@@ -5145,11 +5147,15 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                       <Box sx={{ flex: 1, minWidth: 250 }}>
                         <CustomSelect
                           name="destination"
-                          value={values.destination || values.destinationName}
+                          value={values.destination}
                           onChange={handleLocationChange}
                           onBlur={() => handleSelectBlur("destination")}
                           label="Destination"
                           options={options.destinationOptions || []}
+                          disabled={
+                            !options.destinationOptions ||
+                            options.destinationOptions.length === 0
+                          }
                           required
                           error={
                             touched.destination && Boolean(errors.destination)
@@ -5970,16 +5976,21 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                                 </TableCell>
 
                                 <TableCell>
-                                  {shipment.pol.substring(0, 15)}
+                                  {String(shipment.pol ?? "-").substring(0, 15)}
                                 </TableCell>
                                 <TableCell>
-                                  {shipment.pod.substring(0, 15)}
+                                  {String(shipment.pod ?? "-").substring(0, 15)}
                                 </TableCell>
                                 <TableCell>
-                                  {shipment.sender.substring(0, 15)}
+                                  {String(shipment.sender ?? "-").substring(
+                                    0,
+                                    15,
+                                  )}
                                 </TableCell>
                                 <TableCell>
-                                  {shipment.receiverName.substring(0, 15)}
+                                  {String(
+                                    shipment.receiverName ?? "-",
+                                  ).substring(0, 15)}
                                 </TableCell>
 
                                 <TableCell>
@@ -5991,7 +6002,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                                   />
                                 </TableCell>
                                 <TableCell align="center">
-                                  {/* {shipment.remainingItems > 0 ? shipment.remainingItems.toLocaleString() : '-'} */}
                                   {shipment.assignWeight > 0
                                     ? `${shipment.assignWeight.toLocaleString()} kg`
                                     : "-"}{" "}
