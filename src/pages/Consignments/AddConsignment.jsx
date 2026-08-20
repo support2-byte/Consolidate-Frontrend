@@ -4929,16 +4929,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                           },
                         }}
                       />
-                      <CustomTextField
-                        name="remarks"
-                        value={values.remarks}
-                        onChange={handleChange}
-                        label="Remarks"
-                        multiline
-                        startAdornment={
-                          <AttachFileIcon sx={{ mr: 1, color: "#f58220" }} />
-                        }
-                      />
                       <CustomSelect
                         name="status"
                         value={values.status}
@@ -4976,20 +4966,12 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                       />
 
                       {mode === "edit" && (
-                        <Box
-                          flexDirection={"row"}
-                          justifyContent={"space-between"}
-                        >
+                        <Box display="flex">
                           <Button
                             variant="outlined"
                             size="small"
                             onClick={advanceStatus}
-                            sx={{
-                              borderColor: "#f58220",
-                              color: "#f58220",
-                              minHeight: "40px",
-                              marginTop: 1,
-                            }}
+                            sx={{ maxHeight: 58 }}
                           >
                             Change
                           </Button>
@@ -4997,20 +4979,34 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                             variant="outlined"
                             size="small"
                             onClick={updateStatusChange}
-                            sx={{
-                              borderColor: "#f58220",
-                              float: "right",
-                              color: "#f58220",
-                              minHeight: "40px",
-                              alignSelf: "flex-end",
-                              marginTop: 1,
-                            }}
+                            sx={{ maxHeight: 58 }}
                           >
                             Update
                           </Button>
                         </Box>
                       )}
-
+                    </Box>
+                    <Box
+                      sx={{
+                        display: "flex",
+                        gap: 2,
+                        mb: 2,
+                        flexDirection: {
+                          xs: "column",
+                          sm: "row",
+                        },
+                      }}
+                    >
+                      <CustomTextField
+                        name="remarks"
+                        value={values.remarks}
+                        onChange={handleChange}
+                        label="Remarks"
+                        multiline
+                        startAdornment={
+                          <AttachFileIcon sx={{ mr: 1, color: "#f58220" }} />
+                        }
+                      />
                       {mode === "edit" && (
                         <LocalizationProvider dateAdapter={AdapterDayjs}>
                           <DatePicker
