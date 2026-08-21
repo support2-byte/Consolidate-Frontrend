@@ -112,6 +112,8 @@ const OrdersList = () => {
   const [containers, setContainers] = useState([]);
   const [selectedContainer, setSelectedContainer] = useState("");
 
+  console.log({ companies });
+
   const [openDirectAssign, setOpenDirectAssign] = useState(false);
   const [directSelectedContainers, setDirectSelectedContainers] =
     useState(null);
@@ -4043,6 +4045,7 @@ const OrdersList = () => {
   };
 
   const OrderAcknowledgementPrintableVersion = (orderData, company) => {
+    const primary = company?.primary_color || "#1a4731";
     const formatDate = (dateString) => {
       if (!dateString) return "";
       try {
@@ -4160,7 +4163,7 @@ const OrdersList = () => {
             }
 
             .top-banner {
-                background-color: #1a4731;
+               background-color: ${primary};
                 color: white;
                 text-align: center;
                 padding: 10px;
@@ -4480,6 +4483,8 @@ const OrdersList = () => {
   };
 
   const OrderConfirmation = (orderData, company) => {
+    const primary = company?.primary_color || "#e67e22";
+    const secondary = company?.secondary_color || "#b8860b";
     const formatDate = (dateString) => {
       if (!dateString) return "";
       try {
@@ -4599,7 +4604,7 @@ const OrdersList = () => {
                 margin-bottom: 10px;
             }
             .logo-text { 
-                color: #e67e22; 
+                color: ${primary}; 
                 font-weight: bold; 
                 font-size: 18px; 
             }
@@ -4627,7 +4632,7 @@ const OrdersList = () => {
                 font-weight: 500;
             }
             .golden-text {
-                color: #b8860b;
+                color: ${secondary};
                 font-weight: 500;
             }
             .label-cell { 
@@ -4821,7 +4826,384 @@ const OrdersList = () => {
     `;
   };
 
+  const HouseBillOfLading = (orderData, company) => {
+    const safeOrder = orderData || {};
+    const receivers = safeOrder.receivers || [];
+    const consignment = safeOrder.consignment || {};
+
+    const primary = company?.primary_color || "#f37021";
+    const secondary = company?.secondary_color || "#008a45";
+
+    const tint = (hex, opacity = 0.12) => {
+      if (!hex) return "#f5f5f5";
+      const clean = hex.replace("#", "");
+      const r = parseInt(clean.substring(0, 2), 16);
+      const g = parseInt(clean.substring(2, 4), 16);
+      const b = parseInt(clean.substring(4, 6), 16);
+      return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+    };
+
+    const commonData = {
+      consignment_number:
+        consignment.consignment_number || safeOrder.booking_ref || "N/A",
+      originName: getPlaceName(safeOrder.place_of_loading) || "N/A",
+      destinationName: getPlaceName(safeOrder.final_destination) || "N/A",
+      shipperName: safeOrder.sender_name || "N/A",
+      shipperAddress: safeOrder.sender_address || "N/A",
+      voyage: consignment.voyage || "N/A",
+      vesselName: consignment.vessel || "N/A",
+      sealNo: consignment.seal_no || safeOrder.seal_no || "N/A",
+      created_at: safeOrder.created_at || null,
+      generated_date: new Date()
+        .toLocaleDateString("en-GB", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        })
+        .toUpperCase(),
+      generated_time: new Date().toLocaleTimeString("en-GB", {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+    };
+
+    const companyName =
+      company?.company || "ROYAL GULF SHIPPING & LOGISTICS LLC";
+    const companyPhone = company?.phone || "";
+    const companyEmail = company?.email || "";
+    const companyLogo = company?.logo_url || "";
+
+    const receiverGroups =
+      receivers.length > 0
+        ? receivers.map((receiver) => ({
+            orderNumber: safeOrder.rgl_booking_number || `ORD-${safeOrder.id}`,
+            receiverName: receiver.receiverName || "N/A",
+            receiverAddress: receiver.receiverAddress || "N/A",
+            receiverData: receiver,
+            shippingDetails: receiver.shippingdetails || [],
+          }))
+        : [
+            {
+              orderNumber:
+                safeOrder.rgl_booking_number || `ORD-${safeOrder.id}`,
+              receiverName: "N/A",
+              receiverAddress: "N/A",
+              receiverData: {},
+              shippingDetails: [],
+            },
+          ];
+
+    let allPagesHTML = "";
+
+    receiverGroups.forEach((receiverGroup, i) => {
+      const receiver = receiverGroup.receiverData;
+      const shippingDetails = receiverGroup.shippingDetails;
+
+      let receiverPackages = 0;
+      let receiverWeight = 0;
+      let itemRef = "";
+
+      shippingDetails.forEach((item) => {
+        let packagesForItem = 0;
+        let weightForItem = 0;
+
+        if (item.containerDetails && item.containerDetails.length > 0) {
+          item.containerDetails.forEach((cd) => {
+            packagesForItem += Number(cd.assign_total_box) || 0;
+            weightForItem += Number(cd.assign_weight) || 0;
+          });
+        } else {
+          packagesForItem = parseInt(item.totalNumber) || 0;
+          weightForItem = parseFloat(item.weight) || 0;
+        }
+
+        receiverPackages += packagesForItem;
+        receiverWeight += weightForItem;
+
+        if (item.itemRef && !itemRef.includes(item.itemRef)) {
+          itemRef += (itemRef ? ", " : "") + item.itemRef;
+        }
+      });
+
+      const firstContainerNumber =
+        receiver.containers && receiver.containers.length > 0
+          ? receiver.containers[0]
+          : "N/A";
+
+      const issueDate = commonData.created_at
+        ? new Date(commonData.created_at).toLocaleString("en-US", {
+            month: "numeric",
+            day: "numeric",
+            year: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+            second: "2-digit",
+            hour12: true,
+          })
+        : "N/A";
+
+      const cargoRows =
+        shippingDetails.length > 0
+          ? shippingDetails
+              .map((item) => {
+                let packagesForItem = 0;
+                let weightForItem = 0;
+
+                if (item.containerDetails && item.containerDetails.length > 0) {
+                  item.containerDetails.forEach((cd) => {
+                    packagesForItem += Number(cd.assign_total_box) || 0;
+                    weightForItem += Number(cd.assign_weight) || 0;
+                  });
+                } else {
+                  packagesForItem = parseInt(item.totalNumber) || 0;
+                  weightForItem = parseFloat(item.weight) || 0;
+                }
+
+                const category = item.category || "N/A";
+                const subcategory = item.subcategory || "";
+                const description = subcategory
+                  ? `${category} - ${subcategory}`
+                  : category;
+
+                return `
+                <tr>
+                  <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">${item.type || "N/A"}</td>
+                  <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">${description}</td>
+                  <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">${packagesForItem}</td>
+                  <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">${weightForItem.toFixed(2)}</td>
+                  <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">0.00</td>
+                </tr>
+              `;
+              })
+              .join("")
+          : "";
+
+      allPagesHTML += `
+    <div class="hbl-page" style="border-top: 8px solid ${primary};">
+      <div class="header" style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+        <div class="logo-area">
+          ${companyLogo ? `<img src="${companyLogo}" alt="${companyName}" style="width: 150px; height: auto;">` : `<span style="color: ${primary}; font-size: 16px; font-weight: bold;">${companyName}</span>`}
+        </div>
+        <div class="company-info" style="text-align: left; flex-grow: 1; margin-left: 20px;">
+          <p class="company-name" style="color: ${primary}; font-size: 16px; font-weight: bold; margin: 0;">${companyName.toUpperCase()}</p>
+          <p class="locations" style="color: ${secondary}; font-weight: bold; margin: 2px 0;">DUBAI • LONDON • KARACHI • SHENZHEN</p>
+          <p style="font-size: 8px;">${companyPhone ? `Ph: ${companyPhone} | ` : ""}${companyEmail}</p>
+        </div>
+        <div class="title-area" style="text-align: right;">
+          <p class="hbl-title" style="color: ${primary}; font-size: 20px; font-weight: bold; margin: 0;">HOUSE BILL OF LADING</p>
+          <p style="font-size: 8px;">Non-negotiable copy</p>
+          <p style="font-size: 8px;">Consignment: ${commonData.consignment_number}</p>
+        </div>
+      </div>
+
+      <div class="grid-row" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 8px;">
+        <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">HBL NO.</span>
+          <span style="font-weight: bold; font-size: 9px;">--</span>
+        </div>
+        <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">ORDER REFERENCE</span>
+          <span style="font-weight: bold; font-size: 9px;">${receiverGroup.orderNumber}</span>
+        </div>
+        <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">ITEM REFERENCE</span>
+          <span style="font-weight: bold; font-size: 9px;">${itemRef}</span>
+        </div>
+        <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">ISSUE DATE</span>
+          <span style="font-weight: bold; font-size: 9px;">${issueDate}</span>
+        </div>
+        <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">PLACE OF ISSUE</span>
+          <span style="font-weight: bold; font-size: 9px;">${commonData.originName}</span>
+        </div>
+      </div>
+
+      <div class="section-header" style="color: ${secondary}; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid ${secondary}; margin-bottom: 5px;">SHIPMENT PARTIES</div>
+
+      <div class="parties-row" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+        <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 70px;">
+          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">SHIPPER</span>
+          <div style="font-weight: bold; font-size: 9px;">${commonData.shipperName}</div>
+          <div style="font-size: 8px; color: #666;">${commonData.shipperAddress}</div>
+        </div>
+        <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 70px;">
+          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">CONSIGNEE</span>
+          <div style="font-weight: bold; font-size: 9px;">${receiverGroup.receiverName}</div>
+          <div style="font-size: 8px; color: #666;">${receiverGroup.receiverAddress}</div>
+        </div>
+        <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 70px;">
+          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">NOTIFY PARTY</span>
+          <div style="font-weight: bold; font-size: 9px;">SAME AS CONSIGNEE</div>
+        </div>
+      </div>
+
+      <div class="section-header" style="color: ${secondary}; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid ${secondary}; margin-bottom: 5px;">VOYAGE & ROUTING DETAILS</div>
+
+      <div class="grid-row" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+        <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">PORT OF LOADING (POL)</span>
+          <span style="font-weight: bold; font-size: 9px;">${commonData.originName}</span>
+        </div>
+        <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">PORT OF DISCHARGE (POD)</span>
+          <span style="font-weight: bold; font-size: 9px;">${commonData.destinationName}</span>
+        </div>
+        <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">FINAL DESTINATION</span>
+          <span style="font-weight: bold; font-size: 9px;">${commonData.destinationName}</span>
+        </div>
+        <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">VESSEL NAME</span>
+          <span style="font-weight: bold; font-size: 9px;">${commonData.vesselName}</span>
+        </div>
+        <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">VOYAGE / SAILING</span>
+          <span style="font-weight: bold; font-size: 9px;">${commonData.voyage}</span>
+        </div>
+        <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">INCOTERMS</span>
+          <span style="font-weight: bold; font-size: 9px;">SEAFREIGHT</span>
+        </div>
+      </div>
+
+      <div class="section-header" style="color: ${secondary}; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid ${secondary}; margin-bottom: 5px;">CONTAINER & PACKAGE INFO</div>
+
+      <div class="grid-row" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 8px;">
+        <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">CONTAINER NO.</span>
+          <span style="font-weight: bold; font-size: 9px;">${firstContainerNumber} | 40ft</span>
+        </div>
+        <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">SEAL NO.</span>
+          <span style="font-weight: bold; font-size: 9px;">${commonData.sealNo}</span>
+        </div>
+        <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">TOTAL PACKAGES</span>
+          <span style="font-weight: bold; font-size: 9px;">${receiverPackages}</span>
+        </div>
+        <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">TOTAL WEIGHT (KGS)</span>
+          <span style="font-weight: bold; font-size: 9px;">${receiverWeight.toFixed(2)}</span>
+        </div>
+      </div>
+
+      <div class="section-header" style="color: ${secondary}; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid ${secondary}; margin-bottom: 5px;">CARGO DESCRIPTION</div>
+
+      ${
+        shippingDetails.length > 0
+          ? `
+      <table style="width: 100%; border-collapse: collapse; margin-top: 5px;">
+        <thead>
+          <tr>
+            <th style="border: 1px solid #ccc; border-top: 2px solid ${primary}; background-color: #f9f9f9; padding: 4px; font-size: 8px; width: 20%;">MARKS & NUMBERS</th>
+            <th style="border: 1px solid #ccc; border-top: 2px solid ${primary}; background-color: #f9f9f9; padding: 4px; font-size: 8px; width: 40%;">DESCRIPTION OF GOODS</th>
+            <th style="border: 1px solid #ccc; border-top: 2px solid ${primary}; background-color: #f9f9f9; padding: 4px; font-size: 8px; width: 10%;">PKGS</th>
+            <th style="border: 1px solid #ccc; border-top: 2px solid ${primary}; background-color: #f9f9f9; padding: 4px; font-size: 8px; width: 15%;">WEIGHT (KGS)</th>
+            <th style="border: 1px solid #ccc; border-top: 2px solid ${primary}; background-color: #f9f9f9; padding: 4px; font-size: 8px; width: 15%;">VOLUME (CBM)</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${cargoRows}
+          <tr style="font-weight: bold; background-color: ${tint(secondary)};">
+            <td colspan="2" style="border: 1px solid #ccc; padding: 8px 4px; text-align: right;">TOTAL:</td>
+            <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">${receiverPackages}</td>
+            <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">${receiverWeight.toFixed(2)}</td>
+            <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">0.00</td>
+          </tr>
+        </tbody>
+      </table>
+      `
+          : `
+      <div style="text-align: center; padding: 30px; background: #f9f9f9; border: 1px dashed #ccc; margin-bottom: 20px;">
+        <h4 style="color: #666; font-style: italic;">NO CARGO DETAILS FOUND</h4>
+        <p style="color: #999;">No shipping details available for this receiver.</p>
+      </div>
+      `
+      }
+
+      <div class="bottom-section" style="display: grid; grid-template-columns: 2fr 1fr; gap: 15px; margin-top: 10px; border-top: 1px solid #000; padding-top: 8px;">
+        <div class="terms" style="font-size: 10px; line-height: 1.4;">
+          <strong>By confirming this order for shipment, the Shipper/Consignee agrees to the following terms:</strong>
+          <ol style="margin: 6px 0; padding-left: 0; list-style-position: inside;">
+            <li style="margin-bottom: 4px;">Carriage is performed under ${companyName}'s standard terms and applicable international conventions. All cargo details supplied must be true and complete.</li>
+            <li style="margin-bottom: 4px;">Transit times are estimates only. Delays may occur due to weather, customs, port congestion, operational issues or carrier schedules.</li>
+            <li style="margin-bottom: 4px;">Customs scanning, inspections, dog checks, or port delays may incur extra charges payable by the Merchant.</li>
+            <li style="margin-bottom: 4px;">In case of loss/damage, liability shall not exceed the freight value or USD 50 per package unless a higher value is declared and agreed in writing beforehand.</li>
+            <li style="margin-bottom: 4px;">The Merchant confirms lawful ownership of goods and accepts full responsibility for any illegal, prohibited or undeclared items shipped.</li>
+            <li style="margin-bottom: 4px;">${companyName} is not liable for any damage during customs/port inspections at origin, transit or destination.</li>
+            <li style="margin-bottom: 4px;">Cargo is carried at Merchant's risk unless the Merchant arranges separate insurance. ${companyName} is not liable for indirect or consequential losses.</li>
+            <li style="margin-bottom: 4px;">Claims must be notified immediately in writing and within legal time limits. Late claims may be void.</li>
+            <li style="margin-bottom: 4px;">${companyName} may use third-party carriers or subcontractors; all their protections and liability limits apply equally to ${companyName}.</li>
+            <li style="margin-bottom: 4px;">This HBL applies only to order ref ${receiverGroup.orderNumber}.</li>
+            <li style="margin-bottom: 4px;">Governed by UAE law; disputes fall under Dubai courts unless agreed otherwise.</li>
+          </ol>
+          <p style="font-size: 7px; margin-top: 10px;">
+            Receiver: ${receiverGroup.receiverName} |
+            Order: ${receiverGroup.orderNumber} |
+            Container: ${firstContainerNumber} |
+            Page ${i + 1} of ${receiverGroups.length}
+          </p>
+        </div>
+        <div class="signature-box" style="border-left: 1px solid #ccc; padding-left: 10px;">
+          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #000;">For and on behalf of</span>
+          <p style="color: ${primary}; font-weight: bold; margin: 0; font-size:12px;">${companyName}</p>
+          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #000;">Generated: ${commonData.generated_date} ${commonData.generated_time}</span>
+          <div style="margin-top: 35px; border-top: 1px solid #000;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">Authorised Signature</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    `;
+    });
+
+    return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>House Bill of Lading</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+            font-size: 10px;
+            color: #333;
+        }
+        .hbl-page {
+            width: 780px;
+            margin: 0 auto 20px auto;
+            padding: 25px;
+            background-color: #fff;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        .hbl-page:not(:last-child) {
+            page-break-after: always;
+        }
+        @media print {
+            body { background-color: white; padding: 0; }
+            .hbl-page {
+                box-shadow: none;
+                page-break-after: always;
+                page-break-inside: avoid;
+            }
+            .hbl-page:last-child { page-break-after: auto; }
+        }
+    </style>
+</head>
+<body>
+    ${allPagesHTML}
+</body>
+</html>
+  `;
+  };
+
   const BillOfLading = (orderData, company) => {
+    const primary = company?.primary_color || "#2b3a67";
+    const secondary = company?.secondary_color || "#e63946";
     const getValue = (value) => {
       return value && value !== "" && value !== null && value !== undefined
         ? value
@@ -4921,7 +5303,7 @@ const OrdersList = () => {
           .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
           .logo-section { display: flex; align-items: center; gap: 20px; }
           .mfd-logo img { width: 120px; height: auto; }
-          .company-name { font-size: 16px; font-weight: bold; color: #2b3a67; }
+          .company-name { font-size: 16px; font-weight: bold; color: ${primary}; }
           .bl-title { text-align: right; line-height: 1.2; }
           .bl-title h1 { font-size: 18px; margin: 0; }
           .grid-container { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid #000; border-left: 1px solid #000; }
@@ -4934,7 +5316,7 @@ const OrdersList = () => {
           .table-data { width: 100%; border-collapse: collapse; margin-top: 20px; }
           .table-data th { text-align: left; font-size: 9px; border-bottom: 1px solid #000; padding: 5px; }
           .table-data td { padding: 5px; font-weight: bold; }
-          .red-bar { height: 10px; background-color: #e63946; margin-top: 20px; }
+          .red-bar { height: 10px; background-color: ${secondary}; margin-top: 20px; }
       </style>
   </head>
   <body>
@@ -5051,6 +5433,8 @@ const OrdersList = () => {
   };
 
   const CargoGatePass = (orderData, company) => {
+    const primary = company?.primary_color || "#1a4731";
+    const secondary = company?.secondary_color || "#1a3d6d";
     const safeOrder = orderData || {};
     const getValue = (value, fallback = "") =>
       value !== null && value !== undefined && value !== "" ? value : fallback;
@@ -5127,7 +5511,7 @@ const OrdersList = () => {
             box-shadow: 0 0 10px rgba(0,0,0,0.1);
         }
         .top-banner {
-            background-color: #1a4731;
+            background-color: ${primary};
             color: white;
             text-align: center;
             padding: 14px;
@@ -5154,7 +5538,7 @@ const OrdersList = () => {
             text-align: right;
             font-size: 22px;
             font-weight: bold;
-            color: #1a3d6d;
+            color: ${secondary};
             line-height: 1.2;
         }
         .meta-section {
@@ -5225,7 +5609,7 @@ const OrdersList = () => {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            background-color: #1a4731;
+            background-color: ${primary};
             color: white;
             padding: 12px 25px;
             font-size: 12px;
@@ -5691,6 +6075,7 @@ const OrdersList = () => {
     "Order Acknowledgement Printabe Version.pdf":
       OrderAcknowledgementPrintableVersion,
     "GP#0121725 - Cargo GatePass.pdf": CargoGatePass,
+    "House Bill of Lading (HBL).pdf": HouseBillOfLading,
   };
 
   const isBrandable = (docName) => !!BRANDABLE_DOCUMENT_GENERATORS[docName];
@@ -5761,7 +6146,7 @@ const OrdersList = () => {
       <Dialog
         open={openDocumentsModal}
         onClose={handleCloseDocumentsModal}
-        maxWidth="xl"
+        maxWidth="xxl"
         fullWidth
         PaperProps={{
           sx: { borderRadius: 2 },
@@ -5769,7 +6154,7 @@ const OrdersList = () => {
       >
         <DialogContent sx={{ mt: 1, p: 0 }}>
           <Box sx={{ display: "flex", height: "75vh" }}>
-            <Box sx={{ flex: "1 1 0", minWidth: 0, overflow: "auto" }}>
+            <Box sx={{ overflow: "auto" }}>
               {(() => {
                 const docGroups = [
                   {
@@ -5780,6 +6165,7 @@ const OrdersList = () => {
                       "Order Confirmation & Acceptance.pdf",
                       "Order Acknowledgement Printabe Version.pdf",
                       "GP#0121725 - Cargo GatePass.pdf",
+                      "House Bill of Lading (HBL).pdf",
                     ],
                   },
                   {
