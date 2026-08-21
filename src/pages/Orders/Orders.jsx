@@ -1,4 +1,4 @@
-import { useState, useEffect, useContext } from "react";
+import { useState, useEffect, useContext, useRef, useMemo } from "react";
 import {
   Box,
   Paper,
@@ -63,9 +63,6 @@ import SearchIcon from "@mui/icons-material/Search";
 import { useNavigate } from "react-router-dom";
 import OrderModalView from "./OrderModalView";
 import AssignModal from "./AssignContainer";
-import logoPic from "../../../public/logo-2.png";
-import logoCAS from "../../../public/cas-logo.png";
-import logoMFD from "../../../public/mfd-logo.png";
 import logoRickmers from "../../../public/RICKMERS-LOGO.jpg";
 import { api } from "../../api";
 import { Description } from "@mui/icons-material";
@@ -78,7 +75,7 @@ import { toast } from "react-toastify";
 
 const OrdersList = () => {
   const navigate = useNavigate();
-  const { places, statuses } = useContext(AppContext);
+  const { places, statuses, companies } = useContext(AppContext);
   const { isLoading, setIsLoading } = useLoading();
   const [orders, setOrders] = useState([]);
   const [total, setTotal] = useState(0);
@@ -115,8 +112,6 @@ const OrdersList = () => {
   const [containers, setContainers] = useState([]);
   const [selectedContainer, setSelectedContainer] = useState("");
 
-  const [docDataLoading, setDocDataLoading] = useState(false);
-
   const [openDirectAssign, setOpenDirectAssign] = useState(false);
   const [directSelectedContainers, setDirectSelectedContainers] =
     useState(null);
@@ -140,6 +135,10 @@ const OrdersList = () => {
   const [menuPosition, setMenuPosition] = useState(null);
 
   const [docTab, setDocTab] = useState(0);
+  const [activeDocKey, setActiveDocKey] = useState(null);
+  const [selectedCompanyId, setSelectedCompanyId] = useState("");
+  const [activeOrderData, setActiveOrderData] = useState(null);
+  const printFrameRef = useRef(null);
 
   const handleOpenActionMenu = (e, order) => {
     e.preventDefault();
@@ -196,70 +195,6 @@ const OrdersList = () => {
       });
     } catch (err) {
       console.error("Copy failed:", err);
-    }
-  };
-
-  const handleDocumentClick = async (action, docName) => {
-    const generator = DOCUMENT_GENERATORS[docName];
-    if (!generator) {
-      setSnackbar({
-        open: true,
-        message: "Document template not found",
-        severity: "warning",
-      });
-      return;
-    }
-    if (!tempOrderId) {
-      setSnackbar({
-        open: true,
-        message: "No order selected",
-        severity: "warning",
-      });
-      return;
-    }
-
-    setDocDataLoading(true);
-    try {
-      const { data } = await api.get(`/api/orders/pdf-data/${tempOrderId}`);
-
-      const normalizedData = {
-        ...data,
-        sender_name: data.sender?.name || data.sender_name || "",
-        sender_contact: data.sender?.contact || data.sender_contact || "",
-        sender_address: data.sender?.address || data.sender_address || "",
-        sender_email: data.sender?.email || data.sender_email || "",
-        sender_ref: data.sender?.ref || data.sender_ref || "",
-        sender_cnic: data.sender?.cnic || data.sender_cnic || "",
-        sender_passport_number:
-          data.sender?.passportNumber || data.sender_passport_number || "",
-        sender_trade_license:
-          data.sender?.tradeLicense || data.sender_trade_license || "",
-        sender_emirates_id:
-          data.sender?.emiratesId || data.sender_emirates_id || "",
-        sender_kyc_approved:
-          data.sender?.kycApproved ?? data.sender_kyc_approved ?? false,
-        sender_kyc_name: data.sender?.name || data.sender_name || "",
-        sender_signature_url:
-          data.sender?.signatureUrl || data.sender_signature_url || "",
-      };
-
-      const html = generator(normalizedData);
-
-      const w = window.open("", "_blank");
-      w.document.write(html);
-      w.document.close();
-      if (action === "print") {
-        w.onload = () => w.print();
-      }
-    } catch (err) {
-      console.error("Error generating document:", err);
-      setSnackbar({
-        open: true,
-        message: err.response?.data?.error || "Failed to generate document",
-        severity: "error",
-      });
-    } finally {
-      setDocDataLoading(false);
     }
   };
 
@@ -422,10 +357,9 @@ const OrdersList = () => {
                 `Auto-populate owner failed for order ${order.id}:`,
                 autoErr,
               );
-              // Fallback: Return original order unchanged
             }
           }
-          return order; // No change needed
+          return order;
         }),
       );
       setOrders(ordersWithAutoPopulate);
@@ -464,12 +398,52 @@ const OrdersList = () => {
     setTempOrderId(orderId);
     setDocumentsLoading(true);
     setOpenDocumentsModal(true);
+    setActiveDocKey(null);
+    setSelectedCompanyId("");
+    setActiveOrderData(null);
+
+    try {
+      const { data } = await api.get(`/api/orders/pdf-data/${orderId}`);
+      const normalizedData = {
+        ...data,
+        sender_name: data.sender?.name || data.sender_name || "",
+        sender_contact: data.sender?.contact || data.sender_contact || "",
+        sender_address: data.sender?.address || data.sender_address || "",
+        sender_email: data.sender?.email || data.sender_email || "",
+        sender_ref: data.sender?.ref || data.sender_ref || "",
+        sender_cnic: data.sender?.cnic || data.sender_cnic || "",
+        sender_passport_number:
+          data.sender?.passportNumber || data.sender_passport_number || "",
+        sender_trade_license:
+          data.sender?.tradeLicense || data.sender_trade_license || "",
+        sender_emirates_id:
+          data.sender?.emiratesId || data.sender_emirates_id || "",
+        sender_kyc_approved:
+          data.sender?.kycApproved ?? data.sender_kyc_approved ?? false,
+        sender_kyc_name: data.sender?.name || data.sender_name || "",
+        sender_signature_url:
+          data.sender?.signatureUrl || data.sender_signature_url || "",
+      };
+      setActiveOrderData(normalizedData);
+    } catch (err) {
+      console.error("Error fetching order data for preview:", err);
+      setSnackbar({
+        open: true,
+        message: err.response?.data?.error || "Failed to load order data",
+        severity: "error",
+      });
+    } finally {
+      setDocumentsLoading(false);
+    }
   };
 
   const handleCloseDocumentsModal = () => {
     setOpenDocumentsModal(false);
     setDocuments([]);
     setTempOrderId(null);
+    setActiveDocKey(null);
+    setSelectedCompanyId("");
+    setActiveOrderData(null);
   };
 
   const getPlaceName = (placeId) => {
@@ -526,7 +500,6 @@ const OrdersList = () => {
     </Grid>
   );
   const handleUpdateReceiver = (updatedReceiver) => {
-    // Update in orders state, e.g.:
     setOrders((prevOrders) =>
       prevOrders.map(
         (order) =>
@@ -537,11 +510,9 @@ const OrdersList = () => {
           ) || order.receivers,
       ),
     );
-    // Optional: Show success snackbar
   };
-  // Fetch open containers
   const fetchContainers = async () => {
-    if (loadingContainers) return; // Prevent multiple calls
+    if (loadingContainers) return;
     setLoadingContainers(true);
     setAssignmentError(null);
     try {
@@ -597,7 +568,6 @@ const OrdersList = () => {
     }
     setSelectedOrders(newSelected);
   };
-  // 2. handleSelectAllClick function (select/deselect all visible rows)
   const handleSelectAllClick = (event) => {
     if (event.target.checked) {
       const newSelected = orders.map((n) => n.id);
@@ -617,7 +587,6 @@ const OrdersList = () => {
       return;
     }
 
-    // Validation — only require qty > 0, weight > 0, containers
     let hasValid = false;
     Object.values(assignments).forEach((orderAssign) => {
       Object.values(orderAssign).forEach((recAssign) => {
@@ -650,7 +619,6 @@ const OrdersList = () => {
       return;
     }
 
-    // Clean & normalize — trust user input for weight
     const cleanAssignments = {};
     Object.entries(assignments).forEach(([orderIdStr, orderAssign]) => {
       const cleanOrder = {};
@@ -675,7 +643,7 @@ const OrdersList = () => {
             cleanRec[idxStr] = {
               orderItemId: parseInt(detail.orderItemId),
               qty,
-              totalAssignedWeight: weightKg, // trust user input
+              totalAssignedWeight: weightKg,
               containers,
               loadingDate: detail.loadingDate || null,
             };
@@ -755,7 +723,6 @@ const OrdersList = () => {
         ),
       })),
     );
-    // Optional: Show success snackbar
   };
   const exportOrders = async () => {
     if (total === 0) {
@@ -813,11 +780,11 @@ const OrdersList = () => {
         order.status || "",
         order?.place_of_loading || "",
         order.final_destination || "",
-        order.sender_name || "", // From senders join
-        order.receiver_summary || "", // Aggregated receivers with status
-        order.receiver_containers || "", // Aggregated containers
-        order.container_number || "", // From containers join
-        order.created_by || "", // From containers join
+        order.sender_name || "",
+        order.receiver_summary || "",
+        order.receiver_containers || "",
+        order.container_number || "",
+        order.created_by || "",
         new Date(order.created_at).toLocaleDateString(),
       ]);
       const csvContent = [headers, ...rows]
@@ -1030,7 +997,6 @@ const OrdersList = () => {
         });
       }
 
-      // Refresh UI
       await fetchContainers();
       await fetchOrders();
     } catch (err) {
@@ -1081,7 +1047,6 @@ const OrdersList = () => {
         tempData?.orderID;
     }
 
-    // Final validation
     const orderId = Number(orderIdRaw);
 
     if (!orderIdRaw || isNaN(orderId) || orderId <= 0) {
@@ -1166,7 +1131,6 @@ const OrdersList = () => {
       />
     );
   };
-  // Updated helper: parse and enhance with icons/chips for better UX
   const parseSummaryToList = (receivers, order) => {
     if (!receivers || !Array.isArray(receivers)) return [];
     return receivers;
@@ -1215,11 +1179,9 @@ const OrdersList = () => {
           backgroundColor: "#fafafa",
           width: 600,
           boxShadow: "none",
-          // '&:hover': { boxShadow: '0 2px 8px rgba(0,0,0,0.08)' },
         }}
       >
         <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
-          {/* Title */}
           <Box
             sx={{
               display: "flex",
@@ -1249,7 +1211,6 @@ const OrdersList = () => {
             />
           </Box>
 
-          {/* Receivers List */}
           <Stack spacing={1} sx={{ maxHeight: "auto", overflow: "auto" }}>
             {receivers?.length > 0 ? (
               receivers.map((receiver, rIdx) => (
@@ -1263,11 +1224,8 @@ const OrdersList = () => {
                     borderColor: "grey.200",
                     backgroundColor: "#fff",
                     boxShadow: "none",
-                    //   transition: 'all 0.2s ease',
-                    //   '&:hover': { boxShadow: '0 1px 4px rgba(0,0,0,0.1)', borderColor: 'primary.light' },
                   }}
                 >
-                  {/* Receiver Info */}
                   <Stack direction="row" alignItems="center" spacing={1.5}>
                     <Box sx={{ flex: 1, minWidth: 0 }}>
                       <Typography variant="body2" fontWeight="medium" noWrap>
@@ -1279,7 +1237,6 @@ const OrdersList = () => {
 
                   <Divider sx={{ mt: 1 }} />
 
-                  {/* Shipping Details */}
                   {receiver.shippingdetails?.length > 0 ? (
                     receiver.shippingdetails.map((item, sIdx) => (
                       <Box key={sIdx} sx={{ mt: 1, pl: 1 }}>
@@ -1303,7 +1260,6 @@ const OrdersList = () => {
                             ).toLocaleString()}
                           </Typography>
                         </Box>
-                        {/* Container Details */}
                         {item.containerDetails?.length > 0 ? (
                           <Stack
                             direction="row"
@@ -1395,7 +1351,6 @@ const OrdersList = () => {
                     </Typography>
                   )}
 
-                  {/* Drop Off Details */}
                   {receiver.drop_off_details?.length > 0 && (
                     <Box sx={{ mt: 1, pl: 1 }}>
                       <Typography variant="body2" fontWeight="medium">
@@ -1468,7 +1423,6 @@ const OrdersList = () => {
                   containerDetail.container.container_number.trim(),
                 );
               } else if (containerDetail.container_number) {
-                // Handle cases where container_number is directly on containerDetail.container
                 containerSet.add(containerDetail.container_number.trim());
               }
             });
@@ -1477,7 +1431,6 @@ const OrdersList = () => {
       }
     });
 
-    // Convert to array of { primary: containerNumber } objects
     return Array.from(containerSet).map((num) => ({ primary: num }));
   };
 
@@ -1560,39 +1513,6 @@ const OrdersList = () => {
     padding: theme.spacing(1.5, 2),
     borderBottom: `2px solid ${theme.palette.primary.dark}`,
   }));
-  if (isLoading) {
-    return (
-      <Paper sx={{ p: 3, borderRadius: 3, boxShadow: 3, bgcolor: "#fafafa" }}>
-        <Stack
-          direction="row"
-          alignItems="center"
-          justifyContent="center"
-          spacing={1}
-        >
-          <CircularProgress size={24} />
-          <Typography variant="h6" color="#f58220">
-            Loading orders...
-          </Typography>
-        </Stack>
-      </Paper>
-    );
-  }
-  if (error) {
-    return (
-      <Paper sx={{ p: 3, borderRadius: 3, boxShadow: 3, bgcolor: "#fafafa" }}>
-        <Typography variant="h6" color="error">
-          {error}
-        </Typography>
-        <Button
-          variant="contained"
-          onClick={fetchOrders}
-          sx={{ mt: 2, backgroundColor: "#f58220" }}
-        >
-          Retry
-        </Button>
-      </Paper>
-    );
-  }
   const numSelected = selectedOrders.length;
   const rowCount = orders.length;
 
@@ -1731,13 +1651,11 @@ const OrdersList = () => {
     return `
     <div class="page">
         <div class="page-content">
-            <!-- Date - Now properly positioned at top -->
             <div class="stamp-paper"></div>
             <div class="date-section">
                 Dated: ${new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }).replace(/ /g, "-")}
             </div>
 
-            <!-- Address block -->
             <div class="address-block">
                 <div class="address-line">To,</div>
                 <div class="address-line">Anti Narcotics Force,</div>
@@ -1747,10 +1665,8 @@ const OrdersList = () => {
                 <div class="address-line">Karachi,</div>
             </div>
 
-            <!-- Title -->
             <div class="title">Letter of Indemnity, Undertaking</div>
 
-            <!-- Subject -->
             <div class="subject-line">
                 <span style="font-weight: bold;">SUBJECT:</span> 
                 Container No <span style="color: #ff0000;">${containerData.container_number} , </span>
@@ -1758,24 +1674,20 @@ const OrdersList = () => {
                 ${containerData.system_number ? `BB System # <span style="color: #ff0000;">${containerData.system_number}` : ""}</span>
             </div>
             
-            <!-- Exporter -->
             <div class="exporter-info">
                 <span style="font-weight: bold;">EXPORTER:</span> 
                 <span style="color: #ff0000;">${containerData.sender_name || "_________________________"}</span>
             </div>
 
-            <!-- CNIC -->
             <div class="cnic-info">
                 <span class="cnic-label">CNIC</span>
                 <span>: <span style="color: #ff0000;">${containerData.sender_cnic || "_____-_______-_"}</span></span>
             </div>
 
-            <!-- Main content -->
             <div class="content-margin">
                 WE, THE UNDERSIGNED, DO HEREBY UNDERTAKE, AND AGREE AS FOLLOWS, BOUND AND UNDERTAKE OURSELVES THAT IF ANY CONTRABAND DRUG OR NARCOTICS ARE FOUND OR REPORTED IN THE GOODS, ITS PACKING OR CONCEALED IN THE SUBJECT QTY AT ANY STAGE UNDER RULES AND REGULATION MADE THEREUNDER.
             </div>
 
-            <!-- Point 1 -->
             <div class="content-margin point">
                 1. FURTHER UNDERTAKE THAT THIS CONSIGNMENT CONTAIN ONLY 
                 <span style="color: #ff0000; font-weight: bold; text-decoration: underline; letter-spacing: 2px;">
@@ -1783,12 +1695,10 @@ const OrdersList = () => {
                 </span>AND DOES NOT CONTAIN ANY CONTRABAND NARCOTIC / DRUGS ETC. AND UNDERTAKE TO BE FULLY HELD GOOD OWNER RESPONSIBLE IF FOUND IN THE CONSIGNMENT AT ANY STAGE.
             </div>
 
-            <!-- Point 2 -->
             <div class="content-margin point">
                 2. WE FURTHER LIKE TO BRING IN YOUR KNOWLEDGE THE SAID CONSIGNMENT CONTAINERS THE BELOW ORDERS FOR EXPORT (CONTAINER ${containerData.container_number}).
             </div>
 
-            <!-- Table with Orders -->
             <div class="content-margin">
                 <table>
                     <thead>
@@ -1800,12 +1710,10 @@ const OrdersList = () => {
                 </table>
             </div>
 
-            <!-- Point 3 -->
             <div class="content-margin point">
                 3. IT IS THEREFORE, REQUESTED TO ACCEPT OUR UNDERTAKING FOR ALLOWING SHIPMENT OF GOODS.
             </div>
 
-            <!-- Signature section -->
             <div class="signature-section">
                 <div class="signature-item">
                     <span class="signature-label">Signature</span>
@@ -1838,15 +1746,12 @@ const OrdersList = () => {
     containers.forEach((container, containerIndex) => {
       const containerData = getContainerData(orderData, container);
 
-      // Generate a page for each order in the container
       containerData.orders.forEach((order, orderIndex) => {
-        // Create a copy of container data with just this order
         const singleOrderData = {
           ...containerData,
-          orders: [order], // Only include this single order
+          orders: [order],
         };
 
-        // Calculate page numbers
         const totalOrders = containerData.orders.length;
         const globalPageNumber = containerIndex * totalOrders + orderIndex + 1;
         const totalPages = containers.reduce((acc, curr) => {
@@ -1890,10 +1795,9 @@ const OrdersList = () => {
                 height: 385px;
             }
         
-        /* Page container - Portrait orientation */
         .page {
-            width: 210mm; /* Standard A4 width */
-            min-height: auto; /* Remove fixed min-height */
+            width: 210mm;
+            min-height: auto;
             background-color: white;
             box-shadow: 0 0 20px rgba(0,0,0,0.1);
             padding: 15mm 15mm 15mm 15mm;
@@ -1902,12 +1806,10 @@ const OrdersList = () => {
             box-sizing: border-box;
         }
         
-        /* Add page break between pages */
         .page:not(:last-child) {
             page-break-after: always;
         }
         
-        /* PRINT STYLES */
         @media print {
             @page {
                 size: legal portrait;
@@ -1928,14 +1830,13 @@ const OrdersList = () => {
                 page-break-after: always;
                 page-break-inside: avoid;
                 width: 100%;
-                height: auto; /* Let content determine height */
+                height: auto;
                 min-height: auto;
                 position: relative;
                 background: white;
                 border: none;
             }
             
-            /* Last page shouldn't have page break */
             .page:last-child {
                 page-break-after: auto;
             }
@@ -1946,7 +1847,6 @@ const OrdersList = () => {
             }
         }
         
-        /* Rest of your CSS remains exactly the same */
         table {
             width: 100%;
             border-collapse: collapse;
@@ -1956,7 +1856,7 @@ const OrdersList = () => {
         
         th, td {
             border: 1px solid #000;
-            padding: 8px; /* Slightly reduced padding */
+            padding: 8px;
             text-align: center;
             font-family: Arial, sans-serif;
             font-size: 14px;
@@ -1981,19 +1881,19 @@ const OrdersList = () => {
             color: #000000;
             line-height: 1.4;
             margin-top: 0;
-            margin-bottom: 15px; /* Reduced margin */
+            margin-bottom: 15px;
             text-align: left;
         }
 
         .address-block {
             margin-top: 0;
-            margin-bottom: 15px; /* Reduced margin */
+            margin-bottom: 15px;
         }
 
         .address-line {
             font-family: Arial, sans-serif;
             font-size: 15px;
-            line-height: 1.6; /* Slightly reduced line-height */
+            line-height: 1.6;
         }
 
         .title {
@@ -2001,24 +1901,24 @@ const OrdersList = () => {
             font-weight: bold;
             font-family: Arial, sans-serif;
             font-size: 18px;
-            margin: 15px 0; /* Reduced margin */
+            margin: 15px 0;
             letter-spacing: 1px;
         }
 
         .subject-line {
             font-family: Arial, sans-serif;
             font-size: 15px;
-            margin: 10px 0; /* Reduced margin */
+            margin: 10px 0;
         }
 
         .exporter-info {
-            margin: 10px 0; /* Reduced margin */
+            margin: 10px 0;
             font-family: Arial, sans-serif;
             font-size: 15px;
         }
 
         .cnic-info {
-            margin: 10px 0; /* Reduced margin */
+            margin: 10px 0;
             display: flex;
             font-family: Arial, sans-serif;
             font-size: 15px;
@@ -2063,10 +1963,9 @@ const OrdersList = () => {
         .page-content {
             display: flex;
             flex-direction: column;
-            height: auto; /* Let content determine height */
+            height: auto;
         }
 
-        /* Optional: Add a small indicator to show which order/item this page represents */
         .order-indicator {
             font-size: 12px;
             color: #666;
@@ -2083,7 +1982,6 @@ const OrdersList = () => {
   };
 
   const PartyShipperIndemnityForEachOrderFormat = (orderData) => {
-    // Default values if orderData is missing
     const safeOrder = orderData || {};
 
     const getSafeValue = (value, defaultValue = "_________________") => {
@@ -2195,14 +2093,13 @@ const OrdersList = () => {
                 page-break-after: always;
                 page-break-inside: avoid;
                 width: 100%;
-                height: auto; /* Let content determine height */
+                height: auto;
                 min-height: auto;
                 position: relative;
                 background: white;
                 border: none;
             }
             
-            /* Last page shouldn't have page break */
             .page:last-child {
                 page-break-after: auto;
             }
@@ -2216,7 +2113,6 @@ const OrdersList = () => {
 </head>
 <body>
     <div class="document">
-        <!-- Header Section - Right Aligned -->
         <div style="text-align: right; margin-bottom: 40px;">
             <div style="font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 5px;">${getSafeValue(senderCompany)}</div>
             <div style="font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 5px;">${getSafeValue(senderAddress)}</div>
@@ -2225,12 +2121,10 @@ const OrdersList = () => {
             <div style="font-family: Arial; font-size: 14.1px; color: #ff0000;">Tel #: ${getSafeValue(senderPhone)}</div>
         </div>
 
-        <!-- Date -->
         <div style="font-style: italic; font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 10px;">
             Dated: ${currentDate}
         </div>
 
-        <!-- To Address -->
         <div style="margin-bottom: 10px;">
             <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 5px;">To,</div>
             <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 5px;">BB System, 3<sup style="font-size: 9.5px;">rd</sup> Party Shipper</div>
@@ -2238,12 +2132,10 @@ const OrdersList = () => {
             <div style="font-family: Arial; font-size: 15.0px; color: #000000;">Karachi - Pakistan.</div>
         </div>
 
-        <!-- Title -->
         <div style="font-weight: bold; font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 10px; text-align: center;">
             Letter of Indemnity, Agreement
         </div>
 
-        <!-- Subject Section -->
         <div style="margin-bottom: 20px;">
             <div style="margin-bottom: 10px;">
                 <span style="font-family: Arial; font-size: 15.0px; color: #000000; font-weight: bold;">SUBJECT:</span>
@@ -2260,22 +2152,18 @@ const OrdersList = () => {
             </div>
         </div>
 
-        <!-- Main Content -->
         <div style="font-family: Arial; font-size: 15.0px; color: #000000;">
             WE, THE UNDERSIGNED, DO HEREBY UNDERTAKE, AND AGREE AS FOLLOWS,
         </div>
 
-        <!-- Point 1 -->
         <div style="font-family: Arial; font-size: 15.0px; color: #000000; line-height: 1.6; margin-bottom: 20px; text-align: justify;">
             1. BOUND AND UNDERTAKE OURSELVES THAT IF ANY CONTRABAND DRUG OR NARCOTICS ARE FOUND OR REPORTED IN THE GOODS, ITS PACKING OR CONCEALED IN THE SUBJECT QTY AT ANY STAGE UNDER RULES AND REGULATION MADE THEREUNDER.
         </div>
 
-        <!-- Point 2 -->
         <div style="font-family: Arial; font-size: 15.0px; color: #000000; line-height: 1.6; margin-bottom: 20px; text-align: justify;">
             2. We hereby agree that Cargo Aviation Systems (Pvt) Ltd, are only a Warehousing & Distribution agent on behalf our ourselves to arrange the transport and clearance of the subject shipment and holds no responsibility in event of any prohibited goods, drugs or narcotics found in the consignment at any point of inspection/examination by ports/customs authorities while in process of shipping and clearance.
         </div>
 
-        <!-- Point 3 -->
         <div style="margin-bottom: 20px;">
             <div style="font-family: Arial; font-size: 15.0px; color: #000000; line-height: 1.6; margin-bottom: 10px;">
                 3. FURTHER UNDERTAKE THAT THIS CONSIGNMENT CONTAIN ONLY
@@ -2284,12 +2172,10 @@ const OrdersList = () => {
             </div>
         </div>
 
-        <!-- Point 4 -->
         <div style="font-family: Arial; font-size: 15.0px; color: #000000; line-height: 1.6; margin-bottom: 10px;">
             4. IF IS THEREFORE, REQUEST TO ACCEPT OUR UNDERTAKING FOR ALLOWING SHIPMENT OF GOODS.
         </div>
 
-        <!-- Goods Owner Details Table -->
         <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px; font-family: Arial; font-size: 15.0px;">
             <tr>
                 <td style="padding: 2px 0; width: 150px; vertical-align: top;">GOODS OWNER</td>
@@ -2323,7 +2209,6 @@ const OrdersList = () => {
             </tr>
         </table>
 
-        <!-- Footer Note -->
         <div style="text-align: center; font-family: Arial; font-size: 12px; color: #000000; margin-top: 10px; line-height: 1.6;">
             We hereby understand and confirm the document is digitally signed and is fully authorized to use if needed in event of any clearance process.
         </div>
@@ -2333,44 +2218,2654 @@ const OrdersList = () => {
     `;
   };
 
-  const CASBillofLading = (orderData) => {
-    const getValue = (value) => {
+  const DubaiLetterOfIndemnityForCustoms = (orderData) => {
+    const safeOrder = orderData || {};
+
+    const getSafeValue = (value, defaultValue = "_________________") => {
       return value && value !== "" && value !== null && value !== undefined
         ? value
-        : "";
+        : defaultValue;
     };
 
-    // Format current date
+    const senderName = safeOrder.sender_name || "";
+    const trade_license = safeOrder.sender_trade_license || "________";
+    const senderPassport = safeOrder.sender_kyc_approved
+      ? safeOrder.sender_passport_number || "________"
+      : "Not Approved";
+    const senderEmiratesID = safeOrder.sender_kyc_approved
+      ? safeOrder.sender_emirates_id || "________"
+      : "Not Approved";
+    const senderPhone = safeOrder.sender_contact || "03xx-xxxxxxx";
+    const senderAddress = safeOrder.sender_address || "Address in Karachi";
+    const senderCompany =
+      safeOrder.sender_company ||
+      safeOrder.sender_name ||
+      "Company Name / Individual Name";
+
+    const calculateTotalPackages = () => {
+      if (!safeOrder.receivers || !Array.isArray(safeOrder.receivers)) {
+        return safeOrder.total_packages || "123";
+      }
+
+      let total = 0;
+      safeOrder.receivers.forEach((receiver) => {
+        if (
+          receiver.shippingdetails &&
+          Array.isArray(receiver.shippingdetails)
+        ) {
+          receiver.shippingdetails.forEach((detail) => {
+            total += parseInt(detail.totalNumber) || 0;
+          });
+        }
+      });
+      return total || "123";
+    };
+
+    const getGoodsDescription = () => {
+      if (safeOrder.goods_description) return safeOrder.goods_description;
+
+      if (safeOrder.receivers && safeOrder.receivers[0]?.shippingdetails?.[0]) {
+        const detail = safeOrder.receivers[0].shippingdetails[0];
+        return `${detail.category || "TEXTILE"} ${detail.subcategory || ""}`.trim();
+      }
+
+      return "TEXTILE";
+    };
+
+    const totalPackages = calculateTotalPackages();
+    const goodsDescription = getGoodsDescription();
+    const currentDate = new Date()
+      .toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      })
+      .replace(/ /g, "-");
+
+    return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dubai Letter of Idemnity for Customs</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+            padding: 20px;
+        }
+
+        .document {
+            width: 850px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 50px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        .signature-line {
+            border-bottom: 1px solid #000;
+            min-width: 300px;
+            height: 1px;
+            display: inline-block;
+            margin-left: 5px;
+        }
+            @media print {
+            @page {
+                size: A4;
+                margin: 0;
+            }
+            
+            body {
+                background-color: white;
+                padding: 0;
+                margin: 0;
+                width: 100%;
+            }
+            
+            .page {
+                box-shadow: none;
+                margin: 0;
+                padding: 15mm 15mm 15mm 15mm;
+                page-break-after: always;
+                page-break-inside: avoid;
+                width: 100%;
+                height: auto;
+                min-height: auto;
+                position: relative;
+                background: white;
+                border: none;
+            }
+            
+            .page:last-child {
+                page-break-after: auto;
+            }
+            
+            html, body {
+                height: auto;
+                overflow: visible;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="document">
+        <div style="text-align: right; margin-bottom: 20px;">
+            <div style="font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 5px;">${getSafeValue(senderCompany)}</div>
+            <div style="font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 5px;">${getSafeValue(senderAddress)}</div>
+            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">Trade Liceness #: ${getSafeValue(trade_license)}</div>
+            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">Passport No: ${getSafeValue(senderPassport)}</div>
+            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">Emirates ID #: ${getSafeValue(senderEmiratesID)}</div>
+            <div style="font-family: Arial; font-size: 14.1px; color: #ff0000;">Tel #: ${getSafeValue(senderPhone)}</div>
+        </div>
+
+        <div style="font-style: italic; font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 10px;">
+            Dated: ${currentDate}
+        </div>
+
+        <div style="margin-bottom: 10px;">
+                        <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 5px;">To,</div>
+            <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 5px;">Anti Narcotics Force,</div>
+            <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 5px;">Dubai, Sharjah Customs,</div>
+            <div style="font-family: Arial; font-size: 15.0px; color: #000000;">United Arab Emirates.</div>
+        </div>
+
+        <div style="font-weight: bold; font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 10px; text-align: center;">
+            Letter of Indemnity, Agreement
+        </div>
+
+        <div style="margin-bottom: 20px;">
+            <div style="margin-bottom: 10px;">
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000; font-weight: bold;">SUBJECT:</span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;"> EXPORT OF <span style="color: #ff0000;">${totalPackages} Pkgs</span> , Vide Order No : BB System # <span style="color: #ff0000;">${getSafeValue(safeOrder.booking_ref)}</span>
+            </div>
+            <div style="margin-bottom: 5px; margin-left: 99px;">
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">EXPORTER : <span style="color: #ff0000;">${getSafeValue(senderName)}</span></span>
+            </div>
+            <div style="margin-bottom: 5px; margin-left: 99px;">
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Passport No : <span style="color: #ff0000;">${getSafeValue(senderPassport)}</span></span>
+            </div>
+            <div style="margin-left: 99px;">
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">CNIC : <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></span>
+            </div>
+        </div>
+
+        <div style="font-family: Arial; font-size: 15.0px; color: #000000;">
+            WE, THE UNDERSIGNED, DO HEREBY UNDERTAKE, AND AGREE AS FOLLOWS,
+        </div>
+
+        <div style="font-family: Arial; font-size: 15.0px; color: #000000; line-height: 1.6; margin-bottom: 20px; text-align: justify;">
+            1. BOUND AND UNDERTAKE OURSELVES THAT IF ANY CONTRABAND DRUG OR NARCOTICS ARE FOUND OR REPORTED IN THE GOODS, ITS PACKING OR CONCEALED IN THE SUBJECT QTY AT ANY STAGE UNDER RULES AND REGULATION MADE THEREUNDER.
+        </div>
+
+        <div style="font-family: Arial; font-size: 15.0px; color: #000000; line-height: 1.6; margin-bottom: 20px; text-align: justify;">
+            2. We hereby agree that Royal Gulf Shipping & Logistics LLC, are only a Warehousing & Distribution agent on behalf our ourselves to arrange the transport and clearance of the subject shipment and holds no responsibility in event of any prohibited goods, drugs or narcotics found in the consignment at any point of inspection/examination by ports/customs authorities while in process of shipping and clearance.
+        </div>
+
+        <div style="margin-bottom: 20px;">
+            <div style="font-family: Arial; font-size: 15.0px; color: #000000; line-height: 1.6; margin-bottom: 10px;">
+                3. FURTHER UNDERTAKE THAT THIS CONSIGNMENT CONTAIN ONLY
+                <span style="font-weight: bold; font-family: Arial; font-size: 13.6px; color: #ff0000; text-decoration: underline;">${getSafeValue(goodsDescription, "__TEXTILE_____________")}</span>            
+                AND DOES NOT CONTAIN ANY CONTRABAND NARCOTIC / DRUGS ETC., AND UNDERTAKE TO BE FULLY HELD GOOD OWNER RESPONSIBLE IF FOUND IN THE CONSIGNMENT AT ANY STAGE.
+            </div>
+        </div>
+
+        <div style="font-family: Arial; font-size: 15.0px; color: #000000; line-height: 1.6; margin-bottom: 10px;">
+            4. IF IS THEREFORE, REQUEST TO ACCEPT OUR UNDERTAKING FOR ALLOWING SHIPMENT OF GOODS.
+        </div>
+
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px; font-family: Arial; font-size: 15.0px;">
+            <tr>
+                <td style="padding: 2px 0; width: 150px; vertical-align: top;">GOODS OWNER</td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="font-weight: bold; color: #ff0000;">${getSafeValue(senderName)}</span></td>
+            </tr>
+            <tr>
+                <td style="padding: 2px 0; vertical-align: top;">Company Name</td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderCompany)}</span></td>
+            </tr>
+            <tr>
+                <td style="padding: 2px 0; vertical-align: top;">Delivery Address</td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getReceiverAddress(safeOrder)}</span></td>
+            </tr>
+            <tr>
+                <td style="padding: 2px 0; vertical-align: top;">CNIC ID #</td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></td>
+            </tr>
+            <tr>
+                <td style="padding: 2px 0;">Signature</td>
+                <td style="padding: 2px 0; vertical-align: top;">
+                    ${
+                      safeOrder.sender_kyc_approved &&
+                      safeOrder.sender_signature_url
+                        ? `<img src="${safeOrder.sender_signature_url}" style="height:50px;filter: grayscale(100%) contrast(100%);mix-blend-mode: multiply;" />`
+                        : ": (Digitally Signed Login Credentials & OTP Verified)"
+                    }
+                </td>
+            </tr>
+            <tr>
+                <td style="padding: 2px 0; vertical-align: top;">Name</td>
+                <td style="padding: 2px 0; vertical-align: top;">: ${getSafeValue(senderName)}</td>
+            </tr>
+        </table>
+
+        <div style="text-align: center; font-family: Arial; font-size: 12px; color: #000000; margin-top: 10px; line-height: 1.6;">
+            We hereby understand and confirm the document is digitally signed and is fully authorized to use if needed in event of any clearance process.
+        </div>
+    </div>
+</body>
+</html>
+    `;
+  };
+
+  const KarachiGovtCustomsStampPaperUndertakingFormat = (orderData) => {
+    const safeOrder = orderData || {};
+
+    const getSafeValue = (value, defaultValue = "_________________") => {
+      return value && value !== "" && value !== null && value !== undefined
+        ? value
+        : defaultValue;
+    };
+
+    const senderName = safeOrder.sender_name || "";
+    const senderCNIC = safeOrder.sender_cnic || "_____-_______-_";
+    const senderEmiratesID = safeOrder.sender_emirates_id || "_____-_______-_";
+    const senderPassport = safeOrder.sender_passport_number || "________";
+    const senderPhone = safeOrder.sender_contact || "03xx-xxxxxxx";
+    const senderAddress = safeOrder.sender_address || "Address in Karachi";
+    const senderCompany =
+      safeOrder.sender_company ||
+      safeOrder.sender_name ||
+      "Company Name / Individual Name";
+
+    const calculateTotalPackages = () => {
+      if (!safeOrder.receivers || !Array.isArray(safeOrder.receivers)) {
+        return safeOrder.total_packages || "123";
+      }
+
+      let total = 0;
+      safeOrder.receivers.forEach((receiver) => {
+        if (
+          receiver.shippingdetails &&
+          Array.isArray(receiver.shippingdetails)
+        ) {
+          receiver.shippingdetails.forEach((detail) => {
+            total += parseInt(detail.totalNumber) || 0;
+          });
+        }
+      });
+      return total || "123";
+    };
+
+    const getGoodsDescription = () => {
+      if (safeOrder.goods_description) return safeOrder.goods_description;
+
+      if (safeOrder.receivers && safeOrder.receivers[0]?.shippingdetails?.[0]) {
+        const detail = safeOrder.receivers[0].shippingdetails[0];
+        return `${detail.category || "TEXTILE"} ${detail.subcategory || ""}`.trim();
+      }
+
+      return "TEXTILE";
+    };
+
+    const totalPackages = calculateTotalPackages();
+    const goodsDescription = getGoodsDescription();
+    const currentDate = new Date()
+      .toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      })
+      .replace(/ /g, "-");
+
+    return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Karachi Govt. Customs Stamp paper undertaking format</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+.stamp-paper
+            {
+                height: 385px;
+            }
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+            padding: 20px;
+        }
+
+        .document {
+            width: 850px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 50px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        .signature-line {
+            border-bottom: 1px solid #000;
+            min-width: 300px;
+            height: 1px;
+            display: inline-block;
+            margin-left: 5px;
+        }
+            @media print {
+            @page {
+                size: legal portrait;
+                margin: 0;
+            }
+            
+            body {
+                background-color: white;
+                padding: 0;
+                margin: 0;
+                width: 100%;
+            }
+            
+            .page {
+                box-shadow: none;
+                margin: 0;
+                padding: 15mm 15mm 15mm 15mm;
+                page-break-after: always;
+                page-break-inside: avoid;
+                width: 100%;
+                height: auto;
+                min-height: auto;
+                position: relative;
+                background: white;
+                border: none;
+            }
+            
+            .page:last-child {
+                page-break-after: auto;
+            }
+            
+            html, body {
+                height: auto;
+                overflow: visible;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="document">
+        <div class="stamp-paper"></div>
+        <div style="font-style: italic; font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 15px;">
+            Dated: ${currentDate}
+        </div>
+
+        <div style="margin-bottom: 0px;">
+            <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 5px;">To,</div>
+            <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 5px;">Anti Narcotics Force,</div>
+            <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 5px;">Dubai, Sharjah Customs,</div>
+            <div style="font-family: Arial; font-size: 15.0px; color: #000000;">United Arab Emirates.</div>
+        </div>
+
+        <div style="font-weight: bold; font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 10px; text-align: center;">
+            Letter of Indemnity, Agreement
+        </div>
+
+        <div style="margin-bottom: 20px;">
+            <div style="margin-bottom: 10px;">
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000; font-weight: bold;">SUBJECT:</span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;"> EXPORT OF <span style="color: #ff0000;">${totalPackages} Pkgs</span> , Vide Order No : BB System # <span style="color: #ff0000;">${getSafeValue(safeOrder.booking_ref)}</span>
+            </div>
+            <div style="margin-bottom: 5px; margin-left: 99px;">
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">EXPORTER : <span style="color: #ff0000;">${getSafeValue(senderName)}</span></span>
+            </div>
+            <div style="margin-bottom: 5px; margin-left: 99px;">
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Passport No : <span style="color: #ff0000;">${getSafeValue(senderPassport)}</span></span>
+            </div>
+            <div style="margin-left: 99px;">
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">CNIC : <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></span>
+            </div>
+        </div>
+
+        <div style="font-family: Arial; font-size: 15.0px; color: #000000;">
+            WE, THE UNDERSIGNED, DO HEREBY UNDERTAKE, AND AGREE AS FOLLOWS,
+        </div>
+
+        <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 20px; text-align: justify;">
+            1. BOUND AND UNDERTAKE OURSELVES THAT IF ANY CONTRABAND DRUG OR NARCOTICS ARE FOUND OR REPORTED IN THE GOODS, ITS PACKING OR CONCEALED IN THE SUBJECT QTY AT ANY STAGE UNDER RULES AND REGULATION MADE THEREUNDER.
+        </div>
+
+        <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 20px; text-align: justify;">
+            2. We hereby agree that "<span style="color: #ff0000;">${getSafeValue(senderCompany)}</span> & their agents" Cargo Aviation Systems (Pvt) Ltd, are only a Warehousing & Distribution agents on behalf our ourselves to arrange the transport and clearance of the subject shipment and holds no responsibility in event of any prohibited goods, drugs or narcotics found in the consignment at any point of inspection/examination by ports/customs authorities while in process of shipping and clearance.
+        </div>
+
+        <div style="margin-bottom: 20px;">
+            <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 10px;">
+                3. FURTHER UNDERTAKE THAT THIS CONSIGNMENT CONTAIN ONLY
+                <span style="font-weight: bold; font-family: Arial; font-size: 13.6px; color: #ff0000; text-decoration: underline;">${getSafeValue(goodsDescription, "__TEXTILE_____________")}</span>
+            </div>
+            <div style="font-family: Arial; font-size: 13.2px; color: #000000; text-align: justify;">
+                AND DOES NOT CONTAIN ANY CONTRABAND NARCOTIC / DRUGS ETC., AND UNDERTAKE TO BE FULLY HELD GOOD OWNER RESPONSIBLE IF FOUND IN THE CONSIGNMENT AT ANY STAGE.
+            </div>
+        </div>
+
+        <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 30px;">
+            4. IF IS THEREFORE, REQUEST TO ACCEPT OUR UNDERTAKING FOR ALLOWING SHIPMENT OF GOODS.
+        </div>
+
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px; font-family: Arial; font-size: 15.0px;">
+            <tr>
+                <td style="padding: 2px 0; width: 150px; vertical-align: top;">GOODS OWNER</td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="font-weight: bold; color: #ff0000;">${getSafeValue(senderName)}</span></td>
+            </tr>
+            <tr>
+                <td style="padding: 2px 0; vertical-align: top;">Company Name</td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderCompany)}</span></td>
+            </tr>
+            <tr>
+                <td style="padding: 2px 0; vertical-align: top;">Delivery Address</td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getReceiverAddress(safeOrder)}</span></td>
+            </tr>
+            <tr>
+                <td style="padding: 2px 0; vertical-align: top;">CNIC ID #</td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></td>
+            </tr>
+            <tr>
+                <td style="padding: 2px 0; vertical-align: top;">Signature</td>
+                <td style="padding: 2px 0; vertical-align: top;">
+                    ${
+                      safeOrder.sender_kyc_approved &&
+                      safeOrder.sender_signature_url
+                        ? `<img src="${safeOrder.sender_signature_url}" style="height:40px;filter: grayscale(100%) contrast(100%);mix-blend-mode: multiply;" />`
+                        : ": (Digitally Signed Login Credentials & OTP Verified)"
+                    }
+                </td>
+            </tr>
+            <tr>
+                <td style="padding: 2px 0; vertical-align: top;">Name</td>
+                <td style="padding: 2px 0; vertical-align: top;">: ${getSafeValue(senderName)}</td>
+            </tr>
+        </table>
+    </div>
+</body>
+</html>
+    `;
+  };
+
+  const KarachiUndertakingForCustomsEachSenderShouldGive = (orderData) => {
+    const safeOrder = orderData || {};
+
+    const getSafeValue = (value, defaultValue = "_________________") => {
+      return value && value !== "" && value !== null && value !== undefined
+        ? value
+        : defaultValue;
+    };
+
+    const senderName = safeOrder.sender_name || "";
+    const senderCNIC = safeOrder.sender_cnic || "_____-_______-_";
+    const senderEmiratesID = safeOrder.sender_emirates_id || "_____-_______-_";
+    const senderPassport = safeOrder.sender_passport_number || "________";
+    const senderPhone = safeOrder.sender_contact || "03xx-xxxxxxx";
+    const senderAddress = safeOrder.sender_address || "Address in Karachi";
+    const senderCompany =
+      safeOrder.sender_company ||
+      safeOrder.sender_name ||
+      "Company Name / Individual Name";
+
+    const calculateTotalPackages = () => {
+      if (!safeOrder.receivers || !Array.isArray(safeOrder.receivers)) {
+        return safeOrder.total_packages || "123";
+      }
+
+      let total = 0;
+      safeOrder.receivers.forEach((receiver) => {
+        if (
+          receiver.shippingdetails &&
+          Array.isArray(receiver.shippingdetails)
+        ) {
+          receiver.shippingdetails.forEach((detail) => {
+            total += parseInt(detail.totalNumber) || 0;
+          });
+        }
+      });
+      return total || "123";
+    };
+
+    const getGoodsDescription = () => {
+      if (safeOrder.goods_description) return safeOrder.goods_description;
+
+      if (safeOrder.receivers && safeOrder.receivers[0]?.shippingdetails?.[0]) {
+        const detail = safeOrder.receivers[0].shippingdetails[0];
+        return `${detail.category || "TEXTILE"} ${detail.subcategory || ""}`.trim();
+      }
+
+      return "TEXTILE";
+    };
+
+    const totalPackages = calculateTotalPackages();
+    const goodsDescription = getGoodsDescription();
+    const currentDate = new Date()
+      .toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      })
+      .replace(/ /g, "-");
+
+    return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Karachi, Undertaking for Customs, Each sender should give</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+.stamp-paper
+            {
+                height: 385px;
+            }
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+            padding: 20px;
+        }
+
+        .document {
+            width: 850px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 50px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        .signature-line {
+            border-bottom: 1px solid #000;
+            min-width: 300px;
+            height: 1px;
+            display: inline-block;
+            margin-left: 5px;
+        }
+            @media print {
+            @page {
+                size: legal portrait;
+                margin: 0;
+            }
+            
+            body {
+                background-color: white;
+                padding: 0;
+                margin: 0;
+                width: 100%;
+            }
+            
+            .page {
+                box-shadow: none;
+                margin: 0;
+                padding: 15mm 15mm 15mm 15mm;
+                page-break-after: always;
+                page-break-inside: avoid;
+                width: 100%;
+                height: auto;
+                min-height: auto;
+                position: relative;
+                background: white;
+                border: none;
+            }
+            
+            .page:last-child {
+                page-break-after: auto;
+            }
+            
+            html, body {
+                height: auto;
+                overflow: visible;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="document">
+        <div class="stamp-paper"></div>
+        <div style="font-style: italic; font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 20px;">
+            Dated: ${currentDate}
+        </div>
+
+        <div style="margin-bottom: 10px;">
+            <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 5px;">To,</div>
+            <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 5px;">Anti Narcotics Force,</div>
+            <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 5px;">Port Qasim / Karachi,</div>
+            <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 5px;">The Deputy Collector of Customs Exports,</div>
+            <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 5px;">West Wharf / East Wharf / KICT / PICT / PORT QASIM,</div>
+            <div style="font-family: Arial; font-size: 15.0px; color: #000000;">Karachi,</div>
+        </div>
+
+        <div style="font-weight: bold; font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 10px; text-align: center;">
+            Letter of Indemnity, Agreement
+        </div>
+
+        <div style="margin-bottom: 20px;">
+            <div style="margin-bottom: 10px;">
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000; font-weight: bold;">SUBJECT:</span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;"> EXPORT OF <span style="color: #ff0000;">${totalPackages} Pkgs</span> , Vide Order No : BB System # <span style="color: #ff0000;">${getSafeValue(safeOrder.booking_ref)}</span>
+            </div>
+            <div style="margin-bottom: 5px; margin-left: 99px;">
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">EXPORTER : <span style="color: #ff0000;">${getSafeValue(senderName)}</span></span>
+            </div>
+            <div style="margin-bottom: 5px; margin-left: 99px;">
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Passport No : <span style="color: #ff0000;">${getSafeValue(senderPassport)}</span></span>
+            </div>
+            <div style="margin-left: 99px;">
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">CNIC : <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></span>
+            </div>
+        </div>
+
+        <div style="font-family: Arial; font-size: 15.0px; color: #000000;">
+            WE, THE UNDERSIGNED, DO HEREBY UNDERTAKE, AND AGREE AS FOLLOWS,
+        </div>
+
+        <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 20px; text-align: justify;">
+            1. BOUND AND UNDERTAKE OURSELVES THAT IF ANY CONTRABAND DRUG OR NARCOTICS ARE FOUND OR REPORTED IN THE GOODS, ITS PACKING OR CONCEALED IN THE SUBJECT QTY AT ANY STAGE UNDER RULES AND REGULATION MADE THEREUNDER.
+        </div>
+
+        <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 20px; text-align: justify;">
+            2. We hereby agree that "<span style="color: #ff0000;">XYZ Exporter</span> & their agents" Cargo Aviation Systems (Pvt) Ltd, are only a Warehousing & Distribution agents on behalf our ourselves to arrange the transport and clearance of the subject shipment and holds no responsibility in event of any prohibited goods, drugs or narcotics found in the consignment at any point of inspection/examination by ports/customs authorities while in process of shipping and clearance.
+        </div>
+
+        <div style="margin-bottom: 20px;">
+            <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 10px;">
+                3. FURTHER UNDERTAKE THAT THIS CONSIGNMENT CONTAIN ONLY
+                <span style="font-weight: bold; font-family: Arial; font-size: 13.6px; color: #ff0000; text-decoration: underline;">${getSafeValue(goodsDescription, "__TEXTILE_____________")}</span>
+            </div>
+            <div style="font-family: Arial; font-size: 13.2px; color: #000000; text-align: justify;">
+                AND DOES NOT CONTAIN ANY CONTRABAND NARCOTIC / DRUGS ETC., AND UNDERTAKE TO BE FULLY HELD GOOD OWNER RESPONSIBLE IF FOUND IN THE CONSIGNMENT AT ANY STAGE.
+            </div>
+        </div>
+
+        <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 30px;">
+            4. IF IS THEREFORE, REQUEST TO ACCEPT OUR UNDERTAKING FOR ALLOWING SHIPMENT OF GOODS.
+        </div>
+
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px; font-family: Arial; font-size: 15.0px;">
+            <tr>
+                <td style="padding: 2px 0; width: 150px; vertical-align: top;">GOODS OWNER</td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="font-weight: bold; color: #ff0000;">${getSafeValue(senderName)}</span></td>
+            </tr>
+            <tr>
+                <td style="padding: 2px 0; vertical-align: top;">Company Name</td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderCompany)}</span></td>
+            </tr>
+            <tr>
+                <td style="padding: 2px 0; vertical-align: top;">Delivery Address</td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getReceiverAddress(safeOrder)}</span></td>
+            </tr>
+            <tr>
+                <td style="padding: 2px 0; vertical-align: top;">CNIC ID #</td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></td>
+            </tr>
+            <tr>
+                <td style="padding: 2px 0; vertical-align: top;">Signature</td>
+                <td style="padding: 2px 0; vertical-align: top;">
+                    ${
+                      safeOrder.sender_kyc_approved &&
+                      safeOrder.sender_signature_url
+                        ? `<img src="${safeOrder.sender_signature_url}" style="height:40px;filter: grayscale(100%) contrast(100%);mix-blend-mode: multiply;" />`
+                        : ": (Digitally Signed Login Credentials & OTP Verified)"
+                    }
+                </td>
+            </tr>
+            <tr>
+                <td style="padding: 2px 0; vertical-align: top;">Name</td>
+                <td style="padding: 2px 0; vertical-align: top;">: ${getSafeValue(senderName)}</td>
+            </tr>
+        </table>
+    </div>
+</body>
+</html>
+    `;
+  };
+
+  const ReceiverUndertakingForDubaiCustoms = (orderData) => {
+    const safeOrder = orderData || {};
+
+    const getSafeValue = (value, defaultValue = "_________________") => {
+      return value && value !== "" && value !== null && value !== undefined
+        ? value
+        : defaultValue;
+    };
+
+    const senderName = safeOrder.sender_name || "";
+    const trade_license = safeOrder.sender_trade_license || "________";
+    const senderPassport = safeOrder.sender_kyc_approved
+      ? safeOrder.sender_passport_number || "________"
+      : "Not Approved";
+    const senderEmiratesID = safeOrder.sender_kyc_approved
+      ? safeOrder.sender_emirates_id || "________"
+      : "Not Approved";
+    const senderPhone = safeOrder.sender_contact || "03xx-xxxxxxx";
+    const senderAddress = safeOrder.sender_address || "Address in Karachi";
+    const senderCompany =
+      safeOrder.sender_company ||
+      safeOrder.sender_name ||
+      "Company Name / Individual Name";
+
+    const receiverKyc = getReceiverKyc(safeOrder);
+
+    const calculateTotalPackages = () => {
+      if (!safeOrder.receivers || !Array.isArray(safeOrder.receivers)) {
+        return safeOrder.total_packages || "123";
+      }
+
+      let total = 0;
+      safeOrder.receivers.forEach((receiver) => {
+        if (
+          receiver.shippingdetails &&
+          Array.isArray(receiver.shippingdetails)
+        ) {
+          receiver.shippingdetails.forEach((detail) => {
+            total += parseInt(detail.totalNumber) || 0;
+          });
+        }
+      });
+      return total || "123";
+    };
+
+    const getGoodsDescription = () => {
+      if (safeOrder.goods_description) return safeOrder.goods_description;
+
+      if (safeOrder.receivers && safeOrder.receivers[0]?.shippingdetails?.[0]) {
+        const detail = safeOrder.receivers[0].shippingdetails[0];
+        return `${detail.category || "TEXTILE"} ${detail.subcategory || ""}`.trim();
+      }
+
+      return "TEXTILE";
+    };
+
+    const totalPackages = calculateTotalPackages();
+    const goodsDescription = getGoodsDescription();
+    const currentDate = new Date()
+      .toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      })
+      .replace(/ /g, "-");
+
+    return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Receiver Undertaking for Dubai Customs</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+            padding: 20px;
+        }
+
+        .document {
+            width: 850px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 50px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        .signature-line {
+            border-bottom: 1px solid #000;
+            min-width: 300px;
+            height: 1px;
+            display: inline-block;
+            margin-left: 5px;
+        }
+            @media print {
+            @page {
+                size: A4 portrait;
+                margin: 0;
+            }
+            
+            body {
+                background-color: white;
+                padding: 0;
+                margin: 0;
+                width: 100%;
+            }
+            
+            .page {
+                box-shadow: none;
+                margin: 0;
+                padding: 15mm 15mm 15mm 15mm;
+                page-break-after: always;
+                page-break-inside: avoid;
+                width: 100%;
+                height: auto;
+                min-height: auto;
+                position: relative;
+                background: white;
+                border: none;
+            }
+            
+            .page:last-child {
+                page-break-after: auto;
+            }
+            
+            html, body {
+                height: auto;
+                overflow: visible;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="document">
+        <div style="text-align: right; margin-bottom: 20px;">
+            <div style="font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 5px;">${getSafeValue(senderCompany)}</div>
+            <div style="font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 5px;">${getSafeValue(senderAddress)}</div>
+            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">Trade Liceness #: ${getSafeValue(trade_license)}</div>
+            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">Passport No: ${getSafeValue(senderPassport)}</div>
+            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">Emirates ID #: ${getSafeValue(senderEmiratesID)}</div>
+            <div style="font-family: Arial; font-size: 14.1px; color: #ff0000;">Tel #: ${getSafeValue(senderPhone)}</div>
+        </div>
+
+        <div style="font-style: italic; font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 10px;">
+            Dated: ${currentDate}
+        </div>
+
+        <div style="margin-bottom: 10px;">
+                        <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 5px;">To,</div>
+            <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 5px;">BB System, 3rd Party Consignee</div>
+            <div style="font-family: Arial; font-size: 15.0px; color: #000000;">Address, </div>
+            <div style="font-family: Arial; font-size: 15.0px; color: #000000;">Dubai UAE.</div>
+        </div>
+
+        <div style="font-weight: bold; font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 10px; text-align: center;">
+            Letter of Indemnity, Agreement
+        </div>
+
+        <div style="margin-bottom: 20px;">
+            <div style="margin-bottom: 10px;">
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000; font-weight: bold;">SUBJECT:</span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;"> IMPORT OF <span style="color: #ff0000;">${totalPackages} Pkgs</span> , Vide Order No : BB System # <span style="color: #ff0000;">${getSafeValue(safeOrder.booking_ref)}</span>
+            </div>
+            <div style="margin-bottom: 5px; margin-left: 99px;">
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Co-Loader : <span style="color: #ff0000;">${getSafeValue(senderName)}</span></span>
+            </div>
+            <div style="margin-bottom: 5px; margin-left: 99px;">
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Passport No : <span style="color: #ff0000;">${getSafeValue(senderPassport)}</span></span>
+            </div>
+            <div style="margin-left: 99px;">
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">CNIC : <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></span>
+            </div>
+        </div>
+
+        <div style="font-family: Arial; font-size: 15.0px; color: #000000;">
+            WE, THE UNDERSIGNED, DO HEREBY UNDERTAKE, AND AGREE AS FOLLOWS,
+        </div>
+
+        <div style="font-family: Arial; font-size: 15.0px; color: #000000; line-height: 1.6; margin-bottom: 20px; text-align: justify;">
+            1. BOUND AND UNDERTAKE OURSELVES THAT IF ANY CONTRABAND DRUG OR NARCOTICS ARE FOUND OR REPORTED IN THE GOODS, ITS PACKING OR CONCEALED IN THE SUBJECT QTY AT ANY STAGE UNDER RULES AND REGULATION MADE THEREUNDER.
+        </div>
+
+        <div style="font-family: Arial; font-size: 15.0px; color: #000000; line-height: 1.6; margin-bottom: 20px; text-align: justify;">
+            2. We hereby agree that Royal Gulf Shipping & Logistics LLC, are only a Warehousing & Distribution agent on behalf our ourselves to arrange the transport and clearance of the subject shipment and holds no responsibility in event of any prohibited goods, drugs or narcotics found in the consignment at any point of inspection/examination by ports/customs authorities while in process of shipping and clearance.
+        </div>
+
+        <div style="margin-bottom: 20px;">
+            <div style="font-family: Arial; font-size: 15.0px; color: #000000; line-height: 1.6; margin-bottom: 10px;">
+                3. FURTHER UNDERTAKE THAT THIS CONSIGNMENT CONTAIN ONLY
+                <span style="font-weight: bold; font-family: Arial; font-size: 13.6px; color: #ff0000; text-decoration: underline;">${getSafeValue(goodsDescription, "__TEXTILE_____________")}</span>
+                AND DOES NOT CONTAIN ANY CONTRABAND NARCOTIC / DRUGS ETC., AND UNDERTAKE TO BE FULLY HELD GOOD OWNER RESPONSIBLE IF FOUND IN THE CONSIGNMENT AT ANY STAGE.
+            </div>
+        </div>
+
+        <div style="font-family: Arial; font-size: 15.0px; color: #000000; line-height: 1.6; margin-bottom: 10px;">
+            4. IF IS THEREFORE, REQUEST TO ACCEPT OUR UNDERTAKING FOR ALLOWING SHIPMENT OF GOODS.
+        </div>
+
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px; font-family: Arial; font-size: 15.0px;">
+            <tr>
+            <td style="padding: 2px 0; width: 150px; vertical-align: top;">GOODS OWNER</td>
+            <td style="padding: 2px 0; vertical-align: top;">: <span style="font-weight: bold; color: #ff0000;">${getSafeValue(senderName)}</span></td>
+            </tr>
+            <tr>
+                <td style="padding: 2px 0; vertical-align: top;">Company Name</td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderCompany)}</span></td>
+            </tr>
+            <tr>
+                <td style="padding: 2px 0; vertical-align: top;">Delivery Address</td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getReceiverAddress(safeOrder)}</span></td>
+            </tr>
+            <tr>
+                <td style="padding: 2px 0; vertical-align: top;">Emirates ID # 	</td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></td>
+            </tr>
+            <tr>
+                <td style="padding: 2px 0;">Signature</td>
+                <td style="padding: 2px 0; vertical-align: top;">
+                    ${
+                      safeOrder.sender_kyc_approved &&
+                      safeOrder.sender_signature_url
+                        ? `<img src="${safeOrder.sender_signature_url}" style="height:50PX;filter: grayscale(100%) contrast(100%);mix-blend-mode: multiply;" />`
+                        : ": (Digitally Signed Login Credentials & OTP Verified)"
+                    }
+                </td>
+            </tr>
+            <tr>
+                <td style="padding: 2px 0; vertical-align: top;">Name</td>
+                <td style="padding: 2px 0; vertical-align: top;">: ${getSafeValue(senderName)}</td>
+            </tr>
+        </table>
+
+        <div style="text-align: center; font-family: Arial; font-size: 12px; color: #000000; margin-top: 5px;">
+            We hereby understand and confirm the document is digitally signed and is fully authorized to use if needed in event of any clearance process.
+        </div>
+    </div>
+</body>
+</html>
+    `;
+  };
+
+  const ReceiverUndertakingDubaiANF = (orderData) => {
+    const safeOrder = orderData || {};
+
+    const getSafeValue = (value, defaultValue = "_________________") => {
+      return value && value !== "" && value !== null && value !== undefined
+        ? value
+        : defaultValue;
+    };
+
+    const senderName = safeOrder.sender_name || "";
+    const trade_license = safeOrder.sender_trade_license || "________";
+    const senderPassport = safeOrder.sender_kyc_approved
+      ? safeOrder.sender_passport_number || "________"
+      : "Not Approved";
+    const senderEmiratesID = safeOrder.sender_kyc_approved
+      ? safeOrder.sender_emirates_id || "________"
+      : "Not Approved";
+    const senderPhone = safeOrder.sender_contact || "03xx-xxxxxxx";
+    const senderAddress = safeOrder.sender_address || "Address in Karachi";
+    const senderCompany =
+      safeOrder.sender_company ||
+      safeOrder.sender_name ||
+      "Company Name / Individual Name";
+
+    const receiverKyc = getReceiverKyc(safeOrder);
+
+    const calculateTotalPackages = () => {
+      if (!safeOrder.receivers || !Array.isArray(safeOrder.receivers)) {
+        return safeOrder.total_packages || "123";
+      }
+
+      let total = 0;
+      safeOrder.receivers.forEach((receiver) => {
+        if (
+          receiver.shippingdetails &&
+          Array.isArray(receiver.shippingdetails)
+        ) {
+          receiver.shippingdetails.forEach((detail) => {
+            total += parseInt(detail.totalNumber) || 0;
+          });
+        }
+      });
+      return total || "123";
+    };
+
+    const getGoodsDescription = () => {
+      if (safeOrder.goods_description) return safeOrder.goods_description;
+
+      if (safeOrder.receivers && safeOrder.receivers[0]?.shippingdetails?.[0]) {
+        const detail = safeOrder.receivers[0].shippingdetails[0];
+        return `${detail.category || "TEXTILE"} ${detail.subcategory || ""}`.trim();
+      }
+
+      return "TEXTILE";
+    };
+
+    const totalPackages = calculateTotalPackages();
+    const goodsDescription = getGoodsDescription();
+    const currentDate = new Date()
+      .toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      })
+      .replace(/ /g, "-");
+
+    return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Receiver Undertaking Dubai ANF</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+            padding: 20px;
+        }
+
+        .document {
+            width: 850px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 50px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        .signature-line {
+            border-bottom: 1px solid #000;
+            min-width: 300px;
+            height: 1px;
+            display: inline-block;
+            margin-left: 5px;
+        }
+            @media print {
+            @page {
+                size: A4 portrait;
+                margin: 0;
+            }
+            
+            body {
+                background-color: white;
+                padding: 0;
+                margin: 0;
+                width: 100%;
+            }
+            
+            .page {
+                box-shadow: none;
+                margin: 0;
+                padding: 15mm 15mm 15mm 15mm;
+                page-break-after: always;
+                page-break-inside: avoid;
+                width: 100%;
+                height: auto;
+                min-height: auto;
+                position: relative;
+                background: white;
+                border: none;
+            }
+            
+            .page:last-child {
+                page-break-after: auto;
+            }
+            
+            html, body {
+                height: auto;
+                overflow: visible;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="document">
+        <div style="text-align: right; margin-bottom: 20px;">
+            <div style="font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 5px;">${getSafeValue(senderCompany)}</div>
+            <div style="font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 5px;">${getSafeValue(senderAddress)}</div>
+            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">Trade Liceness #: ${getSafeValue(trade_license)}</div>
+            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">Passport No: ${getSafeValue(senderPassport)}</div>
+            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">Emirates ID #: ${getSafeValue(senderEmiratesID)}</div>
+            <div style="font-family: Arial; font-size: 14.1px; color: #ff0000;">Tel #: ${getSafeValue(senderPhone)}</div>
+        </div>
+
+        <div style="font-style: italic; font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 10px;">
+            Dated: ${currentDate}
+        </div>
+
+        <div style="margin-bottom: 10px;">
+                        <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 5px;">To,</div>
+            <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 5px;">Anti Narcotics Force,</div>
+            <div style="font-family: Arial; font-size: 15.0px; color: #000000;">Dubai, Sharjah Customs,</div>
+            <div style="font-family: Arial; font-size: 15.0px; color: #000000;">United Arab Emirates. </div>
+        </div>
+
+        <div style="font-weight: bold; font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 10px; text-align: center;">
+            Letter of Indemnity, Agreement
+        </div>
+
+        <div style="margin-bottom: 20px;">
+            <div style="margin-bottom: 10px;">
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000; font-weight: bold;">SUBJECT:</span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">IMPORT OF <span style="color: #ff0000;">${totalPackages} Pkgs</span> , Vide Order No : BB System # <span style="color: #ff0000;">${getSafeValue(safeOrder.booking_ref)}</span>
+            </div>
+            <div style="margin-bottom: 5px; margin-left: 99px;">
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Co-Loader : <span style="color: #ff0000;">${getSafeValue(senderName)}</span></span>
+            </div>
+            <div style="margin-bottom: 5px; margin-left: 99px;">
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Passport No : <span style="color: #ff0000;">${getSafeValue(senderPassport)}</span></span>
+            </div>
+            <div style="margin-left: 99px;">
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">CNIC : <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></span>
+            </div>
+        </div>
+
+        <div style="font-family: Arial; font-size: 15.0px; color: #000000;">
+            WE, THE UNDERSIGNED, DO HEREBY UNDERTAKE, AND AGREE AS FOLLOWS,
+        </div>
+
+        <div style="font-family: Arial; font-size: 15.0px; color: #000000; line-height: 1.6; margin-bottom: 20px; text-align: justify;">
+            1. BOUND AND UNDERTAKE OURSELVES THAT IF ANY CONTRABAND DRUG OR NARCOTICS ARE FOUND OR REPORTED IN THE GOODS, ITS PACKING OR CONCEALED IN THE SUBJECT QTY AT ANY STAGE UNDER RULES AND REGULATION MADE THEREUNDER.
+        </div>
+
+        <div style="font-family: Arial; font-size: 15.0px; color: #000000; line-height: 1.6; margin-bottom: 20px; text-align: justify;">
+            2. We hereby agree that Royal Gulf Shipping & Logistics LLC, are only a Warehousing & Distribution agent on behalf our ourselves to arrange the transport and clearance of the subject shipment and holds no responsibility in event of any prohibited goods, drugs or narcotics found in the consignment at any point of inspection/examination by ports/customs authorities while in process of shipping and clearance.
+        </div>
+
+        <div style="margin-bottom: 20px;">
+            <div style="font-family: Arial; font-size: 15.0px; color: #000000; line-height: 1.6; margin-bottom: 10px;">
+                3. FURTHER UNDERTAKE THAT THIS CONSIGNMENT CONTAIN ONLY
+                <span style="font-weight: bold; font-family: Arial; font-size: 13.6px; color: #ff0000; text-decoration: underline;">${getSafeValue(goodsDescription, "__TEXTILE_____________")}</span>
+                AND DOES NOT CONTAIN ANY CONTRABAND NARCOTIC / DRUGS ETC., AND UNDERTAKE TO BE FULLY HELD GOOD OWNER RESPONSIBLE IF FOUND IN THE CONSIGNMENT AT ANY STAGE.
+            </div>
+        </div>
+
+        <div style="font-family: Arial; font-size: 15.0px; color: #000000; line-height: 1.6; margin-bottom: 10px;">
+            4. IF IS THEREFORE, REQUEST TO ACCEPT OUR UNDERTAKING FOR ALLOWING SHIPMENT OF GOODS.
+        </div>
+
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px; font-family: Arial; font-size: 15.0px;">
+            <tr>
+            <td style="padding: 2px 0; width: 150px; vertical-align: top;">GOODS OWNER</td>
+            <td style="padding: 2px 0; vertical-align: top;">: <span style="font-weight: bold; color: #ff0000;">${getSafeValue(senderName)}</span></td>
+            </tr>
+            <tr>
+                <td style="padding: 2px 0; vertical-align: top;">Company Name</td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderCompany)}</span></td>
+            </tr>
+            <tr>
+                <td style="padding: 2px 0; vertical-align: top;">Delivery Address</td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getReceiverAddress(safeOrder)}</span></td>
+            </tr>
+            <tr>
+                <td style="padding: 2px 0; vertical-align: top;">Emirates ID # 	</td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></td>
+            </tr>
+            <tr>
+                <td style="padding: 2px 0;">Signature</td>
+                <td style="padding: 2px 0; vertical-align: top;">
+                    ${
+                      safeOrder.sender_kyc_approved &&
+                      safeOrder.sender_signature_url
+                        ? `<img src="${safeOrder.sender_signature_url}" style="height:50px;filter: grayscale(100%) contrast(100%);mix-blend-mode: multiply;" />`
+                        : ": (Digitally Signed Login Credentials & OTP Verified)"
+                    }
+                </td>
+            </tr>
+            <tr>
+                <td style="padding: 2px 0; vertical-align: top;">Name</td>
+                <td style="padding: 2px 0; vertical-align: top;">: ${getSafeValue(senderName)}</td>
+            </tr>
+        </table>
+
+        <div style="text-align: center; font-family: Arial; font-size: 12px; color: #000000; margin-top: 5px;">
+            We hereby understand and confirm the document is digitally signed and is fully authorized to use if needed in event of any clearance process.
+        </div>
+    </div>
+</body>
+</html>
+    `;
+  };
+
+  const SenderUndertakingForThirdPartyShipper = (orderData) => {
+    const safeOrder = orderData || {};
+
+    const getSafeValue = (value, defaultValue = "_________________") => {
+      return value && value !== "" && value !== null && value !== undefined
+        ? value
+        : defaultValue;
+    };
+
+    const senderName = safeOrder.sender_name || "";
+    const senderCNIC = safeOrder.sender_cnic || "_____-_______-_";
+    const trade_license = safeOrder.sender_trade_license || "________";
+    const senderPassport = safeOrder.sender_passport_number || "________";
+    const senderEmiratesID = safeOrder.sender_emirates_id || "________";
+    const consignmentNumber =
+      safeOrder.consignment?.consignment_number || "________";
+    const consignmentVessel = safeOrder.consignment?.vessel || "________";
+    const consignmentVoyage = safeOrder.consignment?.voyage || "________";
+    const senderPhone = safeOrder.sender_contact || "03xx-xxxxxxx";
+    const senderAddress = safeOrder.sender_address || "Address in Karachi";
+    const senderCompany =
+      safeOrder.sender_company ||
+      safeOrder.sender_name ||
+      "Company Name / Individual Name";
+
+    const calculateTotalPackages = () => {
+      if (!safeOrder.receivers || !Array.isArray(safeOrder.receivers)) {
+        return safeOrder.total_packages || "123";
+      }
+
+      let total = 0;
+      safeOrder.receivers.forEach((receiver) => {
+        if (
+          receiver.shippingdetails &&
+          Array.isArray(receiver.shippingdetails)
+        ) {
+          receiver.shippingdetails.forEach((detail) => {
+            total += parseInt(detail.totalNumber) || 0;
+          });
+        }
+      });
+      return total || "123";
+    };
+
+    const getGoodsDescription = () => {
+      if (safeOrder.goods_description) return safeOrder.goods_description;
+
+      if (safeOrder.receivers && safeOrder.receivers[0]?.shippingdetails?.[0]) {
+        const detail = safeOrder.receivers[0].shippingdetails[0];
+        return `${detail.category || "TEXTILE"} ${detail.subcategory || ""}`.trim();
+      }
+
+      return "TEXTILE";
+    };
+
+    const totalPackages = calculateTotalPackages();
+    const goodsDescription = getGoodsDescription();
+    const currentDate = new Date()
+      .toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      })
+      .replace(/ /g, "-");
+
+    return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sender Undertaking for 3rd Party Shipper</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+            padding: 20px;
+        }
+
+        .document {
+            width: 850px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 50px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        .signature-line {
+            border-bottom: 1px solid #000;
+            min-width: 300px;
+            height: 1px;
+            display: inline-block;
+            margin-left: 5px;
+        }
+            @media print {
+            @page {
+                size: A4 portrait;
+                margin: 0;
+            }
+            
+            body {
+                background-color: white;
+                padding: 0;
+                margin: 0;
+                width: 100%;
+            }
+            
+            .page {
+                box-shadow: none;
+                margin: 0;
+                padding: 15mm 15mm 15mm 15mm;
+                page-break-after: always;
+                page-break-inside: avoid;
+                width: 100%;
+                height: auto;
+                min-height: auto;
+                position: relative;
+                background: white;
+                border: none;
+            }
+            
+            .page:last-child {
+                page-break-after: auto;
+            }
+            
+            html, body {
+                height: auto;
+                overflow: visible;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="document">
+        <div style="text-align: right; margin-bottom: 20px;">
+            <div style="font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 5px;">${getSafeValue(senderCompany)}</div>
+            <div style="font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 5px;">${getSafeValue(senderAddress)}</div>
+            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">Trade Liceness #: ${getSafeValue(trade_license)}</div>
+            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">Passport No: ${getSafeValue(senderPassport)}</div>
+            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">Emirates ID #: ${getSafeValue(senderEmiratesID)}</div>
+            <div style="font-family: Arial; font-size: 14.1px; color: #ff0000;">Tel #: ${getSafeValue(senderPhone)}</div>
+        </div>
+
+        <div style="font-style: italic; font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 10px;">
+            Dated: ${currentDate}
+        </div>
+
+        <div style="margin-bottom: 10px;">
+                        <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 5px;">To,</div>
+            <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 5px;">BB System, 3rd Party Shipper</div>
+            <div style="font-family: Arial; font-size: 15.0px; color: #000000;">Address, </div>
+            <div style="font-family: Arial; font-size: 15.0px; color: #000000;">Karachi - Pakistan.</div>
+        </div>
+
+        <div style="font-weight: bold; font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 10px; text-align: center;">
+            Letter of Indemnity, Agreement
+        </div>
+
+        <div style="margin-bottom: 20px;">
+            <div style="margin-bottom: 10px;">
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000; font-weight: bold;">SUBJECT:</span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">EXPORT OF <span style="color: #ff0000;">${totalPackages} Pkgs</span> , Vide Order No : BB System # <span style="color: #ff0000;">${getSafeValue(safeOrder.booking_ref)}</span>
+            </div>
+            <div style="margin-bottom: 5px; margin-left: 99px;">
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Co-Loader : <span style="color: #ff0000;">${getSafeValue(senderName)}</span></span>
+            </div>
+            <div style="margin-bottom: 5px; margin-left: 99px;">
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Passport No : <span style="color: #ff0000;">${getSafeValue(senderPassport)}</span></span>
+            </div>
+            <div style="margin-left: 99px;">
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">CNIC : <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></span>
+            </div>
+        </div>
+
+        <div style="font-family: Arial; font-size: 15.0px; color: #000000;">
+            WE, THE UNDERSIGNED, DO HEREBY UNDERTAKE, AND AGREE AS FOLLOWS,
+        </div>
+
+        <div style="font-family: Arial; font-size: 15.0px; color: #000000; line-height: 1.6; margin-bottom: 20px; text-align: justify;">
+            1. BOUND AND UNDERTAKE OURSELVES THAT IF ANY CONTRABAND DRUG OR NARCOTICS ARE FOUND OR REPORTED IN THE GOODS, ITS PACKING OR CONCEALED IN THE SUBJECT QTY AT ANY STAGE UNDER RULES AND REGULATION MADE THEREUNDER.
+        </div>
+
+        <div style="font-family: Arial; font-size: 15.0px; color: #000000; line-height: 1.6; margin-bottom: 20px; text-align: justify;">
+            2. We hereby agree that Cargo Aviation Systems (Pvt) Ltd, are only a Warehousing & Distribution agent on behalf our ourselves to arrange the transport and clearance of the subject shipment and holds no responsibility in event of any prohibited goods, drugs or narcotics found in the consignment at any point of inspection/examination by ports/customs authorities while in process of shipping and clearance.
+        </div>
+
+        <div style="margin-bottom: 20px;">
+            <div style="font-family: Arial; font-size: 15.0px; color: #000000; line-height: 1.6; margin-bottom: 10px;">
+                3. FURTHER UNDERTAKE THAT THIS CONSIGNMENT CONTAIN ONLY
+                <span style="font-weight: bold; font-family: Arial; font-size: 13.6px; color: #ff0000; text-decoration: underline;">${getSafeValue(goodsDescription, "__TEXTILE_____________")}</span>
+                AND DOES NOT CONTAIN ANY CONTRABAND NARCOTIC / DRUGS ETC., AND UNDERTAKE TO BE FULLY HELD GOOD OWNER RESPONSIBLE IF FOUND IN THE CONSIGNMENT AT ANY STAGE.
+            </div>
+        </div>
+
+        <div style="font-family: Arial; font-size: 15.0px; color: #000000; line-height: 1.6; margin-bottom: 10px;">
+            4. IF IS THEREFORE, REQUEST TO ACCEPT OUR UNDERTAKING FOR ALLOWING SHIPMENT OF GOODS.
+        </div>
+
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px; font-family: Arial; font-size: 15.0px;">
+            <tr>
+            <td style="padding: 2px 0; width: 150px; vertical-align: top;">GOODS OWNER</td>
+            <td style="padding: 2px 0; vertical-align: top;">: <span style="font-weight: bold; color: #ff0000;">${getSafeValue(senderName)}</span></td>
+            </tr>
+            <tr>
+                <td style="padding: 2px 0; vertical-align: top;">Company Name</td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderCompany)}</span></td>
+            </tr>
+            <tr>
+                <td style="padding: 2px 0; vertical-align: top;">Delivery Address</td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getReceiverAddress(safeOrder)}</span></td>
+            </tr>
+            <tr>
+                <td style="padding: 2px 0; vertical-align: top;">Emirates ID # 	</td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></td>
+            </tr>
+            <tr>
+                <td style="padding: 2px 0; vertical-align: top;">Signature</td>
+                <td style="padding: 2px 0; vertical-align: top;">
+                    ${
+                      safeOrder.sender_kyc_approved &&
+                      safeOrder.sender_signature_url
+                        ? `<img src="${safeOrder.sender_signature_url}" style="height:40px;filter: grayscale(100%) contrast(100%);mix-blend-mode: multiply;" />`
+                        : ": (Digitally Signed Login Credentials & OTP Verified)"
+                    }
+                </td>
+            </tr>
+            <tr>
+                <td style="padding: 2px 0; vertical-align: top;">Name</td>
+                <td style="padding: 2px 0; vertical-align: top;">: ${getSafeValue(senderName)}</td>
+            </tr>
+        </table>
+
+        <div style="text-align: center; font-family: Arial; font-size: 12px; color: #000000; margin-top: 5px;">
+            We hereby understand and confirm the document is digitally signed and is fully authorized to use if needed in event of any clearance process.
+        </div>
+    </div>
+</body>
+</html>
+    `;
+  };
+
+  const WHARFAGEConsignmentsNote = (orderData) => {
+    const safeOrder = orderData || {};
+
+    const c = safeOrder.consignment || {};
+
+    const getSafeValue = (value, defaultValue = "_________________") => {
+      return value && value !== "" && value !== null && value !== undefined
+        ? value
+        : defaultValue;
+    };
+
+    const firstReceiver =
+      safeOrder.receivers && safeOrder.receivers.length > 0
+        ? safeOrder.receivers[0]
+        : {};
+
+    const shippingDetails = firstReceiver.shippingdetails || [];
+
+    const getContainerDetails = () => {
+      const containerList = [];
+      if (firstReceiver.containers && firstReceiver.containers.length > 0) {
+        firstReceiver.containers.forEach((container) => {
+          let totalQty = 0;
+          let totalWeight = 0;
+
+          shippingDetails.forEach((detail) => {
+            if (detail.containerDetails) {
+              detail.containerDetails.forEach((cd) => {
+                const containerNum =
+                  cd.container?.container_number || cd.container_number;
+                if (containerNum === container) {
+                  totalQty += parseInt(cd.total_number) || 0;
+                  totalWeight += parseFloat(cd.assign_weight) || 0;
+                }
+              });
+            }
+          });
+
+          containerList.push({
+            number: container,
+            quantity: totalQty,
+            weight: totalWeight,
+          });
+        });
+      }
+      return containerList;
+    };
+
+    const containerDetails = getContainerDetails();
+
+    const totalPackages = containerDetails.reduce(
+      (sum, c) => sum + c.quantity,
+      0,
+    );
+    const totalWeight = containerDetails.reduce((sum, c) => sum + c.weight, 0);
+
+    const getTruckNumbers = () => {
+      const trucks = [];
+      if (firstReceiver.drop_off_details) {
+        firstReceiver.drop_off_details.forEach((drop) => {
+          if (drop.plate_no && !trucks.includes(drop.plate_no)) {
+            trucks.push(drop.plate_no);
+          }
+        });
+      }
+      return trucks.join(", ");
+    };
+
+    const getCommodities = () => {
+      const commodities = [];
+      shippingDetails.forEach((detail) => {
+        if (detail.category && !commodities.includes(detail.category)) {
+          commodities.push(detail.category);
+        }
+      });
+      return commodities.join(", ");
+    };
+
+    const currentDate = new Date()
+      .toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      })
+      .replace(/ /g, "-");
+
+    const consignmentNumber = `CNS-${safeOrder.id || "XXXX"}-${new Date().getTime()}`;
+
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wharfage Consignment Note</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 13px;
+            color: #000;
+            line-height: 1.4;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 850px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .date-row {
+            text-align: right;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .title {
+            font-weight: bold;
+            text-decoration: underline;
+            font-size: 16px;
+        }
+
+        .top-boxes {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .box {
+            flex: 1;
+            border: 1px solid #000;
+        }
+
+        .box-label {
+            padding: 2px 5px;
+            border-bottom: 1px solid #000;
+            min-height: 35px;
+        }
+
+        .box-content {
+            height: auto;
+            min-height: 30px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 5px;
+        }
+
+        .highlighted {
+            font-weight: bold;
+            color: #ff0000;
+        }
+
+        .container-list {
+            width: 100%;
+        }
+        
+        .container-row {
+            display: flex;
+            border-bottom: 1px dashed #ccc;
+            padding: 3px 0;
+        }
+        
+        .container-row:last-child {
+            border-bottom: none;
+        }
+        
+        .container-number {
+            flex: 2;
+            text-align: left;
+            padding-left: 5px;
+        }
+        
+        .container-qty {
+            flex: 1;
+            text-align: center;
+            border-left: 1px dashed #ccc;
+        }
+        
+        .container-weight {
+            flex: 1;
+            text-align: center;
+            border-left: 1px dashed #ccc;
+        }
+
+        .details-grid {
+            display: grid;
+            grid-template-columns: 1.2fr 1.2fr 1fr;
+            gap: 15px 10px;
+            margin-bottom: 40px;
+        }
+
+        .underline {
+            border-bottom: 1px solid #000;
+            display: inline-block;
+            min-width: 80px;
+        }
+
+        .summary-bar {
+            display: flex;
+            align-items: center;
+            gap: 30px;
+            margin-bottom: 5px;
+        }
+
+        .summary-box {
+            border: 1px solid #000;
+            padding: 10px 40px;
+            font-weight: bold;
+            min-width: 200px;
+        }
+
+        .summary-text {
+            font-weight: bold;
+        }
+
+        .certification-box {
+            border: 1px solid #000;
+            padding: 15px;
+            margin-bottom: 100px;
+            width: 90%;
+        }
+
+        .footer {
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .sign-block {
+            width: 300px;
+        }
+
+        .sign-line {
+            border-top: 1px solid #000;
+            margin-bottom: 5px;
+        }
+
+        .text-right {
+            text-align: left;
+        }
+        
+        .container-info {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .small-text {
+            font-size: 11px;
+            color: #666;
+        }
+        
+        @media print {
+            body {
+                background-color: white;
+                padding: 0;
+            }
+            .container {
+                box-shadow: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="date-row">DATED: ${currentDate}</div>
+            <div class="title">CONSIGNMENT NOTE: ${consignmentNumber}</div>
+        </div>
+
+         <div class="top-boxes">
+            <div class="box">
+                <div class="box-label">Custom CRN or Customs Machine number</div>
+                <div class="box-content">${getSafeValue(c.customs_crn)}</div>
+            </div>
+            <div class="box">
+                <div class="box-label">
+                    <div class="container-info">
+                        <span>Container No:</span>
+                    </div>
+                </div>
+                <div class="box-content" style="padding: 0;">
+                    ${
+                      firstReceiver.containers &&
+                      firstReceiver.containers.length > 0
+                        ? firstReceiver.containers
+                            .map(
+                              (container) => `
+                            <div style="width: 100%; text-align: center; box-sizing: border-box; padding: 8px; border-bottom: ${firstReceiver.containers.indexOf(container) < firstReceiver.containers.length - 1 ? "1px solid #ccc" : "none"};">
+                                ${container}
+                            </div>
+                        `,
+                            )
+                            .join("")
+                        : '<div style="padding: 8px;">N/A</div>'
+                    }
+                </div>
+            </div>
+            <div class="box">
+                <div class="box-label">Seal No</div>
+                <div class="box-content">${getSafeValue(c.seal_no || safeOrder.seal_no)}</div>
+            </div>
+        </div>
+
+        <div class="details-grid">
+            <div><strong>VESSEL:</strong> ${getSafeValue(c.vessel)}</div>
+            <div><strong>Voyage:</strong> ${getSafeValue(c.voyage)}</div>
+            <div><strong>SHIPPING LINE:</strong> ${getSafeValue(c.shipping_line_name)}</div>
+
+            <div><strong>Dest:</strong> ${getPlaceName(getSafeValue(safeOrder.final_destination))}</div>
+            <div><strong>Shipper:</strong> ${getSafeValue(firstReceiver.receiverName)}</div>
+            <div><strong>BOOKING NO:</strong> ${getSafeValue(safeOrder.rgl_booking_number)}</div>
+
+            <div><strong>Comm:</strong> ${getCommodities() || "N/A"}</div>
+            <div><strong>Origin:</strong> ${getPlaceName(getSafeValue(safeOrder.place_of_loading))}</div>
+            <div>
+                <strong>GROSS Wt:</strong> <span class="underline">${totalWeight} KGS</span><br>
+                <strong>NET Wt:</strong> <span class="underline">${totalWeight} KGS</span>
+            </div>
+
+            <div><strong>Status:</strong> ${getSafeValue(safeOrder.status)}</div>
+            <div><strong class="underline">TRUCK NO</strong> ${getTruckNumbers() || getSafeValue(safeOrder.truck_number)}</div>
+            <div><strong>TOTAL CTNS:</strong> <span class="underline">${totalPackages.toLocaleString()}</span></div>
+        </div>
+
+        ${containerDetails
+          .map(
+            (container) => `
+        <div class="summary-bar">
+            <div class="summary-box">${container.number}</div>
+            <div class="summary-text">
+                PKGS: ${container.quantity.toLocaleString()} &nbsp; GROSS WT: ${container.weight} KGS &nbsp; NET WT: ${container.weight} KGS
+            </div>
+        </div>
+        `,
+          )
+          .join("")}
+
+        <div class="certification-box">
+            I / We hereby certify that goods mentioned in the accompanied packing list have been placed inside the
+            container and the container has been sealed by me / us the particulars are true.
+        </div>
+
+        <div class="footer">
+            <div class="sign-block">
+                <div class="sign-line"></div>
+                PICT/KICT/QICT Representative<br>Gate Clerk / Dmg Inspector
+            </div>
+            <div class="sign-block text-right">
+                <div class="sign-line"></div>
+                Name and Signature of Agent<br>Shipper / Consolidator with stamp
+            </div>
+        </div>
+    </div>
+</body>
+</html>`;
+  };
+
+  const OrderAcknowledgementPrintableVersion = (orderData, company) => {
+    const formatDate = (dateString) => {
+      if (!dateString) return "";
+      try {
+        const date = new Date(dateString);
+        return (
+          date.toLocaleDateString("en-GB", {
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric",
+          }) +
+          " " +
+          date.toLocaleTimeString("en-GB", {
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+        );
+      } catch (e) {
+        return dateString || "";
+      }
+    };
+
+    const currentDate = new Date().toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+    const currentTime = new Date().toLocaleTimeString("en-GB", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+
+    const senderName = orderData.sender_name || "N/A";
+    const senderContact = orderData.sender_contact || "N/A";
+    const senderEmail = orderData.sender_email || "N/A";
+    const senderRef = orderData.sender_ref || "N/A";
+
+    const receiver =
+      orderData.receivers && orderData.receivers[0]
+        ? orderData.receivers[0]
+        : {};
+    const receiverName = receiver.receiverName || "N/A";
+    const receiverContact = receiver.receiverContact || "N/A";
+    const receiverAddress = receiver.receiverAddress || "N/A";
+    const receiverEmail = receiver.receiverEmail || "N/A";
+
+    const shippingDetails = receiver.shippingdetails || [];
+
+    let totalQty = 0;
+    let totalWeight = 0;
+
+    shippingDetails.forEach((item) => {
+      totalQty += parseInt(item.totalNumber || 0);
+      totalWeight += parseFloat(item.weight || 0);
+    });
+
+    if (shippingDetails.length === 0) {
+      totalQty =
+        parseInt(receiver.totalnumber || 0) ||
+        parseInt(orderData.total_assigned_qty || 0);
+    }
+
+    const containers = receiver.containers || [];
+    const containerInfo = containers.length > 0 ? containers.join(", ") : "N/A";
+
+    const senderKycApproved = orderData.sender_kyc_approved || false;
+    const senderPassport = senderKycApproved
+      ? orderData.sender_passport_number || "N/A"
+      : "Not Approved";
+    const senderEmiratesId = senderKycApproved
+      ? orderData.sender_emirates_id || "N/A"
+      : "Not Approved";
+    const senderSignatureUrl = senderKycApproved
+      ? orderData.sender_signature_url || ""
+      : "";
+
+    const receiverKycApproved = receiver.kycApproved || false;
+    const receiverPassport = receiverKycApproved
+      ? receiver.passportNumber || "N/A"
+      : "Not Approved";
+    const receiverEmiratesId = receiverKycApproved
+      ? receiver.emiratesId || "N/A"
+      : "Not Approved";
+    const receiverSignatureUrl = receiverKycApproved
+      ? receiver.signatureUrl || ""
+      : "";
+
+    return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Order Acknowledgement Printable Version</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                color: #333;
+                line-height: 1.3;
+                margin: 0 auto;
+                padding: 20px;
+                background-color: #f4f4f4;
+                width: 210mm;
+                min-height: 297mm;
+            }
+
+            .document-container {
+                background: #fff;
+                max-width: 800px;
+                margin: 0 auto;
+                padding: 20px;
+                border: 1px solid #ccc;
+                box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+                min-height: 257mm;
+            }
+
+            .top-banner {
+                background-color: #1a4731;
+                color: white;
+                text-align: center;
+                padding: 10px;
+                font-size: 32px;
+                font-weight: bold;
+                letter-spacing: 2px;
+                margin-bottom: 20px;
+            }
+
+            .header-section {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 20px;
+            }
+
+            .logo-area {
+                display: flex;
+                align-items: center;
+            }
+
+            .logo-icon {
+                width: 80px;
+                margin-right: 15px;
+            }
+
+            .company-name img {
+                width: 250px;
+                height: auto;
+            }
+
+            .disclaimer-bubble {
+                border: 2px solid #ff4d4d;
+                border-radius: 50%;
+                padding: 15px;
+                width: 200px;
+                text-align: center;
+                color: #ff4d4d;
+                font-size: 11px;
+                font-weight: bold;
+                min-height: 100px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+            .order-title {
+                text-align: center;
+                font-weight: bold;
+                font-size: 18px;
+                margin: 10px 0;
+                text-transform: uppercase;
+            }
+
+            .dated-text {
+                font-weight: bold;
+                font-size: 13px;
+                margin-bottom: 5px;
+            }
+
+            table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-bottom: 15px;
+            }
+
+            th, td {
+                border: 1px solid #777;
+                padding: 8px;
+                text-align: left;
+                font-size: 12px;
+                vertical-align: top;
+            }
+
+            .table-header {
+                background-color: #f9f9f9;
+                text-align: center;
+                font-style: italic;
+                font-weight: bold;
+            }
+
+            .small-red-text {
+                color: #d35400;
+                font-size: 10px;
+                margin: 10px 0;
+                line-height: 1.2;
+            }
+
+            .order-info-bar {
+                display: flex;
+                justify-content: space-between;
+                margin: 15px 0;
+                font-size: 13px;
+                font-weight: bold;
+            }
+
+            .bold-declaration {
+                font-size: 12px;
+                font-weight: bold;
+                font-style: italic;
+                margin: 15px 0;
+            }
+
+            .terms-title {
+                color: #ff4d4d;
+                font-size: 14px;
+                margin-top: 20px;
+            }
+
+            .terms-list {
+                font-size: 10px;
+                color: #2c3e50;
+                padding-left: 0;
+                list-style: none;
+            }
+
+            .terms-list li {
+                margin-bottom: 3px;
+            }
+
+            .final-confirmation {
+                text-align: center;
+                font-weight: bold;
+                margin-top: 30px;
+                font-size: 14px;
+            }
+
+            .order-items-table {
+                margin: 20px 0;
+            }
+
+            .order-items-table .table-header {
+                background-color: #1a4731;
+                color: white;
+            }
+
+            .total-row {
+                background-color: #f2f2f2;
+                font-weight: bold;
+            }
+
+            .signature-section {
+                margin-top: 40px;
+                display: flex;
+                justify-content: space-between;
+            }
+
+            .signature-box {
+                text-align: center;
+                padding-top: 10px;
+                width: 45%;
+            }
+
+            @media print {
+                body {
+                    background-color: white;
+                    padding: 0;
+                }
+                
+                .document-container {
+                    box-shadow: none;
+                    border: none;
+                    padding: 10px;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <div class="document-container">
+            <div class="top-banner">STORAGE & DISTRIBUTION</div>
+
+            <div class="header-section">
+                <div class="logo-area">
+                    <div class="company-name">
+                            <img src="${company?.logo_url || ""}" alt="${company?.company || "Company Logo"}">
+                    </div>
+                </div>
+                <div class="disclaimer-bubble">
+                    In case of any Lost or Damage for Non-Insured Cargo. US$ 15 PER PKG claim would be adjusted
+                </div>
+            </div>
+
+            <div class="order-title">ORDER ACKNOWLEDGEMENT</div>
+            <div class="dated-text">Dated: ${currentDate} ${currentTime}</div>
+
+            <table>
+                <tr>
+                    <td class="table-header" style="width: 50%;">Sender</td>
+                    <td class="table-header" style="width: 50%;">Receiver</td>
+                </tr>
+                <tr>
+                    <td>
+                        <strong>${senderName}</strong><br><br>
+                        Contact Person: ${senderName}<br>
+                        Passport No: ${senderPassport}<br>
+                        CNIC: ${senderEmiratesId}<br>
+                        Tel: ${senderContact}<br>
+                        E-Mail: ${senderEmail}
+                    </td>
+                    <td>
+                        <strong>${receiverName}</strong><br><br>
+                        Contact Person: ${receiverName}<br>
+                        Passport No: ${receiverPassport}<br>
+                        CNIC: ${receiverEmiratesId}<br>
+                        Tel: ${receiverContact}<br>
+                        E-Mail: ${receiverEmail}
+                    </td>
+                </tr>
+            </table>
+
+            <div class="small-red-text">
+                This paper serves as a legal responsibility of sender & receiver for the contents of the cargo being shipped
+                through the company ${company?.company || ""}. The Sender and Receiver will be responsible for any
+                loss/ damage which results in case of any prohibited items attempted to be shipped through this order.
+            </div>
+
+            <div class="order-title">ACKNOWLEDGMENT AND ACCEPTANCE OF ORDER</div>
+
+            <div class="order-info-bar">
+                <div><u> Order Date:</u> <span>${formatDate(orderData.created_at)}</span></div>
+                <div><u> Order Number:</u> <span>${orderData.booking_ref || "N/A"}</span></div>
+                <div><u> Customer No:</u> <span>${orderData.rgl_booking_number || "N/A"}</span></div>
+            </div>
+
+            <p style="font-size: 12px;">We are in receipt of your Order as detailed below:</p>
+
+            <table class="order-items-table">
+                <tr class="table-header">
+                    <td>QTY</td>
+                    <td>DESCRIPTION</td>
+                    <td>Order No</td>
+                    <td>Form No</td>
+                    <td>Port of Loading</td>
+                    <td>Port of Destination</td>
+                </tr>
+                ${
+                  shippingDetails.length > 0
+                    ? shippingDetails
+                        .map(
+                          (item) => `
+                <tr>
+                    <td style="text-align: center;">${item.totalNumber || 0}</td>
+                    <td>${item.category || item.subcategory || "N/A"}</td>
+                    <td style="text-align: center;">${orderData.booking_ref || "N/A"}</td>
+                    <td>${containerInfo}</td>
+                    <td>${getPlaceName(orderData.place_of_loading) || "N/A"}</td>
+                    <td>${getPlaceName(orderData.final_destination) || "N/A"}</td>
+                </tr>
+                `,
+                        )
+                        .join("")
+                    : `
+                <tr>
+                    <td style="text-align: center;">${totalQty || 0}</td>
+                    <td>General Items</td>
+                    <td style="text-align: center;">${orderData.booking_ref || "N/A"}</td>
+                    <td>${containerInfo}</td>
+                    <td>${orderData.place_of_loading || "N/A"}</td>
+                    <td>${orderData.final_destination || "N/A"}</td>
+                </tr>
+                `
+                }
+                <tr class="total-row">
+                    <td style="text-align: center;">${totalQty}</td>
+                    <td colspan="5">TOTAL PACKAGES: ${totalQty} | TOTAL WEIGHT: ${totalWeight} kg</td>
+                </tr>
+            </table>
+
+            <div class="dated-text" style="text-decoration: underline;">Mode: ${orderData.transport_type || "Drop Off"}</div>
+
+            <div class="bold-declaration">
+                I, the sender, whose name and address are given on the item, certify that the particulars given in this
+                declaration are correct and that this item does not contain any dangerous article or articles prohibited by
+                legislation or by <u>postal or customs regulations.</u>
+            </div>
+
+            <div class="terms-title">Terms & Conditions</div>
+            <ul class="terms-list">
+                <li>*All the information provided on order acknowledgement is as per the information provided by the sender.</li>
+                <li>*Customer (Sender/Receiver) acknowledges that the company will not be held liable for any loss or damage
+                    caused by customs inspections, fair wear & tear & Natural Disaster.</li>
+                <li>*All shipments will be inspected by Customs / ANF teams at terminals and there being if any extra cost
+                    incurred will be borne by the sender Or receiver.</li>
+                <li>*Transit time provided are tentative and could be change with / without prior notice upon vessels and
+                    customs clearance.</li>
+            </ul>
+
+            <div class="signature-section">
+                <div class="signature-box">
+                ${
+                  senderSignatureUrl
+                    ? `<img src="${senderSignatureUrl}" style="border-bottom: 1px solid #333;height:50px;margin-top:5px;filter: grayscale(100%) contrast(100%);mix-blend-mode: multiply;" /><br>`
+                    : ""
+                }
+                    <strong>Sender's Signature</strong><br>
+                    
+                </div>
+                <div class="signature-box">
+                ${
+                  receiverSignatureUrl
+                    ? `<img src="${receiverSignatureUrl}" style="border-bottom: 1px solid #333;height:50px;margin-top:5px;filter: grayscale(100%) contrast(100%);mix-blend-mode: multiply;" /><br>`
+                    : ""
+                }
+                    <strong>Receiver's Signature</strong><br>
+                    
+                </div>
+            </div>
+
+            <div class="final-confirmation">
+                We confirm acceptance of said order, with terms as stated above.
+            </div>
+
+        </div>
+    </body>
+    </html>
+    `;
+  };
+
+  const OrderConfirmation = (orderData, company) => {
+    const formatDate = (dateString) => {
+      if (!dateString) return "";
+      try {
+        const date = new Date(dateString);
+        return date.toLocaleDateString("en-GB", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+        });
+      } catch (e) {
+        return dateString || "";
+      }
+    };
+
     const currentDate = new Date().toLocaleDateString("en-GB", {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
     });
 
-    // Extract data from order object
-    const senderName = getValue(orderData.sender_name);
-    const senderAddress = getValue(orderData.sender_address);
-    const senderContact = getValue(orderData.sender_contact);
+    const expectedShipDate = new Date();
+    expectedShipDate.setDate(expectedShipDate.getDate() + 7);
+    const formattedShipDate = expectedShipDate.toLocaleDateString("en-US", {
+      weekday: "long",
+      month: "numeric",
+      day: "numeric",
+      year: "numeric",
+    });
 
-    // Get first receiver data
+    const expectedDeliveryDate = new Date();
+    expectedDeliveryDate.setDate(expectedDeliveryDate.getDate() + 17);
+    const formattedDeliveryDate = expectedDeliveryDate.toLocaleDateString(
+      "en-GB",
+      {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      },
+    );
+
+    const senderName = orderData.sender_name || "";
+    const senderContact = orderData.sender_contact || "";
+    const senderEmail = orderData.sender_email || "";
+    const senderAddress = orderData.sender_address || "";
+
     const receiver =
       orderData.receivers && orderData.receivers[0]
         ? orderData.receivers[0]
         : {};
-    const receiverName = getValue(receiver.receiverName);
-    const receiverContact = getValue(receiver.receiverContact);
-    const receiverAddress = getValue(receiver.receiverAddress);
+    const receiverName = receiver.receiverName || "";
+    const receiverContact = receiver.receiverContact || "";
+    const receiverAddress = receiver.receiverAddress || "";
+    const receiverEmail = receiver.receiverEmail || "";
 
-    // Get shipping details
-    const shippingDetails = receiver.shippingDetails || [];
+    const shippingDetails = receiver.shippingdetails || [];
 
-    // Get container details
+    let totalQty = 0;
+
+    shippingDetails.forEach((item) => {
+      totalQty += parseInt(item.totalNumber || 0);
+    });
+
+    if (shippingDetails.length === 0) {
+      totalQty =
+        parseInt(receiver.totalnumber || 0) ||
+        parseInt(orderData.total_assigned_qty || 0);
+    }
+
     const containers = receiver.containers || [];
+    const containerInfo =
+      containers.length > 0 ? containers.join(", ") : "ABC XYZ";
 
-    // Build container rows for table
+    const getDescription = () => {
+      if (shippingDetails.length > 0) {
+        return (
+          shippingDetails[0].itemName ||
+          shippingDetails[0].subcategory ||
+          shippingDetails[0].category ||
+          ""
+        );
+      }
+      return "";
+    };
+
+    const getOrderNo = () => {
+      return orderData.booking_ref || "5017";
+    };
+
+    return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Order Confirmation</title>
+        <style>
+            body { 
+                font-family: Arial, sans-serif; 
+                font-size: 12px; 
+                color: #333; 
+                margin: 0;
+                padding: 20px;
+                background-color: #f4f4f4;
+            }
+            .container { 
+                width: 800px; 
+                margin: 0 auto; 
+                border: 1px solid #ccc; 
+                padding: 10px; 
+                background-color: #fff;
+                box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            }
+            
+            .header-table { 
+                width: 100%; 
+                border-collapse: collapse; 
+                margin-bottom: 10px;
+            }
+            .logo-text { 
+                color: #e67e22; 
+                font-weight: bold; 
+                font-size: 18px; 
+            }
+            .sub-logo { 
+                font-size: 10px; 
+                color: #555; 
+            }
+            .main-title { 
+                font-size: 20px; 
+                font-weight: bold; 
+            }
+            
+            table { 
+                width: 100%; 
+                border-collapse: collapse; 
+                margin-bottom: 0px; 
+            }
+            th, td { 
+                padding: 4px; 
+                vertical-align: top; 
+            }
+            
+            .red-text { 
+                color: red; 
+                font-weight: 500;
+            }
+            .golden-text {
+                color: #b8860b;
+                font-weight: 500;
+            }
+            .label-cell { 
+                font-weight: bold; 
+                background-color: #f9f9f9; 
+                width: 15%; 
+            }
+            
+            .section-header { 
+                font-weight: bold; 
+                text-align: center; 
+                background-color: white; 
+                padding: 5px; 
+                font-size: 16px; 
+                margin: 10px 0;
+            }
+            .disclaimer { 
+                font-size: 11px; 
+                color: #b8860b; 
+                padding: 5px; 
+                margin: 10px 0;
+            }
+            
+            .footer-sign { 
+                height: 60px; 
+            }
+            
+            .logo-img {
+                max-width: 180px;
+                max-height: 60px;
+            }
+            
+            @media print {
+                body {
+                    background-color: white;
+                    padding: 0;
+                }
+                .container {
+                    box-shadow: none;
+                    border: 1px solid #ccc;
+                }
+            }
+        </style>
+    </head>
+    <body>
+
+    <div class="container">
+        <table class="header-table" style="border:none;">
+            <tr style="border:none;display: flex;align-items: center;gap: 125px;">
+                <td style="border:none;">
+                    ${
+                      company?.logo_url
+                        ? `<img src="${company.logo_url}" alt="${company?.company || ""} Logo" class="logo-img"><br>`
+                        : `<span class="logo-text">${company?.company || ""}</span><br>`
+                    }
+                </td>
+                <td style="border:none; ">
+                    <div class="main-title">ORDER CONFIRMATION</div>
+                </td>
+            </tr>
+        </table>
+
+        <table>
+            <tr>
+                <td class="label-cell">Dated</td>
+                <td class="red-text" colspan="2">${currentDate}</td>
+            </tr>
+            <tr style="background: #eee; font-weight: bold;     border: 1px solid #aaa;">
+                <td style="width: 50%;">TO</td>
+                <td colspan="2">FROM</td>
+            </tr>
+            <tr>
+                <td class="red-text" style="white-space: pre-line;     border: 1px solid #aaa;">
+                    ${senderName}<br>
+                    ${senderAddress.replace(/, /g, ",<br>")}<br>
+                    Contact Person: ${senderName}<br>
+                    Passport No: ${orderData.sender_kyc_approved ? orderData.sender_passport_number || "N/A" : "Not Approved"}<br>
+                    CNIC : ${orderData.sender_kyc_approved ? orderData.sender_emirates_id || "N/A" : "Not Approved"}<br>
+                    Tel: ${senderContact}<br>
+                    E-Mail: ${senderEmail}
+                </td>
+                <td class="red-text" colspan="2" style="white-space: pre-line;     border: 1px solid #aaa;">
+                    ${receiverName}<br>
+                    ${receiverAddress.replace(/, /g, ",<br>")}<br>
+                    Contact Person: ${receiverName}<br>
+                    Passport No: ${receiver.kycApproved ? receiver.passportNumber || "N/A" : "Not Approved"}<br>
+                    Emirates ID #: ${receiver.kycApproved ? receiver.emiratesId || "N/A" : "Not Approved"}<br>
+                    Tel: ${receiverContact}<br>
+                    E-Mail: ${receiverEmail}
+                </td>
+            </tr>
+        </table>
+
+        <div class="disclaimer golden-text">
+            This paper serves as an legal responsibility of sender & receiver for the contents of the cargo being shipped through the company ${company?.company || ""}. The Sender and Receiver will be only responsible for any loss / damages which results in case of any prohibited items attempted to be shipped through this order.
+        </div>
+
+        <div class="section-header">ACKNOWLEDGMENT AND ACCEPTANCE OF ORDER</div>
+
+        <table>
+            <tr>
+                <td><b>Order Date:</b> <span class="red-text">${formatDate(orderData.created_at) || "15/08/11"}</span></td>
+                <td><b>Order Number:</b> <span class="red-text">${orderData.booking_ref || "5017"}</span></td>
+                <td><b>Customer No:</b> <span class="red-text">${orderData.rgl_booking_number || "Sender BB Sys #"}</span></td>
+            </tr>
+        </table>
+
+        <table>
+            <tr style="text-align: center; font-weight: bold; background: #eee;     border: 1px solid #aaa;">
+                <td style="width: 10%;">QTY</td>
+                <td style="width: 30%;">DESCRIPTION</td>
+                <td style="width: 15%;">Order No</td>
+                <td style="width: 15%;">Marks & No</td>
+                <td style="width: 15%;">Port of Loading</td>
+                <td style="width: 15%;">Port of Destination</td>
+            </tr>
+            <tr style="height: 60px; text-align: center;     border: 1px solid #aaa;">
+                <td class="red-text">${totalQty}</td>
+                <td class="red-text">${getDescription()}</td>
+                <td class="red-text">${getOrderNo()}</td>
+                <td class="red-text">${containerInfo}</td>
+                <td class="red-text">${getPlaceName(orderData.place_of_loading)}</td>
+                <td class="red-text">${getPlaceName(orderData.final_destination)}</td>
+            </tr>
+            <tr>
+                <td colspan="4" rowspan="2"><b>Mode:</b> <span class="red-text">${orderData.transport_type || "Sea Shipment"}</span></td>
+                <td style="text-align: right;"><b>SUBTOTAL:</b></td>
+                <td style="text-align: center;">TBC</td>
+            </tr>
+            <tr>
+                <td style="text-align: right; font-size: 9px;">FREIGHT SURCHARGE</td>
+                <td style="text-align: center;">N/a</td>
+            </tr>
+            <tr>
+                <td colspan="4">
+                    <b>EXPECTED SHIP DATE:</b> <span class="red-text">${formattedShipDate}</span><br>
+                    <b>TRANSIT TIME:</b> <span class="red-text">10 Days ( Expected Delivery ${formattedDeliveryDate} )</span>
+                </td>
+                <td style="text-align: right; font-weight: bold;">TOTAL</td>
+                <td style="text-align: center;">N/A</td>
+            </tr>
+        </table>
+
+        <table>
+            <tr style="background: #eee; font-weight: bold; border: 1px solid #aaa;" >
+                <td style="width: 50%;">BILL TO: <span style="font-weight: normal;">(CUSTOMER # 117788)</span></td>
+                <td style="width: 50%;">SHIP TO:</td>
+            </tr>
+            <tr class="red-text">
+                <td>
+                    Either of the Party from<br>sender or receiver paying the Invoice<br>
+                    <span style="color: black;">Attn: ${senderName.split(" ")[0] || ""}</span><br>
+                    Tel: ${senderContact}
+                </td>
+                <td>
+                    Individual or company suppose to be the<br>recipient of the consignment<br>
+                    <span style="color: black;">Attn: ${receiverName.split(" ")[0] || ""}</span><br>
+                    Tel: ${receiverContact}
+                </td>
+            </tr>
+        </table>
+
+        <div style="text-align: center; font-weight: bold; padding: 5px;  margin: 10px 0;">
+            We confirm acceptance of said order, with terms as stated above.
+        </div>
+
+        <table style="margin-top: 10px;">
+            <tr>
+                <td style="width: 15%; border-bottom: none;"><b>Signature:</b></td>
+                <td rowspan="2" style="text-align: center; padding: 8px; vertical-align: middle;">
+                    <div style="display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 2px;">
+                        ${
+                          orderData.sender_kyc_approved &&
+                          orderData.sender_signature_url
+                            ? `<img src="${orderData.sender_signature_url}" style="height:40px; max-width:180px; object-fit:contain; filter: grayscale(100%) contrast(100%); mix-blend-mode: multiply; margin-bottom:2px; left: 0" />`
+                            : `<span>Digitally Signed through verified login and OTP for ID verification</span>`
+                        }
+                        <span><b>Time & Date Stamp:</b> ${currentDate} ${new Date().toLocaleTimeString()}</span>
+                        <span><b>Email Addressed Used:</b> ${senderEmail}</span>
+                    </div>
+                </td>
+            </tr>
+            <tr>
+                <td style="border-top: none;"><b>Name:</b> ${senderName}</td>
+            </tr>
+        </table>
+    </div>
+
+    </body>
+    </html>
+    `;
+  };
+
+  const BillOfLading = (orderData, company) => {
+    const getValue = (value) => {
+      return value && value !== "" && value !== null && value !== undefined
+        ? value
+        : "";
+    };
+
+    const consignment = orderData.consignment || {};
+
+    const currentDate = new Date().toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+
+    const senderName = getValue(
+      consignment.shipper?.company_name || orderData.sender_name,
+    );
+    const senderAddress = getValue(
+      consignment.shipper?.address || orderData.sender_address,
+    );
+    const senderContact = getValue(
+      consignment.shipper?.contact_phone || orderData.sender_contact,
+    );
+
+    const receiver =
+      orderData.receivers && orderData.receivers[0]
+        ? orderData.receivers[0]
+        : {};
+    const receiverName = getValue(
+      consignment.consignee?.company_name || receiver.receiverName,
+    );
+    const receiverContact = getValue(
+      consignment.consignee?.contact_phone || receiver.receiverContact,
+    );
+    const receiverAddress = getValue(
+      consignment.consignee?.address || receiver.receiverAddress,
+    );
+
+    const shippingDetails =
+      receiver.shippingdetails || receiver.shippingDetails || [];
+    const containers = consignment.containers || receiver.containers || [];
+
     const getContainerRows = () => {
       if (!shippingDetails.length) return "";
-
       let rows = "";
       shippingDetails.forEach((detail) => {
         if (detail.containerDetails && detail.containerDetails.length) {
@@ -2379,12 +4874,10 @@ const OrdersList = () => {
               containerDetail.container?.container_number ||
               containerDetail.container_number ||
               "";
-            const sealNo = ""; // Seal no not in API
             const pkgs = containerDetail.total_number || "";
             const grossWt = containerDetail.assign_weight
               ? `${containerDetail.assign_weight} KGS`
               : "";
-
             if (containerNum) {
               rows += `<tr><td>${containerNum} / 40'HC</td><td></td><td>${pkgs} PKG</td><td></td><td>${grossWt}</td></tr>`;
             }
@@ -2394,7 +4887,6 @@ const OrdersList = () => {
       return rows;
     };
 
-    // Calculate total packages
     const totalPkgs = shippingDetails.reduce((sum, detail) => {
       if (detail.containerDetails) {
         return (
@@ -2408,326 +4900,157 @@ const OrdersList = () => {
       return sum;
     }, 0);
 
-    // Get vessel name
-    const vesselName = getValue(orderData.consignment_vessel);
-    const voyageNo = getValue(orderData.consignment_voyage);
-    const vesselVoyage =
-      vesselName && voyageNo
-        ? `${vesselName} / ${voyageNo}`
-        : vesselName || voyageNo || "";
+    const vesselVoyage = consignment.vessel
+      ? `${consignment.vessel}${consignment.voyage ? " / " + consignment.voyage : ""}`
+      : "";
 
-    // Get container count
     const containerCount = containers.length
       ? `${containers.length}X40'HC`
       : "";
 
     return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Bill of Lading - Cargo Aviation</title>
-        <style>
-            body {
-                font-family: Arial, Helvetica, sans-serif;
-                font-size: 10px;
-                margin: 0;
-                padding: 20px;
-                background-color: #f0f0f0;
-            }
-            .bl-container {
-                width: 800px;
-                margin: 0 auto;
-                background-color: #fff;
-                padding: 10px;
-                border: 1px solid #ccc;
-                position: relative;
-                min-height: 1050px;
-            }
-            .header {
-                display: flex;
-                justify-content: space-between;
-                align-items: flex-start;
-                margin-bottom: 10px;
-            }
-            .logo-section {
-                display: flex;
-                align-items: center;
-                gap:20px;
-            }
-            .mfd-logo img {
-                width: 80px;
-                height: auto;
-            }
-            .company-name {
-                font-size: 16px;
-                font-weight: bold;
-                color: #2b3a67;
-            }
-            .bl-title {
-                text-align: right;
-                line-height: 1.2;
-            }
-            .bl-title h1 {
-                font-size: 18px;
-                margin: 0;
-            }
-            .grid-container {
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                border-top: 1px solid #000;
-                border-left: 1px solid #000;
-            }
-            .cell {
-                border-right: 1px solid #000;
-                border-bottom: 1px solid #000;
-                padding: 4px;
-                min-height: 40px;
-            }
-            .label {
-                font-size: 8px;
-                color: #555;
-                display: block;
-                margin-bottom: 2px;
-            }
-            .content {
-                font-weight: bold;
-                text-transform: uppercase;
-                white-space: pre-line;
-            }
-            .full-width {
-                grid-column: span 2;
-            }
-            .four-cols {
-                display: grid;
-                grid-template-columns: 1fr 1fr 1fr 1fr;
-            }
-            .description-area {
-                min-height: 300px;
-                padding: 15px;
-                border-left: 1px solid #000;
-                border-right: 1px solid #000;
-                position: relative;
-            }
-            .table-data {
-                width: 100%;
-                border-collapse: collapse;
-                margin-top: 20px;
-            }
-            .table-data th {
-                text-align: left;
-                font-size: 9px;
-                border-bottom: 1px solid #000;
-                padding: 5px;
-            }
-            .table-data td {
-                padding: 5px;
-                font-weight: bold;
-            }
-            .footer {
-                margin-top: 10px;
-                border-top: 2px solid #000;
-                padding-top: 10px;
-            }
-            .red-bar {
-                height: 10px;
-                background-color: #e63946;
-                margin-top: 20px;
-            }
-            .empty-placeholder {
-                height: 20px;
-            }
-        </style>
-    </head>
-    <body>
+  <!DOCTYPE html>
+  <html>
+  <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Bill of Lading</title>
+      <style>
+          body { font-family: Arial, Helvetica, sans-serif; font-size: 10px; margin: 0; padding: 20px; background-color: #f0f0f0; }
+          .bl-container { width: 800px; margin: 0 auto; background-color: #fff; padding: 10px; border: 1px solid #ccc; position: relative; min-height: 1050px; }
+          .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+          .logo-section { display: flex; align-items: center; gap: 20px; }
+          .mfd-logo img { width: 120px; height: auto; }
+          .company-name { font-size: 16px; font-weight: bold; color: #2b3a67; }
+          .bl-title { text-align: right; line-height: 1.2; }
+          .bl-title h1 { font-size: 18px; margin: 0; }
+          .grid-container { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid #000; border-left: 1px solid #000; }
+          .cell { border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px; min-height: 40px; }
+          .label { font-size: 8px; color: #555; display: block; margin-bottom: 2px; }
+          .content { font-weight: bold; text-transform: uppercase; white-space: pre-line; }
+          .full-width { grid-column: span 2; }
+          .four-cols { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; }
+          .description-area { min-height: 300px; padding: 15px; border-left: 1px solid #000; border-right: 1px solid #000; position: relative; }
+          .table-data { width: 100%; border-collapse: collapse; margin-top: 20px; }
+          .table-data th { text-align: left; font-size: 9px; border-bottom: 1px solid #000; padding: 5px; }
+          .table-data td { padding: 5px; font-weight: bold; }
+          .red-bar { height: 10px; background-color: #e63946; margin-top: 20px; }
+      </style>
+  </head>
+  <body>
+  <div class="bl-container">
+      <div class="header">
+          <div class="logo-section">
+              <div class="mfd-logo"><img src="${company?.logo_url || ""}" alt="${company?.company || ""}"></div>
+              <div class="company-name">${(company?.company || "").toUpperCase()}</div>
+          </div>
+          <div class="bl-title">
+              <h1>Bill of Lading</h1>
+              <div>Multimodal Transport<br>or Port-to-Port Shipment</div>
+          </div>
+      </div>
 
-    <div class="bl-container">
-        <div class="header">
-            <div class="logo-section">
-                <div class="mfd-logo"><img src="${logoCAS}" alt="Cargo Aviation"></div>
-                <div class="company-name">Cargo Aviation System Pvt Ltd</div>
-            </div>
-            <div class="bl-title">
-                <h1>Bill of Lading</h1>
-                <div>Multimodal Transport<br>or Port-to-Port Shipment</div>
-            </div>
-        </div>
+      <div class="grid-container">
+          <div class="cell">
+              <span class="label">Shipper</span>
+              <div class="content">
+                  ${senderName ? `${senderName}<br>` : ""}
+                  ${senderAddress ? senderAddress.replace(/, /g, ",<br>") + "<br>" : ""}
+                  ${senderContact ? `Tel: ${senderContact}` : ""}
+              </div>
+          </div>
+          <div class="cell">
+              <span class="label">B/L No.</span>
+              <div class="content" style="font-size: 14px;">${getValue(orderData.booking_ref)}</div>
+          </div>
+          <div class="cell">
+              <span class="label">Consignee</span>
+              <div class="content">
+                  ${receiverName ? `${receiverName}<br>` : ""}
+                  ${receiverAddress ? receiverAddress.replace(/, /g, ",<br>") + "<br>" : ""}
+                  ${receiverContact ? `Tel: ${receiverContact}` : ""}
+              </div>
+          </div>
+          <div class="cell"><span class="label">Export Reference / Forwarding Agent</span><div class="content"></div></div>
+          <div class="cell">
+              <span class="label">Notify Party</span>
+              <div class="content">
+                  ${receiverName ? `${receiverName}<br>` : ""}
+                  ${receiverAddress ? receiverAddress.replace(/, /g, ",<br>") + "<br>" : ""}
+              </div>
+          </div>
+          <div class="cell"><span class="label">Destination Agent</span><div class="content"></div></div>
+      </div>
 
-        <div class="grid-container">
-            <div class="cell">
-                <span class="label">Shipper</span>
-                <div class="content">
-                    ${senderName ? `${senderName}<br>` : ""}
-                    ${senderAddress ? senderAddress.replace(/, /g, ",<br>") + "<br>" : ""}
-                    ${senderContact ? `Tel: ${senderContact}` : ""}
-                </div>
-            </div>
-            <div class="cell">
-                <span class="label">B/L No. (also to be used as payment ref.)</span>
-                <div class="content" style="font-size: 14px;">${getValue(orderData.booking_ref)}</div>
-            </div>
+      <div class="grid-container" style="border-top: none;">
+          <div class="four-cols full-width">
+              <div class="cell"><span class="label">Port of Loading</span><div class="content">${getPlaceName(orderData.place_of_loading)}</div></div>
+              <div class="cell"><span class="label">Pre-carriage by</span><div class="content"></div></div>
+              <div class="cell"><span class="label">Ocean Vessel / Voyage</span><div class="content">${vesselVoyage}</div></div>
+              <div class="cell"><span class="label">Freight payable at</span><div class="content"></div></div>
+          </div>
+          <div class="four-cols full-width">
+              <div class="cell"><span class="label">Place of Receipt</span><div class="content"></div></div>
+              <div class="cell"><span class="label">Port of Discharge</span><div class="content">${getPlaceName(orderData.final_destination) || getPlaceName(orderData.place_of_delivery)}</div></div>
+              <div class="cell"><span class="label">Place of Delivery</span><div class="content">${getPlaceName(orderData.place_of_delivery) || getPlaceName(orderData.final_destination)}</div></div>
+              <div class="cell"><span class="label">Final Destination</span><div class="content">${getPlaceName(orderData.final_destination) || getPlaceName(orderData.place_of_delivery)}</div></div>
+          </div>
+      </div>
 
-            <div class="cell">
-                <span class="label">Consignee</span>
-                <div class="content">
-                    ${receiverName ? `${receiverName}<br>` : ""}
-                    ${receiverAddress ? receiverAddress.replace(/, /g, ",<br>") + "<br>" : ""}
-                    ${receiverContact ? `Tel: ${receiverContact}` : ""}
-                </div>
-            </div>
-            <div class="cell">
-                <span class="label">Export Reference / Forwarding Agent</span>
-                <div class="content"></div>
-            </div>
+      <div class="description-area">
+          <div style="display: flex; justify-content: space-between;">
+              <div style="width: 20%;">
+                  <span class="label">Marks & Nos. / No of Pkgs</span>
+                  <div class="content" style="margin-top: 20px;">${totalPkgs ? totalPkgs + " PKGS" : ""}</div>
+              </div>
+              <div style="width: 30%;">
+                  <span class="label">Description of Goods</span>
+                  <div class="content" style="margin-top: 20px;">
+                      ${shippingDetails
+                        .map((d) => d.itemName || d.subcategory || d.category)
+                        .filter(Boolean)
+                        .join(", ")}
+                  </div>
+              </div>
+              <div style="width: 20%; text-align: right;">
+                  <span class="label">Gross Weight</span>
+                  <div class="content" style="margin-top: 20px;">
+                      ${consignment.gross_weight ? consignment.gross_weight + " KGS" : ""}
+                  </div>
+              </div>
+          </div>
+          ${
+            getContainerRows()
+              ? `
+          <table class="table-data">
+              <thead><tr><th>CONTAINER NO. SIZE</th><th>SEAL NO.</th><th>PKGS</th><th>NET WT</th><th>GROSS WT</th></tr></thead>
+              <tbody>${getContainerRows()}</tbody>
+          </table>`
+              : ""
+          }
+      </div>
 
-            <div class="cell">
-                <span class="label">Notify Party</span>
-                <div class="content">
-                    ${receiverName ? `${receiverName}<br>` : ""}
-                    ${receiverAddress ? receiverAddress.replace(/, /g, ",<br>") + "<br>" : ""}
-                    ${receiverContact ? `Tel: ${receiverContact}` : ""}
-                </div>
-            </div>
-            <div class="cell">
-                <span class="label">Destination Agent</span>
-                <div class="content"></div>
-            </div>
-        </div>
+      <div class="grid-container">
+          <div class="cell"><span class="label">Freight Details</span><div class="content"></div></div>
+          <div class="cell"><span class="label">Total Number of Pkgs</span><div class="content">${containerCount}</div></div>
+      </div>
 
-        <div class="grid-container" style="border-top: none;">
-            <div class="four-cols full-width">
-                <div class="cell"><span class="label">Port of Loading</span><div class="content">${getPlaceName(orderData.place_of_loading) || getValue(orderData.place_of_loading)}</div></div>
-                <div class="cell"><span class="label">Pre-carriage by</span><div class="content"></div></div>
-                <div class="cell"><span class="label">Ocean Vessel / Voyage</span><div class="content">${vesselVoyage}</div></div>
-                <div class="cell"><span class="label">Freight payable at</span><div class="content"></div></div>
-            </div>
-            <div class="four-cols full-width">
-                <div class="cell"><span class="label">Place of Receipt</span><div class="content"></div></div>
-                <div class="cell"><span class="label">Port of Discharge</span><div class="content">${getPlaceName(orderData.final_destination) || getValue(orderData.final_destination)}</div></div>
-                <div class="cell"><span class="label">Place of Delivery</span><div class="content">${getPlaceName(orderData.final_destination) || getValue(orderData.final_destination)}</div></div>
-                <div class="cell"><span class="label">Final Destination</span><div class="content">${getPlaceName(orderData.final_destination) || getValue(orderData.final_destination)}</div></div>
-            </div>
-        </div>
-
-        <div class="description-area">
-            <div style="display: flex; justify-content: space-between;">
-                <div style="width: 20%;">
-                    <span class="label">Marks & Nos. / No of Pkgs</span>
-                    <div class="content" style="margin-top: 20px;">${totalPkgs ? totalPkgs + " PKGS" : ""}</div>
-                </div>
-                <div style="width: 30%; text-align: left;">
-                    <span class="label">Description of Goods</span>
-                    <div class="content" style="margin-top: 20px; text-decoration: underline;">
-                        ${containers.length ? containers.length + "X40'HC FCL CONTAINER SAID TO CONTAIN" : ""}
-                    </div>
-                    <div class="content" style="margin-top: 10px;">
-                        ${containers.length ? containers.length + "X40'HC CONTAINER" : ""}<br>
-                        ${totalPkgs ? "STC " + totalPkgs + " PACKAGES" : ""}<br>
-                        ${
-                          shippingDetails.length
-                            ? shippingDetails
-                                .map(
-                                  (d) =>
-                                    d.itemName || d.subcategory || d.category,
-                                )
-                                .filter(Boolean)
-                                .join(", ")
-                            : ""
-                        }
-                    </div>
-                    <div class="content" style="margin-top: 30px; font-size: 11px;">
-                        ALL SORT OF DESTINATION CHARGES ON CONSIGNEE'S ACCOUNT
-                    </div>
-                </div>
-                <div style="width: 20%; text-align: right;">
-                    <span class="label">Gross Weight / Measurement</span>
-                    <div class="content" style="margin-top: 20px;">
-                        ${
-                          shippingDetails.reduce(
-                            (sum, d) => sum + (parseFloat(d.weight) || 0),
-                            0,
-                          )
-                            ? "GROSS WT<br>" +
-                              shippingDetails
-                                .reduce(
-                                  (sum, d) => sum + (parseFloat(d.weight) || 0),
-                                  0,
-                                )
-                                .toFixed(2) +
-                              " KGS"
-                            : ""
-                        }
-                    </div>
-                    <div class="content" style="margin-top: 40px;">CY/CY</div>
-                </div>
-            </div>
-
-            ${
-              getContainerRows()
-                ? `
-            <table class="table-data">
-                <thead>
-                    <tr>
-                        <th>CONTAINER NO. SIZE</th>
-                        <th>SEAL NO.</th>
-                        <th>PKGS</th>
-                        <th>NET WT</th>
-                        <th>GROSS WT</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${getContainerRows()}
-                </tbody>
-            </table>
-            `
-                : ""
-            }
-            <div style="display: flex;justify-content: end;">
-                    <p style="width: 200px;padding: 5px;border: 2px solid #000;font-size: 8px;font-weight: bold;">
-                        All Terminal Charges & Demurrage Etc at the port of Discharge/ Destination as per line's tariff & At the Account of Consignee.
-                    </p>
-            </div>
-        </div>
-
-        
-
-        <div class="grid-container">
-            <div class="cell"><span class="label">Freight Details</span><div class="content"></div></div>
-            <div class="cell"><span class="label">Total Number of Pkgs</span><div class="content">${containerCount}</div></div>
-        </div>
-
-        <div style="margin-top: 20px; display: flex; justify-content: space-between;">
-            <div style="width: 60%;">
-                <p style="font-size: 7px;">RECEIVED for shpment specified above in apparent good order and condition unless otherwise stated
-The Gods to be delivered at above mentioned Port of Discharge or Place of Delivery, whichever applies
-SUBJECT TO Terms and Conditions contained on reverse side hereof, to which Merchant agrees by
-accepting this Bill of Lading
-IN WITNESS WHEREOF the number of onginal Bills of lading stated on this side next to this clause
-have been signed, one of which being accomplished, the others to stand void, unless compulsorily
-applicable law provides otherwise
-*Applicable only when used for MULTI MODAL TRANSPORTATION.</p>
-                <div class="content" style="margin-top: 10px;">Karachi , ${currentDate}</div>
-            </div>
-            <div style="text-align: right; width: 40%;">    
-                <div class="content" style="margin-top: 10px;">
-                    Cargo Aviation <br> System Pvt Ltd
-                </div>
-            </div>
-        </div>
-
-        <div class="red-bar"></div>
-        <div style="text-align: right; font-weight: bold; color: #2b3a67; font-size: 12px; margin-top: 5px;">
-            Cargo Aviation System Pvt Ltd
-        </div>
-    </div>
-
-    </body>
-    </html>
-    `;
+      <div style="margin-top: 20px; display: flex; justify-content: space-between;">
+          <div style="width: 60%;">
+              <div class="content" style="margin-top: 10px;">${currentDate}</div>
+          </div>
+          <div style="text-align: right; width: 40%;">
+              <div class="content" style="margin-top: 10px;">${(company?.company || "").toUpperCase()}</div>
+          </div>
+      </div>
+      <div class="red-bar"></div>
+  </div>
+  </body>
+  </html>
+  `;
   };
 
-  const CargoGatePass = (orderData) => {
+  const CargoGatePass = (orderData, company) => {
     const safeOrder = orderData || {};
     const getValue = (value, fallback = "") =>
       value !== null && value !== undefined && value !== "" ? value : fallback;
@@ -2922,13 +5245,10 @@ applicable law provides otherwise
 
         <div class="header-section">
             <div class="logo-block">
-                <img src="${logoPic}" alt="Royal Gulf" />
+                <img src="${company?.logo_url || ""}" alt="${company?.company || ""}" />
                 <div class="company-info">
-                    <div class="company-title">Royal Gulf Shipping & Logistics<br>LLC - RGSL</div>
-                    Plot # 613-1130<br>
-                    Ras Al Khor Industrial Area Shed #1-4<br>
-                    Dubai Dubai 27011<br>
-                    United Arab Emirates
+                    <div class="company-title">${company?.company || ""}</div>
+                    ${(company?.address || "").replace(/, /g, "<br>")}
                 </div>
             </div>
             <div class="gatepass-title">CARGO<br>GATEPASS</div>
@@ -2976,4499 +5296,14 @@ applicable law provides otherwise
 
         <div class="footer">
             <div class="contact-line">
-                <span>☎ +971 4 333 1785</span>
-                <span>📱 +971 50 972 4214</span>
+                <span>☎ ${company?.phone || ""}</span>
             </div>
-            <div>✉ info@royalgulfshipping.com</div>
+            <div>✉ ${company?.email || ""}</div>
         </div>
     </div>
 </body>
 </html>
   `;
-  };
-
-  const DubaiLetterOfIndemnityForCustoms = (orderData) => {
-    const safeOrder = orderData || {};
-
-    const getSafeValue = (value, defaultValue = "_________________") => {
-      return value && value !== "" && value !== null && value !== undefined
-        ? value
-        : defaultValue;
-    };
-
-    const senderName = safeOrder.sender_name || "";
-    const trade_license = safeOrder.sender_trade_license || "________";
-    const senderPassport = safeOrder.sender_kyc_approved
-      ? safeOrder.sender_passport_number || "________"
-      : "Not Approved";
-    const senderEmiratesID = safeOrder.sender_kyc_approved
-      ? safeOrder.sender_emirates_id || "________"
-      : "Not Approved";
-    const senderPhone = safeOrder.sender_contact || "03xx-xxxxxxx";
-    const senderAddress = safeOrder.sender_address || "Address in Karachi";
-    const senderCompany =
-      safeOrder.sender_company ||
-      safeOrder.sender_name ||
-      "Company Name / Individual Name";
-
-    const calculateTotalPackages = () => {
-      if (!safeOrder.receivers || !Array.isArray(safeOrder.receivers)) {
-        return safeOrder.total_packages || "123";
-      }
-
-      let total = 0;
-      safeOrder.receivers.forEach((receiver) => {
-        if (
-          receiver.shippingdetails &&
-          Array.isArray(receiver.shippingdetails)
-        ) {
-          receiver.shippingdetails.forEach((detail) => {
-            total += parseInt(detail.totalNumber) || 0;
-          });
-        }
-      });
-      return total || "123";
-    };
-
-    const getGoodsDescription = () => {
-      if (safeOrder.goods_description) return safeOrder.goods_description;
-
-      if (safeOrder.receivers && safeOrder.receivers[0]?.shippingdetails?.[0]) {
-        const detail = safeOrder.receivers[0].shippingdetails[0];
-        return `${detail.category || "TEXTILE"} ${detail.subcategory || ""}`.trim();
-      }
-
-      return "TEXTILE";
-    };
-
-    const totalPackages = calculateTotalPackages();
-    const goodsDescription = getGoodsDescription();
-    const currentDate = new Date()
-      .toLocaleDateString("en-GB", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-      })
-      .replace(/ /g, "-");
-
-    return `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dubai Letter of Idemnity for Customs</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f5f5f5;
-            padding: 20px;
-        }
-
-        .document {
-            width: 850px;
-            margin: 0 auto;
-            background-color: white;
-            padding: 50px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-        }
-        
-        .signature-line {
-            border-bottom: 1px solid #000;
-            min-width: 300px;
-            height: 1px;
-            display: inline-block;
-            margin-left: 5px;
-        }
-            @media print {
-            @page {
-                size: A4;
-                margin: 0;
-            }
-            
-            body {
-                background-color: white;
-                padding: 0;
-                margin: 0;
-                width: 100%;
-            }
-            
-            .page {
-                box-shadow: none;
-                margin: 0;
-                padding: 15mm 15mm 15mm 15mm;
-                page-break-after: always;
-                page-break-inside: avoid;
-                width: 100%;
-                height: auto; /* Let content determine height */
-                min-height: auto;
-                position: relative;
-                background: white;
-                border: none;
-            }
-            
-            /* Last page shouldn't have page break */
-            .page:last-child {
-                page-break-after: auto;
-            }
-            
-            html, body {
-                height: auto;
-                overflow: visible;
-            }
-        }
-    </style>
-</head>
-<body>
-    <div class="document">
-        <!-- Header Section - Right Aligned -->
-        <div style="text-align: right; margin-bottom: 20px;">
-            <div style="font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 5px;">${getSafeValue(senderCompany)}</div>
-            <div style="font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 5px;">${getSafeValue(senderAddress)}</div>
-            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">Trade Liceness #: ${getSafeValue(trade_license)}</div>
-            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">Passport No: ${getSafeValue(senderPassport)}</div>
-            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">Emirates ID #: ${getSafeValue(senderEmiratesID)}</div>
-            <div style="font-family: Arial; font-size: 14.1px; color: #ff0000;">Tel #: ${getSafeValue(senderPhone)}</div>
-        </div>
-
-        <!-- Date -->
-        <div style="font-style: italic; font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 10px;">
-            Dated: ${currentDate}
-        </div>
-
-        <!-- To Address -->
-        <div style="margin-bottom: 10px;">
-                        <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 5px;">To,</div>
-            <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 5px;">Anti Narcotics Force,</div>
-            <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 5px;">Dubai, Sharjah Customs,</div>
-            <div style="font-family: Arial; font-size: 15.0px; color: #000000;">United Arab Emirates.</div>
-        </div>
-
-        <!-- Title -->
-        <div style="font-weight: bold; font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 10px; text-align: center;">
-            Letter of Indemnity, Agreement
-        </div>
-
-        <!-- Subject Section -->
-        <div style="margin-bottom: 20px;">
-            <div style="margin-bottom: 10px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000; font-weight: bold;">SUBJECT:</span>
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;"> EXPORT OF <span style="color: #ff0000;">${totalPackages} Pkgs</span> , Vide Order No : BB System # <span style="color: #ff0000;">${getSafeValue(safeOrder.booking_ref)}</span>
-            </div>
-            <div style="margin-bottom: 5px; margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">EXPORTER : <span style="color: #ff0000;">${getSafeValue(senderName)}</span></span>
-            </div>
-            <div style="margin-bottom: 5px; margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Passport No : <span style="color: #ff0000;">${getSafeValue(senderPassport)}</span></span>
-            </div>
-            <div style="margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">CNIC : <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></span>
-            </div>
-        </div>
-
-        <!-- Main Content -->
-        <div style="font-family: Arial; font-size: 15.0px; color: #000000;">
-            WE, THE UNDERSIGNED, DO HEREBY UNDERTAKE, AND AGREE AS FOLLOWS,
-        </div>
-
-        <!-- Point 1 -->
-        <div style="font-family: Arial; font-size: 15.0px; color: #000000; line-height: 1.6; margin-bottom: 20px; text-align: justify;">
-            1. BOUND AND UNDERTAKE OURSELVES THAT IF ANY CONTRABAND DRUG OR NARCOTICS ARE FOUND OR REPORTED IN THE GOODS, ITS PACKING OR CONCEALED IN THE SUBJECT QTY AT ANY STAGE UNDER RULES AND REGULATION MADE THEREUNDER.
-        </div>
-
-        <!-- Point 2 -->
-        <div style="font-family: Arial; font-size: 15.0px; color: #000000; line-height: 1.6; margin-bottom: 20px; text-align: justify;">
-            2. We hereby agree that Royal Gulf Shipping & Logistics LLC, are only a Warehousing & Distribution agent on behalf our ourselves to arrange the transport and clearance of the subject shipment and holds no responsibility in event of any prohibited goods, drugs or narcotics found in the consignment at any point of inspection/examination by ports/customs authorities while in process of shipping and clearance.
-        </div>
-
-        <!-- Point 3 -->
-        <div style="margin-bottom: 20px;">
-            <div style="font-family: Arial; font-size: 15.0px; color: #000000; line-height: 1.6; margin-bottom: 10px;">
-                3. FURTHER UNDERTAKE THAT THIS CONSIGNMENT CONTAIN ONLY
-                <span style="font-weight: bold; font-family: Arial; font-size: 13.6px; color: #ff0000; text-decoration: underline;">${getSafeValue(goodsDescription, "__TEXTILE_____________")}</span>            
-                AND DOES NOT CONTAIN ANY CONTRABAND NARCOTIC / DRUGS ETC., AND UNDERTAKE TO BE FULLY HELD GOOD OWNER RESPONSIBLE IF FOUND IN THE CONSIGNMENT AT ANY STAGE.
-            </div>
-        </div>
-
-        <!-- Point 4 -->
-        <div style="font-family: Arial; font-size: 15.0px; color: #000000; line-height: 1.6; margin-bottom: 10px;">
-            4. IF IS THEREFORE, REQUEST TO ACCEPT OUR UNDERTAKING FOR ALLOWING SHIPMENT OF GOODS.
-        </div>
-
-        <!-- Goods Owner Details Table -->
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px; font-family: Arial; font-size: 15.0px;">
-            <tr>
-                <td style="padding: 2px 0; width: 150px; vertical-align: top;">GOODS OWNER</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="font-weight: bold; color: #ff0000;">${getSafeValue(senderName)}</span></td>
-            </tr>
-            <tr>
-                <td style="padding: 2px 0; vertical-align: top;">Company Name</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderCompany)}</span></td>
-            </tr>
-            <tr>
-                <td style="padding: 2px 0; vertical-align: top;">Delivery Address</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getReceiverAddress(safeOrder)}</span></td>
-            </tr>
-            <tr>
-                <td style="padding: 2px 0; vertical-align: top;">CNIC ID #</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></td>
-            </tr>
-            <tr>
-                <td style="padding: 2px 0;">Signature</td>
-                <td style="padding: 2px 0; vertical-align: top;">
-                    ${
-                      safeOrder.sender_kyc_approved &&
-                      safeOrder.sender_signature_url
-                        ? `<img src="${safeOrder.sender_signature_url}" style="height:50px;filter: grayscale(100%) contrast(100%);mix-blend-mode: multiply;" />`
-                        : ": (Digitally Signed Login Credentials & OTP Verified)"
-                    }
-                </td>
-            </tr>
-            <tr>
-                <td style="padding: 2px 0; vertical-align: top;">Name</td>
-                <td style="padding: 2px 0; vertical-align: top;">: ${getSafeValue(senderName)}</td>
-            </tr>
-        </table>
-
-        <!-- Footer Note -->
-        <div style="text-align: center; font-family: Arial; font-size: 12px; color: #000000; margin-top: 10px; line-height: 1.6;">
-            We hereby understand and confirm the document is digitally signed and is fully authorized to use if needed in event of any clearance process.
-        </div>
-    </div>
-</body>
-</html>
-    `;
-  };
-
-  const KarachiGovtCustomsStampPaperUndertakingFormat = (orderData) => {
-    const safeOrder = orderData || {};
-
-    const getSafeValue = (value, defaultValue = "_________________") => {
-      return value && value !== "" && value !== null && value !== undefined
-        ? value
-        : defaultValue;
-    };
-
-    const senderName = safeOrder.sender_name || "";
-    const senderCNIC = safeOrder.sender_cnic || "_____-_______-_";
-    const senderPassport = safeOrder.sender_passport_number || "________";
-    const senderPhone = safeOrder.sender_contact || "03xx-xxxxxxx";
-    const senderAddress = safeOrder.sender_address || "Address in Karachi";
-    const senderCompany =
-      safeOrder.sender_company ||
-      safeOrder.sender_name ||
-      "Company Name / Individual Name";
-
-    const calculateTotalPackages = () => {
-      if (!safeOrder.receivers || !Array.isArray(safeOrder.receivers)) {
-        return safeOrder.total_packages || "123";
-      }
-
-      let total = 0;
-      safeOrder.receivers.forEach((receiver) => {
-        if (
-          receiver.shippingdetails &&
-          Array.isArray(receiver.shippingdetails)
-        ) {
-          receiver.shippingdetails.forEach((detail) => {
-            total += parseInt(detail.totalNumber) || 0;
-          });
-        }
-      });
-      return total || "123";
-    };
-
-    const getGoodsDescription = () => {
-      if (safeOrder.goods_description) return safeOrder.goods_description;
-
-      if (safeOrder.receivers && safeOrder.receivers[0]?.shippingdetails?.[0]) {
-        const detail = safeOrder.receivers[0].shippingdetails[0];
-        return `${detail.category || "TEXTILE"} ${detail.subcategory || ""}`.trim();
-      }
-
-      return "TEXTILE";
-    };
-
-    const totalPackages = calculateTotalPackages();
-    const goodsDescription = getGoodsDescription();
-    const currentDate = new Date()
-      .toLocaleDateString("en-GB", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-      })
-      .replace(/ /g, "-");
-
-    return `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Karachi Govt. Customs Stamp paper undertaking format</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-.stamp-paper
-            {
-                height: 385px;
-            }
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f5f5f5;
-            padding: 20px;
-        }
-
-        .document {
-            width: 850px;
-            margin: 0 auto;
-            background-color: white;
-            padding: 50px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-        }
-        
-        .signature-line {
-            border-bottom: 1px solid #000;
-            min-width: 300px;
-            height: 1px;
-            display: inline-block;
-            margin-left: 5px;
-        }
-            @media print {
-            @page {
-                size: legal portrait;
-                margin: 0;
-            }
-            
-            body {
-                background-color: white;
-                padding: 0;
-                margin: 0;
-                width: 100%;
-            }
-            
-            .page {
-                box-shadow: none;
-                margin: 0;
-                padding: 15mm 15mm 15mm 15mm;
-                page-break-after: always;
-                page-break-inside: avoid;
-                width: 100%;
-                height: auto; /* Let content determine height */
-                min-height: auto;
-                position: relative;
-                background: white;
-                border: none;
-            }
-            
-            /* Last page shouldn't have page break */
-            .page:last-child {
-                page-break-after: auto;
-            }
-            
-            html, body {
-                height: auto;
-                overflow: visible;
-            }
-        }
-    </style>
-</head>
-<body>
-    <div class="document">
-        <div class="stamp-paper"></div>
-        <!-- Date -->
-        <div style="font-style: italic; font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 15px;">
-            Dated: ${currentDate}
-        </div>
-
-        <!-- To Address -->
-        <div style="margin-bottom: 0px;">
-            <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 5px;">To,</div>
-            <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 5px;">Anti Narcotics Force,</div>
-            <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 5px;">Dubai, Sharjah Customs,</div>
-            <div style="font-family: Arial; font-size: 15.0px; color: #000000;">United Arab Emirates.</div>
-        </div>
-
-        <!-- Title -->
-        <div style="font-weight: bold; font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 10px; text-align: center;">
-            Letter of Indemnity, Agreement
-        </div>
-
-        <!-- Subject Section -->
-        <div style="margin-bottom: 20px;">
-            <div style="margin-bottom: 10px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000; font-weight: bold;">SUBJECT:</span>
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;"> EXPORT OF <span style="color: #ff0000;">${totalPackages} Pkgs</span> , Vide Order No : BB System # <span style="color: #ff0000;">${getSafeValue(safeOrder.booking_ref)}</span>
-            </div>
-            <div style="margin-bottom: 5px; margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">EXPORTER : <span style="color: #ff0000;">${getSafeValue(senderName)}</span></span>
-            </div>
-            <div style="margin-bottom: 5px; margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Passport No : <span style="color: #ff0000;">${getSafeValue(senderPassport)}</span></span>
-            </div>
-            <div style="margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">CNIC : <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></span>
-            </div>
-        </div>
-
-        <!-- Main Content -->
-        <div style="font-family: Arial; font-size: 15.0px; color: #000000;">
-            WE, THE UNDERSIGNED, DO HEREBY UNDERTAKE, AND AGREE AS FOLLOWS,
-        </div>
-
-        <!-- Point 1 -->
-        <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 20px; text-align: justify;">
-            1. BOUND AND UNDERTAKE OURSELVES THAT IF ANY CONTRABAND DRUG OR NARCOTICS ARE FOUND OR REPORTED IN THE GOODS, ITS PACKING OR CONCEALED IN THE SUBJECT QTY AT ANY STAGE UNDER RULES AND REGULATION MADE THEREUNDER.
-        </div>
-
-        <!-- Point 2 -->
-        <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 20px; text-align: justify;">
-            2. We hereby agree that "<span style="color: #ff0000;">${getSafeValue(senderCompany)}</span> & their agents" Cargo Aviation Systems (Pvt) Ltd, are only a Warehousing & Distribution agents on behalf our ourselves to arrange the transport and clearance of the subject shipment and holds no responsibility in event of any prohibited goods, drugs or narcotics found in the consignment at any point of inspection/examination by ports/customs authorities while in process of shipping and clearance.
-        </div>
-
-        <!-- Point 3 -->
-        <div style="margin-bottom: 20px;">
-            <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 10px;">
-                3. FURTHER UNDERTAKE THAT THIS CONSIGNMENT CONTAIN ONLY
-                <span style="font-weight: bold; font-family: Arial; font-size: 13.6px; color: #ff0000; text-decoration: underline;">${getSafeValue(goodsDescription, "__TEXTILE_____________")}</span>
-            </div>
-            <div style="font-family: Arial; font-size: 13.2px; color: #000000; text-align: justify;">
-                AND DOES NOT CONTAIN ANY CONTRABAND NARCOTIC / DRUGS ETC., AND UNDERTAKE TO BE FULLY HELD GOOD OWNER RESPONSIBLE IF FOUND IN THE CONSIGNMENT AT ANY STAGE.
-            </div>
-        </div>
-
-        <!-- Point 4 -->
-        <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 30px;">
-            4. IF IS THEREFORE, REQUEST TO ACCEPT OUR UNDERTAKING FOR ALLOWING SHIPMENT OF GOODS.
-        </div>
-
-        <!-- Goods Owner Details Table -->
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px; font-family: Arial; font-size: 15.0px;">
-            <tr>
-                <td style="padding: 2px 0; width: 150px; vertical-align: top;">GOODS OWNER</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="font-weight: bold; color: #ff0000;">${getSafeValue(senderName)}</span></td>
-            </tr>
-            <tr>
-                <td style="padding: 2px 0; vertical-align: top;">Company Name</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderCompany)}</span></td>
-            </tr>
-            <tr>
-                <td style="padding: 2px 0; vertical-align: top;">Delivery Address</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getReceiverAddress(safeOrder)}</span></td>
-            </tr>
-            <tr>
-                <td style="padding: 2px 0; vertical-align: top;">CNIC ID #</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderCNIC)}</span></td>
-            </tr>
-            <tr>
-                <td style="padding: 2px 0; vertical-align: top;">Signature</td>
-                <td style="padding: 2px 0; vertical-align: top;">
-                    ${
-                      safeOrder.sender_kyc_approved &&
-                      safeOrder.sender_signature_url
-                        ? `<img src="${safeOrder.sender_signature_url}" style="height:40px;filter: grayscale(100%) contrast(100%);mix-blend-mode: multiply;" />`
-                        : ": (Digitally Signed Login Credentials & OTP Verified)"
-                    }
-                </td>
-            </tr>
-            <tr>
-                <td style="padding: 2px 0; vertical-align: top;">Name</td>
-                <td style="padding: 2px 0; vertical-align: top;">: ${getSafeValue(senderName)}</td>
-            </tr>
-        </table>
-    </div>
-</body>
-</html>
-    `;
-  };
-
-  const KarachiUndertakingForCustomsEachSenderShouldGive = (orderData) => {
-    // Default values if orderData is missing
-    const safeOrder = orderData || {};
-
-    // Helper function to safely get values
-    const getSafeValue = (value, defaultValue = "_________________") => {
-      return value && value !== "" && value !== null && value !== undefined
-        ? value
-        : defaultValue;
-    };
-
-    const senderName = safeOrder.sender_name || "";
-    const senderCNIC = safeOrder.sender_cnic || "_____-_______-_";
-    const senderPassport = safeOrder.sender_passport_number || "________";
-    const senderPhone = safeOrder.sender_contact || "03xx-xxxxxxx";
-    const senderAddress = safeOrder.sender_address || "Address in Karachi";
-    const senderCompany =
-      safeOrder.sender_company ||
-      safeOrder.sender_name ||
-      "Company Name / Individual Name";
-
-    // Calculate total packages from shipping details
-    const calculateTotalPackages = () => {
-      if (!safeOrder.receivers || !Array.isArray(safeOrder.receivers)) {
-        return safeOrder.total_packages || "123";
-      }
-
-      let total = 0;
-      safeOrder.receivers.forEach((receiver) => {
-        if (
-          receiver.shippingdetails &&
-          Array.isArray(receiver.shippingdetails)
-        ) {
-          receiver.shippingdetails.forEach((detail) => {
-            total += parseInt(detail.totalNumber) || 0;
-          });
-        }
-      });
-      return total || "123";
-    };
-
-    // Get goods description
-    const getGoodsDescription = () => {
-      if (safeOrder.goods_description) return safeOrder.goods_description;
-
-      // Try to get from first shipping detail
-      if (safeOrder.receivers && safeOrder.receivers[0]?.shippingdetails?.[0]) {
-        const detail = safeOrder.receivers[0].shippingdetails[0];
-        return `${detail.category || "TEXTILE"} ${detail.subcategory || ""}`.trim();
-      }
-
-      return "TEXTILE";
-    };
-
-    const totalPackages = calculateTotalPackages();
-    const goodsDescription = getGoodsDescription();
-    const currentDate = new Date()
-      .toLocaleDateString("en-GB", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-      })
-      .replace(/ /g, "-");
-
-    return `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Karachi, Undertaking for Customs, Each sender should give</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-.stamp-paper
-            {
-                height: 385px;
-            }
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f5f5f5;
-            padding: 20px;
-        }
-
-        .document {
-            width: 850px;
-            margin: 0 auto;
-            background-color: white;
-            padding: 50px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-        }
-        
-        .signature-line {
-            border-bottom: 1px solid #000;
-            min-width: 300px;
-            height: 1px;
-            display: inline-block;
-            margin-left: 5px;
-        }
-            @media print {
-            @page {
-                size: legal portrait;
-                margin: 0;
-            }
-            
-            body {
-                background-color: white;
-                padding: 0;
-                margin: 0;
-                width: 100%;
-            }
-            
-            .page {
-                box-shadow: none;
-                margin: 0;
-                padding: 15mm 15mm 15mm 15mm;
-                page-break-after: always;
-                page-break-inside: avoid;
-                width: 100%;
-                height: auto; /* Let content determine height */
-                min-height: auto;
-                position: relative;
-                background: white;
-                border: none;
-            }
-            
-            /* Last page shouldn't have page break */
-            .page:last-child {
-                page-break-after: auto;
-            }
-            
-            html, body {
-                height: auto;
-                overflow: visible;
-            }
-        }
-    </style>
-</head>
-<body>
-    <div class="document">
-        <div class="stamp-paper"></div>
-        <!-- Date -->
-        <div style="font-style: italic; font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 20px;">
-            Dated: ${currentDate}
-        </div>
-
-        <!-- To Address -->
-        <div style="margin-bottom: 10px;">
-            <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 5px;">To,</div>
-            <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 5px;">Anti Narcotics Force,</div>
-            <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 5px;">Port Qasim / Karachi,</div>
-            <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 5px;">The Deputy Collector of Customs Exports,</div>
-            <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 5px;">West Wharf / East Wharf / KICT / PICT / PORT QASIM,</div>
-            <div style="font-family: Arial; font-size: 15.0px; color: #000000;">Karachi,</div>
-        </div>
-
-        <!-- Title -->
-        <div style="font-weight: bold; font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 10px; text-align: center;">
-            Letter of Indemnity, Agreement
-        </div>
-
-        <!-- Subject Section -->
-        <div style="margin-bottom: 20px;">
-            <div style="margin-bottom: 10px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000; font-weight: bold;">SUBJECT:</span>
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;"> EXPORT OF <span style="color: #ff0000;">${totalPackages} Pkgs</span> , Vide Order No : BB System # <span style="color: #ff0000;">${getSafeValue(safeOrder.booking_ref)}</span>
-            </div>
-            <div style="margin-bottom: 5px; margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">EXPORTER : <span style="color: #ff0000;">${getSafeValue(senderName)}</span></span>
-            </div>
-            <div style="margin-bottom: 5px; margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Passport No : <span style="color: #ff0000;">${getSafeValue(senderPassport)}</span></span>
-            </div>
-            <div style="margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">CNIC : <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></span>
-            </div>
-        </div>
-
-        <!-- Main Content -->
-        <div style="font-family: Arial; font-size: 15.0px; color: #000000;">
-            WE, THE UNDERSIGNED, DO HEREBY UNDERTAKE, AND AGREE AS FOLLOWS,
-        </div>
-
-        <!-- Point 1 -->
-        <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 20px; text-align: justify;">
-            1. BOUND AND UNDERTAKE OURSELVES THAT IF ANY CONTRABAND DRUG OR NARCOTICS ARE FOUND OR REPORTED IN THE GOODS, ITS PACKING OR CONCEALED IN THE SUBJECT QTY AT ANY STAGE UNDER RULES AND REGULATION MADE THEREUNDER.
-        </div>
-
-        <!-- Point 2 -->
-        <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 20px; text-align: justify;">
-            2. We hereby agree that "<span style="color: #ff0000;">XYZ Exporter</span> & their agents" Cargo Aviation Systems (Pvt) Ltd, are only a Warehousing & Distribution agents on behalf our ourselves to arrange the transport and clearance of the subject shipment and holds no responsibility in event of any prohibited goods, drugs or narcotics found in the consignment at any point of inspection/examination by ports/customs authorities while in process of shipping and clearance.
-        </div>
-
-        <!-- Point 3 -->
-        <div style="margin-bottom: 20px;">
-            <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 10px;">
-                3. FURTHER UNDERTAKE THAT THIS CONSIGNMENT CONTAIN ONLY
-                <span style="font-weight: bold; font-family: Arial; font-size: 13.6px; color: #ff0000; text-decoration: underline;">${getSafeValue(goodsDescription, "__TEXTILE_____________")}</span>
-            </div>
-            <div style="font-family: Arial; font-size: 13.2px; color: #000000; text-align: justify;">
-                AND DOES NOT CONTAIN ANY CONTRABAND NARCOTIC / DRUGS ETC., AND UNDERTAKE TO BE FULLY HELD GOOD OWNER RESPONSIBLE IF FOUND IN THE CONSIGNMENT AT ANY STAGE.
-            </div>
-        </div>
-
-        <!-- Point 4 -->
-        <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 30px;">
-            4. IF IS THEREFORE, REQUEST TO ACCEPT OUR UNDERTAKING FOR ALLOWING SHIPMENT OF GOODS.
-        </div>
-
-        <!-- Goods Owner Details Table -->
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px; font-family: Arial; font-size: 15.0px;">
-            <tr>
-                <td style="padding: 2px 0; width: 150px; vertical-align: top;">GOODS OWNER</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="font-weight: bold; color: #ff0000;">${getSafeValue(senderName)}</span></td>
-            </tr>
-            <tr>
-                <td style="padding: 2px 0; vertical-align: top;">Company Name</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderCompany)}</span></td>
-            </tr>
-            <tr>
-                <td style="padding: 2px 0; vertical-align: top;">Delivery Address</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getReceiverAddress(safeOrder)}</span></td>
-            </tr>
-            <tr>
-                <td style="padding: 2px 0; vertical-align: top;">CNIC ID #</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderCNIC)}</span></td>
-            </tr>
-            <tr>
-                <td style="padding: 2px 0; vertical-align: top;">Signature</td>
-                <td style="padding: 2px 0; vertical-align: top;">
-                    ${
-                      safeOrder.sender_kyc_approved &&
-                      safeOrder.sender_signature_url
-                        ? `<img src="${safeOrder.sender_signature_url}" style="height:40px;filter: grayscale(100%) contrast(100%);mix-blend-mode: multiply;" />`
-                        : ": (Digitally Signed Login Credentials & OTP Verified)"
-                    }
-                </td>
-            </tr>
-            <tr>
-                <td style="padding: 2px 0; vertical-align: top;">Name</td>
-                <td style="padding: 2px 0; vertical-align: top;">: ${getSafeValue(senderName)}</td>
-            </tr>
-        </table>
-    </div>
-</body>
-</html>
-    `;
-  };
-
-  const ReceiverUndertakingForDubaiCustoms = (orderData) => {
-    const safeOrder = orderData || {};
-
-    const getSafeValue = (value, defaultValue = "_________________") => {
-      return value && value !== "" && value !== null && value !== undefined
-        ? value
-        : defaultValue;
-    };
-
-    const senderName = safeOrder.sender_name || "";
-    const trade_license = safeOrder.sender_trade_license || "________";
-    const senderPassport = safeOrder.sender_kyc_approved
-      ? safeOrder.sender_passport_number || "________"
-      : "Not Approved";
-    const senderEmiratesID = safeOrder.sender_kyc_approved
-      ? safeOrder.sender_emirates_id || "________"
-      : "Not Approved";
-    const senderPhone = safeOrder.sender_contact || "03xx-xxxxxxx";
-    const senderAddress = safeOrder.sender_address || "Address in Karachi";
-    const senderCompany =
-      safeOrder.sender_company ||
-      safeOrder.sender_name ||
-      "Company Name / Individual Name";
-
-    const receiverKyc = getReceiverKyc(safeOrder);
-
-    const calculateTotalPackages = () => {
-      if (!safeOrder.receivers || !Array.isArray(safeOrder.receivers)) {
-        return safeOrder.total_packages || "123";
-      }
-
-      let total = 0;
-      safeOrder.receivers.forEach((receiver) => {
-        if (
-          receiver.shippingdetails &&
-          Array.isArray(receiver.shippingdetails)
-        ) {
-          receiver.shippingdetails.forEach((detail) => {
-            total += parseInt(detail.totalNumber) || 0;
-          });
-        }
-      });
-      return total || "123";
-    };
-
-    // Get goods description
-    const getGoodsDescription = () => {
-      if (safeOrder.goods_description) return safeOrder.goods_description;
-
-      // Try to get from first shipping detail
-      if (safeOrder.receivers && safeOrder.receivers[0]?.shippingdetails?.[0]) {
-        const detail = safeOrder.receivers[0].shippingdetails[0];
-        return `${detail.category || "TEXTILE"} ${detail.subcategory || ""}`.trim();
-      }
-
-      return "TEXTILE";
-    };
-
-    const totalPackages = calculateTotalPackages();
-    const goodsDescription = getGoodsDescription();
-    const currentDate = new Date()
-      .toLocaleDateString("en-GB", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-      })
-      .replace(/ /g, "-");
-
-    return `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Receiver Undertaking for Dubai Customs</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f5f5f5;
-            padding: 20px;
-        }
-
-        .document {
-            width: 850px;
-            margin: 0 auto;
-            background-color: white;
-            padding: 50px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-        }
-        
-        .signature-line {
-            border-bottom: 1px solid #000;
-            min-width: 300px;
-            height: 1px;
-            display: inline-block;
-            margin-left: 5px;
-        }
-            @media print {
-            @page {
-                size: A4 portrait;
-                margin: 0;
-            }
-            
-            body {
-                background-color: white;
-                padding: 0;
-                margin: 0;
-                width: 100%;
-            }
-            
-            .page {
-                box-shadow: none;
-                margin: 0;
-                padding: 15mm 15mm 15mm 15mm;
-                page-break-after: always;
-                page-break-inside: avoid;
-                width: 100%;
-                height: auto; /* Let content determine height */
-                min-height: auto;
-                position: relative;
-                background: white;
-                border: none;
-            }
-            
-            /* Last page shouldn't have page break */
-            .page:last-child {
-                page-break-after: auto;
-            }
-            
-            html, body {
-                height: auto;
-                overflow: visible;
-            }
-        }
-    </style>
-</head>
-<body>
-    <div class="document">
-        <!-- Header Section - Right Aligned -->
-        <div style="text-align: right; margin-bottom: 20px;">
-            <div style="font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 5px;">${getSafeValue(senderCompany)}</div>
-            <div style="font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 5px;">${getSafeValue(senderAddress)}</div>
-            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">Trade Liceness #: ${getSafeValue(trade_license)}</div>
-            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">Passport No: ${getSafeValue(senderPassport)}</div>
-            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">Emirates ID #: ${getSafeValue(senderEmiratesID)}</div>
-            <div style="font-family: Arial; font-size: 14.1px; color: #ff0000;">Tel #: ${getSafeValue(senderPhone)}</div>
-        </div>
-
-        <!-- Date -->
-        <div style="font-style: italic; font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 10px;">
-            Dated: ${currentDate}
-        </div>
-
-        <!-- To Address -->
-        <div style="margin-bottom: 10px;">
-                        <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 5px;">To,</div>
-            <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 5px;">BB System, 3rd Party Consignee</div>
-            <div style="font-family: Arial; font-size: 15.0px; color: #000000;">Address, </div>
-            <div style="font-family: Arial; font-size: 15.0px; color: #000000;">Dubai UAE.</div>
-        </div>
-
-        <!-- Title -->
-        <div style="font-weight: bold; font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 10px; text-align: center;">
-            Letter of Indemnity, Agreement
-        </div>
-
-        <!-- Subject Section -->
-        <div style="margin-bottom: 20px;">
-            <div style="margin-bottom: 10px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000; font-weight: bold;">SUBJECT:</span>
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;"> IMPORT OF <span style="color: #ff0000;">${totalPackages} Pkgs</span> , Vide Order No : BB System # <span style="color: #ff0000;">${getSafeValue(safeOrder.booking_ref)}</span>
-            </div>
-            <div style="margin-bottom: 5px; margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Co-Loader : <span style="color: #ff0000;">${getSafeValue(senderName)}</span></span>
-            </div>
-            <div style="margin-bottom: 5px; margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Passport No : <span style="color: #ff0000;">${getSafeValue(senderPassport)}</span></span>
-            </div>
-            <div style="margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">CNIC : <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></span>
-            </div>
-        </div>
-
-        <!-- Main Content -->
-        <div style="font-family: Arial; font-size: 15.0px; color: #000000;">
-            WE, THE UNDERSIGNED, DO HEREBY UNDERTAKE, AND AGREE AS FOLLOWS,
-        </div>
-
-        <!-- Point 1 -->
-        <div style="font-family: Arial; font-size: 15.0px; color: #000000; line-height: 1.6; margin-bottom: 20px; text-align: justify;">
-            1. BOUND AND UNDERTAKE OURSELVES THAT IF ANY CONTRABAND DRUG OR NARCOTICS ARE FOUND OR REPORTED IN THE GOODS, ITS PACKING OR CONCEALED IN THE SUBJECT QTY AT ANY STAGE UNDER RULES AND REGULATION MADE THEREUNDER.
-        </div>
-
-        <!-- Point 2 -->
-        <div style="font-family: Arial; font-size: 15.0px; color: #000000; line-height: 1.6; margin-bottom: 20px; text-align: justify;">
-            2. We hereby agree that Royal Gulf Shipping & Logistics LLC, are only a Warehousing & Distribution agent on behalf our ourselves to arrange the transport and clearance of the subject shipment and holds no responsibility in event of any prohibited goods, drugs or narcotics found in the consignment at any point of inspection/examination by ports/customs authorities while in process of shipping and clearance.
-        </div>
-
-        <!-- Point 3 -->
-        <div style="margin-bottom: 20px;">
-            <div style="font-family: Arial; font-size: 15.0px; color: #000000; line-height: 1.6; margin-bottom: 10px;">
-                3. FURTHER UNDERTAKE THAT THIS CONSIGNMENT CONTAIN ONLY
-                <span style="font-weight: bold; font-family: Arial; font-size: 13.6px; color: #ff0000; text-decoration: underline;">${getSafeValue(goodsDescription, "__TEXTILE_____________")}</span>
-                AND DOES NOT CONTAIN ANY CONTRABAND NARCOTIC / DRUGS ETC., AND UNDERTAKE TO BE FULLY HELD GOOD OWNER RESPONSIBLE IF FOUND IN THE CONSIGNMENT AT ANY STAGE.
-            </div>
-        </div>
-
-        <!-- Point 4 -->
-        <div style="font-family: Arial; font-size: 15.0px; color: #000000; line-height: 1.6; margin-bottom: 10px;">
-            4. IF IS THEREFORE, REQUEST TO ACCEPT OUR UNDERTAKING FOR ALLOWING SHIPMENT OF GOODS.
-        </div>
-
-        <!-- Goods Owner Details Table -->
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px; font-family: Arial; font-size: 15.0px;">
-            <tr>
-            <td style="padding: 2px 0; width: 150px; vertical-align: top;">GOODS OWNER</td>
-            <td style="padding: 2px 0; vertical-align: top;">: <span style="font-weight: bold; color: #ff0000;">${getSafeValue(senderName)}</span></td>
-            </tr>
-            <tr>
-                <td style="padding: 2px 0; vertical-align: top;">Company Name</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderCompany)}</span></td>
-            </tr>
-            <tr>
-                <td style="padding: 2px 0; vertical-align: top;">Delivery Address</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getReceiverAddress(safeOrder)}</span></td>
-            </tr>
-            <tr>
-                <td style="padding: 2px 0; vertical-align: top;">Emirates ID # 	</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></td>
-            </tr>
-            <tr>
-                <td style="padding: 2px 0;">Signature</td>
-                <td style="padding: 2px 0; vertical-align: top;">
-                    ${
-                      safeOrder.sender_kyc_approved &&
-                      safeOrder.sender_signature_url
-                        ? `<img src="${safeOrder.sender_signature_url}" style="height:50PX;filter: grayscale(100%) contrast(100%);mix-blend-mode: multiply;" />`
-                        : ": (Digitally Signed Login Credentials & OTP Verified)"
-                    }
-                </td>
-            </tr>
-            <tr>
-                <td style="padding: 2px 0; vertical-align: top;">Name</td>
-                <td style="padding: 2px 0; vertical-align: top;">: ${getSafeValue(senderName)}</td>
-            </tr>
-        </table>
-
-        <!-- Footer Note -->
-        <div style="text-align: center; font-family: Arial; font-size: 12px; color: #000000; margin-top: 5px;">
-            We hereby understand and confirm the document is digitally signed and is fully authorized to use if needed in event of any clearance process.
-        </div>
-    </div>
-</body>
-</html>
-    `;
-  };
-
-  const ReceiverUndertakingDubaiANF = (orderData) => {
-    const safeOrder = orderData || {};
-
-    const getSafeValue = (value, defaultValue = "_________________") => {
-      return value && value !== "" && value !== null && value !== undefined
-        ? value
-        : defaultValue;
-    };
-
-    const senderName = safeOrder.sender_name || "";
-    const trade_license = safeOrder.sender_trade_license || "________";
-    const senderPassport = safeOrder.sender_kyc_approved
-      ? safeOrder.sender_passport_number || "________"
-      : "Not Approved";
-    const senderEmiratesID = safeOrder.sender_kyc_approved
-      ? safeOrder.sender_emirates_id || "________"
-      : "Not Approved";
-    const senderPhone = safeOrder.sender_contact || "03xx-xxxxxxx";
-    const senderAddress = safeOrder.sender_address || "Address in Karachi";
-    const senderCompany =
-      safeOrder.sender_company ||
-      safeOrder.sender_name ||
-      "Company Name / Individual Name";
-
-    const receiverKyc = getReceiverKyc(safeOrder);
-
-    const calculateTotalPackages = () => {
-      if (!safeOrder.receivers || !Array.isArray(safeOrder.receivers)) {
-        return safeOrder.total_packages || "123";
-      }
-
-      let total = 0;
-      safeOrder.receivers.forEach((receiver) => {
-        if (
-          receiver.shippingdetails &&
-          Array.isArray(receiver.shippingdetails)
-        ) {
-          receiver.shippingdetails.forEach((detail) => {
-            total += parseInt(detail.totalNumber) || 0;
-          });
-        }
-      });
-      return total || "123";
-    };
-
-    // Get goods description
-    const getGoodsDescription = () => {
-      if (safeOrder.goods_description) return safeOrder.goods_description;
-
-      // Try to get from first shipping detail
-      if (safeOrder.receivers && safeOrder.receivers[0]?.shippingdetails?.[0]) {
-        const detail = safeOrder.receivers[0].shippingdetails[0];
-        return `${detail.category || "TEXTILE"} ${detail.subcategory || ""}`.trim();
-      }
-
-      return "TEXTILE";
-    };
-
-    const totalPackages = calculateTotalPackages();
-    const goodsDescription = getGoodsDescription();
-    const currentDate = new Date()
-      .toLocaleDateString("en-GB", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-      })
-      .replace(/ /g, "-");
-
-    return `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Receiver Undertaking Dubai ANF</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f5f5f5;
-            padding: 20px;
-        }
-
-        .document {
-            width: 850px;
-            margin: 0 auto;
-            background-color: white;
-            padding: 50px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-        }
-        
-        .signature-line {
-            border-bottom: 1px solid #000;
-            min-width: 300px;
-            height: 1px;
-            display: inline-block;
-            margin-left: 5px;
-        }
-            @media print {
-            @page {
-                size: A4 portrait;
-                margin: 0;
-            }
-            
-            body {
-                background-color: white;
-                padding: 0;
-                margin: 0;
-                width: 100%;
-            }
-            
-            .page {
-                box-shadow: none;
-                margin: 0;
-                padding: 15mm 15mm 15mm 15mm;
-                page-break-after: always;
-                page-break-inside: avoid;
-                width: 100%;
-                height: auto; /* Let content determine height */
-                min-height: auto;
-                position: relative;
-                background: white;
-                border: none;
-            }
-            
-            /* Last page shouldn't have page break */
-            .page:last-child {
-                page-break-after: auto;
-            }
-            
-            html, body {
-                height: auto;
-                overflow: visible;
-            }
-        }
-    </style>
-</head>
-<body>
-    <div class="document">
-        <!-- Header Section - Right Aligned -->
-        <div style="text-align: right; margin-bottom: 20px;">
-            <div style="font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 5px;">${getSafeValue(senderCompany)}</div>
-            <div style="font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 5px;">${getSafeValue(senderAddress)}</div>
-            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">Trade Liceness #: ${getSafeValue(trade_license)}</div>
-            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">Passport No: ${getSafeValue(senderPassport)}</div>
-            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">Emirates ID #: ${getSafeValue(senderEmiratesID)}</div>
-            <div style="font-family: Arial; font-size: 14.1px; color: #ff0000;">Tel #: ${getSafeValue(senderPhone)}</div>
-        </div>
-
-        <!-- Date -->
-        <div style="font-style: italic; font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 10px;">
-            Dated: ${currentDate}
-        </div>
-
-        <!-- To Address -->
-        <div style="margin-bottom: 10px;">
-                        <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 5px;">To,</div>
-            <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 5px;">Anti Narcotics Force,</div>
-            <div style="font-family: Arial; font-size: 15.0px; color: #000000;">Dubai, Sharjah Customs,</div>
-            <div style="font-family: Arial; font-size: 15.0px; color: #000000;">United Arab Emirates. </div>
-        </div>
-
-        <!-- Title -->
-        <div style="font-weight: bold; font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 10px; text-align: center;">
-            Letter of Indemnity, Agreement
-        </div>
-
-        <!-- Subject Section -->
-        <div style="margin-bottom: 20px;">
-            <div style="margin-bottom: 10px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000; font-weight: bold;">SUBJECT:</span>
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">IMPORT OF <span style="color: #ff0000;">${totalPackages} Pkgs</span> , Vide Order No : BB System # <span style="color: #ff0000;">${getSafeValue(safeOrder.booking_ref)}</span>
-            </div>
-            <div style="margin-bottom: 5px; margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Co-Loader : <span style="color: #ff0000;">${getSafeValue(senderName)}</span></span>
-            </div>
-            <div style="margin-bottom: 5px; margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Passport No : <span style="color: #ff0000;">${getSafeValue(senderPassport)}</span></span>
-            </div>
-            <div style="margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">CNIC : <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></span>
-            </div>
-        </div>
-
-        <!-- Main Content -->
-        <div style="font-family: Arial; font-size: 15.0px; color: #000000;">
-            WE, THE UNDERSIGNED, DO HEREBY UNDERTAKE, AND AGREE AS FOLLOWS,
-        </div>
-
-        <!-- Point 1 -->
-        <div style="font-family: Arial; font-size: 15.0px; color: #000000; line-height: 1.6; margin-bottom: 20px; text-align: justify;">
-            1. BOUND AND UNDERTAKE OURSELVES THAT IF ANY CONTRABAND DRUG OR NARCOTICS ARE FOUND OR REPORTED IN THE GOODS, ITS PACKING OR CONCEALED IN THE SUBJECT QTY AT ANY STAGE UNDER RULES AND REGULATION MADE THEREUNDER.
-        </div>
-
-        <!-- Point 2 -->
-        <div style="font-family: Arial; font-size: 15.0px; color: #000000; line-height: 1.6; margin-bottom: 20px; text-align: justify;">
-            2. We hereby agree that Royal Gulf Shipping & Logistics LLC, are only a Warehousing & Distribution agent on behalf our ourselves to arrange the transport and clearance of the subject shipment and holds no responsibility in event of any prohibited goods, drugs or narcotics found in the consignment at any point of inspection/examination by ports/customs authorities while in process of shipping and clearance.
-        </div>
-
-        <!-- Point 3 -->
-        <div style="margin-bottom: 20px;">
-            <div style="font-family: Arial; font-size: 15.0px; color: #000000; line-height: 1.6; margin-bottom: 10px;">
-                3. FURTHER UNDERTAKE THAT THIS CONSIGNMENT CONTAIN ONLY
-                <span style="font-weight: bold; font-family: Arial; font-size: 13.6px; color: #ff0000; text-decoration: underline;">${getSafeValue(goodsDescription, "__TEXTILE_____________")}</span>
-                AND DOES NOT CONTAIN ANY CONTRABAND NARCOTIC / DRUGS ETC., AND UNDERTAKE TO BE FULLY HELD GOOD OWNER RESPONSIBLE IF FOUND IN THE CONSIGNMENT AT ANY STAGE.
-            </div>
-        </div>
-
-        <!-- Point 4 -->
-        <div style="font-family: Arial; font-size: 15.0px; color: #000000; line-height: 1.6; margin-bottom: 10px;">
-            4. IF IS THEREFORE, REQUEST TO ACCEPT OUR UNDERTAKING FOR ALLOWING SHIPMENT OF GOODS.
-        </div>
-
-        <!-- Goods Owner Details Table -->
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px; font-family: Arial; font-size: 15.0px;">
-            <tr>
-            <td style="padding: 2px 0; width: 150px; vertical-align: top;">GOODS OWNER</td>
-            <td style="padding: 2px 0; vertical-align: top;">: <span style="font-weight: bold; color: #ff0000;">${getSafeValue(senderName)}</span></td>
-            </tr>
-            <tr>
-                <td style="padding: 2px 0; vertical-align: top;">Company Name</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderCompany)}</span></td>
-            </tr>
-            <tr>
-                <td style="padding: 2px 0; vertical-align: top;">Delivery Address</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getReceiverAddress(safeOrder)}</span></td>
-            </tr>
-            <tr>
-                <td style="padding: 2px 0; vertical-align: top;">Emirates ID # 	</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></td>
-            </tr>
-            <tr>
-                <td style="padding: 2px 0;">Signature</td>
-                <td style="padding: 2px 0; vertical-align: top;">
-                    ${
-                      safeOrder.sender_kyc_approved &&
-                      safeOrder.sender_signature_url
-                        ? `<img src="${safeOrder.sender_signature_url}" style="height:50px;filter: grayscale(100%) contrast(100%);mix-blend-mode: multiply;" />`
-                        : ": (Digitally Signed Login Credentials & OTP Verified)"
-                    }
-                </td>
-            </tr>
-            <tr>
-                <td style="padding: 2px 0; vertical-align: top;">Name</td>
-                <td style="padding: 2px 0; vertical-align: top;">: ${getSafeValue(senderName)}</td>
-            </tr>
-        </table>
-
-        <!-- Footer Note -->
-        <div style="text-align: center; font-family: Arial; font-size: 12px; color: #000000; margin-top: 5px;">
-            We hereby understand and confirm the document is digitally signed and is fully authorized to use if needed in event of any clearance process.
-        </div>
-    </div>
-</body>
-</html>
-    `;
-  };
-
-  const SenderUndertakingForThirdPartyShipper = (orderData) => {
-    // Default values if orderData is missing
-    const safeOrder = orderData || {};
-
-    // Helper function to safely get values
-    const getSafeValue = (value, defaultValue = "_________________") => {
-      return value && value !== "" && value !== null && value !== undefined
-        ? value
-        : defaultValue;
-    };
-
-    const senderName = safeOrder.sender_name || "";
-    const senderCNIC = safeOrder.sender_cnic || "_____-_______-_";
-    const trade_license = safeOrder.sender_trade_license || "________";
-    const senderPassport = safeOrder.sender_passport_number || "________";
-    const senderEmiratesID = safeOrder.sender_emirates_id || "________";
-    const consignmentNumber =
-      safeOrder.consignment?.consignment_number || "________";
-    const consignmentVessel = safeOrder.consignment?.vessel || "________";
-    const consignmentVoyage = safeOrder.consignment?.voyage || "________";
-    const senderPhone = safeOrder.sender_contact || "03xx-xxxxxxx";
-    const senderAddress = safeOrder.sender_address || "Address in Karachi";
-    const senderCompany =
-      safeOrder.sender_company ||
-      safeOrder.sender_name ||
-      "Company Name / Individual Name";
-
-    const calculateTotalPackages = () => {
-      if (!safeOrder.receivers || !Array.isArray(safeOrder.receivers)) {
-        return safeOrder.total_packages || "123";
-      }
-
-      let total = 0;
-      safeOrder.receivers.forEach((receiver) => {
-        if (
-          receiver.shippingdetails &&
-          Array.isArray(receiver.shippingdetails)
-        ) {
-          receiver.shippingdetails.forEach((detail) => {
-            total += parseInt(detail.totalNumber) || 0;
-          });
-        }
-      });
-      return total || "123";
-    };
-
-    // Get goods description
-    const getGoodsDescription = () => {
-      if (safeOrder.goods_description) return safeOrder.goods_description;
-
-      // Try to get from first shipping detail
-      if (safeOrder.receivers && safeOrder.receivers[0]?.shippingdetails?.[0]) {
-        const detail = safeOrder.receivers[0].shippingdetails[0];
-        return `${detail.category || "TEXTILE"} ${detail.subcategory || ""}`.trim();
-      }
-
-      return "TEXTILE";
-    };
-
-    const totalPackages = calculateTotalPackages();
-    const goodsDescription = getGoodsDescription();
-    const currentDate = new Date()
-      .toLocaleDateString("en-GB", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-      })
-      .replace(/ /g, "-");
-
-    return `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sender Undertaking for 3rd Party Shipper</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f5f5f5;
-            padding: 20px;
-        }
-
-        .document {
-            width: 850px;
-            margin: 0 auto;
-            background-color: white;
-            padding: 50px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-        }
-        
-        .signature-line {
-            border-bottom: 1px solid #000;
-            min-width: 300px;
-            height: 1px;
-            display: inline-block;
-            margin-left: 5px;
-        }
-            @media print {
-            @page {
-                size: A4 portrait;
-                margin: 0;
-            }
-            
-            body {
-                background-color: white;
-                padding: 0;
-                margin: 0;
-                width: 100%;
-            }
-            
-            .page {
-                box-shadow: none;
-                margin: 0;
-                padding: 15mm 15mm 15mm 15mm;
-                page-break-after: always;
-                page-break-inside: avoid;
-                width: 100%;
-                height: auto; /* Let content determine height */
-                min-height: auto;
-                position: relative;
-                background: white;
-                border: none;
-            }
-            
-            /* Last page shouldn't have page break */
-            .page:last-child {
-                page-break-after: auto;
-            }
-            
-            html, body {
-                height: auto;
-                overflow: visible;
-            }
-        }
-    </style>
-</head>
-<body>
-    <div class="document">
-        <!-- Header Section - Right Aligned -->
-        <div style="text-align: right; margin-bottom: 20px;">
-            <div style="font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 5px;">${getSafeValue(senderCompany)}</div>
-            <div style="font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 5px;">${getSafeValue(senderAddress)}</div>
-            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">Trade Liceness #: ${getSafeValue(trade_license)}</div>
-            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">Passport No: ${getSafeValue(senderPassport)}</div>
-            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">Emirates ID #: ${getSafeValue(senderEmiratesID)}</div>
-            <div style="font-family: Arial; font-size: 14.1px; color: #ff0000;">Tel #: ${getSafeValue(senderPhone)}</div>
-        </div>
-
-        <!-- Date -->
-        <div style="font-style: italic; font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 10px;">
-            Dated: ${currentDate}
-        </div>
-
-        <!-- To Address -->
-        <div style="margin-bottom: 10px;">
-                        <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 5px;">To,</div>
-            <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 5px;">BB System, 3rd Party Shipper</div>
-            <div style="font-family: Arial; font-size: 15.0px; color: #000000;">Address, </div>
-            <div style="font-family: Arial; font-size: 15.0px; color: #000000;">Karachi - Pakistan.</div>
-        </div>
-
-        <!-- Title -->
-        <div style="font-weight: bold; font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 10px; text-align: center;">
-            Letter of Indemnity, Agreement
-        </div>
-
-        <!-- Subject Section -->
-        <div style="margin-bottom: 20px;">
-            <div style="margin-bottom: 10px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000; font-weight: bold;">SUBJECT:</span>
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">EXPORT OF <span style="color: #ff0000;">${totalPackages} Pkgs</span> , Vide Order No : BB System # <span style="color: #ff0000;">${getSafeValue(safeOrder.booking_ref)}</span>
-            </div>
-            <div style="margin-bottom: 5px; margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Co-Loader : <span style="color: #ff0000;">${getSafeValue(senderName)}</span></span>
-            </div>
-            <div style="margin-bottom: 5px; margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Passport No : <span style="color: #ff0000;">${getSafeValue(senderPassport)}</span></span>
-            </div>
-            <div style="margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">CNIC : <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></span>
-            </div>
-        </div>
-
-        <!-- Main Content -->
-        <div style="font-family: Arial; font-size: 15.0px; color: #000000;">
-            WE, THE UNDERSIGNED, DO HEREBY UNDERTAKE, AND AGREE AS FOLLOWS,
-        </div>
-
-        <!-- Point 1 -->
-        <div style="font-family: Arial; font-size: 15.0px; color: #000000; line-height: 1.6; margin-bottom: 20px; text-align: justify;">
-            1. BOUND AND UNDERTAKE OURSELVES THAT IF ANY CONTRABAND DRUG OR NARCOTICS ARE FOUND OR REPORTED IN THE GOODS, ITS PACKING OR CONCEALED IN THE SUBJECT QTY AT ANY STAGE UNDER RULES AND REGULATION MADE THEREUNDER.
-        </div>
-
-        <!-- Point 2 -->
-        <div style="font-family: Arial; font-size: 15.0px; color: #000000; line-height: 1.6; margin-bottom: 20px; text-align: justify;">
-            2. We hereby agree that Cargo Aviation Systems (Pvt) Ltd, are only a Warehousing & Distribution agent on behalf our ourselves to arrange the transport and clearance of the subject shipment and holds no responsibility in event of any prohibited goods, drugs or narcotics found in the consignment at any point of inspection/examination by ports/customs authorities while in process of shipping and clearance.
-        </div>
-
-        <!-- Point 3 -->
-        <div style="margin-bottom: 20px;">
-            <div style="font-family: Arial; font-size: 15.0px; color: #000000; line-height: 1.6; margin-bottom: 10px;">
-                3. FURTHER UNDERTAKE THAT THIS CONSIGNMENT CONTAIN ONLY
-                <span style="font-weight: bold; font-family: Arial; font-size: 13.6px; color: #ff0000; text-decoration: underline;">${getSafeValue(goodsDescription, "__TEXTILE_____________")}</span>
-                AND DOES NOT CONTAIN ANY CONTRABAND NARCOTIC / DRUGS ETC., AND UNDERTAKE TO BE FULLY HELD GOOD OWNER RESPONSIBLE IF FOUND IN THE CONSIGNMENT AT ANY STAGE.
-            </div>
-        </div>
-
-        <!-- Point 4 -->
-        <div style="font-family: Arial; font-size: 15.0px; color: #000000; line-height: 1.6; margin-bottom: 10px;">
-            4. IF IS THEREFORE, REQUEST TO ACCEPT OUR UNDERTAKING FOR ALLOWING SHIPMENT OF GOODS.
-        </div>
-
-        <!-- Goods Owner Details Table -->
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px; font-family: Arial; font-size: 15.0px;">
-            <tr>
-            <td style="padding: 2px 0; width: 150px; vertical-align: top;">GOODS OWNER</td>
-            <td style="padding: 2px 0; vertical-align: top;">: <span style="font-weight: bold; color: #ff0000;">${getSafeValue(senderName)}</span></td>
-            </tr>
-            <tr>
-                <td style="padding: 2px 0; vertical-align: top;">Company Name</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderCompany)}</span></td>
-            </tr>
-            <tr>
-                <td style="padding: 2px 0; vertical-align: top;">Delivery Address</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getReceiverAddress(safeOrder)}</span></td>
-            </tr>
-            <tr>
-                <td style="padding: 2px 0; vertical-align: top;">Emirates ID # 	</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></td>
-            </tr>
-            <tr>
-                <td style="padding: 2px 0; vertical-align: top;">Signature</td>
-                <td style="padding: 2px 0; vertical-align: top;">
-                    ${
-                      safeOrder.sender_kyc_approved &&
-                      safeOrder.sender_signature_url
-                        ? `<img src="${safeOrder.sender_signature_url}" style="height:40px;filter: grayscale(100%) contrast(100%);mix-blend-mode: multiply;" />`
-                        : ": (Digitally Signed Login Credentials & OTP Verified)"
-                    }
-                </td>
-            </tr>
-            <tr>
-                <td style="padding: 2px 0; vertical-align: top;">Name</td>
-                <td style="padding: 2px 0; vertical-align: top;">: ${getSafeValue(senderName)}</td>
-            </tr>
-        </table>
-
-        <!-- Footer Note -->
-        <div style="text-align: center; font-family: Arial; font-size: 12px; color: #000000; margin-top: 5px;">
-            We hereby understand and confirm the document is digitally signed and is fully authorized to use if needed in event of any clearance process.
-        </div>
-    </div>
-</body>
-</html>
-    `;
-  };
-
-  const WHARFAGEConsignmentsNote = (orderData) => {
-    const safeOrder = orderData || {};
-
-    const c = safeOrder.consignment || {};
-
-    const getSafeValue = (value, defaultValue = "_________________") => {
-      return value && value !== "" && value !== null && value !== undefined
-        ? value
-        : defaultValue;
-    };
-
-    const firstReceiver =
-      safeOrder.receivers && safeOrder.receivers.length > 0
-        ? safeOrder.receivers[0]
-        : {};
-
-    const shippingDetails = firstReceiver.shippingdetails || [];
-
-    const getContainerDetails = () => {
-      const containerList = [];
-      if (firstReceiver.containers && firstReceiver.containers.length > 0) {
-        firstReceiver.containers.forEach((container) => {
-          let totalQty = 0;
-          let totalWeight = 0;
-
-          shippingDetails.forEach((detail) => {
-            if (detail.containerDetails) {
-              detail.containerDetails.forEach((cd) => {
-                const containerNum =
-                  cd.container?.container_number || cd.container_number;
-                if (containerNum === container) {
-                  totalQty += parseInt(cd.total_number) || 0;
-                  totalWeight += parseFloat(cd.assign_weight) || 0;
-                }
-              });
-            }
-          });
-
-          containerList.push({
-            number: container,
-            quantity: totalQty,
-            weight: totalWeight,
-          });
-        });
-      }
-      return containerList;
-    };
-
-    const containerDetails = getContainerDetails();
-
-    const totalPackages = containerDetails.reduce(
-      (sum, c) => sum + c.quantity,
-      0,
-    );
-    const totalWeight = containerDetails.reduce((sum, c) => sum + c.weight, 0);
-
-    const getTruckNumbers = () => {
-      const trucks = [];
-      if (firstReceiver.drop_off_details) {
-        firstReceiver.drop_off_details.forEach((drop) => {
-          if (drop.plate_no && !trucks.includes(drop.plate_no)) {
-            trucks.push(drop.plate_no);
-          }
-        });
-      }
-      return trucks.join(", ");
-    };
-
-    const getCommodities = () => {
-      const commodities = [];
-      shippingDetails.forEach((detail) => {
-        if (detail.category && !commodities.includes(detail.category)) {
-          commodities.push(detail.category);
-        }
-      });
-      return commodities.join(", ");
-    };
-
-    const currentDate = new Date()
-      .toLocaleDateString("en-GB", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-      })
-      .replace(/ /g, "-");
-
-    // Generate consignment number
-    const consignmentNumber = `CNS-${safeOrder.id || "XXXX"}-${new Date().getTime()}`;
-
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wharfage Consignment Note</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            font-size: 13px;
-            color: #000;
-            line-height: 1.4;
-            padding: 20px;
-        }
-
-        .container {
-            max-width: 850px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-
-        .header {
-            text-align: center;
-            margin-bottom: 20px;
-        }
-
-        .date-row {
-            text-align: right;
-            font-weight: bold;
-            margin-bottom: 10px;
-        }
-
-        .title {
-            font-weight: bold;
-            text-decoration: underline;
-            font-size: 16px;
-        }
-
-        /* Top Boxes */
-        .top-boxes {
-            display: flex;
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-
-        .box {
-            flex: 1;
-            border: 1px solid #000;
-        }
-
-        .box-label {
-            padding: 2px 5px;
-            border-bottom: 1px solid #000;
-            min-height: 35px;
-        }
-
-        .box-content {
-            height: auto;
-            min-height: 30px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 5px;
-        }
-
-        .highlighted {
-            font-weight: bold;
-            color: #ff0000;
-        }
-
-        /* Container list inside box */
-        .container-list {
-            width: 100%;
-        }
-        
-        .container-row {
-            display: flex;
-            border-bottom: 1px dashed #ccc;
-            padding: 3px 0;
-        }
-        
-        .container-row:last-child {
-            border-bottom: none;
-        }
-        
-        .container-number {
-            flex: 2;
-            text-align: left;
-            padding-left: 5px;
-        }
-        
-        .container-qty {
-            flex: 1;
-            text-align: center;
-            border-left: 1px dashed #ccc;
-        }
-        
-        .container-weight {
-            flex: 1;
-            text-align: center;
-            border-left: 1px dashed #ccc;
-        }
-
-        /* Details Grid - Original Style */
-        .details-grid {
-            display: grid;
-            grid-template-columns: 1.2fr 1.2fr 1fr;
-            gap: 15px 10px;
-            margin-bottom: 40px;
-        }
-
-        .underline {
-            border-bottom: 1px solid #000;
-            display: inline-block;
-            min-width: 80px;
-        }
-
-        /* Summary Section - Original Style */
-        .summary-bar {
-            display: flex;
-            align-items: center;
-            gap: 30px;
-            margin-bottom: 5px;
-        }
-
-        .summary-box {
-            border: 1px solid #000;
-            padding: 10px 40px;
-            font-weight: bold;
-            min-width: 200px;
-        }
-
-        .summary-text {
-            font-weight: bold;
-        }
-
-        /* Certification - Original Style */
-        .certification-box {
-            border: 1px solid #000;
-            padding: 15px;
-            margin-bottom: 100px;
-            width: 90%;
-        }
-
-        /* Footer - Original Style */
-        .footer {
-            display: flex;
-            justify-content: space-between;
-        }
-
-        .sign-block {
-            width: 300px;
-        }
-
-        .sign-line {
-            border-top: 1px solid #000;
-            margin-bottom: 5px;
-        }
-
-        .text-right {
-            text-align: left;
-        }
-        
-        /* Container info */
-        .container-info {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-        }
-        
-        .small-text {
-            font-size: 11px;
-            color: #666;
-        }
-        
-        @media print {
-            body {
-                background-color: white;
-                padding: 0;
-            }
-            .container {
-                box-shadow: none;
-            }
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <div class="date-row">DATED: ${currentDate}</div>
-            <div class="title">CONSIGNMENT NOTE: ${consignmentNumber}</div>
-        </div>
-
-         <div class="top-boxes">
-            <div class="box">
-                <div class="box-label">Custom CRN or Customs Machine number</div>
-                <div class="box-content">${getSafeValue(c.customs_crn)}</div>
-            </div>
-            <div class="box">
-                <div class="box-label">
-                    <div class="container-info">
-                        <span>Container No:</span>
-                    </div>
-                </div>
-                <div class="box-content" style="padding: 0;">
-                    ${
-                      firstReceiver.containers &&
-                      firstReceiver.containers.length > 0
-                        ? firstReceiver.containers
-                            .map(
-                              (container) => `
-                            <div style="width: 100%; text-align: center; box-sizing: border-box; padding: 8px; border-bottom: ${firstReceiver.containers.indexOf(container) < firstReceiver.containers.length - 1 ? "1px solid #ccc" : "none"};">
-                                ${container}
-                            </div>
-                        `,
-                            )
-                            .join("")
-                        : '<div style="padding: 8px;">N/A</div>'
-                    }
-                </div>
-            </div>
-            <div class="box">
-                <div class="box-label">Seal No</div>
-                <div class="box-content">${getSafeValue(c.seal_no || safeOrder.seal_no)}</div>
-            </div>
-        </div>
-
-        <div class="details-grid">
-            <div><strong>VESSEL:</strong> ${getSafeValue(c.vessel)}</div>
-            <div><strong>Voyage:</strong> ${getSafeValue(c.voyage)}</div>
-            <div><strong>SHIPPING LINE:</strong> ${getSafeValue(c.shipping_line_name)}</div>
-
-            <div><strong>Dest:</strong> ${getPlaceName(getSafeValue(safeOrder.final_destination))}</div>
-            <div><strong>Shipper:</strong> ${getSafeValue(firstReceiver.receiverName)}</div>
-            <div><strong>BOOKING NO:</strong> ${getSafeValue(safeOrder.rgl_booking_number)}</div>
-
-            <div><strong>Comm:</strong> ${getCommodities() || "N/A"}</div>
-            <div><strong>Origin:</strong> ${getPlaceName(getSafeValue(safeOrder.place_of_loading))}</div>
-            <div>
-                <strong>GROSS Wt:</strong> <span class="underline">${totalWeight} KGS</span><br>
-                <strong>NET Wt:</strong> <span class="underline">${totalWeight} KGS</span>
-            </div>
-
-            <div><strong>Status:</strong> ${getSafeValue(safeOrder.status)}</div>
-            <div><strong class="underline">TRUCK NO</strong> ${getTruckNumbers() || getSafeValue(safeOrder.truck_number)}</div>
-            <div><strong>TOTAL CTNS:</strong> <span class="underline">${totalPackages.toLocaleString()}</span></div>
-        </div>
-
-        <!-- Multiple summary boxes for each container -->
-        ${containerDetails
-          .map(
-            (container) => `
-        <div class="summary-bar">
-            <div class="summary-box">${container.number}</div>
-            <div class="summary-text">
-                PKGS: ${container.quantity.toLocaleString()} &nbsp; GROSS WT: ${container.weight} KGS &nbsp; NET WT: ${container.weight} KGS
-            </div>
-        </div>
-        `,
-          )
-          .join("")}
-
-        <div class="certification-box">
-            I / We hereby certify that goods mentioned in the accompanied packing list have been placed inside the
-            container and the container has been sealed by me / us the particulars are true.
-        </div>
-
-        <div class="footer">
-            <div class="sign-block">
-                <div class="sign-line"></div>
-                PICT/KICT/QICT Representative<br>Gate Clerk / Dmg Inspector
-            </div>
-            <div class="sign-block text-right">
-                <div class="sign-line"></div>
-                Name and Signature of Agent<br>Shipper / Consolidator with stamp
-            </div>
-        </div>
-    </div>
-</body>
-</html>`;
-  };
-
-  const OrderAcknowledgementPrintableVersion = (orderData) => {
-    const logoBase64 = logoPic;
-    // Helper function to format date
-    const formatDate = (dateString) => {
-      if (!dateString) return "";
-      try {
-        const date = new Date(dateString);
-        return (
-          date.toLocaleDateString("en-GB", {
-            day: "2-digit",
-            month: "2-digit",
-            year: "numeric",
-          }) +
-          " " +
-          date.toLocaleTimeString("en-GB", {
-            hour: "2-digit",
-            minute: "2-digit",
-          })
-        );
-      } catch (e) {
-        return dateString || "";
-      }
-    };
-
-    // Format current date and time
-    const currentDate = new Date().toLocaleDateString("en-GB", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    });
-    const currentTime = new Date().toLocaleTimeString("en-GB", {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    });
-
-    // Extract data from order object based on your response structure
-    const senderName = orderData.sender_name || "N/A";
-    const senderContact = orderData.sender_contact || "N/A";
-    const senderEmail = orderData.sender_email || "N/A";
-    const senderRef = orderData.sender_ref || "N/A";
-
-    // Get first receiver data
-    const receiver =
-      orderData.receivers && orderData.receivers[0]
-        ? orderData.receivers[0]
-        : {};
-    const receiverName = receiver.receiverName || "N/A";
-    const receiverContact = receiver.receiverContact || "N/A";
-    const receiverAddress = receiver.receiverAddress || "N/A";
-    const receiverEmail = receiver.receiverEmail || "N/A";
-
-    // Get shipping details
-    const shippingDetails = receiver.shippingdetails || [];
-
-    // Calculate totals
-    let totalQty = 0;
-    let totalWeight = 0;
-
-    shippingDetails.forEach((item) => {
-      totalQty += parseInt(item.totalNumber || 0);
-      totalWeight += parseFloat(item.weight || 0);
-    });
-
-    if (shippingDetails.length === 0) {
-      totalQty =
-        parseInt(receiver.totalnumber || 0) ||
-        parseInt(orderData.total_assigned_qty || 0);
-    }
-
-    const containers = receiver.containers || [];
-    const containerInfo = containers.length > 0 ? containers.join(", ") : "N/A";
-
-    const senderKycApproved = orderData.sender_kyc_approved || false;
-    const senderPassport = senderKycApproved
-      ? orderData.sender_passport_number || "N/A"
-      : "Not Approved";
-    const senderEmiratesId = senderKycApproved
-      ? orderData.sender_emirates_id || "N/A"
-      : "Not Approved";
-    const senderSignatureUrl = senderKycApproved
-      ? orderData.sender_signature_url || ""
-      : "";
-
-    const receiverKycApproved = receiver.kycApproved || false;
-    const receiverPassport = receiverKycApproved
-      ? receiver.passportNumber || "N/A"
-      : "Not Approved";
-    const receiverEmiratesId = receiverKycApproved
-      ? receiver.emiratesId || "N/A"
-      : "Not Approved";
-    const receiverSignatureUrl = receiverKycApproved
-      ? receiver.signatureUrl || ""
-      : "";
-
-    return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Order Acknowledgement Printable Version</title>
-        <style>
-            body {
-                font-family: Arial, sans-serif;
-                color: #333;
-                line-height: 1.3;
-                margin: 0 auto;
-                padding: 20px;
-                background-color: #f4f4f4;
-                width: 210mm;
-                min-height: 297mm;
-            }
-
-            .document-container {
-                background: #fff;
-                max-width: 800px;
-                margin: 0 auto;
-                padding: 20px;
-                border: 1px solid #ccc;
-                box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-                min-height: 257mm;
-            }
-
-            /* Top Banner */
-            .top-banner {
-                background-color: #1a4731;
-                color: white;
-                text-align: center;
-                padding: 10px;
-                font-size: 32px;
-                font-weight: bold;
-                letter-spacing: 2px;
-                margin-bottom: 20px;
-            }
-
-            /* Header Section */
-            .header-section {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                margin-bottom: 20px;
-            }
-
-            .logo-area {
-                display: flex;
-                align-items: center;
-            }
-
-            .logo-icon {
-                width: 80px;
-                margin-right: 15px;
-            }
-
-            .company-name img {
-                width: 250px;
-                height: auto;
-            }
-
-            .disclaimer-bubble {
-                border: 2px solid #ff4d4d;
-                border-radius: 50%;
-                padding: 15px;
-                width: 200px;
-                text-align: center;
-                color: #ff4d4d;
-                font-size: 11px;
-                font-weight: bold;
-                min-height: 100px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-            }
-
-            /* Titles */
-            .order-title {
-                text-align: center;
-                font-weight: bold;
-                font-size: 18px;
-                margin: 10px 0;
-                text-transform: uppercase;
-            }
-
-            .dated-text {
-                font-weight: bold;
-                font-size: 13px;
-                margin-bottom: 5px;
-            }
-
-            /* Tables */
-            table {
-                width: 100%;
-                border-collapse: collapse;
-                margin-bottom: 15px;
-            }
-
-            th, td {
-                border: 1px solid #777;
-                padding: 8px;
-                text-align: left;
-                font-size: 12px;
-                vertical-align: top;
-            }
-
-            .table-header {
-                background-color: #f9f9f9;
-                text-align: center;
-                font-style: italic;
-                font-weight: bold;
-            }
-
-            /* Small Text Sections */
-            .small-red-text {
-                color: #d35400;
-                font-size: 10px;
-                margin: 10px 0;
-                line-height: 1.2;
-            }
-
-            .order-info-bar {
-                display: flex;
-                justify-content: space-between;
-                margin: 15px 0;
-                font-size: 13px;
-                font-weight: bold;
-            }
-
-            .bold-declaration {
-                font-size: 12px;
-                font-weight: bold;
-                font-style: italic;
-                margin: 15px 0;
-            }
-
-            /* Footer */
-            .terms-title {
-                color: #ff4d4d;
-                font-size: 14px;
-                margin-top: 20px;
-            }
-
-            .terms-list {
-                font-size: 10px;
-                color: #2c3e50;
-                padding-left: 0;
-                list-style: none;
-            }
-
-            .terms-list li {
-                margin-bottom: 3px;
-            }
-
-            .final-confirmation {
-                text-align: center;
-                font-weight: bold;
-                margin-top: 30px;
-                font-size: 14px;
-            }
-
-            /* Order Items Table */
-            .order-items-table {
-                margin: 20px 0;
-            }
-
-            .order-items-table .table-header {
-                background-color: #1a4731;
-                color: white;
-            }
-
-            .total-row {
-                background-color: #f2f2f2;
-                font-weight: bold;
-            }
-
-            /* Signature Section */
-            .signature-section {
-                margin-top: 40px;
-                display: flex;
-                justify-content: space-between;
-            }
-
-            .signature-box {
-                text-align: center;
-                padding-top: 10px;
-                width: 45%;
-            }
-
-            /* Print-specific styles */
-            @media print {
-                body {
-                    background-color: white;
-                    padding: 0;
-                }
-                
-                .document-container {
-                    box-shadow: none;
-                    border: none;
-                    padding: 10px;
-                }
-            }
-        </style>
-    </head>
-    <body>
-        <div class="document-container">
-            <div class="top-banner">STORAGE & DISTRIBUTION</div>
-
-            <div class="header-section">
-                <div class="logo-area">
-                    <div class="company-name">
-                            <img src="${logoBase64 || ""}" alt="Company Logo">
-                    </div>
-                </div>
-                <div class="disclaimer-bubble">
-                    In case of any Lost or Damage for Non-Insured Cargo. US$ 15 PER PKG claim would be adjusted
-                </div>
-            </div>
-
-            <div class="order-title">ORDER ACKNOWLEDGEMENT</div>
-            <div class="dated-text">Dated: ${currentDate} ${currentTime}</div>
-
-            <table>
-                <tr>
-                    <td class="table-header" style="width: 50%;">Sender</td>
-                    <td class="table-header" style="width: 50%;">Receiver</td>
-                </tr>
-                <tr>
-                    <td>
-                        <strong>${senderName}</strong><br><br>
-                        Contact Person: ${senderName}<br>
-                        Passport No: ${senderPassport}<br>
-                        CNIC: ${senderEmiratesId}<br>
-                        Tel: ${senderContact}<br>
-                        E-Mail: ${senderEmail}
-                    </td>
-                    <td>
-                        <strong>${receiverName}</strong><br><br>
-                        Contact Person: ${receiverName}<br>
-                        Passport No: ${receiverPassport}<br>
-                        CNIC: ${receiverEmiratesId}<br>
-                        Tel: ${receiverContact}<br>
-                        E-Mail: ${receiverEmail}
-                    </td>
-                </tr>
-            </table>
-
-            <div class="small-red-text">
-                This paper serves as a legal responsibility of sender & receiver for the contents of the cargo being shipped
-                through the company Royal Gulf Shipping & Logistics LLC. The Sender and Receiver will be responsible for any
-                loss/ damage which results in case of any prohibited items attempted to be shipped through this order.
-            </div>
-
-            <div class="order-title">ACKNOWLEDGMENT AND ACCEPTANCE OF ORDER</div>
-
-            <div class="order-info-bar">
-                <div><u> Order Date:</u> <span>${formatDate(orderData.created_at)}</span></div>
-                <div><u> Order Number:</u> <span>${orderData.booking_ref || "N/A"}</span></div>
-                <div><u> Customer No:</u> <span>${orderData.rgl_booking_number || "N/A"}</span></div>
-            </div>
-
-            <p style="font-size: 12px;">We are in receipt of your Order as detailed below:</p>
-
-            <table class="order-items-table">
-                <tr class="table-header">
-                    <td>QTY</td>
-                    <td>DESCRIPTION</td>
-                    <td>Order No</td>
-                    <td>Form No</td>
-                    <td>Port of Loading</td>
-                    <td>Port of Destination</td>
-                </tr>
-                ${
-                  shippingDetails.length > 0
-                    ? shippingDetails
-                        .map(
-                          (item) => `
-                <tr>
-                    <td style="text-align: center;">${item.totalNumber || 0}</td>
-                    <td>${item.category || item.subcategory || "N/A"}</td>
-                    <td style="text-align: center;">${orderData.booking_ref || "N/A"}</td>
-                    <td>${containerInfo}</td>
-                    <td>${getPlaceName(orderData.place_of_loading) || "N/A"}</td>
-                    <td>${getPlaceName(orderData.final_destination) || "N/A"}</td>
-                </tr>
-                `,
-                        )
-                        .join("")
-                    : `
-                <tr>
-                    <td style="text-align: center;">${totalQty || 0}</td>
-                    <td>General Items</td>
-                    <td style="text-align: center;">${orderData.booking_ref || "N/A"}</td>
-                    <td>${containerInfo}</td>
-                    <td>${orderData.place_of_loading || "N/A"}</td>
-                    <td>${orderData.final_destination || "N/A"}</td>
-                </tr>
-                `
-                }
-                <tr class="total-row">
-                    <td style="text-align: center;">${totalQty}</td>
-                    <td colspan="5">TOTAL PACKAGES: ${totalQty} | TOTAL WEIGHT: ${totalWeight} kg</td>
-                </tr>
-            </table>
-
-            <div class="dated-text" style="text-decoration: underline;">Mode: ${orderData.transport_type || "Drop Off"}</div>
-
-            <div class="bold-declaration">
-                I, the sender, whose name and address are given on the item, certify that the particulars given in this
-                declaration are correct and that this item does not contain any dangerous article or articles prohibited by
-                legislation or by <u>postal or customs regulations.</u>
-            </div>
-
-            <div class="terms-title">Terms & Conditions</div>
-            <ul class="terms-list">
-                <li>*All the information provided on order acknowledgement is as per the information provided by the sender.</li>
-                <li>*Customer (Sender/Receiver) acknowledges that the company will not be held liable for any loss or damage
-                    caused by customs inspections, fair wear & tear & Natural Disaster.</li>
-                <li>*All shipments will be inspected by Customs / ANF teams at terminals and there being if any extra cost
-                    incurred will be borne by the sender Or receiver.</li>
-                <li>*Transit time provided are tentative and could be change with / without prior notice upon vessels and
-                    customs clearance.</li>
-            </ul>
-
-            <div class="signature-section">
-                <div class="signature-box">
-                ${
-                  senderSignatureUrl
-                    ? `<img src="${senderSignatureUrl}" style="border-bottom: 1px solid #333;height:50px;margin-top:5px;filter: grayscale(100%) contrast(100%);mix-blend-mode: multiply;" /><br>`
-                    : ""
-                }
-                    <strong>Sender's Signature</strong><br>
-                    
-                </div>
-                <div class="signature-box">
-                ${
-                  receiverSignatureUrl
-                    ? `<img src="${receiverSignatureUrl}" style="border-bottom: 1px solid #333;height:50px;margin-top:5px;filter: grayscale(100%) contrast(100%);mix-blend-mode: multiply;" /><br>`
-                    : ""
-                }
-                    <strong>Receiver's Signature</strong><br>
-                    
-                </div>
-            </div>
-
-            <div class="final-confirmation">
-                We confirm acceptance of said order, with terms as stated above.
-            </div>
-
-        </div>
-    </body>
-    </html>
-    `;
-  };
-
-  const OrderConfirmationAndAcceptanceDubaiReceiver = (orderData) => {
-    // Logo ko directly use karo
-    const logoBase64 = logoPic; // Direct use karo, await nahi
-
-    // Helper function to format date
-    const formatDate = (dateString) => {
-      if (!dateString) return "";
-      try {
-        const date = new Date(dateString);
-        return date.toLocaleDateString("en-GB", {
-          day: "2-digit",
-          month: "2-digit",
-          year: "numeric",
-        });
-      } catch (e) {
-        return dateString || "";
-      }
-    };
-
-    // Format current date
-    const currentDate = new Date().toLocaleDateString("en-GB", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    });
-
-    // Expected ship date (7 days from now)
-    const expectedShipDate = new Date();
-    expectedShipDate.setDate(expectedShipDate.getDate() + 7);
-    const formattedShipDate = expectedShipDate.toLocaleDateString("en-US", {
-      weekday: "long",
-      month: "numeric",
-      day: "numeric",
-      year: "numeric",
-    });
-
-    // Expected delivery date (17 days from now - 10 days transit)
-    const expectedDeliveryDate = new Date();
-    expectedDeliveryDate.setDate(expectedDeliveryDate.getDate() + 17);
-    const formattedDeliveryDate = expectedDeliveryDate.toLocaleDateString(
-      "en-GB",
-      {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-      },
-    );
-
-    // Extract data from order object
-    const senderName = orderData.sender_name || "";
-    const senderContact = orderData.sender_contact || "";
-    const senderEmail = orderData.sender_email || "";
-    const senderAddress = orderData.sender_address || "";
-
-    // Get first receiver data
-    const receiver =
-      orderData.receivers && orderData.receivers[0]
-        ? orderData.receivers[0]
-        : {};
-    const receiverName = receiver.receiverName || "";
-    const receiverContact = receiver.receiverContact || "";
-    const receiverAddress = receiver.receiverAddress || "";
-    const receiverEmail = receiver.receiverEmail || "";
-
-    // Get shipping details
-    const shippingDetails = receiver.shippingdetails || [];
-
-    // Calculate totals
-    let totalQty = 0;
-
-    shippingDetails.forEach((item) => {
-      totalQty += parseInt(item.totalNumber || 0);
-    });
-
-    if (shippingDetails.length === 0) {
-      totalQty =
-        parseInt(receiver.totalnumber || 0) ||
-        parseInt(orderData.total_assigned_qty || 0);
-    }
-
-    const containers = receiver.containers || [];
-    const containerInfo =
-      containers.length > 0 ? containers.join(", ") : "ABC XYZ";
-
-    const getDescription = () => {
-      if (shippingDetails.length > 0) {
-        return (
-          shippingDetails[0].itemName ||
-          shippingDetails[0].subcategory ||
-          shippingDetails[0].category ||
-          ""
-        );
-      }
-      return "";
-    };
-
-    const getOrderNo = () => {
-      return orderData.booking_ref || "5017";
-    };
-
-    return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Order Confirmation - Royal Gulf</title>
-        <style>
-            body { 
-                font-family: Arial, sans-serif; 
-                font-size: 12px; 
-                color: #333; 
-                margin: 0;
-                padding: 20px;
-                background-color: #f4f4f4;
-            }
-            .container { 
-                width: 800px; 
-                margin: 0 auto; 
-                border: 1px solid #ccc; 
-                padding: 10px; 
-                background-color: #fff;
-                box-shadow: 0 0 10px rgba(0,0,0,0.1);
-            }
-            
-            /* Header Section */
-            .header-table { 
-                width: 100%; 
-                border-collapse: collapse; 
-                margin-bottom: 10px;
-            }
-            .logo-text { 
-                color: #e67e22; 
-                font-weight: bold; 
-                font-size: 18px; 
-            }
-            .sub-logo { 
-                font-size: 10px; 
-                color: #555; 
-            }
-            .main-title { 
-                font-size: 20px; 
-                font-weight: bold; 
-            }
-            
-            /* General Table Styling */
-            table { 
-                width: 100%; 
-                border-collapse: collapse; 
-                margin-bottom: 0px; 
-            }
-            th, td { 
-                padding: 4px; 
-                vertical-align: top; 
-            }
-            
-            .red-text { 
-                color: red; 
-                font-weight: 500;
-            }
-            .golden-text {
-                color: #b8860b;
-                font-weight: 500;
-            }
-            .label-cell { 
-                font-weight: bold; 
-                background-color: #f9f9f9; 
-                width: 15%; 
-            }
-            
-            /* Sections */
-            .section-header { 
-                font-weight: bold; 
-                text-align: center; 
-                background-color: white; 
-                padding: 5px; 
-                font-size: 16px; 
-                margin: 10px 0;
-            }
-            .disclaimer { 
-                font-size: 11px; 
-                color: #b8860b; 
-                padding: 5px; 
-                margin: 10px 0;
-            }
-            
-            .footer-sign { 
-                height: 60px; 
-            }
-            
-            .logo-img {
-                max-width: 180px;
-                max-height: 60px;
-            }
-            
-            @media print {
-                body {
-                    background-color: white;
-                    padding: 0;
-                }
-                .container {
-                    box-shadow: none;
-                    border: 1px solid #ccc;
-                }
-            }
-        </style>
-    </head>
-    <body>
-
-    <div class="container">
-        <table class="header-table" style="border:none;">
-            <tr style="border:none;display: flex;align-items: center;gap: 125px;">
-                <td style="border:none;">
-                    ${
-                      logoBase64
-                        ? `<img src="${logoBase64}" alt="Royal Gulf Logo" class="logo-img"><br>`
-                        : `<span class="logo-text">RoyalGulf</span><br>`
-                    }
-                </td>
-                <td style="border:none; ">
-                    <div class="main-title">ORDER CONFIRMATION</div>
-                </td>
-            </tr>
-        </table>
-
-        <table>
-            <tr>
-                <td class="label-cell">Dated</td>
-                <td class="red-text" colspan="2">${currentDate}</td>
-            </tr>
-            <tr style="background: #eee; font-weight: bold;     border: 1px solid #aaa;">
-                <td style="width: 50%;">TO</td>
-                <td colspan="2">FROM</td>
-            </tr>
-            <tr>
-                <td class="red-text" style="white-space: pre-line;     border: 1px solid #aaa;">
-                    ${senderName}<br>
-                    ${senderAddress.replace(/, /g, ",<br>")}<br>
-                    Contact Person: ${senderName}<br>
-                    Passport No: ${orderData.sender_kyc_approved ? orderData.sender_passport_number || "N/A" : "Not Approved"}<br>
-                    CNIC : ${orderData.sender_kyc_approved ? orderData.sender_emirates_id || "N/A" : "Not Approved"}<br>
-                    Tel: ${senderContact}<br>
-                    E-Mail: ${senderEmail}
-                </td>
-                <td class="red-text" colspan="2" style="white-space: pre-line;     border: 1px solid #aaa;">
-                    ${receiverName}<br>
-                    ${receiverAddress.replace(/, /g, ",<br>")}<br>
-                    Contact Person: ${receiverName}<br>
-                    Passport No: ${receiver.kycApproved ? receiver.passportNumber || "N/A" : "Not Approved"}<br>
-                    Emirates ID #: ${receiver.kycApproved ? receiver.emiratesId || "N/A" : "Not Approved"}<br>
-                    Tel: ${receiverContact}<br>
-                    E-Mail: ${receiverEmail}
-                </td>
-            </tr>
-        </table>
-
-        <div class="disclaimer golden-text">
-            This paper serves as an legal responsibility of sender & receiver for the contents of the cargo being shipped through the company Royal Gulf Shipping & Logistics LLC. The Sender and Receiver will be only responsible for any loss / damages which results in case of any prohibited items attempted to be shipped through this order.
-        </div>
-
-        <div class="section-header">ACKNOWLEDGMENT AND ACCEPTANCE OF ORDER</div>
-
-        <table>
-            <tr>
-                <td><b>Order Date:</b> <span class="red-text">${formatDate(orderData.created_at) || "15/08/11"}</span></td>
-                <td><b>Order Number:</b> <span class="red-text">${orderData.booking_ref || "5017"}</span></td>
-                <td><b>Customer No:</b> <span class="red-text">${orderData.rgl_booking_number || "Sender BB Sys #"}</span></td>
-            </tr>
-        </table>
-
-        <table>
-            <tr style="text-align: center; font-weight: bold; background: #eee;     border: 1px solid #aaa;">
-                <td style="width: 10%;">QTY</td>
-                <td style="width: 30%;">DESCRIPTION</td>
-                <td style="width: 15%;">Order No</td>
-                <td style="width: 15%;">Marks & No</td>
-                <td style="width: 15%;">Port of Loading</td>
-                <td style="width: 15%;">Port of Destination</td>
-            </tr>
-            <tr style="height: 60px; text-align: center;     border: 1px solid #aaa;">
-                <td class="red-text">${totalQty}</td>
-                <td class="red-text">${getDescription()}</td>
-                <td class="red-text">${getOrderNo()}</td>
-                <td class="red-text">${containerInfo}</td>
-                <td class="red-text">${getPlaceName(orderData.place_of_loading)}</td>
-                <td class="red-text">${getPlaceName(orderData.final_destination)}</td>
-            </tr>
-            <tr>
-                <td colspan="4" rowspan="2"><b>Mode:</b> <span class="red-text">${orderData.transport_type || "Sea Shipment"}</span></td>
-                <td style="text-align: right;"><b>SUBTOTAL:</b></td>
-                <td style="text-align: center;">TBC</td>
-            </tr>
-            <tr>
-                <td style="text-align: right; font-size: 9px;">FREIGHT SURCHARGE</td>
-                <td style="text-align: center;">N/a</td>
-            </tr>
-            <tr>
-                <td colspan="4">
-                    <b>EXPECTED SHIP DATE:</b> <span class="red-text">${formattedShipDate}</span><br>
-                    <b>TRANSIT TIME:</b> <span class="red-text">10 Days ( Expected Delivery ${formattedDeliveryDate} )</span>
-                </td>
-                <td style="text-align: right; font-weight: bold;">TOTAL</td>
-                <td style="text-align: center;">N/A</td>
-            </tr>
-        </table>
-
-        <table>
-            <tr style="background: #eee; font-weight: bold; border: 1px solid #aaa;" >
-                <td style="width: 50%;">BILL TO: <span style="font-weight: normal;">(CUSTOMER # 117788)</span></td>
-                <td style="width: 50%;">SHIP TO:</td>
-            </tr>
-            <tr class="red-text">
-                <td>
-                    Either of the Party from<br>sender or receiver paying the Invoice<br>
-                    <span style="color: black;">Attn: ${senderName.split(" ")[0] || "AFZAL"}</span><br>
-                    Tel: ${senderContact}
-                </td>
-                <td>
-                    Individual or company suppose to be the<br>recipient of the consignment<br>
-                    <span style="color: black;">Attn: ${receiverName.split(" ")[0] || "Abbas"}</span><br>
-                    Tel: ${receiverContact}
-                </td>
-            </tr>
-        </table>
-
-        <div style="text-align: center; font-weight: bold; padding: 5px;  margin: 10px 0;">
-            We confirm acceptance of said order, with terms as stated above.
-        </div>
-
-        <table style="margin-top: 10px;">
-            <tr>
-                <td style="width: 15%; border-bottom: none;"><b>Signature:</b></td>
-                <td rowspan="2" style="text-align: center; padding: 8px; vertical-align: middle;">
-                    <div style="display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 2px;">
-                        ${
-                          orderData.sender_kyc_approved &&
-                          orderData.sender_signature_url
-                            ? `<img src="${orderData.sender_signature_url}" style="height:40px; max-width:180px; object-fit:contain; filter: grayscale(100%) contrast(100%); mix-blend-mode: multiply; margin-bottom:2px; left: 0" />`
-                            : `<span>Digitally Signed through verified login and OTP for ID verification</span>`
-                        }
-                        <span><b>Time & Date Stamp:</b> ${currentDate} ${new Date().toLocaleTimeString()}</span>
-                        <span><b>Email Addressed Used:</b> ${senderEmail}</span>
-                    </div>
-                </td>
-            </tr>
-            <tr>
-                <td style="border-top: none;"><b>Name:</b> ${senderName}</td>
-            </tr>
-        </table>
-    </div>
-
-    </body>
-    </html>
-    `;
-  };
-
-  const OrderConfirmationAndAcceptanceKarachiReceiver = (orderData) => {
-    // Logo ko directly use karo
-    const logoBase64 = logoCAS; // Direct use karo, await nahi
-
-    // Helper function to format date
-    const formatDate = (dateString) => {
-      if (!dateString) return "";
-      try {
-        const date = new Date(dateString);
-        return date.toLocaleDateString("en-GB", {
-          day: "2-digit",
-          month: "2-digit",
-          year: "numeric",
-        });
-      } catch (e) {
-        return dateString || "";
-      }
-    };
-
-    // Format current date
-    const currentDate = new Date().toLocaleDateString("en-GB", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    });
-
-    // Expected ship date (7 days from now)
-    const expectedShipDate = new Date();
-    expectedShipDate.setDate(expectedShipDate.getDate() + 7);
-    const formattedShipDate = expectedShipDate.toLocaleDateString("en-US", {
-      weekday: "long",
-      month: "numeric",
-      day: "numeric",
-      year: "numeric",
-    });
-
-    // Expected delivery date (17 days from now - 10 days transit)
-    const expectedDeliveryDate = new Date();
-    expectedDeliveryDate.setDate(expectedDeliveryDate.getDate() + 17);
-    const formattedDeliveryDate = expectedDeliveryDate.toLocaleDateString(
-      "en-GB",
-      {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-      },
-    );
-
-    // Extract data from order object
-    const senderName = orderData.sender_name || "";
-    const senderContact = orderData.sender_contact || "";
-    const senderEmail = orderData.sender_email || "";
-    const senderAddress = orderData.sender_address || "";
-
-    // Get first receiver data
-    const receiver =
-      orderData.receivers && orderData.receivers[0]
-        ? orderData.receivers[0]
-        : {};
-    const receiverName = receiver.receiverName || "";
-    const receiverContact = receiver.receiverContact || "";
-    const receiverAddress = receiver.receiverAddress || "";
-    const receiverEmail = receiver.receiverEmail || "";
-
-    // Get shipping details
-    const shippingDetails = receiver.shippingdetails || [];
-
-    // Calculate totals
-    let totalQty = 0;
-
-    shippingDetails.forEach((item) => {
-      totalQty += parseInt(item.totalNumber || 0);
-    });
-
-    if (shippingDetails.length === 0) {
-      totalQty =
-        parseInt(receiver.totalnumber || 0) ||
-        parseInt(orderData.total_assigned_qty || 0);
-    }
-
-    // Get container info for marks
-    const containers = receiver.containers || [];
-    const containerInfo =
-      containers.length > 0 ? containers.join(", ") : "ABC XYZ";
-
-    // Get category/description
-    const getDescription = () => {
-      if (shippingDetails.length > 0) {
-        return (
-          shippingDetails[0].category || shippingDetails[0].subcategory || ""
-        );
-      }
-      return "";
-    };
-
-    const getOrderNo = () => {
-      return orderData.booking_ref || "5017";
-    };
-
-    return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Order Confirmation - Cargo Aviation System</title>
-        <style>
-            body { 
-                font-family: Arial, sans-serif; 
-                font-size: 12px; 
-                color: #333; 
-                margin: 0;
-                padding: 20px;
-                background-color: #f4f4f4;
-            }
-            .container { 
-                width: 800px; 
-                margin: 0 auto; 
-                border: 1px solid #ccc; 
-                padding: 10px; 
-                background-color: #fff;
-                box-shadow: 0 0 10px rgba(0,0,0,0.1);
-            }
-            
-            /* Header Section */
-            .header-table { 
-                width: 100%; 
-                border-collapse: collapse; 
-                margin-bottom: 10px;
-            }
-            .logo-text { 
-                color: #e67e22; 
-                font-weight: bold; 
-                font-size: 18px; 
-            }
-            .sub-logo { 
-                font-size: 10px; 
-                color: #555; 
-            }
-            .main-title { 
-                font-size: 20px; 
-                font-weight: bold; 
-            }
-            
-            /* General Table Styling */
-            table { 
-                width: 100%; 
-                border-collapse: collapse; 
-                margin-bottom: 0px; 
-            }
-            th, td { 
-                padding: 4px; 
-                vertical-align: top; 
-            }
-            
-            .red-text { 
-                color: red; 
-                font-weight: 500;
-            }
-            .golden-text {
-                color: #b8860b;
-                font-weight: 500;
-            }
-            .label-cell { 
-                font-weight: bold; 
-                background-color: #f9f9f9; 
-                width: 15%; 
-            }
-            
-            /* Sections */
-            .section-header { 
-                font-weight: bold; 
-                text-align: center; 
-                background-color: white; 
-                padding: 5px; 
-                font-size: 16px; 
-                margin: 10px 0;
-            }
-            .disclaimer { 
-                font-size: 11px; 
-                color: #b8860b; 
-                padding: 5px; 
-                margin: 10px 0;
-            }
-            
-            .footer-sign { 
-                height: 60px; 
-            }
-            
-            .logo-img {
-                max-width: 180px;
-                max-height: 60px;
-            }
-            
-            @media print {
-                body {
-                    background-color: white;
-                    padding: 0;
-                }
-                .container {
-                    box-shadow: none;
-                    border: 1px solid #ccc;
-                }
-            }
-        </style>
-    </head>
-    <body>
-
-    <div class="container">
-        <table class="header-table" style="border:none;">
-            <tr style="border:none;display: flex;align-items: center;gap: 125px;">
-                <td style="border:none;">
-                    ${
-                      logoBase64
-                        ? `<img src="${logoBase64}" alt="Royal Gulf Logo" class="logo-img"><br>`
-                        : `<span class="logo-text">RoyalGulf</span><br>`
-                    }
-                </td>
-                <td style="border:none; ">
-                    <div class="main-title">ORDER CONFIRMATION</div>
-                </td>
-            </tr>
-        </table>
-
-        <table>
-            <tr>
-                <td class="label-cell">Dated</td>
-                <td class="red-text" colspan="2">${currentDate}</td>
-            </tr>
-            <tr style="background: #eee; font-weight: bold;     border: 1px solid #aaa;">
-                <td style="width: 50%;">TO</td>
-                <td colspan="2">FROM</td>
-            </tr>
-            <tr>
-                <td class="red-text" style="white-space: pre-line;     border: 1px solid #aaa;">
-                    ${senderName}<br>
-                    ${senderAddress.replace(/, /g, ",<br>")}<br>
-                    Contact Person: ${senderName}<br>
-                    Passport No: ${orderData.sender_kyc_approved ? orderData.sender_passport_number || "N/A" : "Not Approved"}<br>
-                    CNIC : ${orderData.sender_kyc_approved ? orderData.sender_emirates_id || "N/A" : "Not Approved"}<br>
-                    Tel: ${senderContact}<br>
-                    E-Mail: ${senderEmail}
-                </td>
-                <td class="red-text" colspan="2" style="white-space: pre-line;     border: 1px solid #aaa;">
-                    ${receiverName}<br>
-                    ${receiverAddress.replace(/, /g, ",<br>")}<br>
-                    Contact Person: ${receiverName}<br>
-                    Passport No: ${receiver.kycApproved ? receiver.passportNumber || "N/A" : "Not Approved"}<br>
-                    Emirates ID #: ${receiver.kycApproved ? receiver.emiratesId || "N/A" : "Not Approved"}<br>
-                    Tel: ${receiverContact}<br>
-                    E-Mail: ${receiverEmail}
-                </td>
-            </tr>
-        </table>
-
-        <div class="disclaimer golden-text">
-            This paper serves as an legal responsibility of sender & receiver for the contents of the cargo being shipped through the company Cargo Aviation Systems (Pvt.) Ltd. The Sender and Receiver will be only responsible for any loss / damages which results in case of any prohibited items attempted to be shipped through this order.
-        </div>
-
-        <div class="section-header">ACKNOWLEDGMENT AND ACCEPTANCE OF ORDER</div>
-
-        <table>
-            <tr>
-                <td><b>Order Date:</b> <span class="red-text">${formatDate(orderData.created_at) || "15/08/11"}</span></td>
-                <td><b>Order Number:</b> <span class="red-text">${orderData.booking_ref || "5017"}</span></td>
-                <td><b>Customer No:</b> <span class="red-text">${orderData.rgl_booking_number || "Sender BB Sys #"}</span></td>
-            </tr>
-        </table>
-
-        <table>
-            <tr style="text-align: center; font-weight: bold; background: #eee;     border: 1px solid #aaa;">
-                <td style="width: 10%;">QTY</td>
-                <td style="width: 30%;">DESCRIPTION</td>
-                <td style="width: 15%;">Order No</td>
-                <td style="width: 15%;">Marks & No</td>
-                <td style="width: 15%;">Port of Loading</td>
-                <td style="width: 15%;">Port of Destination</td>
-            </tr>
-            <tr style="height: 60px; text-align: center;     border: 1px solid #aaa;">
-                <td class="red-text">${totalQty}</td>
-                <td class="red-text">${getDescription()}</td>
-                <td class="red-text">${getOrderNo()}</td>
-                <td class="red-text">${containerInfo}</td>
-                <td class="red-text">${getPlaceName(orderData.place_of_loading)}</td>
-                <td class="red-text">${getPlaceName(orderData.final_destination)}</td>
-            </tr>
-            <tr>
-                <td colspan="4" rowspan="2"><b>Mode:</b> <span class="red-text">${orderData.transport_type || "Sea Shipment"}</span></td>
-                <td style="text-align: right;"><b>SUBTOTAL:</b></td>
-                <td style="text-align: center;">TBC</td>
-            </tr>
-            <tr>
-                <td style="text-align: right; font-size: 9px;">FREIGHT SURCHARGE</td>
-                <td style="text-align: center;">N/a</td>
-            </tr>
-            <tr>
-                <td colspan="4">
-                    <b>EXPECTED SHIP DATE:</b> <span class="red-text">${formattedShipDate}</span><br>
-                    <b>TRANSIT TIME:</b> <span class="red-text">10 Days ( Expected Delivery ${formattedDeliveryDate} )</span>
-                </td>
-                <td style="text-align: right; font-weight: bold;">TOTAL</td>
-                <td style="text-align: center;">N/A</td>
-            </tr>
-        </table>
-
-        <table>
-            <tr style="background: #eee; font-weight: bold; border: 1px solid #aaa;" >
-                <td style="width: 50%;">BILL TO: <span style="font-weight: normal;">(CUSTOMER # 117788)</span></td>
-                <td style="width: 50%;">SHIP TO:</td>
-            </tr>
-            <tr class="red-text">
-                <td>
-                    Either of the Party from<br>sender or receiver paying the Invoice<br>
-                    <span style="color: black;">Attn: ${senderName.split(" ")[0] || "AFZAL"}</span><br>
-                    Tel: ${senderContact}
-                </td>
-                <td>
-                    Individual or company suppose to be the<br>recipient of the consignment<br>
-                    <span style="color: black;">Attn: ${receiverName.split(" ")[0] || "Abbas"}</span><br>
-                    Tel: ${receiverContact}
-                </td>
-            </tr>
-        </table>
-
-        <div style="text-align: center; font-weight: bold; padding: 5px;  margin: 10px 0;">
-            We confirm acceptance of said order, with terms as stated above.
-        </div>
-
-        <table style="margin-top: 10px;">
-            <tr>
-                <td style="width: 15%; border-bottom: none;"><b>Signature:</b></td>
-                <td rowspan="2" style="text-align: center; padding: 8px; vertical-align: middle;">
-                    <div style="display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 2px;">
-                        ${
-                          orderData.sender_kyc_approved &&
-                          orderData.sender_signature_url
-                            ? `<img src="${orderData.sender_signature_url}" style="height:40px; max-width:180px; object-fit:contain; filter: grayscale(100%) contrast(100%); mix-blend-mode: multiply; margin-bottom:2px; left: 0" />`
-                            : `<span>Digitally Signed through verified login and OTP for ID verification</span>`
-                        }
-                        <span><b>Time & Date Stamp:</b> ${currentDate} ${new Date().toLocaleTimeString()}</span>
-                        <span><b>Email Addressed Used:</b> ${senderEmail}</span>
-                    </div>
-                </td>
-            </tr>
-            <tr>
-                <td style="border-top: none;"><b>Name:</b> ${senderName}</td>
-            </tr>
-        </table>
-    </div>
-
-    </body>
-    </html>
-    `;
-  };
-
-  const OrderConfirmationAndAcceptanceUKReceiver = (orderData) => {
-    // Logo ko directly use karo
-    const logoBase64 = logoMFD; // Direct use karo, await nahi
-
-    // Helper function to format date
-    const formatDate = (dateString) => {
-      if (!dateString) return "";
-      try {
-        const date = new Date(dateString);
-        return date.toLocaleDateString("en-GB", {
-          day: "2-digit",
-          month: "2-digit",
-          year: "numeric",
-        });
-      } catch (e) {
-        return dateString || "";
-      }
-    };
-
-    // Format current date
-    const currentDate = new Date().toLocaleDateString("en-GB", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    });
-
-    // Expected ship date (7 days from now)
-    const expectedShipDate = new Date();
-    expectedShipDate.setDate(expectedShipDate.getDate() + 7);
-    const formattedShipDate = expectedShipDate.toLocaleDateString("en-US", {
-      weekday: "long",
-      month: "numeric",
-      day: "numeric",
-      year: "numeric",
-    });
-
-    // Expected delivery date (17 days from now - 10 days transit)
-    const expectedDeliveryDate = new Date();
-    expectedDeliveryDate.setDate(expectedDeliveryDate.getDate() + 17);
-    const formattedDeliveryDate = expectedDeliveryDate.toLocaleDateString(
-      "en-GB",
-      {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-      },
-    );
-
-    // Extract data from order object
-    const senderName = orderData.sender_name || "";
-    const senderContact = orderData.sender_contact || "";
-    const senderEmail = orderData.sender_email || "";
-    const senderAddress = orderData.sender_address || "";
-
-    // Get first receiver data
-    const receiver =
-      orderData.receivers && orderData.receivers[0]
-        ? orderData.receivers[0]
-        : {};
-    const receiverName = receiver.receiverName || "";
-    const receiverContact = receiver.receiverContact || "";
-    const receiverAddress = receiver.receiverAddress || "";
-    const receiverEmail = receiver.receiverEmail || "";
-
-    // Get shipping details
-    const shippingDetails = receiver.shippingdetails || [];
-
-    // Calculate totals
-    let totalQty = 0;
-
-    shippingDetails.forEach((item) => {
-      totalQty += parseInt(item.totalNumber || 0);
-    });
-
-    if (shippingDetails.length === 0) {
-      totalQty =
-        parseInt(receiver.totalnumber || 0) ||
-        parseInt(orderData.total_assigned_qty || 0);
-    }
-
-    // Get container info for marks
-    const containers = receiver.containers || [];
-    const containerInfo =
-      containers.length > 0 ? containers.join(", ") : "ABC XYZ";
-
-    // Get category/description
-    const getDescription = () => {
-      if (shippingDetails.length > 0) {
-        return (
-          shippingDetails[0].category || shippingDetails[0].subcategory || ""
-        );
-      }
-      return "";
-    };
-
-    const getOrderNo = () => {
-      return orderData.booking_ref || "5017";
-    };
-
-    return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Order Confirmation - Messiah Freight</title>
-        <style>
-            body { 
-                font-family: Arial, sans-serif; 
-                font-size: 12px; 
-                color: #333; 
-                margin: 0;
-                padding: 20px;
-                background-color: #f4f4f4;
-            }
-            .container { 
-                width: 800px; 
-                margin: 0 auto; 
-                border: 1px solid #ccc; 
-                padding: 10px; 
-                background-color: #fff;
-                box-shadow: 0 0 10px rgba(0,0,0,0.1);
-            }
-            
-            /* Header Section */
-            .header-table { 
-                width: 100%; 
-                border-collapse: collapse; 
-                margin-bottom: 10px;
-            }
-            .logo-text { 
-                color: #e67e22; 
-                font-weight: bold; 
-                font-size: 18px; 
-            }
-            .sub-logo { 
-                font-size: 10px; 
-                color: #555; 
-            }
-            .main-title { 
-                font-size: 20px; 
-                font-weight: bold; 
-            }
-            
-            /* General Table Styling */
-            table { 
-                width: 100%; 
-                border-collapse: collapse; 
-                margin-bottom: 0px; 
-            }
-            th, td { 
-                padding: 4px; 
-                vertical-align: top; 
-            }
-            
-            .red-text { 
-                color: red; 
-                font-weight: 500;
-            }
-            .golden-text {
-                color: #b8860b;
-                font-weight: 500;
-            }
-            .label-cell { 
-                font-weight: bold; 
-                background-color: #f9f9f9; 
-                width: 15%; 
-            }
-            
-            /* Sections */
-            .section-header { 
-                font-weight: bold; 
-                text-align: center; 
-                background-color: white; 
-                padding: 5px; 
-                font-size: 16px; 
-                margin: 10px 0;
-            }
-            .disclaimer { 
-                font-size: 11px; 
-                color: #b8860b; 
-                padding: 5px; 
-                margin: 10px 0;
-            }
-            
-            .footer-sign { 
-                height: 60px; 
-            }
-            
-            .logo-img {
-                max-width: 180px;
-                max-height: 60px;
-            }
-            
-            @media print {
-                body {
-                    background-color: white;
-                    padding: 0;
-                }
-                .container {
-                    box-shadow: none;
-                    border: 1px solid #ccc;
-                }
-            }
-        </style>
-    </head>
-    <body>
-
-    <div class="container">
-        <table class="header-table" style="border:none;">
-            <tr style="border:none;display: flex;align-items: center;gap: 125px;">
-                <td style="border:none;">
-                    ${
-                      logoBase64
-                        ? `<img src="${logoBase64}" alt="Royal Gulf Logo" class="logo-img"><br>`
-                        : `<span class="logo-text">RoyalGulf</span><br>`
-                    }
-                </td>
-                <td style="border:none; ">
-                    <div class="main-title">ORDER CONFIRMATION</div>
-                </td>
-            </tr>
-        </table>
-
-        <table>
-            <tr>
-                <td class="label-cell">Dated</td>
-                <td class="red-text" colspan="2">${currentDate}</td>
-            </tr>
-            <tr style="background: #eee; font-weight: bold;     border: 1px solid #aaa;">
-                <td style="width: 50%;">TO</td>
-                <td colspan="2">FROM</td>
-            </tr>
-            <tr>
-                <td class="red-text" style="white-space: pre-line;border: 1px solid #aaa;">
-                    ${senderName}<br>
-                    ${senderAddress.replace(/, /g, ",<br>")}<br>
-                    Contact Person: ${senderName}<br>
-                    Passport No: ${orderData.sender_kyc_approved ? orderData.sender_passport_number || "N/A" : "Not Approved"}<br>
-                    CNIC : ${orderData.sender_kyc_approved ? orderData.sender_emirates_id || "N/A" : "Not Approved"}<br>
-                    Tel: ${senderContact}<br>
-                    E-Mail: ${senderEmail}
-                </td>
-                <td class="red-text" colspan="2" style="white-space: pre-line;border: 1px solid #aaa;">
-                    ${receiverName}<br>
-                    ${receiverAddress.replace(/, /g, ",<br>")}<br>
-                    Contact Person: ${receiverName}<br>
-                    Passport No: ${receiver.kycApproved ? receiver.passportNumber || "N/A" : "Not Approved"}<br>
-                    Emirates ID #: ${receiver.kycApproved ? receiver.emiratesId || "N/A" : "Not Approved"}<br>
-                    Tel: ${receiverContact}<br>
-                    E-Mail: ${receiverEmail}
-                </td>
-            </tr>
-        </table>
-
-        <div class="disclaimer golden-text">
-            This paper serves as an legal responsibility of sender & receiver for the contents of the cargo being shipped through the company Messiah Freight & Distributions UK Ltd. The Sender and Receiver will be only responsible for any loss / damages which results in case of any prohibited items attempted to be shipped through this order.
-        </div>
-
-        <div class="section-header">ACKNOWLEDGMENT AND ACCEPTANCE OF ORDER</div>
-
-        <table>
-            <tr>
-                <td><b>Order Date:</b> <span class="red-text">${formatDate(orderData.created_at) || "15/08/11"}</span></td>
-                <td><b>Order Number:</b> <span class="red-text">${orderData.booking_ref || "5017"}</span></td>
-                <td><b>Customer No:</b> <span class="red-text">${orderData.rgl_booking_number || "Sender BB Sys #"}</span></td>
-            </tr>
-        </table>
-
-        <table>
-            <tr style="text-align: center; font-weight: bold; background: #eee;     border: 1px solid #aaa;">
-                <td style="width: 10%;">QTY</td>
-                <td style="width: 30%;">DESCRIPTION</td>
-                <td style="width: 15%;">Order No</td>
-                <td style="width: 15%;">Marks & No</td>
-                <td style="width: 15%;">Port of Loading</td>
-                <td style="width: 15%;">Port of Destination</td>
-            </tr>
-            <tr style="height: 60px; text-align: center;     border: 1px solid #aaa;">
-                <td class="red-text">${totalQty}</td>
-                <td class="red-text">${getDescription()}</td>
-                <td class="red-text">${getOrderNo()}</td>
-                <td class="red-text">${containerInfo}</td>
-                <td class="red-text">${getPlaceName(orderData.place_of_loading)}</td>
-                <td class="red-text">${getPlaceName(orderData.final_destination)}</td>
-            </tr>
-            <tr>
-                <td colspan="4" rowspan="2"><b>Mode:</b> <span class="red-text">${orderData.transport_type || "Sea Shipment"}</span></td>
-                <td style="text-align: right;"><b>SUBTOTAL:</b></td>
-                <td style="text-align: center;">TBC</td>
-            </tr>
-            <tr>
-                <td style="text-align: right; font-size: 9px;">FREIGHT SURCHARGE</td>
-                <td style="text-align: center;">N/a</td>
-            </tr>
-            <tr>
-                <td colspan="4">
-                    <b>EXPECTED SHIP DATE:</b> <span class="red-text">${formattedShipDate}</span><br>
-                    <b>TRANSIT TIME:</b> <span class="red-text">10 Days ( Expected Delivery ${formattedDeliveryDate} )</span>
-                </td>
-                <td style="text-align: right; font-weight: bold;">TOTAL</td>
-                <td style="text-align: center;">N/A</td>
-            </tr>
-        </table>
-
-        <table>
-            <tr style="background: #eee; font-weight: bold; border: 1px solid #aaa;" >
-                <td style="width: 50%;">BILL TO: <span style="font-weight: normal;">(CUSTOMER # 117788)</span></td>
-                <td style="width: 50%;">SHIP TO:</td>
-            </tr>
-            <tr class="red-text">
-                <td>
-                    Either of the Party from<br>sender or receiver paying the Invoice<br>
-                    <span style="color: black;">Attn: ${senderName.split(" ")[0] || ""}</span><br>
-                    Tel: ${senderContact}
-                </td>
-                <td>
-                    Individual or company suppose to be the<br>recipient of the consignment<br>
-                    <span style="color: black;">Attn: ${receiverName.split(" ")[0] || ""}</span><br>
-                    Tel: ${receiverContact}
-                </td>
-            </tr>
-        </table>
-
-        <div style="text-align: center; font-weight: bold; padding: 5px;  margin: 10px 0;">
-            We confirm acceptance of said order, with terms as stated above.
-        </div>
-
-        <table style="margin-top: 10px;">
-            <tr>
-                <td style="width: 15%; border-bottom: none;"><b>Signature:</b></td>
-                <td rowspan="2" style="text-align: center; padding: 8px; vertical-align: middle;">
-                    <div style="display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 2px;">
-                        ${
-                          orderData.sender_kyc_approved &&
-                          orderData.sender_signature_url
-                            ? `<img src="${orderData.sender_signature_url}" style="height:40px; max-width:180px; object-fit:contain; filter: grayscale(100%) contrast(100%); mix-blend-mode: multiply; margin-bottom:2px; left: 0" />`
-                            : `<span>Digitally Signed through verified login and OTP for ID verification</span>`
-                        }
-                        <span><b>Time & Date Stamp:</b> ${currentDate} ${new Date().toLocaleTimeString()}</span>
-                        <span><b>Email Addressed Used:</b> ${senderEmail}</span>
-                    </div>
-                </td>
-            </tr>
-            <tr>
-                <td style="border-top: none;"><b>Name:</b> ${senderName}</td>
-            </tr>
-        </table>
-    </div>
-
-    </body>
-    </html>
-    `;
-  };
-
-  const MessiahBillofLading = (orderData) => {
-    const getValue = (value) => {
-      return value && value !== "" && value !== null && value !== undefined
-        ? value
-        : "";
-    };
-
-    // Format current date
-    const currentDate = new Date().toLocaleDateString("en-GB", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    });
-
-    // Extract data from order object
-    const senderName = getValue(orderData.sender_name);
-    const senderAddress = getValue(orderData.sender_address);
-    const senderContact = getValue(orderData.sender_contact);
-
-    // Get first receiver data
-    const receiver =
-      orderData.receivers && orderData.receivers[0]
-        ? orderData.receivers[0]
-        : {};
-    const receiverName = getValue(receiver.receiverName);
-    const receiverContact = getValue(receiver.receiverContact);
-    const receiverAddress = getValue(receiver.receiverAddress);
-
-    // Get shipping details
-    const shippingDetails = receiver.shippingdetails || [];
-
-    // Get container details
-    const containers = receiver.containers || [];
-
-    // Build container rows for table
-    const getContainerRows = () => {
-      if (!shippingDetails.length) return "";
-
-      let rows = "";
-      shippingDetails.forEach((detail) => {
-        if (detail.containerDetails && detail.containerDetails.length) {
-          detail.containerDetails.forEach((containerDetail) => {
-            const containerNum =
-              containerDetail.container?.container_number ||
-              containerDetail.container_number ||
-              "";
-            const sealNo = ""; // Seal no not in API
-            const pkgs = containerDetail.total_number || "";
-            const grossWt = containerDetail.assign_weight
-              ? `${containerDetail.assign_weight} KGS`
-              : "";
-
-            if (containerNum) {
-              rows += `<tr><td>${containerNum} / 40'HC</td><td></td><td>${pkgs} PKG</td><td></td><td>${grossWt}</td></tr>`;
-            }
-          });
-        }
-      });
-      return rows;
-    };
-
-    // Calculate total packages
-    const totalPkgs = shippingDetails.reduce((sum, detail) => {
-      if (detail.containerDetails) {
-        return (
-          sum +
-          detail.containerDetails.reduce(
-            (s, cd) => s + (parseInt(cd.total_number) || 0),
-            0,
-          )
-        );
-      }
-      return sum;
-    }, 0);
-
-    const vesselName = getValue(orderData.consignment_vessel);
-    const voyageNo = getValue(orderData.consignment_voyage);
-
-    const vesselVoyage =
-      vesselName && voyageNo
-        ? `${vesselName} / ${voyageNo}`
-        : vesselName || voyageNo || "";
-
-    const containerCount = containers.length
-      ? `${containers.length}X40'HC`
-      : "";
-
-    return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Bill of Lading - Messiah Freight</title>
-        <style>
-            body {
-                font-family: Arial, Helvetica, sans-serif;
-                font-size: 10px;
-                margin: 0;
-                padding: 20px;
-                background-color: #f0f0f0;
-            }
-            .bl-container {
-                width: 800px;
-                margin: 0 auto;
-                background-color: #fff;
-                padding: 10px;
-                border: 1px solid #ccc;
-                position: relative;
-                min-height: 1050px;
-            }
-            .header {
-                display: flex;
-                justify-content: space-between;
-                align-items: flex-start;
-                margin-bottom: 10px;
-            }
-            .logo-section {
-                display: flex;
-                align-items: center;
-            }
-            .mfd-logo img {
-                width: 80px;
-                height: auto;
-            }
-            .company-name {
-                font-size: 16px;
-                font-weight: bold;
-                color: #2b3a67;
-            }
-            .bl-title {
-                text-align: right;
-                line-height: 1.2;
-            }
-            .bl-title h1 {
-                font-size: 18px;
-                margin: 0;
-            }
-            .grid-container {
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                border-top: 1px solid #000;
-                border-left: 1px solid #000;
-            }
-            .cell {
-                border-right: 1px solid #000;
-                border-bottom: 1px solid #000;
-                padding: 4px;
-                min-height: 40px;
-            }
-            .label {
-                font-size: 8px;
-                color: #555;
-                display: block;
-                margin-bottom: 2px;
-            }
-            .content {
-                font-weight: bold;
-                text-transform: uppercase;
-                white-space: pre-line;
-            }
-            .full-width {
-                grid-column: span 2;
-            }
-            .four-cols {
-                display: grid;
-                grid-template-columns: 1fr 1fr 1fr 1fr;
-            }
-            .description-area {
-                min-height: 300px;
-                padding: 15px;
-                border-left: 1px solid #000;
-                border-right: 1px solid #000;
-                position: relative;
-            }
-            .table-data {
-                width: 100%;
-                border-collapse: collapse;
-                margin-top: 20px;
-            }
-            .table-data th {
-                text-align: left;
-                font-size: 9px;
-                border-bottom: 1px solid #000;
-                padding: 5px;
-            }
-            .table-data td {
-                padding: 5px;
-                font-weight: bold;
-            }
-            .footer {
-                margin-top: 10px;
-                border-top: 2px solid #000;
-                padding-top: 10px;
-            }
-            .red-bar {
-                height: 10px;
-                background-color: #e63946;
-                margin-top: 20px;
-            }
-            .empty-placeholder {
-                height: 20px;
-            }
-        </style>
-    </head>
-    <body>
-
-    <div class="bl-container">
-        <div class="header">
-            <div class="logo-section">
-                <div class="mfd-logo"><img src="${logoMFD}" alt="Messiah Freight & Distributions UK Ltd Logo"></div>
-                <div class="company-name">MESSIAH FREIGHT & DISTRIBUTORS UK LTD</div>
-            </div>
-            <div class="bl-title">
-                <h1>Bill of Lading</h1>
-                <div>Multimodal Transport<br>or Port-to-Port Shipment</div>
-            </div>
-        </div>
-
-        <div class="grid-container">
-            <div class="cell">
-                <span class="label">Shipper</span>
-                <div class="content">
-                    ${senderName ? `${senderName}<br>` : ""}
-                    ${senderAddress ? senderAddress.replace(/, /g, ",<br>") + "<br>" : ""}
-                    ${senderContact ? `Tel: ${senderContact}` : ""}
-                </div>
-            </div>
-            <div class="cell">
-                <span class="label">B/L No. (also to be used as payment ref.)</span>
-                <div class="content" style="font-size: 14px;">${getValue(orderData.booking_ref)}</div>
-            </div>
-
-            <div class="cell">
-                <span class="label">Consignee</span>
-                <div class="content">
-                    ${receiverName ? `${receiverName}<br>` : ""}
-                    ${receiverAddress ? receiverAddress.replace(/, /g, ",<br>") + "<br>" : ""}
-                    ${receiverContact ? `Tel: ${receiverContact}` : ""}
-                </div>
-            </div>
-            <div class="cell">
-                <span class="label">Export Reference / Forwarding Agent</span>
-                <div class="content"></div>
-            </div>
-
-            <div class="cell">
-                <span class="label">Notify Party</span>
-                <div class="content">
-                    ${receiverName ? `${receiverName}<br>` : ""}
-                    ${receiverAddress ? receiverAddress.replace(/, /g, ",<br>") + "<br>" : ""}
-                    ${receiverContact ? `Tel: ${receiverContact}` : ""}
-                </div>
-            </div>
-            <div class="cell">
-                <span class="label">Destination Agent</span>
-                <div class="content"></div>
-            </div>
-        </div>
-
-        <div class="grid-container" style="border-top: none;">
-            <div class="four-cols full-width">
-                <div class="cell"><span class="label">Port of Loading</span><div class="content">${getPlaceName(orderData.place_of_loading) || getValue(orderData.place_of_loading)}</div></div>
-                <div class="cell"><span class="label">Pre-carriage by</span><div class="content"></div></div>
-                <div class="cell"><span class="label">Ocean Vessel / Voyage</span><div class="content">${vesselVoyage}</div></div>
-                <div class="cell"><span class="label">Freight payable at</span><div class="content"></div></div>
-            </div>
-            <div class="four-cols full-width">
-                <div class="cell"><span class="label">Place of Receipt</span><div class="content"></div></div>
-                <div class="cell"><span class="label">Port of Discharge</span><div class="content">${getPlaceName(orderData.final_destination) || getValue(orderData.final_destination)}</div></div>
-                <div class="cell"><span class="label">Place of Delivery</span><div class="content">${getPlaceName(orderData.final_destination) || getValue(orderData.final_destination)}</div></div>
-                <div class="cell"><span class="label">Final Destination</span><div class="content">${getPlaceName(orderData.final_destination) || getValue(orderData.final_destination)}</div></div>
-            </div>
-        </div>
-
-        <div class="description-area">
-            <div style="display: flex; justify-content: space-between;">
-                <div style="width: 20%;">
-                    <span class="label">Marks & Nos. / No of Pkgs</span>
-                    <div class="content" style="margin-top: 20px;">${totalPkgs ? totalPkgs + " PKGS" : ""}</div>
-                </div>
-                <div style="width: 30%; text-align: left;">
-                    <span class="label">Description of Goods</span>
-                    <div class="content" style="margin-top: 20px; text-decoration: underline;">
-                        ${containers.length ? containers.length + "X40'HC FCL CONTAINER SAID TO CONTAIN" : ""}
-                    </div>
-                    <div class="content" style="margin-top: 10px;">
-                        ${containers.length ? containers.length + "X40'HC CONTAINER" : ""}<br>
-                        ${totalPkgs ? "STC " + totalPkgs + " PACKAGES" : ""}<br>
-                        ${
-                          shippingDetails.length
-                            ? shippingDetails
-                                .map(
-                                  (d) =>
-                                    d.itemName || d.subcategory || d.category,
-                                )
-                                .filter(Boolean)
-                                .join(", ")
-                            : ""
-                        }
-                    </div>
-                    <div class="content" style="margin-top: 30px; font-size: 11px;">
-                        ALL SORT OF DESTINATION CHARGES ON CONSIGNEE'S ACCOUNT
-                    </div>
-                </div>
-                <div style="width: 20%; text-align: right;">
-                    <span class="label">Gross Weight / Measurement</span>
-                    <div class="content" style="margin-top: 20px;">
-                        ${
-                          shippingDetails.reduce(
-                            (sum, d) => sum + (parseFloat(d.weight) || 0),
-                            0,
-                          )
-                            ? "GROSS WT<br>" +
-                              shippingDetails
-                                .reduce(
-                                  (sum, d) => sum + (parseFloat(d.weight) || 0),
-                                  0,
-                                )
-                                .toFixed(2) +
-                              " KGS"
-                            : ""
-                        }
-                    </div>
-                    <div class="content" style="margin-top: 40px;">CY/CY</div>
-                </div>
-            </div>
-
-            ${
-              getContainerRows()
-                ? `
-            <table class="table-data">
-                <thead>
-                    <tr>
-                        <th>CONTAINER NO. SIZE</th>
-                        <th>SEAL NO.</th>
-                        <th>PKGS</th>
-                        <th>NET WT</th>
-                        <th>GROSS WT</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${getContainerRows()}
-                </tbody>
-            </table>
-            `
-                : ""
-            }
-            <div style="display: flex;justify-content: end;">
-                    <p style="width: 200px;padding: 5px;border: 2px solid #000;font-size: 8px;font-weight: bold;">
-                        All Terminal Charges & Demurrage Etc at the port of Discharge/ Destination as per line's tariff & At the Account of Consignee.
-                    </p>
-            </div>
-        </div>
-
-        
-
-        <div class="grid-container">
-            <div class="cell"><span class="label">Freight Details</span><div class="content"></div></div>
-            <div class="cell"><span class="label">Total Number of Pkgs</span><div class="content">${containerCount}</div></div>
-        </div>
-
-        <div style="margin-top: 20px; display: flex; justify-content: space-between;">
-            <div style="width: 60%;">
-                <p style="font-size: 7px;">RECEIVED for shpment specified above in apparent good order and condition unless otherwise stated
-                  The Gods to be delivered at above mentioned Port of Discharge or Place of Delivery, whichever applies
-                  SUBJECT TO Terms and Conditions contained on reverse side hereof, to which Merchant agrees by
-                  accepting this Bill of Lading
-                  IN WITNESS WHEREOF the number of onginal Bills of lading stated on this side next to this clause
-                  have been signed, one of which being accomplished, the others to stand void, unless compulsorily
-                  applicable law provides otherwise
-                  *Applicable only when used for MULTI MODAL TRANSPORTATION.</p>
-            <div class="content" style="margin-top: 10px;">LONDON , ${currentDate}</div>
-          </div>
-            <div style="text-align: right; width: 40%;">    
-                <div class="content" style="margin-top: 10px;">
-                    MESSIAH FREIGHT &<br>DISTRIBUTORS UK LTD
-                </div>
-            </div>
-        </div>
-
-        <div class="red-bar"></div>
-        <div style="text-align: right; font-weight: bold; color: #2b3a67; font-size: 12px; margin-top: 5px;">
-            MESSIAH FREIGHT & DISTRIBUTORS UK LTD
-        </div>
-    </div>
-
-    </body>
-    </html>
-    `;
-  };
-
-  const RGSLBillofLading = (orderData) => {
-    const getValue = (value) => {
-      return value && value !== "" && value !== null && value !== undefined
-        ? value
-        : "";
-    };
-
-    const consignment = orderData.consignment || {};
-
-    const currentDate = new Date().toLocaleDateString("en-GB", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    });
-
-    const senderName = getValue(
-      consignment.shipper?.company_name || orderData.sender_name,
-    );
-    const senderAddress = getValue(
-      consignment.shipper?.address || orderData.sender_address,
-    );
-    const senderContact = getValue(
-      consignment.shipper?.contact_phone || orderData.sender_contact,
-    );
-
-    const receiver =
-      orderData.receivers && orderData.receivers[0]
-        ? orderData.receivers[0]
-        : {};
-    const receiverName = getValue(
-      consignment.consignee?.company_name || receiver.receiverName,
-    );
-    const receiverContact = getValue(
-      consignment.consignee?.contact_phone || receiver.receiverContact,
-    );
-    const receiverAddress = getValue(
-      consignment.consignee?.address || receiver.receiverAddress,
-    );
-
-    const shippingDetails =
-      receiver.shippingdetails || receiver.shippingDetails || [];
-    const containers = consignment.containers || receiver.containers || [];
-
-    const getContainerRows = () => {
-      if (!shippingDetails.length) return "";
-      let rows = "";
-      shippingDetails.forEach((detail) => {
-        if (detail.containerDetails && detail.containerDetails.length) {
-          detail.containerDetails.forEach((containerDetail) => {
-            const containerNum =
-              containerDetail.container?.container_number ||
-              containerDetail.container_number ||
-              "";
-            const pkgs = containerDetail.total_number || "";
-            const grossWt = containerDetail.assign_weight
-              ? `${containerDetail.assign_weight} KGS`
-              : "";
-            if (containerNum) {
-              rows += `<tr><td>${containerNum} / 40'HC</td><td></td><td>${pkgs} PKG</td><td></td><td>${grossWt}</td></tr>`;
-            }
-          });
-        }
-      });
-      return rows;
-    };
-
-    const totalPkgs = shippingDetails.reduce((sum, detail) => {
-      if (detail.containerDetails) {
-        return (
-          sum +
-          detail.containerDetails.reduce(
-            (s, cd) => s + (parseInt(cd.total_number) || 0),
-            0,
-          )
-        );
-      }
-      return sum;
-    }, 0);
-
-    const vesselVoyage = consignment.vessel
-      ? `${consignment.vessel}${consignment.voyage ? " / " + consignment.voyage : ""}`
-      : "";
-
-    const containerCount = containers.length
-      ? `${containers.length}X40'HC`
-      : "";
-
-    return `
-  <!DOCTYPE html>
-  <html>
-  <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Bill of Lading - Royal Gulf</title>
-      <style>
-          body { font-family: Arial, Helvetica, sans-serif; font-size: 10px; margin: 0; padding: 20px; background-color: #f0f0f0; }
-          .bl-container { width: 800px; margin: 0 auto; background-color: #fff; padding: 10px; border: 1px solid #ccc; position: relative; min-height: 1050px; }
-          .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
-          .logo-section { display: flex; align-items: center; }
-          .mfd-logo img { width: 180px; height: auto; }
-          .company-name { font-size: 16px; font-weight: bold; color: #2b3a67; }
-          .bl-title { text-align: right; line-height: 1.2; }
-          .bl-title h1 { font-size: 18px; margin: 0; }
-          .grid-container { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid #000; border-left: 1px solid #000; }
-          .cell { border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px; min-height: 40px; }
-          .label { font-size: 8px; color: #555; display: block; margin-bottom: 2px; }
-          .content { font-weight: bold; text-transform: uppercase; white-space: pre-line; }
-          .full-width { grid-column: span 2; }
-          .four-cols { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; }
-          .description-area { min-height: 300px; padding: 15px; border-left: 1px solid #000; border-right: 1px solid #000; position: relative; }
-          .table-data { width: 100%; border-collapse: collapse; margin-top: 20px; }
-          .table-data th { text-align: left; font-size: 9px; border-bottom: 1px solid #000; padding: 5px; }
-          .table-data td { padding: 5px; font-weight: bold; }
-          .red-bar { height: 10px; background-color: #e63946; margin-top: 20px; }
-      </style>
-  </head>
-  <body>
-  <div class="bl-container">
-      <div class="header">
-          <div class="logo-section">
-              <div class="mfd-logo"><img src="${logoPic}" alt="Royal Gulf"></div>
-              <div class="company-name">ROYAL GULF SHIPPING & LOGISTICS LLC</div>
-          </div>
-          <div class="bl-title">
-              <h1>Bill of Lading</h1>
-              <div>Multimodal Transport<br>or Port-to-Port Shipment</div>
-          </div>
-      </div>
-
-      <div class="grid-container">
-          <div class="cell">
-              <span class="label">Shipper</span>
-              <div class="content">
-                  ${senderName ? `${senderName}<br>` : ""}
-                  ${senderAddress ? senderAddress.replace(/, /g, ",<br>") + "<br>" : ""}
-                  ${senderContact ? `Tel: ${senderContact}` : ""}
-              </div>
-          </div>
-          <div class="cell">
-              <span class="label">B/L No.</span>
-              <div class="content" style="font-size: 14px;">${getValue(orderData.booking_ref)}</div>
-          </div>
-          <div class="cell">
-              <span class="label">Consignee</span>
-              <div class="content">
-                  ${receiverName ? `${receiverName}<br>` : ""}
-                  ${receiverAddress ? receiverAddress.replace(/, /g, ",<br>") + "<br>" : ""}
-                  ${receiverContact ? `Tel: ${receiverContact}` : ""}
-              </div>
-          </div>
-          <div class="cell"><span class="label">Export Reference / Forwarding Agent</span><div class="content"></div></div>
-          <div class="cell">
-              <span class="label">Notify Party</span>
-              <div class="content">
-                  ${receiverName ? `${receiverName}<br>` : ""}
-                  ${receiverAddress ? receiverAddress.replace(/, /g, ",<br>") + "<br>" : ""}
-              </div>
-          </div>
-          <div class="cell"><span class="label">Destination Agent</span><div class="content"></div></div>
-      </div>
-
-      <div class="grid-container" style="border-top: none;">
-          <div class="four-cols full-width">
-              <div class="cell"><span class="label">Port of Loading</span><div class="content">${getPlaceName(orderData.place_of_loading)}</div></div>
-              <div class="cell"><span class="label">Pre-carriage by</span><div class="content"></div></div>
-              <div class="cell"><span class="label">Ocean Vessel / Voyage</span><div class="content">${vesselVoyage}</div></div>
-              <div class="cell"><span class="label">Freight payable at</span><div class="content"></div></div>
-          </div>
-          <div class="four-cols full-width">
-              <div class="cell"><span class="label">Place of Receipt</span><div class="content"></div></div>
-              <div class="cell"><span class="label">Port of Discharge</span><div class="content">${getPlaceName(orderData.place_of_delivery)}</div></div>
-              <div class="cell"><span class="label">Place of Delivery</span><div class="content">${getPlaceName(orderData.place_of_delivery)}</div></div>
-              <div class="cell"><span class="label">Final Destination</span><div class="content">${getPlaceName(orderData.place_of_delivery)}</div></div>
-          </div>
-      </div>
-
-      <div class="description-area">
-          <div style="display: flex; justify-content: space-between;">
-              <div style="width: 20%;">
-                  <span class="label">Marks & Nos. / No of Pkgs</span>
-                  <div class="content" style="margin-top: 20px;">${totalPkgs ? totalPkgs + " PKGS" : ""}</div>
-              </div>
-              <div style="width: 30%;">
-                  <span class="label">Description of Goods</span>
-                  <div class="content" style="margin-top: 20px;">
-                      ${shippingDetails
-                        .map((d) => d.itemName || d.subcategory || d.category)
-                        .filter(Boolean)
-                        .join(", ")}
-                  </div>
-              </div>
-              <div style="width: 20%; text-align: right;">
-                  <span class="label">Gross Weight</span>
-                  <div class="content" style="margin-top: 20px;">
-                      ${consignment.gross_weight ? consignment.gross_weight + " KGS" : ""}
-                  </div>
-              </div>
-          </div>
-          ${
-            getContainerRows()
-              ? `
-          <table class="table-data">
-              <thead><tr><th>CONTAINER NO. SIZE</th><th>SEAL NO.</th><th>PKGS</th><th>NET WT</th><th>GROSS WT</th></tr></thead>
-              <tbody>${getContainerRows()}</tbody>
-          </table>`
-              : ""
-          }
-      </div>
-
-      <div class="grid-container">
-          <div class="cell"><span class="label">Freight Details</span><div class="content"></div></div>
-          <div class="cell"><span class="label">Total Number of Pkgs</span><div class="content">${containerCount}</div></div>
-      </div>
-
-      <div style="margin-top: 20px; display: flex; justify-content: space-between;">
-          <div style="width: 60%;">
-              <div class="content" style="margin-top: 10px;">Karachi , ${currentDate}</div>
-          </div>
-          <div style="text-align: right; width: 40%;">
-              <div class="content" style="margin-top: 10px;">ROYAL GULF SHIPPING<br>& LOGISTICS LLC</div>
-          </div>
-      </div>
-      <div class="red-bar"></div>
-  </div>
-  </body>
-  </html>
-  `;
-  };
-
-  const KYCDubaiCompany = (orderData) => {
-    const safeOrder = orderData || {};
-    const getValue = (value) => {
-      return value && value !== "" && value !== null && value !== undefined
-        ? value
-        : "";
-    };
-
-    // Format current date
-
-    // Format current date
-    const currentDate = new Date().toLocaleDateString("en-GB", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    });
-
-    // Extract data from order object
-    const senderName = getValue(orderData.sender_name);
-    const senderAddress = getValue(orderData.sender_address);
-    const senderContact = getValue(orderData.sender_contact);
-
-    // Get first receiver data
-    const receiver =
-      orderData.receivers && orderData.receivers[0]
-        ? orderData.receivers[0]
-        : {};
-    const receiverName = getValue(receiver.receiverName);
-    const receiverContact = getValue(receiver.receiverContact);
-    const receiverAddress = getValue(receiver.receiverAddress);
-
-    // Get shipping details
-    const shippingDetails = receiver.shippingdetails || [];
-
-    // Get container details
-    const containers = receiver.containers || [];
-
-    // Build container rows for table
-    const getContainerRows = () => {
-      if (!shippingDetails.length) return "";
-
-      let rows = "";
-      shippingDetails.forEach((detail) => {
-        if (detail.containerDetails && detail.containerDetails.length) {
-          detail.containerDetails.forEach((containerDetail) => {
-            const containerNum =
-              containerDetail.container?.container_number ||
-              containerDetail.container_number ||
-              "";
-            const sealNo = "";
-            const pkgs = containerDetail.total_number || "";
-            const grossWt = containerDetail.assign_weight
-              ? `${containerDetail.assign_weight} KGS`
-              : "";
-
-            if (containerNum) {
-              rows += `<tr><td>${containerNum} / 40'HC</td><td></td><td>${pkgs} PKG</td><td></td><td>${grossWt}</td></tr>`;
-            }
-          });
-        }
-      });
-      return rows;
-    };
-
-    const totalPkgs = shippingDetails.reduce((sum, detail) => {
-      if (detail.containerDetails) {
-        return (
-          sum +
-          detail.containerDetails.reduce(
-            (s, cd) => s + (parseInt(cd.total_number) || 0),
-            0,
-          )
-        );
-      }
-      return sum;
-    }, 0);
-
-    // Get vessel name
-    const vesselName = getValue(orderData.consignment_vessel);
-    const voyageNo = getValue(orderData.consignment_voyage);
-    const vesselVoyage =
-      vesselName && voyageNo
-        ? `${vesselName} / ${voyageNo}`
-        : vesselName || voyageNo || "";
-
-    // Get container count
-    const containerCount = containers.length
-      ? `${containers.length}X40'HC`
-      : "";
-
-    return `<!DOCTYPE html>
-                <html>
-                    <head>
-                        <meta charset="UTF-8">
-                        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                        <title>KYC Dubai Company</title>
-                    <style>
-
-                        body { font-family: Arial, sans-serif; font-size: 12px; margin: 20px; color: #333; size: A4; }
-                        .form-container { width: 800px; border: 2px solid #000; margin: auto; }
-                        
-                        .header-grid { display: grid; grid-template-columns: 1fr 200px; border-bottom: 2px solid #000; }
-                        .header-left { padding: 10px; }
-                        .logo { font-weight: bold; font-style: italic; color: #d9534f; font-size: 24px; }
-                        .logo img{ width: 180px; height: auto; }
-                        .logo span { color: #555; font-size: 14px; }
-                        .form-title { text-align: center; text-decoration: underline; font-weight: bold; margin-top: 10px; }
-                        .disclaimer { font-size: 10px; margin-top: 10px; line-height: 1.2; text-align: justify; }
-                        
-                        .photo-box { border-left: 2px solid #000; padding: 10px; text-align: center; font-size: 10px; background: #f9f9f9; }
-
-                        /* Form Rows */
-                        .row { display: flex; border-bottom: 1px solid #000; min-height: 30px; }
-                        .row:last-child { border-bottom: none; }
-                        .col-num { width: 40px; border-right: 1px solid #000; display: flex; align-items: center; justify-content: center; font-weight: bold; }
-                        .col-label { width: 300px; border-right: 1px solid #000; padding: 5px; font-weight: bold; }
-                        .col-input { flex-grow: 1; padding: 5px; color: #d9534f; font-style: italic; }
-                        
-                        /* Nested checkboxes for Category */
-                        .category-options { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
-                        .option { font-style: normal; color: #d9534f; }
-
-                        /* Footer / Declaration */
-                        .declaration { padding: 10px; font-size: 11px; line-height: 1.4; border-top: 2px solid #000; }
-                        .signature-section { display: grid; grid-template-columns: 1fr 1fr; padding: 10px; }
-                        .sig-line { border-bottom: 1px solid #000; width: 200px; display: inline-block; }
-                </style>
-                </head>
-                <body>
-
-                <div class="form-container">
-                    <div class="header-grid">
-                        <div class="header-left">
-                            <div class="logo"><img src="${logoPic}" alt="Royal Gulf"> <br><span>Royal Gulf Shipping & Logistics LLC</span></div>
-                            <div class="form-title">KYC (Know Your Customer) Form</div>
-                            <p class="disclaimer">
-                                As Required Mandatory by company policy and government authorities involved, for identification verification of Storage Customers/Importers/Exporters/for customs clearance performed on their behalf by Royal Gulf Shipping & Logistics LLC as an authorized Warehousing company / agents directly or indirectly through a Clearing agent appointed by Royal Gulf Shipping & Logistics LLC on behalf of the customer.
-                            </p>
-                        </div>
-                        <div class="photo-box">
-                            Passport Size Photograph of Individual / Attach Photograph of the Authorized Signatory For Proprietary Firm / Partnership Firm / Trust and Company
-                        </div>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-num">1</div>
-                        <div class="col-label">Category</div>
-                        <div class="col-input">
-                            <div class="category-options">
-                                <div class="option">☐ Company</div>
-                                <div class="option">☐ Individual/proprietary firm</div>
-                                <div class="option">☐ Trusts/Foundations</div>
-                                <div class="option">☐ Partnership Firm</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="row" style="height: 60px;">
-                        <div class="col-num">2</div>
-                        <div class="col-label">Name of the Individual / Proprietary firm/Company/Trusts/Foundations Partnership firm Name of all partners</div>
-                        <div class="col-input">To be fetched from system database</div>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-num">3</div>
-                        <div class="col-label">RGSL Customer Account No</div>
-                        <div class="col-input">To be fetched from system database</div>
-                    </div>
-
-                    <div class="row" style="height: 80px;">
-                        <div class="col-num">4</div>
-                        <div class="col-label">Permanent or Registered address... <br> Telephone: <br> Mobile:</div>
-                        <div class="col-input">To be fetched from system database</div>
-                    </div>
-
-                    <div class="row" style="height: 100px;">
-                        <div class="col-num">5</div>
-                        <div class="col-label">Principal Business address... <br> Telephone: <br> Fax Number: <br> Email Address: <br> Website:</div>
-                        <div class="col-input">To be fetched from system database</div>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-num">6</div>
-                        <div class="col-label">Name of Authorized Signatory for signing import/export documents...</div>
-                        <div class="col-input">To be fetched from system database</div>
-                    </div>
-
-                    <div class="row"><div class="col-num">7</div><div class="col-label">Passport No:</div><div class="col-input">${safeOrder.sender_kyc_approved ? safeOrder.sender_passport_number || "N/A" : "Not Approved"}</div></div>
-                    <div class="row"><div class="col-num">8</div><div class="col-label">Emirates ID #:</div><div class="col-input">${safeOrder.sender_kyc_approved ? safeOrder.sender_emirates_id || "N/A" : "Not Approved"}</div></div>
-
-                    <div class="row"><div class="col-num">9</div><div class="col-label">Visa No:</div><div class="col-input">To be fetched... COPY ATTACHED</div></div>
-
-                    <div class="declaration">
-                        I/We hereby Declare that the particulars given herein above are true , correct and complete to the best of my/our knowledge and belief, the documents submitted in support of this form KYC are genuine and obtained legally from the respective issuing authority. In case of any change in any of the aforementioned particulars, I/we undertake to notify you in writing failing which the above particulars may be relied upon including all shipments/documents executed and tendered by the individual so authorized and mentioned in 6 above. I/We hereby authorize you to submit the above particulars to the customs and other regulatory authorities on my/our behlaf as may be required in order in to transport and customs clear my/our shipments.
-                    </div>
-
-                    <div class="signature-section">
-                        <div>
-                            Place: <span class="option">Dubai, UAE</span><br><br>
-                            Date: <span class="option">${currentDate}</span>
-                        </div>
-                        <div>
-                            Signature ${
-                              safeOrder.sender_kyc_approved &&
-                              safeOrder.sender_signature_url
-                                ? `<img src="${safeOrder.sender_signature_url}" style="height:40px;vertical-align:middle;margin-left:5px;" />`
-                                : `<span class="sig-line"></span>`
-                            }<br><br>
-                            Name <span style="margin-left:5px;">${safeOrder.sender_kyc_approved ? safeOrder.sender_kyc_name || "" : ""}</span>
-                        </div>
-                    </div>
-                </div>
-
-                </body>
-                </html>
-                `;
-  };
-
-  const KYCUKCompany = (orderData) => {
-    const getValue = (value) => {
-      return value && value !== "" && value !== null && value !== undefined
-        ? value
-        : "";
-    };
-    const safeOrder = orderData || {};
-    const currentDate = new Date().toLocaleDateString("en-GB", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    });
-
-    const senderName = getValue(orderData.sender_name);
-    const senderAddress = getValue(orderData.sender_address);
-    const senderContact = getValue(orderData.sender_contact);
-
-    const receiver =
-      orderData.receivers && orderData.receivers[0]
-        ? orderData.receivers[0]
-        : {};
-    const receiverName = getValue(receiver.receiverName);
-    const receiverContact = getValue(receiver.receiverContact);
-    const receiverAddress = getValue(receiver.receiverAddress);
-
-    const shippingDetails = receiver.shippingdetails || [];
-
-    const containers = receiver.containers || [];
-
-    const getContainerRows = () => {
-      if (!shippingDetails.length) return "";
-
-      let rows = "";
-      shippingDetails.forEach((detail) => {
-        if (detail.containerDetails && detail.containerDetails.length) {
-          detail.containerDetails.forEach((containerDetail) => {
-            const containerNum =
-              containerDetail.container?.container_number ||
-              containerDetail.container_number ||
-              "";
-            const sealNo = "";
-            const pkgs = containerDetail.total_number || "";
-            const grossWt = containerDetail.assign_weight
-              ? `${containerDetail.assign_weight} KGS`
-              : "";
-
-            if (containerNum) {
-              rows += `<tr><td>${containerNum} / 40'HC</td><td></td><td>${pkgs} PKG</td><td></td><td>${grossWt}</td></tr>`;
-            }
-          });
-        }
-      });
-      return rows;
-    };
-
-    const totalPkgs = shippingDetails.reduce((sum, detail) => {
-      if (detail.containerDetails) {
-        return (
-          sum +
-          detail.containerDetails.reduce(
-            (s, cd) => s + (parseInt(cd.total_number) || 0),
-            0,
-          )
-        );
-      }
-      return sum;
-    }, 0);
-
-    const vesselName = getValue(orderData.consignment_vessel);
-    const voyageNo = getValue(orderData.consignment_voyage);
-    const vesselVoyage =
-      vesselName && voyageNo
-        ? `${vesselName} / ${voyageNo}`
-        : vesselName || voyageNo || "";
-
-    const containerCount = containers.length
-      ? `${containers.length}X40'HC`
-      : "";
-
-    return `<!DOCTYPE html>
-                <html>
-                    <head>
-                        <meta charset="UTF-8">
-                        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                        <title>KYC UK Company</title>
-                    <style>
-
-                        body { font-family: Arial, sans-serif; font-size: 12px; margin: 20px; color: #333; size: A4; }
-                        .form-container { width: 800px; border: 2px solid #000; margin: auto; }
-                        
-                        .header-grid { display: grid; grid-template-columns: 1fr 200px; border-bottom: 2px solid #000; }
-                        .header-left { padding: 10px; }
-                        .logo { font-weight: bold; display: flex; align-items: center; gap: 20px; }
-                        .logo img{ width: 100px; height: auto; }
-                        .logo span { color: #555; font-size: 20px; }
-                        .form-title { text-align: center; text-decoration: underline; font-weight: bold; margin-top: 10px; }
-                        .disclaimer { font-size: 10px; margin-top: 10px; line-height: 1.2; text-align: justify; }
-                        
-                        .photo-box { border-left: 2px solid #000; padding: 10px; text-align: center; font-size: 10px; background: #f9f9f9; }
-
-                        /* Form Rows */
-                        .row { display: flex; border-bottom: 1px solid #000; min-height: 30px; }
-                        .row:last-child { border-bottom: none; }
-                        .col-num { width: 40px; border-right: 1px solid #000; display: flex; align-items: center; justify-content: center; font-weight: bold; }
-                        .col-label { width: 300px; border-right: 1px solid #000; padding: 5px; font-weight: bold; }
-                        .col-input { flex-grow: 1; padding: 5px; color: #d9534f; font-style: italic; }
-                        
-                        /* Nested checkboxes for Category */
-                        .category-options { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
-                        .option { font-style: normal; color: #d9534f; }
-
-                        /* Footer / Declaration */
-                        .declaration { padding: 10px; font-size: 11px; line-height: 1.4; border-top: 2px solid #000; }
-                        .signature-section { display: grid; grid-template-columns: 1fr 1fr; padding: 10px; }
-                        .sig-line { border-bottom: 1px solid #000; width: 200px; display: inline-block; }
-                </style>
-                </head>
-                <body>
-
-                <div class="form-container">
-                    <div class="header-grid">
-                        <div class="header-left">
-                            <div class="logo"><img src="${logoMFD}" alt="Messiah Freight"><span>MESSIAH FREIGHT & DISTRIBUTORS UK LTD </span></div>
-                            <div class="form-title">KYC (Know Your Customer) Form</div>
-                            <p class="disclaimer">
-                                As Required Mandatory by company policy and government authorities involved, for identification verification of Storage Customers/Importers/Exporters/for customs clearance performed on their behalf by customs clearnace performed on their behalf by Messiah Freight & Distribution Uk Ltd as an authorized Warehousing company / agents directly or indirectly through a Clearing agent appointed by Royal Gulf Shipping & Logistics LLC on behalf of the customer.
-                            </p>
-                        </div>
-                        <div class="photo-box">
-                            Passport Size Photograph of Individual / Attach Photograph of the Authorized Signatory For Proprietary Firm / Partnership Firm / Trust and Company
-                        </div>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-num">1</div>
-                        <div class="col-label">Category</div>
-                        <div class="col-input">
-                            <div class="category-options">
-                                <div class="option">☐ Company</div>
-                                <div class="option">☐ Individual/proprietary firm</div>
-                                <div class="option">☐ Trusts/Foundations</div>
-                                <div class="option">☐ Partnership Firm</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="row" style="height: 60px;">
-                        <div class="col-num">2</div>
-                        <div class="col-label">Name of the Individual / Proprietary firm/Company/Trusts/Foundations Partnership firm Name of all partners</div>
-                        <div class="col-input">To be fetched from system database</div>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-num">3</div>
-                        <div class="col-label">RGSL Customer Account No</div>
-                        <div class="col-input">To be fetched from system database</div>
-                    </div>
-
-                    <div class="row" style="height: 80px;">
-                        <div class="col-num">4</div>
-                        <div class="col-label">Permanent or Registered address... <br> Telephone: <br> Mobile:</div>
-                        <div class="col-input">To be fetched from system database</div>
-                    </div>
-
-                    <div class="row" style="height: 100px;">
-                        <div class="col-num">5</div>
-                        <div class="col-label">Principal Business address... <br> Telephone: <br> Fax Number: <br> Email Address: <br> Website:</div>
-                        <div class="col-input">To be fetched from system database</div>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-num">6</div>
-                        <div class="col-label">Name of Authorized Signatory for signing import/export documents...</div>
-                        <div class="col-input">To be fetched from system database</div>
-                    </div>
-
-                    <div class="row"><div class="col-num">7</div><div class="col-label">Passport No:</div><div class="col-input">${safeOrder.sender_kyc_approved ? safeOrder.sender_passport_number || "N/A" : "Not Approved"}</div></div>
-                    <div class="row"><div class="col-num">8</div><div class="col-label">Emirates ID #:</div><div class="col-input">${safeOrder.sender_kyc_approved ? safeOrder.sender_emirates_id || "N/A" : "Not Approved"}</div></div>
-
-
-                    <div class="row"><div class="col-num">9</div><div class="col-label">Visa No:</div><div class="col-input">To be fetched... COPY ATTACHED</div></div>
-
-                    <div class="declaration">
-                    I/We hereby Declare that the particulars given herein above are true , correct and complete to the best of my/our knowledge and belief, the documents submitted in support of this form KYC are genuine and obtained legally from the respective issuing authority. In case of any change in any of the aforementioned particulars, I/we undertake to notify you in writing failing which the above particulars may be relied upon including all shipments/documents executed and tendered by the individual so authorized and mentioned in 6 above. I/We hereby authorize you to submit the above particulars to the customs and other regulatory authorities on my/our behlaf as may be required in order in to transport and customs clear my/our shipments.
-                    </div>
-
-                    <div class="signature-section">
-                        <div>
-                            Place: <span class="option">United Kingdom</span><br><br>
-                            Date: <span class="option">${currentDate}</span>
-                        </div>
-                        <div>
-                            Signature ${
-                              safeOrder.sender_kyc_approved &&
-                              safeOrder.sender_signature_url
-                                ? `<img src="${safeOrder.sender_signature_url}" style="height:40px;vertical-align:middle;margin-left:5px;" />`
-                                : `<span class="sig-line"></span>`
-                            }<br><br>
-                            Name <span style="margin-left:5px;">${safeOrder.sender_kyc_approved ? safeOrder.sender_kyc_name || "" : ""}</span>
-                        </div>
-                    </div>
-                </div>
-
-                </body>
-                </html>
-                `;
   };
 
   const RickmersBillOfLadingSample = (orderData) => {
@@ -7638,8 +5473,6 @@ applicable law provides otherwise
                       </td>
                       <td rowspan="2">
                           <span class="label">FORWARDING AGENT-REFERENCES<br>FMC/NO</span>
-                          <b>ROYAL GULF SHIPPING & LOGISTICS</b><br>
-                          DUBAI , UAE . TEL:043331785
                       </td>
                   </tr>
                   <tr>
@@ -7725,7 +5558,6 @@ applicable law provides otherwise
                       </td>
                       <td style="width:34%;">
                           <span class="label">FREIGHT & CHARGES PAYABLE AT / BY</span>
-                          KARACHI - PAKISTAN<br>DUBAI
                       </td>
                       <td style="width:33%;">
                           <span class="label">(if) ORIGINAL BILL(S) HAVE BEEN SIGNED</span>
@@ -7763,13 +5595,12 @@ applicable law provides otherwise
                   <b>${getPlaceName(safeOrder.place_of_loading).toUpperCase()}</b><br><br>
                   DATED<br><br>
                   SIGNED<br>BY: <b>RICKMERS CONTAINER LINE</b><br>
-                  KARACHI - PAKISTAN.<br>
                   as agent for and on behalf of
               </div>
 
               <div class="footer-note" style="text-align:right; margin-top:20px;">
                   RICKMERS CONTAINER LINE<br>
-                  (KARACHI), AS CARRIER
+                  AS CARRIER
               </div>
           </div>
 
@@ -7827,7 +5658,7 @@ applicable law provides otherwise
 
               <div class="footer-note" style="text-align:right; margin-top:20px;">
                   RICKMERS CONTAINER LINE<br>
-                  (KARACHI), AS CARRIER
+                  AS CARRIER
               </div>
           </div>
       </body>
@@ -7835,213 +5666,7 @@ applicable law provides otherwise
     `;
   };
 
-  const KYCKarachiCompany = (orderData) => {
-    const safeOrder = orderData || {};
-    const getValue = (value) => {
-      return value && value !== "" && value !== null && value !== undefined
-        ? value
-        : "";
-    };
-
-    const currentDate = new Date().toLocaleDateString("en-GB", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    });
-
-    const senderName = getValue(orderData.sender_name);
-    const senderAddress = getValue(orderData.sender_address);
-    const senderContact = getValue(orderData.sender_contact);
-
-    const receiver =
-      orderData.receivers && orderData.receivers[0]
-        ? orderData.receivers[0]
-        : {};
-    const receiverName = getValue(receiver.receiverName);
-    const receiverContact = getValue(receiver.receiverContact);
-    const receiverAddress = getValue(receiver.receiverAddress);
-
-    const shippingDetails = receiver.shippingdetails || [];
-
-    const containers = receiver.containers || [];
-
-    const getContainerRows = () => {
-      if (!shippingDetails.length) return "";
-
-      let rows = "";
-      shippingDetails.forEach((detail) => {
-        if (detail.containerDetails && detail.containerDetails.length) {
-          detail.containerDetails.forEach((containerDetail) => {
-            const containerNum =
-              containerDetail.container?.container_number ||
-              containerDetail.container_number ||
-              "";
-            const sealNo = "";
-            const pkgs = containerDetail.total_number || "";
-            const grossWt = containerDetail.assign_weight
-              ? `${containerDetail.assign_weight} KGS`
-              : "";
-
-            if (containerNum) {
-              rows += `<tr><td>${containerNum} / 40'HC</td><td></td><td>${pkgs} PKG</td><td></td><td>${grossWt}</td></tr>`;
-            }
-          });
-        }
-      });
-      return rows;
-    };
-
-    const totalPkgs = shippingDetails.reduce((sum, detail) => {
-      if (detail.containerDetails) {
-        return (
-          sum +
-          detail.containerDetails.reduce(
-            (s, cd) => s + (parseInt(cd.total_number) || 0),
-            0,
-          )
-        );
-      }
-      return sum;
-    }, 0);
-
-    const vesselName = getValue(orderData.consignment_vessel);
-    const voyageNo = getValue(orderData.consignment_voyage);
-    const vesselVoyage =
-      vesselName && voyageNo
-        ? `${vesselName} / ${voyageNo}`
-        : vesselName || voyageNo || "";
-
-    const containerCount = containers.length
-      ? `${containers.length}X40'HC`
-      : "";
-
-    return `<!DOCTYPE html>
-                <html>
-                    <head>
-                        <meta charset="UTF-8">
-                        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                        <title>KYC Karachi Company</title>
-                    <style>
-                        body { font-family: Arial, sans-serif; font-size: 12px; margin: 20px; color: #333; size: A4; }
-                        .form-container { width: 800px; border: 2px solid #000; margin: auto; }
-                        .header-grid { display: grid; grid-template-columns: 1fr 200px; border-bottom: 2px solid #000; }
-                        .header-left { padding: 10px; }
-                        .logo { font-weight: bold; display: flex; align-items: center; gap: 20px; }
-                        .logo img{ width: 100px; height: auto; }
-                        .logo span { color: #555; font-size: 20px; }
-                        .form-title { text-align: center; text-decoration: underline; font-weight: bold; margin-top: 10px; }
-                        .disclaimer { font-size: 10px; margin-top: 10px; line-height: 1.2; text-align: justify; }
-                        
-                        .photo-box { border-left: 2px solid #000; padding: 10px; text-align: center; font-size: 10px; background: #f9f9f9; }
-
-                        /* Form Rows */
-                        .row { display: flex; border-bottom: 1px solid #000; min-height: 30px; }
-                        .row:last-child { border-bottom: none; }
-                        .col-num { width: 40px; border-right: 1px solid #000; display: flex; align-items: center; justify-content: center; font-weight: bold; }
-                        .col-label { width: 300px; border-right: 1px solid #000; padding: 5px; font-weight: bold; }
-                        .col-input { flex-grow: 1; padding: 5px; color: #d9534f; font-style: italic; }
-                        
-                        /* Nested checkboxes for Category */
-                        .category-options { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
-                        .option { font-style: normal; color: #d9534f; }
-
-                        /* Footer / Declaration */
-                        .declaration { padding: 10px; font-size: 11px; line-height: 1.4; border-top: 2px solid #000; }
-                        .signature-section { display: grid; grid-template-columns: 1fr 1fr; padding: 10px; }
-                        .sig-line { border-bottom: 1px solid #000; width: 200px; display: inline-block; }
-                </style>
-                </head>
-                <body>
-
-                <div class="form-container">
-                    <div class="header-grid">
-                        <div class="header-left">
-                            <div class="logo"><img src="${logoCAS}" alt="Cargo Aviation"> <span>Cargo Aviation System Pvt Ltd</span></div>
-                            <div class="form-title">KYC (Know Your Customer) Form</div>
-                            <p class="disclaimer">
-                                As Required Mandatory by company policy and government authorities involved, for identification verification of Storage Customers/Importers/Exporters/for customs clearance performed on their behalf by customs clearnace performed on their behalf by Cargo Aviation Systems (Pvt) Ltd as an authorized Warehousing company / agents directly or indirectly through a Clearing agent appointed by Royal Gulf Shipping & Logistics LLC on behalf of the customer.
-                            </p>
-                        </div>
-                        <div class="photo-box">
-                            Passport Size Photograph of Individual / Attach Photograph of the Authorized Signatory For Proprietary Firm / Partnership Firm / Trust and Company
-                        </div>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-num">1</div>
-                        <div class="col-label">Category</div>
-                        <div class="col-input">
-                            <div class="category-options">
-                                <div class="option">☐ Company</div>
-                                <div class="option">☐ Individual/proprietary firm</div>
-                                <div class="option">☐ Trusts/Foundations</div>
-                                <div class="option">☐ Partnership Firm</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="row" style="height: 60px;">
-                        <div class="col-num">2</div>
-                        <div class="col-label">Name of the Individual / Proprietary firm/Company/Trusts/Foundations Partnership firm Name of all partners</div>
-                        <div class="col-input">To be fetched from system database</div>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-num">3</div>
-                        <div class="col-label">RGSL Customer Account No</div>
-                        <div class="col-input">To be fetched from system database</div>
-                    </div>
-
-                    <div class="row" style="height: 80px;">
-                        <div class="col-num">4</div>
-                        <div class="col-label">Permanent or Registered address... <br> Telephone: <br> Mobile:</div>
-                        <div class="col-input">To be fetched from system database</div>
-                    </div>
-
-                    <div class="row" style="height: 100px;">
-                        <div class="col-num">5</div>
-                        <div class="col-label">Principal Business address... <br> Telephone: <br> Fax Number: <br> Email Address: <br> Website:</div>
-                        <div class="col-input">To be fetched from system database</div>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-num">6</div>
-                        <div class="col-label">Name of Authorized Signatory for signing import/export documents...</div>
-                        <div class="col-input">To be fetched from system database</div>
-                    </div>
-
-                    <div class="row"><div class="col-num">7</div><div class="col-label">Passport No:</div><div class="col-input">${safeOrder.sender_kyc_approved ? safeOrder.sender_passport_number || "N/A" : "Not Approved"}</div></div>
-                    <div class="row"><div class="col-num">8</div><div class="col-label">Emirates ID #:</div><div class="col-input">${safeOrder.sender_kyc_approved ? safeOrder.sender_emirates_id || "N/A" : "Not Approved"}</div></div>
-
-                    <div class="row"><div class="col-num">9</div><div class="col-label">Visa No:</div><div class="col-input">To be fetched... COPY ATTACHED</div></div>
-
-                    <div class="declaration">
-                        I/We hereby Declare that the particulars given herein above are true , correct and complete to the best of my/our knowledge and belief, the documents submitted in support of this form KYC are genuine and obtained legally from the respective issuing authority. In case of any change in any of the aforementioned particulars, I/we undertake to notify you in writing failing which the above particulars may be relied upon including all shipments/documents executed and tendered by the individual so authorized and mentioned in 6 above. I/We hereby authorize you to submit the above particulars to the customs and other regulatory authorities on my/our behlaf as may be required in order in to transport and customs clear my/our shipments.
-                    </div>
-
-                    <div class="signature-section">
-                        <div>
-                            Place: <span class="option">Karachi, Pakistan</span><br><br>
-                            Date: <span class="option">${currentDate}</span>
-                        </div>
-                        <div>
-                            Signature ${
-                              safeOrder.sender_kyc_approved &&
-                              safeOrder.sender_signature_url
-                                ? `<img src="${safeOrder.sender_signature_url}" style="height:40px;vertical-align:middle;margin-left:5px;" />`
-                                : `<span class="sig-line"></span>`
-                            }<br><br>
-                            Name <span style="margin-left:5px;">${safeOrder.sender_kyc_approved ? safeOrder.sender_kyc_name || "" : ""}</span>
-                        </div>
-                    </div>
-                </div>
-
-                </body>
-                </html>
-                `;
-  };
-
-  const DOCUMENT_GENERATORS = {
+  const STATIC_DOCUMENT_GENERATORS = {
     "3rd Party Shipper Undertaking for ANF.pdf": PartyShipperUndertakingForANF,
     "3rd Party Shipper Indemnity for each order format.pdf":
       PartyShipperIndemnityForEachOrderFormat,
@@ -8057,274 +5682,397 @@ applicable law provides otherwise
     "Sender Undertaking for 3rd Party Shipper.pdf":
       SenderUndertakingForThirdPartyShipper,
     "WHARFAGE - CONSIGNMENT NOTE.pdf": WHARFAGEConsignmentsNote,
-    "Order Acknowledgement Printabe Version.pdf":
-      OrderAcknowledgementPrintableVersion,
-    "Order Confirmation & Acceptance Dubai Receiver.pdf":
-      OrderConfirmationAndAcceptanceDubaiReceiver,
-    "Order Confirmation & Acceptance UK Receiver.pdf":
-      OrderConfirmationAndAcceptanceUKReceiver,
-    "Order Confirmation & Acceptance Karachi Receiver.pdf":
-      OrderConfirmationAndAcceptanceKarachiReceiver,
-    "Messiah Bill of Lading.pdf": MessiahBillofLading,
-    "RGSL Bill of Lading.pdf": RGSLBillofLading,
-    "KYC Dubai Company.pdf": KYCDubaiCompany,
-    "KYC UK Company.pdf": KYCUKCompany,
-    "KYC Karachi Company.pdf": KYCKarachiCompany,
-    "CAS Bill of Lading.pdf": CASBillofLading,
-    "GP#0121725 - Cargo GatePass.pdf": CargoGatePass,
     "Rickmers Bill of Lading Sample.pdf": RickmersBillOfLadingSample,
   };
+
+  const BRANDABLE_DOCUMENT_GENERATORS = {
+    "Bill of Lading.pdf": BillOfLading,
+    "Order Confirmation & Acceptance.pdf": OrderConfirmation,
+    "Order Acknowledgement Printabe Version.pdf":
+      OrderAcknowledgementPrintableVersion,
+    "GP#0121725 - Cargo GatePass.pdf": CargoGatePass,
+  };
+
+  const isBrandable = (docName) => !!BRANDABLE_DOCUMENT_GENERATORS[docName];
+
+  const activeCompany =
+    companies?.find((c) => c.id === selectedCompanyId) || null;
+
+  const activeDocHtml = useMemo(() => {
+    if (!activeDocKey || !activeOrderData) return "";
+    if (isBrandable(activeDocKey)) {
+      if (!activeCompany) return "";
+      return BRANDABLE_DOCUMENT_GENERATORS[activeDocKey](
+        activeOrderData,
+        activeCompany,
+      );
+    }
+    const generator = STATIC_DOCUMENT_GENERATORS[activeDocKey];
+    return generator ? generator(activeOrderData) : "";
+  }, [activeDocKey, activeOrderData, activeCompany]);
+
+  const handlePrintActiveDoc = () => {
+    if (!activeDocHtml || !printFrameRef.current) return;
+    const frame = printFrameRef.current;
+    const doc = frame.contentWindow.document;
+    doc.open();
+    doc.write(activeDocHtml);
+    doc.close();
+    frame.contentWindow.focus();
+    frame.contentWindow.print();
+  };
+
+  if (isLoading) {
+    return (
+      <Paper sx={{ p: 3, borderRadius: 3, boxShadow: 3, bgcolor: "#fafafa" }}>
+        <Stack
+          direction="row"
+          alignItems="center"
+          justifyContent="center"
+          spacing={1}
+        >
+          <CircularProgress size={24} />
+          <Typography variant="h6" color="#f58220">
+            Loading orders...
+          </Typography>
+        </Stack>
+      </Paper>
+    );
+  }
+  if (error) {
+    return (
+      <Paper sx={{ p: 3, borderRadius: 3, boxShadow: 3, bgcolor: "#fafafa" }}>
+        <Typography variant="h6" color="error">
+          {error}
+        </Typography>
+        <Button
+          variant="contained"
+          onClick={fetchOrders}
+          sx={{ mt: 2, backgroundColor: "#f58220" }}
+        >
+          Retry
+        </Button>
+      </Paper>
+    );
+  }
 
   return (
     <>
       <Dialog
         open={openDocumentsModal}
         onClose={handleCloseDocumentsModal}
-        maxWidth="md"
+        maxWidth="xl"
         fullWidth
         PaperProps={{
           sx: { borderRadius: 2 },
         }}
       >
         <DialogContent sx={{ mt: 1, p: 0 }}>
-          {(() => {
-            const docGroups = [
-              {
-                label: "Royal Gulf Shipping & Logistics",
-                color: "#1a7a6e",
-                docs: [
-                  "RGSL Bill of Lading.pdf",
-                  "Order Acknowledgement Printabe Version.pdf",
-                  "Order Confirmation & Acceptance Dubai Receiver.pdf",
-                  "KYC Dubai Company.pdf",
-                  "WHARFAGE - CONSIGNMENT NOTE.pdf",
-                  "Dubai Letter of Idemnity for Customs.pdf",
-                  "Receiver Undertaking for Dubai Customs.pdf",
-                  "Receiver Undertaking Dubai ANF.pdf",
-                  "GP#0121725 - Cargo GatePass.pdf",
-                ],
-              },
-              {
-                label: "Cargo Aviation System",
-                color: "#5c3d99",
-                docs: [
-                  "CAS Bill of Lading.pdf",
-                  "Order Confirmation & Acceptance Karachi Receiver.pdf",
-                  "KYC Karachi Company.pdf",
-                  "3rd Party Shipper Undertaking for ANF.pdf",
-                  "3rd Party Shipper Indemnity for each order format.pdf",
-                  "Karachi Govt. Customs Stamp paper undertaking format.pdf",
-                  "Karachi, Undertaking for Customs, Each sender should give.pdf",
-                  "Sender Undertaking for 3rd Party Shipper.pdf",
-                ],
-              },
-              {
-                label: "Messiah Freight",
-                color: "#b84c00",
-                docs: [
-                  "Messiah Bill of Lading.pdf",
-                  "Order Confirmation & Acceptance UK Receiver.pdf",
-                  "KYC UK Company.pdf",
-                ],
-              },
-              {
-                label: "Others",
-                color: "#555",
-                docs: [
-                  "Essential Information.pdf",
-                  "Rickmers Bill of Lading Sample.pdf",
-                ],
-              },
-            ];
+          <Box sx={{ display: "flex", height: "75vh" }}>
+            <Box sx={{ flex: "1 1 0", minWidth: 0, overflow: "auto" }}>
+              {(() => {
+                const docGroups = [
+                  {
+                    label: "Branded Documents",
+                    color: "#1a7a6e",
+                    docs: [
+                      "Bill of Lading.pdf",
+                      "Order Confirmation & Acceptance.pdf",
+                      "Order Acknowledgement Printabe Version.pdf",
+                      "GP#0121725 - Cargo GatePass.pdf",
+                    ],
+                  },
+                  {
+                    label: "Customs & Undertakings",
+                    color: "#5c3d99",
+                    docs: [
+                      "3rd Party Shipper Undertaking for ANF.pdf",
+                      "3rd Party Shipper Indemnity for each order format.pdf",
+                      "Dubai Letter of Idemnity for Customs.pdf",
+                      "Karachi Govt. Customs Stamp paper undertaking format.pdf",
+                      "Karachi, Undertaking for Customs, Each sender should give.pdf",
+                      "Receiver Undertaking for Dubai Customs.pdf",
+                      "Receiver Undertaking Dubai ANF.pdf",
+                      "Sender Undertaking for 3rd Party Shipper.pdf",
+                    ],
+                  },
+                  {
+                    label: "Other",
+                    color: "#555",
+                    docs: [
+                      "WHARFAGE - CONSIGNMENT NOTE.pdf",
+                      "Rickmers Bill of Lading Sample.pdf",
+                    ],
+                  },
+                ];
 
-            const getFileIcon = (docName) => {
-              const ext = docName.split(".").pop()?.toLowerCase() || "";
-              if (ext === "pdf") return <PictureAsPdfIcon color="error" />;
-              if (ext === "docx" || ext === "doc")
-                return <DescriptionIcon color="primary" />;
-              if (ext === "xlsx" || ext === "xls")
-                return <AssignmentIcon color="success" />;
-              return <InsertDriveFileIcon />;
-            };
+                const getFileIcon = (docName) => {
+                  const ext = docName.split(".").pop()?.toLowerCase() || "";
+                  if (ext === "pdf") return <PictureAsPdfIcon color="error" />;
+                  if (ext === "docx" || ext === "doc")
+                    return <DescriptionIcon color="primary" />;
+                  if (ext === "xlsx" || ext === "xls")
+                    return <AssignmentIcon color="success" />;
+                  return <InsertDriveFileIcon />;
+                };
 
-            const activeGroup = docGroups[docTab];
+                const activeGroup = docGroups[docTab];
 
-            return (
-              <>
-                <Box
-                  sx={{ borderBottom: "1px solid #e0e0e0", bgcolor: "#fafafa" }}
-                >
-                  <Tabs
-                    value={docTab}
-                    onChange={(e, v) => setDocTab(v)}
-                    variant="scrollable"
-                    scrollButtons="auto"
-                    TabIndicatorProps={{ style: { height: 3 } }}
-                    sx={{
-                      minHeight: 44,
-                      "& .MuiTab-root": {
-                        minHeight: 44,
-                        textTransform: "none",
-                        fontWeight: 600,
-                        fontSize: "0.8rem",
-                        px: 2,
-                      },
-                    }}
-                  >
-                    {docGroups.map((g, i) => (
-                      <Tab
-                        key={i}
-                        label={
-                          <Box
-                            sx={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 0.75,
-                            }}
-                          >
-                            <Box
-                              sx={{
-                                width: 8,
-                                height: 8,
-                                borderRadius: "50%",
-                                bgcolor: g.color,
-                                flexShrink: 0,
-                              }}
-                            />
-                            {g.label}
-                            <Chip
-                              label={g.docs.length}
-                              size="small"
-                              sx={{
-                                height: 18,
-                                fontSize: "0.65rem",
-                                bgcolor: docTab === i ? g.color : "#e0e0e0",
-                                color: docTab === i ? "#fff" : "#555",
-                                "& .MuiChip-label": { px: 0.75 },
-                              }}
-                            />
-                          </Box>
-                        }
-                      />
-                    ))}
-                  </Tabs>
-                </Box>
-
-                <Box sx={{ p: 2 }}>
-                  <TableContainer
-                    component={Paper}
-                    variant="outlined"
-                    sx={{ borderRadius: 2 }}
-                  >
-                    <Table size="small">
-                      <TableHead>
-                        <TableRow sx={{ bgcolor: "#f5f5f5" }}>
-                          <TableCell sx={{ fontWeight: "bold", width: 40 }}>
-                            #
-                          </TableCell>
-                          <TableCell sx={{ fontWeight: "bold" }}>
-                            Document Name
-                          </TableCell>
-                          <TableCell sx={{ fontWeight: "bold", width: 60 }}>
-                            Type
-                          </TableCell>
-                          <TableCell sx={{ fontWeight: "bold", width: 110 }}>
-                            Actions
-                          </TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {activeGroup.docs.map((docName, index) => (
-                          <TableRow
-                            key={index}
-                            hover
-                            sx={{
-                              "&:nth-of-type(odd)": { bgcolor: "#fafafa" },
-                            }}
-                          >
-                            <TableCell
-                              sx={{ color: "#999", fontSize: "0.75rem" }}
-                            >
-                              {index + 1}
-                            </TableCell>
-                            <TableCell>
+                return (
+                  <>
+                    <Box
+                      sx={{
+                        borderBottom: "1px solid #e0e0e0",
+                        bgcolor: "#fafafa",
+                      }}
+                    >
+                      <Tabs
+                        value={docTab}
+                        onChange={(e, v) => setDocTab(v)}
+                        variant="scrollable"
+                        scrollButtons="auto"
+                        TabIndicatorProps={{ style: { height: 3 } }}
+                        sx={{
+                          minHeight: 44,
+                          "& .MuiTab-root": {
+                            minHeight: 44,
+                            textTransform: "none",
+                            fontWeight: 600,
+                            fontSize: "0.8rem",
+                            px: 2,
+                          },
+                        }}
+                      >
+                        {docGroups.map((g, i) => (
+                          <Tab
+                            key={i}
+                            label={
                               <Box
                                 sx={{
                                   display: "flex",
                                   alignItems: "center",
-                                  gap: 1,
+                                  gap: 0.75,
                                 }}
                               >
-                                {getFileIcon(docName)}
-                                <Typography variant="body2" fontWeight="medium">
-                                  {docName}
-                                </Typography>
+                                <Box
+                                  sx={{
+                                    width: 8,
+                                    height: 8,
+                                    borderRadius: "50%",
+                                    bgcolor: g.color,
+                                    flexShrink: 0,
+                                  }}
+                                />
+                                {g.label}
+                                <Chip
+                                  label={g.docs.length}
+                                  size="small"
+                                  sx={{
+                                    height: 18,
+                                    fontSize: "0.65rem",
+                                    bgcolor: docTab === i ? g.color : "#e0e0e0",
+                                    color: docTab === i ? "#fff" : "#555",
+                                    "& .MuiChip-label": { px: 0.75 },
+                                  }}
+                                />
                               </Box>
-                            </TableCell>
-                            <TableCell>
-                              <Typography
-                                variant="caption"
-                                color="text.secondary"
-                              >
-                                {docName.split(".").pop()?.toUpperCase()}
-                              </Typography>
-                            </TableCell>
-                            <TableCell>
-                              <Stack direction="row" spacing={0.5}>
-                                <Tooltip title="View">
-                                  <span>
-                                    <IconButton
-                                      size="small"
-                                      disabled={docDataLoading}
-                                      onClick={() =>
-                                        handleDocumentClick("view", docName)
-                                      }
-                                      sx={{
-                                        color: "#0d6c6a",
-                                        "&:hover": {
-                                          bgcolor: "rgba(13,108,106,0.1)",
-                                        },
-                                      }}
-                                    >
-                                      {docDataLoading ? (
-                                        <CircularProgress size={14} />
-                                      ) : (
-                                        <VisibilityIcon fontSize="small" />
-                                      )}
-                                    </IconButton>
-                                  </span>
-                                </Tooltip>
-                                <Tooltip title="Print">
-                                  <span>
-                                    <IconButton
-                                      size="small"
-                                      disabled={docDataLoading}
-                                      onClick={() =>
-                                        handleDocumentClick("print", docName)
-                                      }
-                                      sx={{
-                                        color: "#f58220",
-                                        "&:hover": {
-                                          bgcolor: "rgba(245,130,32,0.1)",
-                                        },
-                                      }}
-                                    >
-                                      <PrintIcon fontSize="small" />
-                                    </IconButton>
-                                  </span>
-                                </Tooltip>
-                              </Stack>
-                            </TableCell>
-                          </TableRow>
+                            }
+                          />
                         ))}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-                </Box>
-              </>
-            );
-          })()}
+                      </Tabs>
+                    </Box>
+
+                    <Box sx={{ p: 2 }}>
+                      <TableContainer
+                        component={Paper}
+                        variant="outlined"
+                        sx={{ borderRadius: 2 }}
+                      >
+                        <Table size="small">
+                          <TableHead>
+                            <TableRow sx={{ bgcolor: "#f5f5f5" }}>
+                              <TableCell sx={{ fontWeight: "bold", width: 40 }}>
+                                #
+                              </TableCell>
+                              <TableCell
+                                sx={{ fontWeight: "bold", maxWidth: 350 }}
+                              >
+                                Document Name
+                              </TableCell>
+                              <TableCell
+                                sx={{ fontWeight: "bold", maxWidth: 260 }}
+                              >
+                                Actions
+                              </TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {activeGroup.docs.map((docName, index) => (
+                              <TableRow
+                                key={index}
+                                hover
+                                selected={activeDocKey === docName}
+                                sx={{
+                                  "&:nth-of-type(odd)": { bgcolor: "#fafafa" },
+                                }}
+                              >
+                                <TableCell
+                                  sx={{ color: "#999", fontSize: "0.75rem" }}
+                                >
+                                  {index + 1}
+                                </TableCell>
+                                <TableCell>
+                                  <Box
+                                    sx={{
+                                      display: "flex",
+                                      alignItems: "center",
+                                      gap: 1,
+                                    }}
+                                  >
+                                    {getFileIcon(docName)}
+                                    <Typography
+                                      variant="body2"
+                                      fontWeight="medium"
+                                    >
+                                      {docName}
+                                    </Typography>
+                                  </Box>
+                                </TableCell>
+                                <TableCell>
+                                  <Stack
+                                    direction="row"
+                                    spacing={1}
+                                    alignItems="center"
+                                  >
+                                    {isBrandable(docName) && (
+                                      <Select
+                                        size="small"
+                                        value={
+                                          activeDocKey === docName
+                                            ? selectedCompanyId
+                                            : ""
+                                        }
+                                        displayEmpty
+                                        onChange={(e) => {
+                                          setSelectedCompanyId(e.target.value);
+                                          setActiveDocKey(docName);
+                                        }}
+                                        sx={{
+                                          minWidth: 140,
+                                          height: 32,
+                                          fontSize: "0.75rem",
+                                        }}
+                                      >
+                                        <MenuItem value="" disabled>
+                                          Select company
+                                        </MenuItem>
+                                        {(companies || []).map((c) => (
+                                          <MenuItem key={c.id} value={c.id}>
+                                            {c.company}
+                                          </MenuItem>
+                                        ))}
+                                      </Select>
+                                    )}
+                                    <Tooltip title="Preview">
+                                      <span>
+                                        <IconButton
+                                          size="small"
+                                          disabled={
+                                            !activeOrderData ||
+                                            (isBrandable(docName) &&
+                                              !selectedCompanyId &&
+                                              activeDocKey !== docName)
+                                          }
+                                          onClick={() =>
+                                            setActiveDocKey(docName)
+                                          }
+                                          sx={{
+                                            color: "#0d6c6a",
+                                            "&:hover": {
+                                              bgcolor: "rgba(13,108,106,0.1)",
+                                            },
+                                          }}
+                                        >
+                                          <VisibilityIcon fontSize="small" />
+                                        </IconButton>
+                                      </span>
+                                    </Tooltip>
+                                  </Stack>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    </Box>
+                  </>
+                );
+              })()}
+            </Box>
+
+            <Divider orientation="vertical" flexItem />
+
+            <Box
+              sx={{
+                flex: "1 1 0",
+                minWidth: 0,
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
+              <Stack
+                direction="row"
+                justifyContent="space-between"
+                alignItems="center"
+                sx={{ p: 1.5 }}
+              >
+                <Typography variant="subtitle2">Preview</Typography>
+                <Button
+                  size="small"
+                  startIcon={<PrintIcon />}
+                  disabled={!activeDocHtml}
+                  onClick={handlePrintActiveDoc}
+                >
+                  Print
+                </Button>
+              </Stack>
+              <Paper
+                variant="outlined"
+                sx={{
+                  flex: 1,
+                  m: 1.5,
+                  mt: 0,
+                  p: 2,
+                  overflow: "auto",
+                  bgcolor: "#fff",
+                }}
+              >
+                {!activeDocKey ? (
+                  <Typography variant="body2" color="text.secondary">
+                    Select a document to preview.
+                  </Typography>
+                ) : !activeOrderData ? (
+                  <Box
+                    sx={{ display: "flex", justifyContent: "center", py: 4 }}
+                  >
+                    <CircularProgress size={22} />
+                  </Box>
+                ) : isBrandable(activeDocKey) && !selectedCompanyId ? (
+                  <Typography variant="body2" color="text.secondary">
+                    Select a company for this document.
+                  </Typography>
+                ) : (
+                  <Box dangerouslySetInnerHTML={{ __html: activeDocHtml }} />
+                )}
+              </Paper>
+            </Box>
+          </Box>
         </DialogContent>
+        <iframe
+          ref={printFrameRef}
+          title="print-frame"
+          style={{ position: "absolute", width: 0, height: 0, border: "none" }}
+        />
       </Dialog>
 
       <Paper sx={{ p: 3, borderRadius: 3, boxShadow: 3, bgcolor: "#fafafa" }}>
