@@ -110,6 +110,12 @@ export default function DashboardLayout() {
     //   module: "permissions",
     // },
     {
+      label: "Role Permissions",
+      path: "/role-permissions",
+      icon: <Lock />,
+      module: "role-permissions",
+    },
+    {
       label: "Customers",
       path: "/customers",
       icon: <PeopleIcon />,

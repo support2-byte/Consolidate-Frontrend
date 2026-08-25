@@ -49,6 +49,7 @@ import KycSubmissionsPage from "./pages/Customers/KycSubmissions";
 import ForgotPassword from "./pages/ForgotPassword";
 import CompaniesPage from "./pages/SystemData/CompaniesPage";
 import DocumentTemplatesPage from "./pages/SystemData/DocumentTemplatesPage";
+import RolePermissions from "./pages/Admin/RolePermissions";
 
 const router = createBrowserRouter([
   { path: "/login", element: <Login /> },
@@ -267,6 +268,16 @@ const router = createBrowserRouter([
           </ProtectedRoute>
         ),
       },
+      {
+        path: "role-permissions",
+        element: (
+          <ProtectedRoute
+            permission={{ module: "role-permissions", action: "view" }}
+          >
+            <RolePermissions />
+          </ProtectedRoute>
+        ),
+      },
       // {
       //   path: "permissions",
       //   element: (
@@ -277,7 +288,6 @@ const router = createBrowserRouter([
       //     </ProtectedRoute>
       //   ),
       // },
-
       {
         path: "admin",
         element: <Outlet />,
