@@ -242,6 +242,7 @@ const OrderForm = () => {
     status: firstStatus?.order_status,
   };
   const initialSenderObject = {
+    senderRef: "",
     senderName: "",
     senderContact: "",
     senderAddress: "",
@@ -257,6 +258,7 @@ const OrderForm = () => {
     sendEmailNotification: true,
   };
   const initialReceiver = {
+    receiverRef: "",
     receiverName: "",
     receiverContact: "",
     receiverAddress: "",
@@ -990,6 +992,8 @@ const OrderForm = () => {
             apiKey === "marksAndNumber"
           ) {
             camelRec[`${panel2Prefix}MarksNumber`] = val || "";
+          } else if (apiKey === "receiver_ref" || apiKey === "sender_ref") {
+            camelRec[`${panel2Prefix}Ref`] = val || "";
           } else {
             camelRec[camelKey] = val ?? "";
           }
@@ -2295,6 +2299,10 @@ const OrderForm = () => {
           : item.senderEmail || "",
       [`${panel2FieldPrefix}_marks_and_number`]:
         item[`${panel2FieldPrefix}MarksNumber`] || "",
+      [`${panel2FieldPrefix}_ref`]:
+        formData.senderType === "sender"
+          ? item.receiverRef || ""
+          : item.senderRef || "",
       eta: item.eta || "",
       etd: item.etd || "",
       shipping_line: item.shippingLine || "",
@@ -3002,11 +3010,9 @@ const OrderForm = () => {
                             />
                             <CustomTextField
                               label={`${typePrefix} Ref`}
-                              name={ownerRefKey}
                               value={formData[ownerRefKey] || ""}
                               onChange={handleChange}
-                              error={!!errors[ownerRefKey]}
-                              helperText={errors[ownerRefKey]}
+                              disabled={isFieldDisabled(ownerRefKey)}
                             />
                           </Box>
                           <CustomTextField

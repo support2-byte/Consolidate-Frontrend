@@ -257,7 +257,7 @@ const ROLE_COLOR = {
 };
 
 export default function UsersManagement() {
-  const { can, isAdmin, isSuperAdmin } = useAuth();
+  const { can, isAdmin, isSuperAdmin, user } = useAuth();
   const [state, dispatch] = useReducer(reducer, initialState);
   const set = (payload) => dispatch({ type: "SET", payload });
 
@@ -742,131 +742,149 @@ export default function UsersManagement() {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {state.users.map((user) => (
-                      <TableRow
-                        key={user.id}
-                        hover
-                        sx={{
-                          "&:last-child td": { border: 0 },
-                          transition: "background 0.15s",
-                        }}
-                      >
-                        <TableCell>
-                          <Avatar
-                            sx={{
-                              width: 36,
-                              height: 36,
-                              bgcolor: "primary.main",
-                              fontSize: 14,
-                              fontWeight: 700,
-                            }}
-                          >
-                            {(user.name || user.email)
-                              ?.charAt(0)
-                              .toUpperCase() || <PersonIcon fontSize="small" />}
-                          </Avatar>
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="body2" fontWeight={600}>
-                            {user.name || "—"}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="body2" color="text.secondary">
-                            {user.email}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Chip
-                            label={
-                              user.role_name
-                                ? user.role_name.charAt(0).toUpperCase() +
-                                  user.role_name.slice(1)
-                                : "—"
-                            }
-                            color={
-                              ROLE_COLOR[user.role_name?.toLowerCase()] ||
-                              "default"
-                            }
-                            size="small"
-                            sx={{ fontWeight: 600, borderRadius: 1.5 }}
-                          />
-                        </TableCell>
-                        <TableCell align="center">
-                          <Chip
-                            label={user.active ? "Active" : "Inactive"}
-                            color={user.active ? "success" : "default"}
-                            size="small"
-                            variant={user.active ? "filled" : "outlined"}
-                            sx={{ fontWeight: 600, borderRadius: 1.5 }}
-                          />
-                        </TableCell>
-                        <TableCell align="right">
-                          <Stack
-                            direction="row"
-                            spacing={0.5}
-                            justifyContent="flex-end"
-                            alignItems="center"
-                          >
-                            <Tooltip title="View permissions">
-                              <IconButton
-                                size="small"
-                                onClick={() => handleViewPermissions(user)}
-                                sx={{
-                                  borderRadius: 1.5,
-                                  "&:hover": { bgcolor: "primary.50" },
-                                }}
+                    {state.users.map((rowUser) => {
+                      const isSelf = isSuperAdmin() && user?.id === rowUser.id;
+                      return (
+                        <TableRow
+                          key={rowUser.id}
+                          hover
+                          sx={{
+                            "&:last-child td": { border: 0 },
+                            transition: "background 0.15s",
+                          }}
+                        >
+                          <TableCell>
+                            <Avatar
+                              sx={{
+                                width: 36,
+                                height: 36,
+                                bgcolor: "primary.main",
+                                fontSize: 14,
+                                fontWeight: 700,
+                              }}
+                            >
+                              {(rowUser.name || rowUser.email)
+                                ?.charAt(0)
+                                .toUpperCase() || (
+                                <PersonIcon fontSize="small" />
+                              )}
+                            </Avatar>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2" fontWeight={600}>
+                              {rowUser.name || "—"}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2" color="text.secondary">
+                              {rowUser.email}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Chip
+                              label={
+                                rowUser.role_name
+                                  ? rowUser.role_name.charAt(0).toUpperCase() +
+                                    rowUser.role_name.slice(1)
+                                  : "—"
+                              }
+                              color={
+                                ROLE_COLOR[rowUser.role_name?.toLowerCase()] ||
+                                "default"
+                              }
+                              size="small"
+                              sx={{ fontWeight: 600, borderRadius: 1.5 }}
+                            />
+                          </TableCell>
+                          <TableCell align="center">
+                            <Chip
+                              label={rowUser.active ? "Active" : "Inactive"}
+                              color={rowUser.active ? "success" : "default"}
+                              size="small"
+                              variant={rowUser.active ? "filled" : "outlined"}
+                              sx={{ fontWeight: 600, borderRadius: 1.5 }}
+                            />
+                          </TableCell>
+                          <TableCell align="right">
+                            {isSelf ? (
+                              <Typography
+                                variant="caption"
+                                color="text.disabled"
                               >
-                                <VisibilityIcon
-                                  fontSize="small"
-                                  color="primary"
-                                />
-                              </IconButton>
-                            </Tooltip>
-
-                            {can("users", "edit") && (
-                              <Tooltip title="Edit user">
-                                <IconButton
-                                  size="small"
-                                  onClick={() => handleOpenDialog(user)}
-                                  sx={{ borderRadius: 1.5 }}
-                                >
-                                  <EditIcon fontSize="small" />
-                                </IconButton>
-                              </Tooltip>
-                            )}
-
-                            {can("users", "edit") && (
-                              <Tooltip
-                                title={user.active ? "Deactivate" : "Activate"}
+                                —
+                              </Typography>
+                            ) : (
+                              <Stack
+                                direction="row"
+                                spacing={0.5}
+                                justifyContent="flex-end"
+                                alignItems="center"
                               >
-                                <Checkbox
-                                  checked={user.active ?? false}
-                                  onChange={() => toggleActive(user)}
-                                  disabled={state.actionLoading[user.id]}
-                                  size="small"
-                                  color="success"
-                                  sx={{ borderRadius: 1 }}
-                                />
-                              </Tooltip>
-                            )}
+                                <Tooltip title="View permissions">
+                                  <IconButton
+                                    size="small"
+                                    onClick={() =>
+                                      handleViewPermissions(rowUser)
+                                    }
+                                    sx={{
+                                      borderRadius: 1.5,
+                                      "&:hover": { bgcolor: "primary.50" },
+                                    }}
+                                  >
+                                    <VisibilityIcon
+                                      fontSize="small"
+                                      color="primary"
+                                    />
+                                  </IconButton>
+                                </Tooltip>
 
-                            {isSuperAdmin() && (
-                              <Tooltip title="Delete user">
-                                <IconButton
-                                  size="small"
-                                  color="error"
-                                  onClick={() => handleDelete(user)}
-                                  sx={{ borderRadius: 1.5 }}
-                                >
-                                  <DeleteIcon fontSize="small" />
-                                </IconButton>
-                              </Tooltip>
+                                {can("users", "edit") && (
+                                  <Tooltip title="Edit user">
+                                    <IconButton
+                                      size="small"
+                                      onClick={() => handleOpenDialog(rowUser)}
+                                      sx={{ borderRadius: 1.5 }}
+                                    >
+                                      <EditIcon fontSize="small" />
+                                    </IconButton>
+                                  </Tooltip>
+                                )}
+
+                                {can("users", "edit") && (
+                                  <Tooltip
+                                    title={
+                                      rowUser.active ? "Deactivate" : "Activate"
+                                    }
+                                  >
+                                    <Checkbox
+                                      checked={rowUser.active ?? false}
+                                      onChange={() => toggleActive(rowUser)}
+                                      disabled={state.actionLoading[rowUser.id]}
+                                      size="small"
+                                      color="success"
+                                      sx={{ borderRadius: 1 }}
+                                    />
+                                  </Tooltip>
+                                )}
+
+                                {isSuperAdmin() && (
+                                  <Tooltip title="Delete user">
+                                    <IconButton
+                                      size="small"
+                                      color="error"
+                                      onClick={() => handleDelete(rowUser)}
+                                      sx={{ borderRadius: 1.5 }}
+                                    >
+                                      <DeleteIcon fontSize="small" />
+                                    </IconButton>
+                                  </Tooltip>
+                                )}
+                              </Stack>
                             )}
-                          </Stack>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </TableContainer>
