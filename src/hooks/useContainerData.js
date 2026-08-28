@@ -580,7 +580,7 @@ export const useContainerData = (propContainers = []) => {
       setExistingAttachments(container.attachments || []);
       formDispatch(formActions.setEditing(containerData, formData));
     } catch (error) {
-      console.log("Something went wrong", error);
+      console.error("Something went wrong", error);
     }
   }, []);
 
