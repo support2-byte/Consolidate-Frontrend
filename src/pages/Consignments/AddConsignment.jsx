@@ -3225,7 +3225,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     data,
     allReceivers,
     selectedOrderObjects = includedOrders,
-    mode = "category",
+    groupBySubcategory = false,
   ) => {
     if (!data.consignment_number) {
       setSnackbar({
@@ -3273,14 +3273,17 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     const commoditySummary = allReceivers.reduce((summary, order) => {
       order.receivers.forEach((receiver) => {
         receiver.shippingdetails?.forEach((detail) => {
+          const commodity = detail.category || "Unknown";
+          const subcategory = detail.subcategory || "";
           const commodityType = detail.type || "";
 
+          const commodityKey = groupBySubcategory
+            ? `${commodity}|${subcategory}`
+            : commodity;
           const displayKey =
-            mode === "subcategory"
-              ? detail.subcategory || "Unknown"
-              : detail.category || "Unknown";
-
-          const commodityKey = displayKey;
+            groupBySubcategory && subcategory
+              ? `${commodity} - ${subcategory}`
+              : commodity;
 
           if (!summary[commodityKey]) {
             summary[commodityKey] = {
@@ -3317,7 +3320,9 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       item.totalOrders = item.totalOrders.size;
     });
 
-    const commodityArray = Object.values(commoditySummary);
+    const commodityArray = Object.values(commoditySummary).sort((a, b) =>
+      a.commodity.localeCompare(b.commodity),
+    );
 
     const grandTotal = commodityArray.reduce(
       (total, item) => {
@@ -3389,10 +3394,11 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
             pkgs = detail.totalNumber || 0;
           }
 
-          const fullCommodity =
-            mode === "subcategory"
-              ? detail.subcategory || "Unknown"
-              : detail.category || "Unknown";
+          const commodity = detail.category || "Unknown";
+          const subcategory = detail.subcategory
+            ? ` - ${detail.subcategory}`
+            : "";
+          const fullCommodity = `${commodity}${subcategory}`;
 
           if (!containerGroups[containerNo]) {
             containerGroups[containerNo] = {
@@ -3710,17 +3716,17 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                 </tr>
             </thead>
             <tbody>
-                ${commodityArray
-                  .map(
-                    (item) => `
+                                ${commodityArray
+                                  .map(
+                                    (item) => `
                 <tr>
-                    <td style="text-align:left; border: 1px solid #ddd;font-weight: normal;">${item.commodity} (${item.commodityType})</td>
+                    <td style="text-align:left; border: 1px solid #ddd;font-weight: normal;">${item.commodity}</td>
                     <td style="border: 1px solid #ddd;font-weight: normal;">${item.totalOrders}</td>
                     <td style="border: 1px solid #ddd;font-weight: normal;">${item.totalPkgs.toLocaleString()}</td>
                     <td style="border: 1px solid #ddd;font-weight: normal;">${Number(item.totalWeight).toFixed(2)}</td>
                 `,
-                  )
-                  .join("")}
+                                  )
+                                  .join("")}
 
                 <!-- Grand Total Row -->
                 <tr style="background-color: #f5f5f5; font-weight: bold;">
@@ -3980,7 +3986,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     }
 
     pdf.save(
-      `Manifest_${data.consignment_number}_${mode === "subcategory" ? "Subcategory" : "Category"}_${Date.now()}.pdf`,
+      `Manifest_${data.consignment_number}_ContainerWise_${Date.now()}.pdf`,
     );
   };
 
@@ -5459,17 +5465,12 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                           </Button>
                         </Tooltip>
 
-                        <Tooltip title="Download PDF manifest grouped by category">
+                        <Tooltip title="Download PDF manifest with details, containers, and orders">
                           <Button
                             variant="outlined"
                             startIcon={<LocalPrintshopIcon />}
                             onClick={() =>
-                              generateManifestPDFWithCanvas(
-                                values,
-                                orders,
-                                includedOrders,
-                                "category",
-                              )
+                              generateManifestPDFWithCanvas(values, orders)
                             }
                             disabled={saving || !values.consignment_number}
                             sx={{
@@ -5484,11 +5485,12 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                             {saving ? (
                               <CircularProgress size={20} />
                             ) : (
-                              "Print Manifest (Category)"
+                              "Print Manifest"
                             )}
                           </Button>
                         </Tooltip>
-                        <Tooltip title="Download PDF manifest grouped by subcategory">
+
+                        <Tooltip title="Download PDF manifest with commodity summary split by subcategory">
                           <Button
                             variant="outlined"
                             startIcon={<LocalPrintshopIcon />}
@@ -5497,7 +5499,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                                 values,
                                 orders,
                                 includedOrders,
-                                "subcategory",
+                                true,
                               )
                             }
                             disabled={saving || !values.consignment_number}
@@ -5513,7 +5515,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                             {saving ? (
                               <CircularProgress size={20} />
                             ) : (
-                              "Print Manifest (Subcategory)"
+                              "Print Manifest with Subcategory"
                             )}
                           </Button>
                         </Tooltip>
