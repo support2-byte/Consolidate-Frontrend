@@ -112,8 +112,6 @@ const OrdersList = () => {
   const [containers, setContainers] = useState([]);
   const [selectedContainer, setSelectedContainer] = useState("");
 
-  console.log({ companies });
-
   const [openDirectAssign, setOpenDirectAssign] = useState(false);
   const [directSelectedContainers, setDirectSelectedContainers] =
     useState(null);
@@ -865,10 +863,41 @@ const OrdersList = () => {
       Loaded: { bg: "#e8f5e8", text: "#2e7d32" },
       "Assigned to Job": { bg: "#fff3e0", text: "#f57c00" },
 
-      default: { bg: "#f5f5f5", text: "#666" },
+      default: { bg: "#555555", text: "#ededed" },
     };
     return colorMap[status] || colorMap.default;
   };
+
+  const getLeastStatus = (productsSummary, statuses) => {
+    if (!productsSummary.length) {
+      return { label: "Created", count: 0 };
+    }
+
+    const rankMap = {};
+
+    statuses.forEach((s, idx) => {
+      rankMap[s.order_status] = idx;
+    });
+
+    const ranked = productsSummary.map((p) => {
+      const status = p.shippingDetailStatus || "Created";
+
+      return {
+        status,
+        rank: rankMap[status] ?? -1,
+      };
+    });
+
+    const minRank = Math.min(...ranked.map((r) => r.rank));
+
+    const leastGroup = ranked.filter((r) => r.rank === minRank);
+
+    return {
+      label: leastGroup[leastGroup.length - 1].status,
+      count: ranked.length,
+    };
+  };
+
   const StyledTooltip = styled(Tooltip)(({ theme }) => ({
     [`& .MuiTooltip-tooltip`]: {
       borderRadius: theme.shape.borderRadius,
@@ -990,8 +1019,6 @@ const OrdersList = () => {
       });
 
       if (skipped.length > 0) {
-        console.warn("Skipped assignments:", skipped);
-
         setSnackbar({
           open: true,
           message: `${skipped.length} assignment(s) skipped.`,
@@ -1117,14 +1144,14 @@ const OrdersList = () => {
     setDirectSelectedContainers(null);
   };
 
-  const StatusChip = ({ status }) => {
+  const StatusChip = ({ status, height, size }) => {
     const colors = getStatusColors(status);
     return (
       <Chip
         label={status}
-        size="small"
+        size={size}
         sx={{
-          height: 18,
+          height: height,
           fontSize: "0.65rem",
           marginLeft: 2,
           backgroundColor: colors.bg,
@@ -1234,7 +1261,11 @@ const OrdersList = () => {
                         {receiver.receiverName || "Unnamed Receiver"}
                       </Typography>
                     </Box>
-                    <StatusChip status={receiver.status} size="small" />
+                    <StatusChip
+                      status={receiver.status}
+                      size="small"
+                      height={18}
+                    />
                   </Stack>
 
                   <Divider sx={{ mt: 1 }} />
@@ -1318,7 +1349,11 @@ const OrdersList = () => {
                                     </IconButton>
                                   </Tooltip>
                                 </Box>
-                                <StatusChip status={c.status} size="small" />
+                                <StatusChip
+                                  status={c.status}
+                                  size="small"
+                                  height={18}
+                                />
                                 <Chip
                                   label={`ETA: ${item.trackingEta ? new Date(item.trackingEta).toLocaleDateString() : "N/A"}`}
                                   size="small"
@@ -1671,19 +1706,19 @@ const OrdersList = () => {
 
             <div class="subject-line">
                 <span style="font-weight: bold;">SUBJECT:</span> 
-                Container No <span style="color: #ff0000;">${containerData.container_number} , </span>
-                Vide GD No : <span style="color: #ff0000;">${containerData.gd_number || "_________"} </span>
-                ${containerData.system_number ? `BB System # <span style="color: #ff0000;">${containerData.system_number}` : ""}</span>
+                Container No <span style="color: #000000;">${containerData.container_number} , </span>
+                Vide GD No : <span style="color: #000000;">${containerData.gd_number || "_________"} </span>
+                ${containerData.system_number ? `BB System # <span style="color: #000000;">${containerData.system_number}` : ""}</span>
             </div>
             
             <div class="exporter-info">
                 <span style="font-weight: bold;">EXPORTER:</span> 
-                <span style="color: #ff0000;">${containerData.sender_name || "_________________________"}</span>
+                <span style="color: #000000;">${containerData.sender_name || "_________________________"}</span>
             </div>
 
             <div class="cnic-info">
                 <span class="cnic-label">CNIC</span>
-                <span>: <span style="color: #ff0000;">${containerData.sender_cnic || "_____-_______-_"}</span></span>
+                <span>: <span style="color: #000000;">${containerData.sender_cnic || "_____-_______-_"}</span></span>
             </div>
 
             <div class="content-margin">
@@ -1692,8 +1727,8 @@ const OrdersList = () => {
 
             <div class="content-margin point">
                 1. FURTHER UNDERTAKE THAT THIS CONSIGNMENT CONTAIN ONLY 
-                <span style="color: #ff0000; font-weight: bold; text-decoration: underline; letter-spacing: 2px;">
-                ${getContainerCategory(containerData) || "___TEXTILE_____________"}
+                <span style="color: #000000; font-weight: bold; text-decoration: underline; letter-spacing: 2px;">
+                ${getContainerCategory(containerData) || "_____________________"}
                 </span>AND DOES NOT CONTAIN ANY CONTRABAND NARCOTIC / DRUGS ETC. AND UNDERTAKE TO BE FULLY HELD GOOD OWNER RESPONSIBLE IF FOUND IN THE CONSIGNMENT AT ANY STAGE.
             </div>
 
@@ -1995,7 +2030,7 @@ const OrdersList = () => {
     const senderName = safeOrder.sender_name || "";
     const senderEmiratesID = safeOrder.sender_emirates_id || "________";
     const senderPassport = safeOrder.sender_passport_number || "________";
-    const senderPhone = safeOrder.sender_contact || "03xx-xxxxxxx";
+    const senderPhone = safeOrder.sender_contact || "________";
     const senderAddress = safeOrder.sender_address || "Address in Karachi";
     const senderCompany =
       safeOrder.sender_company ||
@@ -2116,14 +2151,14 @@ const OrdersList = () => {
 <body>
     <div class="document">
         <div style="text-align: right; margin-bottom: 40px;">
-            <div style="font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 5px;">${getSafeValue(senderCompany)}</div>
-            <div style="font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 5px;">${getSafeValue(senderAddress)}</div>
-            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">CNIC # : ${getSafeValue(senderEmiratesID)}</div>
-            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">Passport No : ${getSafeValue(senderPassport)}</div>
-            <div style="font-family: Arial; font-size: 14.1px; color: #ff0000;">Tel #: ${getSafeValue(senderPhone)}</div>
+            <div style="font-family: Arial; font-size: 14.1px; color: #000000; margin-bottom: 5px;">${getSafeValue(senderCompany)}</div>
+            <div style="font-family: Arial; font-size: 14.1px; color: #000000; margin-bottom: 5px;">${getSafeValue(senderAddress)}</div>
+            <div style="font-family: Arial; font-size: 13.1px; color: #000000; margin-bottom: 5px;">CNIC # : ${getSafeValue(senderEmiratesID)}</div>
+            <div style="font-family: Arial; font-size: 13.1px; color: #000000; margin-bottom: 5px;">Passport No : ${getSafeValue(senderPassport)}</div>
+            <div style="font-family: Arial; font-size: 14.1px; color: #000000;">Tel #: ${getSafeValue(senderPhone)}</div>
         </div>
 
-        <div style="font-style: italic; font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 10px;">
+        <div style="font-style: italic; font-family: Arial; font-size: 14.1px; color: #000000; margin-bottom: 10px;">
             Dated: ${currentDate}
         </div>
 
@@ -2141,16 +2176,16 @@ const OrdersList = () => {
         <div style="margin-bottom: 20px;">
             <div style="margin-bottom: 10px;">
                 <span style="font-family: Arial; font-size: 15.0px; color: #000000; font-weight: bold;">SUBJECT:</span>
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;"> EXPORT OF <span style="color: #ff0000;">${totalPackages} Pkgs</span> , Vide Order No : BB System # <span style="color: #ff0000;">${getSafeValue(safeOrder.booking_ref)}</span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;"> EXPORT OF <span style="color: #000000;">${totalPackages} Pkgs</span> , Vide Order No : BB System # <span style="color: #000000;">${getSafeValue(safeOrder.booking_ref)}</span>
             </div>
             <div style="margin-bottom: 5px; margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Co-Loader : <span style="color: #ff0000;">${getSafeValue(senderName)}</span></span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Co-Loader : <span style="color: #000000;">${getSafeValue(senderName)}</span></span>
             </div>
             <div style="margin-bottom: 5px; margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Passport No : <span style="color: #ff0000;">${getSafeValue(senderPassport)}</span></span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Passport No : <span style="color: #000000;">${getSafeValue(senderPassport)}</span></span>
             </div>
             <div style="margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">CNIC : <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">CNIC : <span style="color: #000000;">${getSafeValue(senderEmiratesID)}</span></span>
             </div>
         </div>
 
@@ -2169,7 +2204,7 @@ const OrdersList = () => {
         <div style="margin-bottom: 20px;">
             <div style="font-family: Arial; font-size: 15.0px; color: #000000; line-height: 1.6; margin-bottom: 10px;">
                 3. FURTHER UNDERTAKE THAT THIS CONSIGNMENT CONTAIN ONLY
-                <span style="font-weight: bold; font-family: Arial; font-size: 13.6px; color: #ff0000; text-decoration: underline;">${getSafeValue(goodsDescription, "_________________")}</span>
+                <span style="font-weight: bold; font-family: Arial; font-size: 13.6px; color: #000000; text-decoration: underline;">${getSafeValue(goodsDescription, "_________________")}</span>
                 AND DOES NOT CONTAIN ANY CONTRABAND NARCOTIC / DRUGS ETC., AND UNDERTAKE TO BE FULLY HELD GOOD OWNER RESPONSIBLE IF FOUND IN THE CONSIGNMENT AT ANY STAGE.
             </div>
         </div>
@@ -2181,19 +2216,19 @@ const OrdersList = () => {
         <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px; font-family: Arial; font-size: 15.0px;">
             <tr>
                 <td style="padding: 2px 0; width: 150px; vertical-align: top;">GOODS OWNER</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="font-weight: bold; color: #ff0000;">${getSafeValue(senderName)}</span></td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="font-weight: bold; color: #000000;">${getSafeValue(senderName)}</span></td>
             </tr>
             <tr>
                 <td style="padding: 2px 0; vertical-align: top;">Company Name</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderCompany)}</span></td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #000000;">${getSafeValue(senderCompany)}</span></td>
             </tr>
             <tr>
                 <td style="padding: 2px 0; vertical-align: top;">Delivery Address</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getReceiverAddress(safeOrder)}</span></td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #000000;">${getReceiverAddress(safeOrder)}</span></td>
             </tr>
             <tr>
                 <td style="padding: 2px 0; vertical-align: top;">CNIC ID #</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #000000;">${getSafeValue(senderEmiratesID)}</span></td>
             </tr>
             <tr>
     <td style="padding: 2px 0; vertical-align: top;">Signature</td>
@@ -2237,7 +2272,7 @@ const OrdersList = () => {
     const senderEmiratesID = safeOrder.sender_kyc_approved
       ? safeOrder.sender_emirates_id || "________"
       : "Not Approved";
-    const senderPhone = safeOrder.sender_contact || "03xx-xxxxxxx";
+    const senderPhone = safeOrder.sender_contact || "________";
     const senderAddress = safeOrder.sender_address || "Address in Karachi";
     const senderCompany =
       safeOrder.sender_company ||
@@ -2360,15 +2395,15 @@ const OrdersList = () => {
 <body>
     <div class="document">
         <div style="text-align: right; margin-bottom: 20px;">
-            <div style="font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 5px;">${getSafeValue(senderCompany)}</div>
-            <div style="font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 5px;">${getSafeValue(senderAddress)}</div>
-            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">Trade Liceness #: ${getSafeValue(trade_license)}</div>
-            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">Passport No: ${getSafeValue(senderPassport)}</div>
-            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">Emirates ID #: ${getSafeValue(senderEmiratesID)}</div>
-            <div style="font-family: Arial; font-size: 14.1px; color: #ff0000;">Tel #: ${getSafeValue(senderPhone)}</div>
+            <div style="font-family: Arial; font-size: 14.1px; color: #000000; margin-bottom: 5px;">${getSafeValue(senderCompany)}</div>
+            <div style="font-family: Arial; font-size: 14.1px; color: #000000; margin-bottom: 5px;">${getSafeValue(senderAddress)}</div>
+            <div style="font-family: Arial; font-size: 13.1px; color: #000000; margin-bottom: 5px;">Trade Liceness #: ${getSafeValue(trade_license)}</div>
+            <div style="font-family: Arial; font-size: 13.1px; color: #000000; margin-bottom: 5px;">Passport No: ${getSafeValue(senderPassport)}</div>
+            <div style="font-family: Arial; font-size: 13.1px; color: #000000; margin-bottom: 5px;">Emirates ID #: ${getSafeValue(senderEmiratesID)}</div>
+            <div style="font-family: Arial; font-size: 14.1px; color: #000000;">Tel #: ${getSafeValue(senderPhone)}</div>
         </div>
 
-        <div style="font-style: italic; font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 10px;">
+        <div style="font-style: italic; font-family: Arial; font-size: 14.1px; color: #000000; margin-bottom: 10px;">
             Dated: ${currentDate}
         </div>
 
@@ -2386,16 +2421,16 @@ const OrdersList = () => {
         <div style="margin-bottom: 20px;">
             <div style="margin-bottom: 10px;">
                 <span style="font-family: Arial; font-size: 15.0px; color: #000000; font-weight: bold;">SUBJECT:</span>
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;"> EXPORT OF <span style="color: #ff0000;">${totalPackages} Pkgs</span> , Vide Order No : BB System # <span style="color: #ff0000;">${getSafeValue(safeOrder.booking_ref)}</span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;"> EXPORT OF <span style="color: #000000;">${totalPackages} Pkgs</span> , Vide Order No : BB System # <span style="color: #000000;">${getSafeValue(safeOrder.booking_ref)}</span>
             </div>
             <div style="margin-bottom: 5px; margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">EXPORTER : <span style="color: #ff0000;">${getSafeValue(senderName)}</span></span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">EXPORTER : <span style="color: #000000;">${getSafeValue(senderName)}</span></span>
             </div>
             <div style="margin-bottom: 5px; margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Passport No : <span style="color: #ff0000;">${getSafeValue(senderPassport)}</span></span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Passport No : <span style="color: #000000;">${getSafeValue(senderPassport)}</span></span>
             </div>
             <div style="margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">CNIC : <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">CNIC : <span style="color: #000000;">${getSafeValue(senderEmiratesID)}</span></span>
             </div>
         </div>
 
@@ -2414,7 +2449,7 @@ const OrdersList = () => {
         <div style="margin-bottom: 20px;">
             <div style="font-family: Arial; font-size: 15.0px; color: #000000; line-height: 1.6; margin-bottom: 10px;">
                 3. FURTHER UNDERTAKE THAT THIS CONSIGNMENT CONTAIN ONLY
-                <span style="font-weight: bold; font-family: Arial; font-size: 13.6px; color: #ff0000; text-decoration: underline;">${getSafeValue(goodsDescription, "__TEXTILE_____________")}</span>            
+                <span style="font-weight: bold; font-family: Arial; font-size: 13.6px; color: #000000; text-decoration: underline;">${getSafeValue(goodsDescription, "____________________")}</span>            
                 AND DOES NOT CONTAIN ANY CONTRABAND NARCOTIC / DRUGS ETC., AND UNDERTAKE TO BE FULLY HELD GOOD OWNER RESPONSIBLE IF FOUND IN THE CONSIGNMENT AT ANY STAGE.
             </div>
         </div>
@@ -2426,19 +2461,19 @@ const OrdersList = () => {
         <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px; font-family: Arial; font-size: 15.0px;">
             <tr>
                 <td style="padding: 2px 0; width: 150px; vertical-align: top;">GOODS OWNER</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="font-weight: bold; color: #ff0000;">${getSafeValue(senderName)}</span></td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="font-weight: bold; color: #000000;">${getSafeValue(senderName)}</span></td>
             </tr>
             <tr>
                 <td style="padding: 2px 0; vertical-align: top;">Company Name</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderCompany)}</span></td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #000000;">${getSafeValue(senderCompany)}</span></td>
             </tr>
             <tr>
                 <td style="padding: 2px 0; vertical-align: top;">Delivery Address</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getReceiverAddress(safeOrder)}</span></td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #000000;">${getReceiverAddress(safeOrder)}</span></td>
             </tr>
             <tr>
                 <td style="padding: 2px 0; vertical-align: top;">CNIC ID #</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #000000;">${getSafeValue(senderEmiratesID)}</span></td>
             </tr>
             <tr>
                 <td style="padding: 2px 0;">Signature</td>
@@ -2479,7 +2514,7 @@ const OrdersList = () => {
     const senderCNIC = safeOrder.sender_cnic || "_____-_______-_";
     const senderEmiratesID = safeOrder.sender_emirates_id || "_____-_______-_";
     const senderPassport = safeOrder.sender_passport_number || "________";
-    const senderPhone = safeOrder.sender_contact || "03xx-xxxxxxx";
+    const senderPhone = safeOrder.sender_contact || "________";
     const senderAddress = safeOrder.sender_address || "Address in Karachi";
     const senderCompany =
       safeOrder.sender_company ||
@@ -2605,7 +2640,7 @@ const OrdersList = () => {
 <body>
     <div class="document">
         <div class="stamp-paper"></div>
-        <div style="font-style: italic; font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 15px;">
+        <div style="font-style: italic; font-family: Arial; font-size: 14.1px; color: #000000; margin-bottom: 15px;">
             Dated: ${currentDate}
         </div>
 
@@ -2623,16 +2658,16 @@ const OrdersList = () => {
         <div style="margin-bottom: 20px;">
             <div style="margin-bottom: 10px;">
                 <span style="font-family: Arial; font-size: 15.0px; color: #000000; font-weight: bold;">SUBJECT:</span>
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;"> EXPORT OF <span style="color: #ff0000;">${totalPackages} Pkgs</span> , Vide Order No : BB System # <span style="color: #ff0000;">${getSafeValue(safeOrder.booking_ref)}</span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;"> EXPORT OF <span style="color: #000000;">${totalPackages} Pkgs</span> , Vide Order No : BB System # <span style="color: #000000;">${getSafeValue(safeOrder.booking_ref)}</span>
             </div>
             <div style="margin-bottom: 5px; margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">EXPORTER : <span style="color: #ff0000;">${getSafeValue(senderName)}</span></span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">EXPORTER : <span style="color: #000000;">${getSafeValue(senderName)}</span></span>
             </div>
             <div style="margin-bottom: 5px; margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Passport No : <span style="color: #ff0000;">${getSafeValue(senderPassport)}</span></span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Passport No : <span style="color: #000000;">${getSafeValue(senderPassport)}</span></span>
             </div>
             <div style="margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">CNIC : <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">CNIC : <span style="color: #000000;">${getSafeValue(senderEmiratesID)}</span></span>
             </div>
         </div>
 
@@ -2645,13 +2680,13 @@ const OrdersList = () => {
         </div>
 
         <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 20px; text-align: justify;">
-            2. We hereby agree that "<span style="color: #ff0000;">${getSafeValue(senderCompany)}</span> & their agents" Cargo Aviation Systems (Pvt) Ltd, are only a Warehousing & Distribution agents on behalf our ourselves to arrange the transport and clearance of the subject shipment and holds no responsibility in event of any prohibited goods, drugs or narcotics found in the consignment at any point of inspection/examination by ports/customs authorities while in process of shipping and clearance.
+            2. We hereby agree that "<span style="color: #000000;">${getSafeValue(senderCompany)}</span> & their agents" Cargo Aviation Systems (Pvt) Ltd, are only a Warehousing & Distribution agents on behalf our ourselves to arrange the transport and clearance of the subject shipment and holds no responsibility in event of any prohibited goods, drugs or narcotics found in the consignment at any point of inspection/examination by ports/customs authorities while in process of shipping and clearance.
         </div>
 
         <div style="margin-bottom: 20px;">
             <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 10px;">
                 3. FURTHER UNDERTAKE THAT THIS CONSIGNMENT CONTAIN ONLY
-                <span style="font-weight: bold; font-family: Arial; font-size: 13.6px; color: #ff0000; text-decoration: underline;">${getSafeValue(goodsDescription, "__TEXTILE_____________")}</span>
+                <span style="font-weight: bold; font-family: Arial; font-size: 13.6px; color: #000000; text-decoration: underline;">${getSafeValue(goodsDescription, "____________________")}</span>
             </div>
             <div style="font-family: Arial; font-size: 13.2px; color: #000000; text-align: justify;">
                 AND DOES NOT CONTAIN ANY CONTRABAND NARCOTIC / DRUGS ETC., AND UNDERTAKE TO BE FULLY HELD GOOD OWNER RESPONSIBLE IF FOUND IN THE CONSIGNMENT AT ANY STAGE.
@@ -2665,19 +2700,19 @@ const OrdersList = () => {
         <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px; font-family: Arial; font-size: 15.0px;">
             <tr>
                 <td style="padding: 2px 0; width: 150px; vertical-align: top;">GOODS OWNER</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="font-weight: bold; color: #ff0000;">${getSafeValue(senderName)}</span></td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="font-weight: bold; color: #000000;">${getSafeValue(senderName)}</span></td>
             </tr>
             <tr>
                 <td style="padding: 2px 0; vertical-align: top;">Company Name</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderCompany)}</span></td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #000000;">${getSafeValue(senderCompany)}</span></td>
             </tr>
             <tr>
                 <td style="padding: 2px 0; vertical-align: top;">Delivery Address</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getReceiverAddress(safeOrder)}</span></td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #000000;">${getReceiverAddress(safeOrder)}</span></td>
             </tr>
             <tr>
                 <td style="padding: 2px 0; vertical-align: top;">CNIC ID #</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #000000;">${getSafeValue(senderEmiratesID)}</span></td>
             </tr>
             <tr>
                 <td style="padding: 2px 0; vertical-align: top;">Signature</td>
@@ -2714,7 +2749,7 @@ const OrdersList = () => {
     const senderCNIC = safeOrder.sender_cnic || "_____-_______-_";
     const senderEmiratesID = safeOrder.sender_emirates_id || "_____-_______-_";
     const senderPassport = safeOrder.sender_passport_number || "________";
-    const senderPhone = safeOrder.sender_contact || "03xx-xxxxxxx";
+    const senderPhone = safeOrder.sender_contact || "________";
     const senderAddress = safeOrder.sender_address || "Address in Karachi";
     const senderCompany =
       safeOrder.sender_company ||
@@ -2840,7 +2875,7 @@ const OrdersList = () => {
 <body>
     <div class="document">
         <div class="stamp-paper"></div>
-        <div style="font-style: italic; font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 20px;">
+        <div style="font-style: italic; font-family: Arial; font-size: 14.1px; color: #000000; margin-bottom: 20px;">
             Dated: ${currentDate}
         </div>
 
@@ -2860,16 +2895,16 @@ const OrdersList = () => {
         <div style="margin-bottom: 20px;">
             <div style="margin-bottom: 10px;">
                 <span style="font-family: Arial; font-size: 15.0px; color: #000000; font-weight: bold;">SUBJECT:</span>
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;"> EXPORT OF <span style="color: #ff0000;">${totalPackages} Pkgs</span> , Vide Order No : BB System # <span style="color: #ff0000;">${getSafeValue(safeOrder.booking_ref)}</span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;"> EXPORT OF <span style="color: #000000;">${totalPackages} Pkgs</span> , Vide Order No : BB System # <span style="color: #000000;">${getSafeValue(safeOrder.booking_ref)}</span>
             </div>
             <div style="margin-bottom: 5px; margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">EXPORTER : <span style="color: #ff0000;">${getSafeValue(senderName)}</span></span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">EXPORTER : <span style="color: #000000;">${getSafeValue(senderName)}</span></span>
             </div>
             <div style="margin-bottom: 5px; margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Passport No : <span style="color: #ff0000;">${getSafeValue(senderPassport)}</span></span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Passport No : <span style="color: #000000;">${getSafeValue(senderPassport)}</span></span>
             </div>
             <div style="margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">CNIC : <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">CNIC : <span style="color: #000000;">${getSafeValue(senderEmiratesID)}</span></span>
             </div>
         </div>
 
@@ -2882,13 +2917,13 @@ const OrdersList = () => {
         </div>
 
         <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 20px; text-align: justify;">
-            2. We hereby agree that "<span style="color: #ff0000;">XYZ Exporter</span> & their agents" Cargo Aviation Systems (Pvt) Ltd, are only a Warehousing & Distribution agents on behalf our ourselves to arrange the transport and clearance of the subject shipment and holds no responsibility in event of any prohibited goods, drugs or narcotics found in the consignment at any point of inspection/examination by ports/customs authorities while in process of shipping and clearance.
+            2. We hereby agree that "<span style="color: #000000;">XYZ Exporter</span> & their agents" Cargo Aviation Systems (Pvt) Ltd, are only a Warehousing & Distribution agents on behalf our ourselves to arrange the transport and clearance of the subject shipment and holds no responsibility in event of any prohibited goods, drugs or narcotics found in the consignment at any point of inspection/examination by ports/customs authorities while in process of shipping and clearance.
         </div>
 
         <div style="margin-bottom: 20px;">
             <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 10px;">
                 3. FURTHER UNDERTAKE THAT THIS CONSIGNMENT CONTAIN ONLY
-                <span style="font-weight: bold; font-family: Arial; font-size: 13.6px; color: #ff0000; text-decoration: underline;">${getSafeValue(goodsDescription, "__TEXTILE_____________")}</span>
+                <span style="font-weight: bold; font-family: Arial; font-size: 13.6px; color: #000000; text-decoration: underline;">${getSafeValue(goodsDescription, "__TEXTILE_____________")}</span>
             </div>
             <div style="font-family: Arial; font-size: 13.2px; color: #000000; text-align: justify;">
                 AND DOES NOT CONTAIN ANY CONTRABAND NARCOTIC / DRUGS ETC., AND UNDERTAKE TO BE FULLY HELD GOOD OWNER RESPONSIBLE IF FOUND IN THE CONSIGNMENT AT ANY STAGE.
@@ -2902,19 +2937,19 @@ const OrdersList = () => {
         <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px; font-family: Arial; font-size: 15.0px;">
             <tr>
                 <td style="padding: 2px 0; width: 150px; vertical-align: top;">GOODS OWNER</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="font-weight: bold; color: #ff0000;">${getSafeValue(senderName)}</span></td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="font-weight: bold; color: #000000;">${getSafeValue(senderName)}</span></td>
             </tr>
             <tr>
                 <td style="padding: 2px 0; vertical-align: top;">Company Name</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderCompany)}</span></td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #000000;">${getSafeValue(senderCompany)}</span></td>
             </tr>
             <tr>
                 <td style="padding: 2px 0; vertical-align: top;">Delivery Address</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getReceiverAddress(safeOrder)}</span></td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #000000;">${getReceiverAddress(safeOrder)}</span></td>
             </tr>
             <tr>
                 <td style="padding: 2px 0; vertical-align: top;">CNIC ID #</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #000000;">${getSafeValue(senderEmiratesID)}</span></td>
             </tr>
             <tr>
                 <td style="padding: 2px 0; vertical-align: top;">Signature</td>
@@ -2955,7 +2990,7 @@ const OrdersList = () => {
     const senderEmiratesID = safeOrder.sender_kyc_approved
       ? safeOrder.sender_emirates_id || "________"
       : "Not Approved";
-    const senderPhone = safeOrder.sender_contact || "03xx-xxxxxxx";
+    const senderPhone = safeOrder.sender_contact || "________";
     const senderAddress = safeOrder.sender_address || "Address in Karachi";
     const senderCompany =
       safeOrder.sender_company ||
@@ -3080,15 +3115,15 @@ const OrdersList = () => {
 <body>
     <div class="document">
         <div style="text-align: right; margin-bottom: 20px;">
-            <div style="font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 5px;">${getSafeValue(senderCompany)}</div>
-            <div style="font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 5px;">${getSafeValue(senderAddress)}</div>
-            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">Trade Liceness #: ${getSafeValue(trade_license)}</div>
-            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">Passport No: ${getSafeValue(senderPassport)}</div>
-            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">Emirates ID #: ${getSafeValue(senderEmiratesID)}</div>
-            <div style="font-family: Arial; font-size: 14.1px; color: #ff0000;">Tel #: ${getSafeValue(senderPhone)}</div>
+            <div style="font-family: Arial; font-size: 14.1px; color: #000000; margin-bottom: 5px;">${getSafeValue(senderCompany)}</div>
+            <div style="font-family: Arial; font-size: 14.1px; color: #000000; margin-bottom: 5px;">${getSafeValue(senderAddress)}</div>
+            <div style="font-family: Arial; font-size: 13.1px; color: #000000; margin-bottom: 5px;">Trade Liceness #: ${getSafeValue(trade_license)}</div>
+            <div style="font-family: Arial; font-size: 13.1px; color: #000000; margin-bottom: 5px;">Passport No: ${getSafeValue(senderPassport)}</div>
+            <div style="font-family: Arial; font-size: 13.1px; color: #000000; margin-bottom: 5px;">Emirates ID #: ${getSafeValue(senderEmiratesID)}</div>
+            <div style="font-family: Arial; font-size: 14.1px; color: #000000;">Tel #: ${getSafeValue(senderPhone)}</div>
         </div>
 
-        <div style="font-style: italic; font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 10px;">
+        <div style="font-style: italic; font-family: Arial; font-size: 14.1px; color: #000000; margin-bottom: 10px;">
             Dated: ${currentDate}
         </div>
 
@@ -3106,16 +3141,16 @@ const OrdersList = () => {
         <div style="margin-bottom: 20px;">
             <div style="margin-bottom: 10px;">
                 <span style="font-family: Arial; font-size: 15.0px; color: #000000; font-weight: bold;">SUBJECT:</span>
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;"> IMPORT OF <span style="color: #ff0000;">${totalPackages} Pkgs</span> , Vide Order No : BB System # <span style="color: #ff0000;">${getSafeValue(safeOrder.booking_ref)}</span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;"> IMPORT OF <span style="color: #000000;">${totalPackages} Pkgs</span> , Vide Order No : BB System # <span style="color: #000000;">${getSafeValue(safeOrder.booking_ref)}</span>
             </div>
             <div style="margin-bottom: 5px; margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Co-Loader : <span style="color: #ff0000;">${getSafeValue(senderName)}</span></span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Co-Loader : <span style="color: #000000;">${getSafeValue(senderName)}</span></span>
             </div>
             <div style="margin-bottom: 5px; margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Passport No : <span style="color: #ff0000;">${getSafeValue(senderPassport)}</span></span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Passport No : <span style="color: #000000;">${getSafeValue(senderPassport)}</span></span>
             </div>
             <div style="margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">CNIC : <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">CNIC : <span style="color: #000000;">${getSafeValue(senderEmiratesID)}</span></span>
             </div>
         </div>
 
@@ -3134,7 +3169,7 @@ const OrdersList = () => {
         <div style="margin-bottom: 20px;">
             <div style="font-family: Arial; font-size: 15.0px; color: #000000; line-height: 1.6; margin-bottom: 10px;">
                 3. FURTHER UNDERTAKE THAT THIS CONSIGNMENT CONTAIN ONLY
-                <span style="font-weight: bold; font-family: Arial; font-size: 13.6px; color: #ff0000; text-decoration: underline;">${getSafeValue(goodsDescription, "__TEXTILE_____________")}</span>
+                <span style="font-weight: bold; font-family: Arial; font-size: 13.6px; color: #000000; text-decoration: underline;">${getSafeValue(goodsDescription, "____________________")}</span>
                 AND DOES NOT CONTAIN ANY CONTRABAND NARCOTIC / DRUGS ETC., AND UNDERTAKE TO BE FULLY HELD GOOD OWNER RESPONSIBLE IF FOUND IN THE CONSIGNMENT AT ANY STAGE.
             </div>
         </div>
@@ -3146,19 +3181,19 @@ const OrdersList = () => {
         <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px; font-family: Arial; font-size: 15.0px;">
             <tr>
             <td style="padding: 2px 0; width: 150px; vertical-align: top;">GOODS OWNER</td>
-            <td style="padding: 2px 0; vertical-align: top;">: <span style="font-weight: bold; color: #ff0000;">${getSafeValue(senderName)}</span></td>
+            <td style="padding: 2px 0; vertical-align: top;">: <span style="font-weight: bold; color: #000000;">${getSafeValue(senderName)}</span></td>
             </tr>
             <tr>
                 <td style="padding: 2px 0; vertical-align: top;">Company Name</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderCompany)}</span></td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #000000;">${getSafeValue(senderCompany)}</span></td>
             </tr>
             <tr>
                 <td style="padding: 2px 0; vertical-align: top;">Delivery Address</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getReceiverAddress(safeOrder)}</span></td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #000000;">${getReceiverAddress(safeOrder)}</span></td>
             </tr>
             <tr>
                 <td style="padding: 2px 0; vertical-align: top;">Emirates ID # 	</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #000000;">${getSafeValue(senderEmiratesID)}</span></td>
             </tr>
             <tr>
                 <td style="padding: 2px 0;">Signature</td>
@@ -3203,7 +3238,7 @@ const OrdersList = () => {
     const senderEmiratesID = safeOrder.sender_kyc_approved
       ? safeOrder.sender_emirates_id || "________"
       : "Not Approved";
-    const senderPhone = safeOrder.sender_contact || "03xx-xxxxxxx";
+    const senderPhone = safeOrder.sender_contact || "________";
     const senderAddress = safeOrder.sender_address || "Address in Karachi";
     const senderCompany =
       safeOrder.sender_company ||
@@ -3328,15 +3363,15 @@ const OrdersList = () => {
 <body>
     <div class="document">
         <div style="text-align: right; margin-bottom: 20px;">
-            <div style="font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 5px;">${getSafeValue(senderCompany)}</div>
-            <div style="font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 5px;">${getSafeValue(senderAddress)}</div>
-            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">Trade Liceness #: ${getSafeValue(trade_license)}</div>
-            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">Passport No: ${getSafeValue(senderPassport)}</div>
-            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">Emirates ID #: ${getSafeValue(senderEmiratesID)}</div>
-            <div style="font-family: Arial; font-size: 14.1px; color: #ff0000;">Tel #: ${getSafeValue(senderPhone)}</div>
+            <div style="font-family: Arial; font-size: 14.1px; color: #000000; margin-bottom: 5px;">${getSafeValue(senderCompany)}</div>
+            <div style="font-family: Arial; font-size: 14.1px; color: #000000; margin-bottom: 5px;">${getSafeValue(senderAddress)}</div>
+            <div style="font-family: Arial; font-size: 13.1px; color: #000000; margin-bottom: 5px;">Trade Liceness #: ${getSafeValue(trade_license)}</div>
+            <div style="font-family: Arial; font-size: 13.1px; color: #000000; margin-bottom: 5px;">Passport No: ${getSafeValue(senderPassport)}</div>
+            <div style="font-family: Arial; font-size: 13.1px; color: #000000; margin-bottom: 5px;">Emirates ID #: ${getSafeValue(senderEmiratesID)}</div>
+            <div style="font-family: Arial; font-size: 14.1px; color: #000000;">Tel #: ${getSafeValue(senderPhone)}</div>
         </div>
 
-        <div style="font-style: italic; font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 10px;">
+        <div style="font-style: italic; font-family: Arial; font-size: 14.1px; color: #000000; margin-bottom: 10px;">
             Dated: ${currentDate}
         </div>
 
@@ -3354,16 +3389,16 @@ const OrdersList = () => {
         <div style="margin-bottom: 20px;">
             <div style="margin-bottom: 10px;">
                 <span style="font-family: Arial; font-size: 15.0px; color: #000000; font-weight: bold;">SUBJECT:</span>
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">IMPORT OF <span style="color: #ff0000;">${totalPackages} Pkgs</span> , Vide Order No : BB System # <span style="color: #ff0000;">${getSafeValue(safeOrder.booking_ref)}</span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">IMPORT OF <span style="color: #000000;">${totalPackages} Pkgs</span> , Vide Order No : BB System # <span style="color: #000000;">${getSafeValue(safeOrder.booking_ref)}</span>
             </div>
             <div style="margin-bottom: 5px; margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Co-Loader : <span style="color: #ff0000;">${getSafeValue(senderName)}</span></span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Co-Loader : <span style="color: #000000;">${getSafeValue(senderName)}</span></span>
             </div>
             <div style="margin-bottom: 5px; margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Passport No : <span style="color: #ff0000;">${getSafeValue(senderPassport)}</span></span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Passport No : <span style="color: #000000;">${getSafeValue(senderPassport)}</span></span>
             </div>
             <div style="margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">CNIC : <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">CNIC : <span style="color: #000000;">${getSafeValue(senderEmiratesID)}</span></span>
             </div>
         </div>
 
@@ -3382,7 +3417,7 @@ const OrdersList = () => {
         <div style="margin-bottom: 20px;">
             <div style="font-family: Arial; font-size: 15.0px; color: #000000; line-height: 1.6; margin-bottom: 10px;">
                 3. FURTHER UNDERTAKE THAT THIS CONSIGNMENT CONTAIN ONLY
-                <span style="font-weight: bold; font-family: Arial; font-size: 13.6px; color: #ff0000; text-decoration: underline;">${getSafeValue(goodsDescription, "__TEXTILE_____________")}</span>
+                <span style="font-weight: bold; font-family: Arial; font-size: 13.6px; color: #000000; text-decoration: underline;">${getSafeValue(goodsDescription, "____________________")}</span>
                 AND DOES NOT CONTAIN ANY CONTRABAND NARCOTIC / DRUGS ETC., AND UNDERTAKE TO BE FULLY HELD GOOD OWNER RESPONSIBLE IF FOUND IN THE CONSIGNMENT AT ANY STAGE.
             </div>
         </div>
@@ -3394,19 +3429,19 @@ const OrdersList = () => {
         <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px; font-family: Arial; font-size: 15.0px;">
             <tr>
             <td style="padding: 2px 0; width: 150px; vertical-align: top;">GOODS OWNER</td>
-            <td style="padding: 2px 0; vertical-align: top;">: <span style="font-weight: bold; color: #ff0000;">${getSafeValue(senderName)}</span></td>
+            <td style="padding: 2px 0; vertical-align: top;">: <span style="font-weight: bold; color: #000000;">${getSafeValue(senderName)}</span></td>
             </tr>
             <tr>
                 <td style="padding: 2px 0; vertical-align: top;">Company Name</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderCompany)}</span></td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #000000;">${getSafeValue(senderCompany)}</span></td>
             </tr>
             <tr>
                 <td style="padding: 2px 0; vertical-align: top;">Delivery Address</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getReceiverAddress(safeOrder)}</span></td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #000000;">${getReceiverAddress(safeOrder)}</span></td>
             </tr>
             <tr>
                 <td style="padding: 2px 0; vertical-align: top;">Emirates ID # 	</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #000000;">${getSafeValue(senderEmiratesID)}</span></td>
             </tr>
             <tr>
                 <td style="padding: 2px 0;">Signature</td>
@@ -3452,7 +3487,7 @@ const OrdersList = () => {
       safeOrder.consignment?.consignment_number || "________";
     const consignmentVessel = safeOrder.consignment?.vessel || "________";
     const consignmentVoyage = safeOrder.consignment?.voyage || "________";
-    const senderPhone = safeOrder.sender_contact || "03xx-xxxxxxx";
+    const senderPhone = safeOrder.sender_contact || "________";
     const senderAddress = safeOrder.sender_address || "Address in Karachi";
     const senderCompany =
       safeOrder.sender_company ||
@@ -3575,15 +3610,15 @@ const OrdersList = () => {
 <body>
     <div class="document">
         <div style="text-align: right; margin-bottom: 20px;">
-            <div style="font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 5px;">${getSafeValue(senderCompany)}</div>
-            <div style="font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 5px;">${getSafeValue(senderAddress)}</div>
-            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">Trade Liceness #: ${getSafeValue(trade_license)}</div>
-            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">Passport No: ${getSafeValue(senderPassport)}</div>
-            <div style="font-family: Arial; font-size: 13.1px; color: #ff0000; margin-bottom: 5px;">Emirates ID #: ${getSafeValue(senderEmiratesID)}</div>
-            <div style="font-family: Arial; font-size: 14.1px; color: #ff0000;">Tel #: ${getSafeValue(senderPhone)}</div>
+            <div style="font-family: Arial; font-size: 14.1px; color: #000000; margin-bottom: 5px;">${getSafeValue(senderCompany)}</div>
+            <div style="font-family: Arial; font-size: 14.1px; color: #000000; margin-bottom: 5px;">${getSafeValue(senderAddress)}</div>
+            <div style="font-family: Arial; font-size: 13.1px; color: #000000; margin-bottom: 5px;">Trade Liceness #: ${getSafeValue(trade_license)}</div>
+            <div style="font-family: Arial; font-size: 13.1px; color: #000000; margin-bottom: 5px;">Passport No: ${getSafeValue(senderPassport)}</div>
+            <div style="font-family: Arial; font-size: 13.1px; color: #000000; margin-bottom: 5px;">Emirates ID #: ${getSafeValue(senderEmiratesID)}</div>
+            <div style="font-family: Arial; font-size: 14.1px; color: #000000;">Tel #: ${getSafeValue(senderPhone)}</div>
         </div>
 
-        <div style="font-style: italic; font-family: Arial; font-size: 14.1px; color: #ff0000; margin-bottom: 10px;">
+        <div style="font-style: italic; font-family: Arial; font-size: 14.1px; color: #000000; margin-bottom: 10px;">
             Dated: ${currentDate}
         </div>
 
@@ -3601,16 +3636,16 @@ const OrdersList = () => {
         <div style="margin-bottom: 20px;">
             <div style="margin-bottom: 10px;">
                 <span style="font-family: Arial; font-size: 15.0px; color: #000000; font-weight: bold;">SUBJECT:</span>
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">EXPORT OF <span style="color: #ff0000;">${totalPackages} Pkgs</span> , Vide Order No : BB System # <span style="color: #ff0000;">${getSafeValue(safeOrder.booking_ref)}</span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">EXPORT OF <span style="color: #000000;">${totalPackages} Pkgs</span> , Vide Order No : BB System # <span style="color: #000000;">${getSafeValue(safeOrder.booking_ref)}</span>
             </div>
             <div style="margin-bottom: 5px; margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Co-Loader : <span style="color: #ff0000;">${getSafeValue(senderName)}</span></span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Co-Loader : <span style="color: #000000;">${getSafeValue(senderName)}</span></span>
             </div>
             <div style="margin-bottom: 5px; margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Passport No : <span style="color: #ff0000;">${getSafeValue(senderPassport)}</span></span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Passport No : <span style="color: #000000;">${getSafeValue(senderPassport)}</span></span>
             </div>
             <div style="margin-left: 99px;">
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">CNIC : <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">CNIC : <span style="color: #000000;">${getSafeValue(senderEmiratesID)}</span></span>
             </div>
         </div>
 
@@ -3629,7 +3664,7 @@ const OrdersList = () => {
         <div style="margin-bottom: 20px;">
             <div style="font-family: Arial; font-size: 15.0px; color: #000000; line-height: 1.6; margin-bottom: 10px;">
                 3. FURTHER UNDERTAKE THAT THIS CONSIGNMENT CONTAIN ONLY
-                <span style="font-weight: bold; font-family: Arial; font-size: 13.6px; color: #ff0000; text-decoration: underline;">${getSafeValue(goodsDescription, "__TEXTILE_____________")}</span>
+                <span style="font-weight: bold; font-family: Arial; font-size: 13.6px; color: #000000; text-decoration: underline;">${getSafeValue(goodsDescription, "____________________")}</span>
                 AND DOES NOT CONTAIN ANY CONTRABAND NARCOTIC / DRUGS ETC., AND UNDERTAKE TO BE FULLY HELD GOOD OWNER RESPONSIBLE IF FOUND IN THE CONSIGNMENT AT ANY STAGE.
             </div>
         </div>
@@ -3641,19 +3676,19 @@ const OrdersList = () => {
         <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px; font-family: Arial; font-size: 15.0px;">
             <tr>
             <td style="padding: 2px 0; width: 150px; vertical-align: top;">GOODS OWNER</td>
-            <td style="padding: 2px 0; vertical-align: top;">: <span style="font-weight: bold; color: #ff0000;">${getSafeValue(senderName)}</span></td>
+            <td style="padding: 2px 0; vertical-align: top;">: <span style="font-weight: bold; color: #000000;">${getSafeValue(senderName)}</span></td>
             </tr>
             <tr>
                 <td style="padding: 2px 0; vertical-align: top;">Company Name</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderCompany)}</span></td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #000000;">${getSafeValue(senderCompany)}</span></td>
             </tr>
             <tr>
                 <td style="padding: 2px 0; vertical-align: top;">Delivery Address</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getReceiverAddress(safeOrder)}</span></td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #000000;">${getReceiverAddress(safeOrder)}</span></td>
             </tr>
             <tr>
                 <td style="padding: 2px 0; vertical-align: top;">Emirates ID # 	</td>
-                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #ff0000;">${getSafeValue(senderEmiratesID)}</span></td>
+                <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #000000;">${getSafeValue(senderEmiratesID)}</span></td>
             </tr>
             <tr>
                 <td style="padding: 2px 0; vertical-align: top;">Signature</td>
@@ -3836,7 +3871,7 @@ const OrdersList = () => {
 
         .highlighted {
             font-weight: bold;
-            color: #ff0000;
+            color: #000000;
         }
 
         .container-list {
@@ -4628,7 +4663,7 @@ const OrdersList = () => {
             }
             
             .red-text { 
-                color: red; 
+                color: #000000; 
                 font-weight: 500;
             }
             .golden-text {
@@ -6682,10 +6717,16 @@ const OrdersList = () => {
                     Sender
                   </StyledTableHeadCell>,
                   <StyledTableHeadCell
-                    sx={{ bgcolor: "#0d6c6a", color: "#fff", fontSize: 10 }}
+                    sx={{ bgcolor: "#0d6c6a", color: "#fff" }}
                     key="total_items"
                   >
                     Total Items & Weight
+                  </StyledTableHeadCell>,
+                  <StyledTableHeadCell
+                    sx={{ bgcolor: "#0d6c6a", color: "#fff" }}
+                    key="status"
+                  >
+                    Status
                   </StyledTableHeadCell>,
                   <StyledTableHeadCell
                     sx={{ bgcolor: "#0d6c6a", color: "#fff" }}
@@ -6703,15 +6744,17 @@ const OrdersList = () => {
                   order.overall_status || order.status || "Created";
                 const colors = getStatusColors(status);
                 const productsSummary = order.receivers.flatMap((receiver) =>
-                  (receiver.shippingdetails || []).map((detail) => ({
-                    category: detail.category || "Unknown",
-                    subcategory: detail.subcategory || "",
-                    type: detail.type || "Package",
-                    weight: parseFloat(detail.weight || 0),
-                    total_number: parseInt(detail.totalNumber || 0),
-                    itemRef: detail.itemRef || "",
-                    shippingDetailStatus: detail.status || "",
-                  })),
+                  (receiver.shippingdetails || []).map((detail) => {
+                    return {
+                      category: detail.category || "Unknown",
+                      subcategory: detail.subcategory || "",
+                      type: detail.type || "Package",
+                      weight: parseFloat(detail.weight || 0),
+                      total_number: parseInt(detail.totalNumber || 0),
+                      itemRef: detail.itemRef || "",
+                      shippingDetailStatus: detail.status || "",
+                    };
+                  }),
                 );
                 const totalItems = productsSummary.reduce(
                   (sum, p) => sum + p.total_number,
@@ -6724,6 +6767,9 @@ const OrdersList = () => {
                 const categoryList = [
                   ...new Set(productsSummary.map((p) => p.category)),
                 ].join(", ");
+
+                const { label: leastStatusLabel, count: leastStatusRemaining } =
+                  getLeastStatus(productsSummary, statuses);
 
                 return (
                   <StyledTableRow
@@ -6808,30 +6854,46 @@ const OrdersList = () => {
                       {order.sender_name?.substring(0, 20)}
                     </StyledTableCell>
 
-                    <TableCell
-                      sx={{ flexWrap: "wrap", display: "list-item", p: 0 }}
+                    <StyledTableCell
+                      sx={{ flexWrap: "wrap", display: "list-item" }}
                     >
-                      <StyledTableCell
+                      <Typography
+                        variant="text.seconday"
                         sx={{
                           paddingLeft: 0,
                           fontWeight: "bold",
                           color: "#000",
-                          border: 0,
                         }}
                       >
                         {totalItems.toFixed()} Packages
-                      </StyledTableCell>
-                      <StyledTableCell
+                      </Typography>
+                      <Typography
+                        variant="text.seconday"
                         sx={{
-                          paddingLeft: 0,
+                          marginLeft: 4,
                           fontWeight: "bold",
                           color: "#555",
-                          border: 0,
                         }}
                       >
                         {totalWeight.toFixed()} kg
-                      </StyledTableCell>
-                    </TableCell>
+                      </Typography>
+                    </StyledTableCell>
+                    <StyledTableCell sx={{ fontWeight: "bold" }}>
+                      <StatusChip
+                        size="large"
+                        height={24}
+                        status={leastStatusLabel}
+                      />
+                      {leastStatusRemaining - 1 > 0 && (
+                        <Typography
+                          component="span"
+                          variant="caption"
+                          sx={{ ml: 0.5, fontWeight: "bold" }}
+                        >
+                          (+{leastStatusRemaining - 1})
+                        </Typography>
+                      )}
+                    </StyledTableCell>
                     <StyledTableCell>
                       <IconButton
                         size="small"

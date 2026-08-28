@@ -2773,6 +2773,454 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
 
     pdf.save(`Manifest_${data.consignment_number}_Detailed_${Date.now()}.pdf`);
   };
+  const generateshipmentsAndOrdersPDFWithCanvas = async (
+    data,
+    allReceivers,
+    selectedOrderObjects = includedOrders,
+    mode = "category",
+  ) => {
+    if (!data.consignment_number) {
+      setSnackbar({
+        open: true,
+        severity: "warning",
+        message: "Please enter a consignment number to generate the manifest.",
+      });
+      return;
+    }
+
+    const receiverGroups = [];
+
+    if (allReceivers && allReceivers.length > 0) {
+      allReceivers.forEach((order) => {
+        if (order.receivers && order.receivers.length > 0) {
+          order.receivers.forEach((receiver) => {
+            const items = receiver.shippingdetails || [];
+
+            if (items.length > 0) {
+              items.forEach((item) => {
+                receiverGroups.push({
+                  orderId: order.id,
+                  orderNumber: order.rgl_booking_number || `ORD-${order.id}`,
+                  sender: order.sender_name || "N/A",
+                  receiver: receiver.receiver_name || "N/A",
+                  receiverData: receiver,
+                  orderData: order,
+                  shippingDetails: [item],
+                });
+              });
+            } else {
+              receiverGroups.push({
+                orderId: order.id,
+                orderNumber: order.rgl_booking_number || `ORD-${order.id}`,
+                sender: order.sender_name || "N/A",
+                receiver: receiver.receiver_name || "N/A",
+                receiverData: receiver,
+                orderData: order,
+                shippingDetails: [],
+              });
+            }
+          });
+        }
+      });
+    }
+
+    const formatDateForPDF = (dateStr) => {
+      if (!dateStr) return "N/A";
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) return "N/A";
+      return date
+        .toLocaleDateString("en-GB", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        })
+        .toUpperCase();
+    };
+
+    const getVesselName = (vesselId) => {
+      if (!vesselId) return "N/A";
+      const vesselOption = options.vesselOptions?.find(
+        (v) => v.value === vesselId.toString(),
+      );
+      return vesselOption?.label || `Vessel ${vesselId}`;
+    };
+
+    const vesselName = getVesselName(data.vessel);
+
+    const logoBase64 = await loadImageAsBase64(logoPic);
+
+    const commonData = {
+      consignment_number: data.consignment_number || "N/A",
+      originName: data.originName || "N/A",
+      destinationName: data.destinationName || "N/A",
+      shipperName: data.shipperName || "N/A",
+      shipperAddress: data.shipperAddress || "N/A",
+      consigneeName: data.consigneeName || "N/A",
+      consigneeAddress: data.consigneeAddress || "N/A",
+      bankName: data.bankName || "N/A",
+      sealNo: data.seal_no || "N/A",
+      created_at: data.created_at || "N/A",
+      generated_date: new Date()
+        .toLocaleDateString("en-GB", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        })
+        .toUpperCase(),
+      generated_time: new Date().toLocaleTimeString("en-GB", {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+      voyage: data.voyage || "N/A",
+    };
+
+    const pdf = new jsPDF("p", "mm", "a4");
+    const marginMm = 14;
+    const contentWidthMm = 210 - 2 * marginMm;
+
+    for (let i = 0; i < receiverGroups.length; i++) {
+      const receiverGroup = receiverGroups[i];
+      const receiver = receiverGroup.receiverData;
+      const shippingDetails = receiverGroup.shippingDetails;
+
+      let receiverPackages = 0;
+      let receiverWeight = 0;
+      let itemRef = "";
+
+      shippingDetails.forEach((item) => {
+        let packagesForItem = 0;
+        let weightForItem = 0;
+
+        if (item.containerDetails && item.containerDetails.length > 0) {
+          item.containerDetails.forEach((containerDetail) => {
+            packagesForItem += Number(containerDetail.assign_total_box) || 0;
+            weightForItem += Number(containerDetail.assign_weight) || 0;
+          });
+        } else {
+          packagesForItem = parseInt(item.totalNumber) || 0;
+          weightForItem = parseFloat(item.weight) || 0;
+        }
+
+        receiverPackages += packagesForItem;
+        receiverWeight += weightForItem;
+
+        if (item.itemRef && !itemRef.includes(item.itemRef)) {
+          itemRef += (itemRef ? ", " : "") + item.itemRef;
+        }
+      });
+
+      const containerInfo =
+        data.containers && data.containers.length > 0
+          ? data.containers[0]
+          : { containerNo: "N/A", seal_no: "N/A" };
+
+      const tempElement = document.createElement("div");
+      tempElement.style.width = "780px";
+      tempElement.style.padding = "25px";
+      tempElement.style.backgroundColor = "white";
+      tempElement.style.fontFamily = "Arial, sans-serif";
+      tempElement.style.boxSizing = "border-box";
+      tempElement.style.borderTop = "8px solid #f37021";
+      tempElement.style.margin = "0 auto";
+      tempElement.style.fontSize = "10px";
+      tempElement.style.color = "#333";
+
+      tempElement.innerHTML = `
+      <style>
+        .terms {
+          font-size: 10px;
+          line-height: 1.4;
+        }
+
+        .terms ol {
+          margin: 6px 0;
+          padding-left: 0;
+          list-style-position: inside; /* 🔥 MAIN FIX */
+        }
+
+        .terms li {
+          margin-bottom: 4px;
+        }
+
+        .terms .footer {
+          font-size: 7px;
+          margin-top: 10px;
+        }
+      </style>
+      <div style="width: 780px; margin: 0 auto; background: white;">
+        <!-- HBL Design Header -->
+        <div class="header" style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+          <div class="logo-area">
+            <img src="${logoBase64 || ""}" alt="RoyalGulf Logo" style="width: 150px; height: auto;">
+          </div>
+          <div class="company-info" style="text-align: left; flex-grow: 1; margin-left: 20px;">
+            <p class="company-name" style="color: #f37021; font-size: 16px; font-weight: bold; margin: 0;">ROYAL GULF SHIPPING & LOGISTICS LLC</p>
+            <p class="locations" style="color: #008a45; font-weight: bold; margin: 2px 0;">DUBAI • LONDON • KARACHI • SHENZHEN</p>
+            <p style="font-size: 8px;">Ph: +971-4-3331785 | www.royalgulfshipping.com</p>
+          </div>
+          <div class="title-area" style="text-align: right;">
+            <p class="hbl-title" style="color: #f37021; font-size: 20px; font-weight: bold; margin: 0;">HOUSE BILL OF LADING</p>
+            <p style="font-size: 8px;">Non-negotiable copy</p>
+            <p style="font-size: 8px;">Consignment: ${commonData.consignment_number}</p>
+          </div>
+        </div>
+        
+        <!-- First Row - Basic Info -->
+        <div class="grid-row" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 8px;">
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">HBL NO.</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">--</span>
+          </div>
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">ORDER REFERENCE</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${receiverGroup.orderNumber}</span>
+          </div>
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">Item REFERENCE</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${itemRef}</span>
+          </div>
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">ISSUE DATE</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${new Date(commonData.created_at).toLocaleString("en-US", { month: "numeric", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true })}</span>
+          </div>
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">PLACE OF ISSUE</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${commonData.originName}</span>
+          </div>
+          
+        </div>
+        
+        <!-- Shipment Parties Section -->
+        <div class="section-header" style="color: #008a45; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid #008a45; margin-bottom: 5px; grid-column: span 4;">SHIPMENT PARTIES</div>
+        
+        <div class="parties-row" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 70px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">SHIPPER</span>
+            <div class="placeholder" style="font-weight: bold; font-size: 9px;">${commonData.shipperName}</div>
+            <div class="placeholder" style="font-size: 8px; color: #666;">${commonData.shipperName}</div>
+          </div>
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 70px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">CONSIGNEE</span>
+            <div class="placeholder" style="font-weight: bold; font-size: 9px;">${commonData.consigneeName}</div>
+            <div class="placeholder" style="font-size: 8px; color: #666;">${commonData.consigneeAddress || "N/A"}</div>
+          </div>
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 70px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">NOTIFY PARTY</span>
+            <div class="placeholder" style="font-weight: bold; font-size: 9px;">SAME AS CONSIGNEE</div>
+          </div>
+        </div>
+        
+        <!-- Voyage & Routing Section -->
+        <div class="section-header" style="color: #008a45; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid #008a45; margin-bottom: 5px; grid-column: span 4;">VOYAGE & ROUTING DETAILS</div>
+        
+        <div class="grid-row" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">PORT OF LOADING (POL)</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${commonData.originName}</span>
+          </div>
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">PORT OF DISCHARGE (POD)</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${commonData.destinationName}</span>
+          </div>
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">FINAL DESTINATION</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${commonData.destinationName}</span>
+          </div>
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">VESSEL NAME</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${vesselName}</span>
+          </div>
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">VOYAGE / SAILING</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${commonData.voyage}</span>
+          </div>
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">INCOTERMS</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">SEAFREIGHT</span>
+          </div>
+        </div>
+        
+        <!-- Container Info -->
+        <div class="section-header" style="color: #008a45; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid #008a45; margin-bottom: 5px; grid-column: span 4;">CONTAINER & PACKAGE INFO</div>
+        
+        <div class="grid-row" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 8px;">
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">CONTAINER NO.</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${containerInfo.containerNo} | ${containerInfo.size}ft</span>
+          </div>
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">SEAL NO.</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${commonData.sealNo || "N/A"}</span>
+          </div>
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">TOTAL PACKAGES</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${receiverPackages}</span>
+          </div>
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">TOTAL WEIGHT (KGS)</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${receiverWeight.toFixed(2)}</span>
+          </div>
+        </div>
+        
+        <!-- Cargo Description Table -->
+        <div class="section-header" style="color: #008a45; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid #008a45; margin-bottom: 5px; grid-column: span 4;">CARGO DESCRIPTION</div>
+        
+        ${
+          shippingDetails.length > 0
+            ? `
+        <table class="cargo-table" style="width: 100%; border-collapse: collapse; margin-top: 5px;">
+          <thead>
+            <tr>
+              <th style="border: 1px solid #ccc; background-color: #f9f9f9; padding: 4px; font-size: 8px; width: 20%;">MARKS & NUMBERS</th>
+              <th style="border: 1px solid #ccc; background-color: #f9f9f9; padding: 4px; font-size: 8px; width: 40%;">${mode === "subcategory" ? "SUBCATEGORY" : "CATEGORY"}</th>
+              <th style="border: 1px solid #ccc; background-color: #f9f9f9; padding: 4px; font-size: 8px; width: 10%;">PKGS</th>
+              <th style="border: 1px solid #ccc; background-color: #f9f9f9; padding: 4px; font-size: 8px; width: 15%;">WEIGHT (KGS)</th>
+              <th style="border: 1px solid #ccc; background-color: #f9f9f9; padding: 4px; font-size: 8px; width: 15%;">VOLUME (CBM)</th>
+            </tr>
+          </thead>
+          <tbody>
+  ${shippingDetails
+    .map((item, idx) => {
+      // Calculate packages and weight from containerDetails
+      let packagesForItem = 0;
+      let weightForItem = 0;
+
+      if (item.containerDetails && item.containerDetails.length > 0) {
+        item.containerDetails.forEach((containerDetail) => {
+          packagesForItem += Number(containerDetail.assign_total_box) || 0;
+          weightForItem += Number(containerDetail.assign_weight) || 0;
+        });
+      } else {
+        packagesForItem = parseInt(item.totalNumber) || 0;
+        weightForItem = parseFloat(item.weight) || 0;
+      }
+
+      const description =
+        mode === "subcategory"
+          ? item.subcategory || "N/A"
+          : item.category || "N/A";
+
+      return `
+            <tr>
+              <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">${item.type || "N/A"}</td>
+              <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">${description}</td>
+              <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">${packagesForItem}</td>
+              <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">${weightForItem.toFixed(2)}</td>
+              <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">0.00</td>
+            </tr>
+            `;
+    })
+    .join("")}
+          <tr style="font-weight: bold; background-color: #e8f5e8;">
+            <td colspan="2" style="border: 1px solid #ccc; padding: 8px 4px; text-align: right;">TOTAL:</td>
+            <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">${receiverPackages}</td>
+            <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">${receiverWeight.toFixed(2)}</td>
+            <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">0.00</td>
+          </tr>
+        </tbody>
+        </table>
+        `
+            : `
+        <div style="text-align: center; padding: 30px; background: #f9f9f9; border: 1px dashed #ccc; margin-bottom: 20px;">
+          <h4 style="color: #666; font-style: italic;">NO CARGO DETAILS FOUND</h4>
+          <p style="color: #999;">No shipping details available for this receiver.</p>
+        </div>
+        `
+        }
+        
+        <!-- Terms and Footer -->
+        <div class="bottom-section" style="display: grid; grid-template-columns: 2fr 1fr; gap: 15px; margin-top: 10px; border-top: 1px solid #000; padding-top: 8px;">
+          <div class="terms">
+            <strong>
+              By confirming this order for shipment, the Shipper/Consignee agrees to the following terms:
+            </strong>
+
+            <ol style="margin-left: 4px;">
+              <li>Carriage is performed under Royal Gulf Shipping & Logistics LLC’s standard terms and applicable international conventions. All cargo details supplied must be true and complete.</li>
+
+              <li>Transit times are estimates only. Delays may occur due to weather, customs, port congestion, operational issues or carrier schedules.</li>
+
+              <li>Customs scanning, inspections, dog checks, or port delays may incur extra charges payable by the Merchant.</li>
+
+              <li>In case of loss/damage, liability shall not exceed the freight value or USD 50 per package unless a higher value is declared and agreed in writing beforehand.</li>
+
+              <li>The Merchant confirms lawful ownership of goods and accepts full responsibility for any illegal, prohibited or undeclared items shipped.</li>
+
+              <li>Royal Gulf is not liable for any damage during customs/port inspections at origin, transit or destination.</li>
+
+              <li>Cargo is carried at Merchant’s risk unless the Merchant arranges separate insurance. Royal Gulf is not liable for indirect or consequential losses.</li>
+
+              <li>Claims must be notified immediately in writing and within legal time limits. Late claims may be void.</li>
+
+              <li>Royal Gulf may use third-party carriers or subcontractors; all their protections and liability limits apply equally to Royal Gulf.</li>
+
+              <li>This HBL applies only to order ref ${receiverGroup.orderNumber}.</li>
+
+              <li>Governed by UAE law; disputes fall under Dubai courts unless agreed otherwise.</li>
+            </ol>
+
+            <p class="footer">
+              Receiver: ${receiverGroup.receiver} |
+              Order: ${receiverGroup.orderNumber} |
+              Container: ${containerInfo.containerNo} |
+              Page ${i + 1} of ${receiverGroups.length}
+            </p>
+          </div>
+
+          <div class="signature-box" style="border-left: 1px solid #ccc; padding-left: 10px;">
+          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #000;">For and on behalf of</span>
+            <p style="color: #f37021; font-weight: bold; margin: 0; font-size:12px;">Royal Gulf Shipping & Logistics LLC</p>
+          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #000;">Generated: ${commonData.generated_date} ${commonData.generated_time}</span>
+
+            <div style="margin-top: 35px; border-top: 1px solid #000;">
+              <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">Authorised Signature</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+      document.body.appendChild(tempElement);
+
+      const canvas = await html2canvas(tempElement, {
+        scale: 1.5,
+        useCORS: true,
+        allowTaint: true,
+        logging: false,
+        width: tempElement.scrollWidth,
+        height: tempElement.scrollHeight,
+        windowWidth: tempElement.scrollWidth,
+        windowHeight: tempElement.scrollHeight,
+        backgroundColor: "#ffffff",
+        imageTimeout: 0,
+        removeContainer: true,
+      });
+
+      document.body.removeChild(tempElement);
+
+      const pxPerMm = canvas.width / contentWidthMm;
+      const canvasHeightMm = canvas.height / pxPerMm;
+
+      if (i > 0) {
+        pdf.addPage();
+      }
+
+      const imgData = canvas.toDataURL("image/jpeg", 0.85);
+      pdf.addImage(
+        imgData,
+        "JPEG",
+        marginMm,
+        marginMm,
+        contentWidthMm,
+        canvasHeightMm,
+        undefined,
+        "FAST",
+      );
+    }
+    pdf.save(
+      `HBL_${data.consignment_number}_${mode === "subcategory" ? "Subcategory" : "Category"}_${Date.now()}.pdf`,
+    );
+  };
 
   const generateManifestPDFWithCanvas = async (
     data,
@@ -4378,7 +4826,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                         values,
                         includedOrders,
                       )
-                    } // Fixed: Pass includedOrders
+                    }
                     disabled={saving || !values.consignment_number}
                     sx={{
                       borderColor: "#f58220",
@@ -4965,6 +5413,56 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                           flexWrap: "wrap",
                         }}
                       >
+                        <Tooltip title="Download Shipment note as PDF (Category)">
+                          <Button
+                            variant="outlined"
+                            startIcon={<DescriptionIcon />}
+                            onClick={() =>
+                              generateshipmentsAndOrdersPDFWithCanvas(
+                                values,
+                                orders,
+                                includedOrders,
+                                "category",
+                              )
+                            }
+                            disabled={saving || !values.consignment_number}
+                            sx={{
+                              borderColor: "#f58220",
+                              color: "#f58220",
+                              "&:hover": {
+                                borderColor: "#e65100",
+                                backgroundColor: "#fff3e0",
+                              },
+                            }}
+                          >
+                            Shipment & Orders with Category
+                          </Button>
+                        </Tooltip>
+                        <Tooltip title="Download Shipment note as PDF (Subcategory)">
+                          <Button
+                            variant="outlined"
+                            startIcon={<DescriptionIcon />}
+                            onClick={() =>
+                              generateshipmentsAndOrdersPDFWithCanvas(
+                                values,
+                                orders,
+                                includedOrders,
+                                "subcategory",
+                              )
+                            }
+                            disabled={saving || !values.consignment_number}
+                            sx={{
+                              borderColor: "#f58220",
+                              color: "#f58220",
+                              "&:hover": {
+                                borderColor: "#e65100",
+                                backgroundColor: "#fff3e0",
+                              },
+                            }}
+                          >
+                            Shipment & Orders with Subcategory
+                          </Button>
+                        </Tooltip>
                         <Tooltip title="Download simple consignment note as PDF">
                           <Button
                             variant="outlined"
@@ -5218,7 +5716,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                       <Button
                         startIcon={<AddIcon />}
                         onClick={() => {
-                          // For modal: Ensure no duplicates when selecting
                           setContainerModalOpen(true);
                         }}
                         variant="contained"
@@ -5304,6 +5801,67 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                       🛒 Shipments by Container ({flatShipments.length} lines)
                     </Typography>
                   </AccordionSummary>
+                  <Box
+                    sx={{
+                      mt: 3,
+                      display: "flex",
+                      gap: 2,
+                      justifyContent: "flex-end",
+                      flexWrap: "wrap",
+                      mr: 3,
+                    }}
+                  >
+                    <Tooltip title="Download Shipment note as PDF (Category)">
+                      <Button
+                        variant="outlined"
+                        startIcon={<DescriptionIcon />}
+                        onClick={() =>
+                          generateshipmentsAndOrdersPDFWithCanvas(
+                            values,
+                            includedOrders,
+                            includedOrders,
+                            "category",
+                          )
+                        }
+                        disabled={saving || !values.consignment_number}
+                        sx={{
+                          borderColor: "#f58220",
+                          color: "#f58220",
+                          "&:hover": {
+                            borderColor: "#e65100",
+                            backgroundColor: "#fff3e0",
+                          },
+                        }}
+                      >
+                        Shipment & Orders with Category
+                      </Button>
+                    </Tooltip>
+                    <Tooltip title="Download Shipment note as PDF (Subcategory)">
+                      <Button
+                        variant="outlined"
+                        startIcon={<DescriptionIcon />}
+                        onClick={() =>
+                          generateshipmentsAndOrdersPDFWithCanvas(
+                            values,
+                            includedOrders,
+                            includedOrders,
+                            "subcategory",
+                          )
+                        }
+                        disabled={saving || !values.consignment_number}
+                        sx={{
+                          borderColor: "#f58220",
+                          color: "#f58220",
+                          "&:hover": {
+                            borderColor: "#e65100",
+                            backgroundColor: "#fff3e0",
+                          },
+                        }}
+                      >
+                        Shipment & Orders with Subcategory
+                      </Button>
+                    </Tooltip>
+                  </Box>
                   <AccordionDetails>
                     <TableContainer
                       component={Paper}
