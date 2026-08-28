@@ -2773,11 +2773,11 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
 
     pdf.save(`Manifest_${data.consignment_number}_Detailed_${Date.now()}.pdf`);
   };
+
   const generateshipmentsAndOrdersPDFWithCanvas = async (
     data,
     allReceivers,
     selectedOrderObjects = includedOrders,
-    mode = "category",
   ) => {
     if (!data.consignment_number) {
       setSnackbar({
@@ -3072,7 +3072,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
           <thead>
             <tr>
               <th style="border: 1px solid #ccc; background-color: #f9f9f9; padding: 4px; font-size: 8px; width: 20%;">MARKS & NUMBERS</th>
-              <th style="border: 1px solid #ccc; background-color: #f9f9f9; padding: 4px; font-size: 8px; width: 40%;">${mode === "subcategory" ? "SUBCATEGORY" : "CATEGORY"}</th>
+              <th style="border: 1px solid #ccc; background-color: #f9f9f9; padding: 4px; font-size: 8px; width: 40%;">DESCRIPTION OF GOODS</th>
               <th style="border: 1px solid #ccc; background-color: #f9f9f9; padding: 4px; font-size: 8px; width: 10%;">PKGS</th>
               <th style="border: 1px solid #ccc; background-color: #f9f9f9; padding: 4px; font-size: 8px; width: 15%;">WEIGHT (KGS)</th>
               <th style="border: 1px solid #ccc; background-color: #f9f9f9; padding: 4px; font-size: 8px; width: 15%;">VOLUME (CBM)</th>
@@ -3095,10 +3095,11 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         weightForItem = parseFloat(item.weight) || 0;
       }
 
-      const description =
-        mode === "subcategory"
-          ? item.subcategory || "N/A"
-          : item.category || "N/A";
+      const category = item.category || "N/A";
+      const subcategory = item.subcategory || "";
+      const description = subcategory
+        ? `${category} - ${subcategory}`
+        : category;
 
       return `
             <tr>
@@ -3217,15 +3218,14 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         "FAST",
       );
     }
-    pdf.save(
-      `HBL_${data.consignment_number}_${mode === "subcategory" ? "Subcategory" : "Category"}_${Date.now()}.pdf`,
-    );
+    pdf.save(`HBL_${data.consignment_number}_${Date.now()}.pdf`);
   };
 
   const generateManifestPDFWithCanvas = async (
     data,
     allReceivers,
     selectedOrderObjects = includedOrders,
+    groupBySubcategory = false,
   ) => {
     if (!data.consignment_number) {
       setSnackbar({
@@ -3277,10 +3277,13 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
           const subcategory = detail.subcategory || "";
           const commodityType = detail.type || "";
 
-          const commodityKey = `${commodity}|${subcategory}`;
-          const displayKey = subcategory
-            ? `${commodity} - ${subcategory}`
+          const commodityKey = groupBySubcategory
+            ? `${commodity}|${subcategory}`
             : commodity;
+          const displayKey =
+            groupBySubcategory && subcategory
+              ? `${commodity} - ${subcategory}`
+              : commodity;
 
           if (!summary[commodityKey]) {
             summary[commodityKey] = {
@@ -3317,7 +3320,9 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       item.totalOrders = item.totalOrders.size;
     });
 
-    const commodityArray = Object.values(commoditySummary);
+    const commodityArray = Object.values(commoditySummary).sort((a, b) =>
+      a.commodity.localeCompare(b.commodity),
+    );
 
     const grandTotal = commodityArray.reduce(
       (total, item) => {
@@ -3711,17 +3716,17 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                 </tr>
             </thead>
             <tbody>
-                ${commodityArray
-                  .map(
-                    (item) => `
+                                ${commodityArray
+                                  .map(
+                                    (item) => `
                 <tr>
-                    <td style="text-align:left; border: 1px solid #ddd;font-weight: normal;">${item.commodity} (${item.commodityType})</td>
+                    <td style="text-align:left; border: 1px solid #ddd;font-weight: normal;">${item.commodity}</td>
                     <td style="border: 1px solid #ddd;font-weight: normal;">${item.totalOrders}</td>
                     <td style="border: 1px solid #ddd;font-weight: normal;">${item.totalPkgs.toLocaleString()}</td>
                     <td style="border: 1px solid #ddd;font-weight: normal;">${Number(item.totalWeight).toFixed(2)}</td>
                 `,
-                  )
-                  .join("")}
+                                  )
+                                  .join("")}
 
                 <!-- Grand Total Row -->
                 <tr style="background-color: #f5f5f5; font-weight: bold;">
@@ -5413,7 +5418,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                           flexWrap: "wrap",
                         }}
                       >
-                        <Tooltip title="Download Shipment note as PDF (Category)">
+                        <Tooltip title="Download simple Shipment note as PDF">
                           <Button
                             variant="outlined"
                             startIcon={<DescriptionIcon />}
@@ -5421,8 +5426,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                               generateshipmentsAndOrdersPDFWithCanvas(
                                 values,
                                 orders,
-                                includedOrders,
-                                "category",
                               )
                             }
                             disabled={saving || !values.consignment_number}
@@ -5435,32 +5438,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                               },
                             }}
                           >
-                            Shipment & Orders with Category
-                          </Button>
-                        </Tooltip>
-                        <Tooltip title="Download Shipment note as PDF (Subcategory)">
-                          <Button
-                            variant="outlined"
-                            startIcon={<DescriptionIcon />}
-                            onClick={() =>
-                              generateshipmentsAndOrdersPDFWithCanvas(
-                                values,
-                                orders,
-                                includedOrders,
-                                "subcategory",
-                              )
-                            }
-                            disabled={saving || !values.consignment_number}
-                            sx={{
-                              borderColor: "#f58220",
-                              color: "#f58220",
-                              "&:hover": {
-                                borderColor: "#e65100",
-                                backgroundColor: "#fff3e0",
-                              },
-                            }}
-                          >
-                            Shipment & Orders with Subcategory
+                            Shipment & Orders PDF
                           </Button>
                         </Tooltip>
                         <Tooltip title="Download simple consignment note as PDF">
@@ -5508,6 +5486,36 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                               <CircularProgress size={20} />
                             ) : (
                               "Print Manifest"
+                            )}
+                          </Button>
+                        </Tooltip>
+
+                        <Tooltip title="Download PDF manifest with commodity summary split by subcategory">
+                          <Button
+                            variant="outlined"
+                            startIcon={<LocalPrintshopIcon />}
+                            onClick={() =>
+                              generateManifestPDFWithCanvas(
+                                values,
+                                orders,
+                                includedOrders,
+                                true,
+                              )
+                            }
+                            disabled={saving || !values.consignment_number}
+                            sx={{
+                              borderColor: "#f58220",
+                              color: "#f58220",
+                              "&:hover": {
+                                borderColor: "#e65100",
+                                backgroundColor: "#fff3e0",
+                              },
+                            }}
+                          >
+                            {saving ? (
+                              <CircularProgress size={20} />
+                            ) : (
+                              "Print Manifest with Subcategory"
                             )}
                           </Button>
                         </Tooltip>
@@ -5811,7 +5819,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                       mr: 3,
                     }}
                   >
-                    <Tooltip title="Download Shipment note as PDF (Category)">
+                    <Tooltip title="Download simple Shipment note as PDF">
                       <Button
                         variant="outlined"
                         startIcon={<DescriptionIcon />}
@@ -5819,8 +5827,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                           generateshipmentsAndOrdersPDFWithCanvas(
                             values,
                             includedOrders,
-                            includedOrders,
-                            "category",
                           )
                         }
                         disabled={saving || !values.consignment_number}
@@ -5833,32 +5839,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                           },
                         }}
                       >
-                        Shipment & Orders with Category
-                      </Button>
-                    </Tooltip>
-                    <Tooltip title="Download Shipment note as PDF (Subcategory)">
-                      <Button
-                        variant="outlined"
-                        startIcon={<DescriptionIcon />}
-                        onClick={() =>
-                          generateshipmentsAndOrdersPDFWithCanvas(
-                            values,
-                            includedOrders,
-                            includedOrders,
-                            "subcategory",
-                          )
-                        }
-                        disabled={saving || !values.consignment_number}
-                        sx={{
-                          borderColor: "#f58220",
-                          color: "#f58220",
-                          "&:hover": {
-                            borderColor: "#e65100",
-                            backgroundColor: "#fff3e0",
-                          },
-                        }}
-                      >
-                        Shipment & Orders with Subcategory
+                        Shipment & Orders PDF
                       </Button>
                     </Tooltip>
                   </Box>
