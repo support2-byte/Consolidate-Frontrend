@@ -17,7 +17,6 @@ import {
   AccordionSummary,
   AccordionDetails,
   IconButton,
-  Snackbar,
   Alert,
   RadioGroup,
   Radio,
@@ -29,6 +28,7 @@ import {
   FormGroup,
   FormControlLabel as CheckboxFormControlLabel,
 } from "@mui/material";
+import { toast } from "react-toastify";
 import Dialog from "@mui/material/Dialog";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import DialogContent from "@mui/material/DialogContent";
@@ -223,12 +223,6 @@ const OrderForm = () => {
     }
   }, [firstStatus?.id]);
 
-  const [snackbar, setSnackbar] = useState({
-    open: false,
-    message: "",
-    severity: "info",
-  });
-
   const [errors, setErrors] = useState({});
   const initialShippingDetail = {
     pickupLocation: "",
@@ -344,6 +338,11 @@ const OrderForm = () => {
     dropOffDetails: {},
     sendEmailNotification: true,
   });
+
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [importForms, setImportForms] = useState([]);
+  const [importLoading, setImportLoading] = useState(false);
+  const [selectedImportId, setSelectedImportId] = useState("");
 
   const editableInEdit = [
     "transportType",
@@ -499,8 +498,6 @@ const OrderForm = () => {
     }));
   };
 
-  // Auto generate bookingRef and rglBookingNumber for new orders
-  // Auto generate bookingRef, rgslBookingRef, and rglBookingNumber for new orders
   useEffect(() => {
     if (!isEditMode && !formData.bookingRef) {
       const timestamp = Date.now();
@@ -517,18 +514,13 @@ const OrderForm = () => {
       const autoPart = `${today}-${randomSuffix}`;
 
       const bookingRef = `RGSL-${timestampWithRandom}-${randomLast3}`;
-      // const rgslBookingRef = `RGSL-ORD-${today}-${randomLast3}`;
-      // const rglBookingNumber = `RGSL-ORD-${randomSuffix}${today}`;
 
       setFormData((prev) => ({
         ...prev,
         bookingRef,
-        // rgslBookingRef,
-        // rglBookingNumber
       }));
     }
   }, [isEditMode]);
-  // Compute global totals dynamically
   useEffect(() => {
     const items =
       formData.senderType === "sender" ? formData.receivers : formData.senders;
@@ -550,7 +542,6 @@ const OrderForm = () => {
       globalRemainingItems: remaining,
     }));
   }, [formData.senderType, formData.receivers, formData.senders]);
-  // Compute remaining items dep
   const remainingDep = useMemo(() => {
     const items =
       formData.senderType === "sender" ? formData.receivers : formData.senders;
@@ -563,7 +554,6 @@ const OrderForm = () => {
       )
       .join(",");
   }, [formData.senderType, formData.receivers, formData.senders]);
-  // Compute per-item remaining dynamically
   useEffect(() => {
     const listKey = formData.senderType === "sender" ? "receivers" : "senders";
     setFormData((prev) => ({
@@ -598,16 +588,13 @@ const OrderForm = () => {
     formData.senderType === "sender" ? "senderName" : "receiverName";
   useEffect(() => {
     if (isEditMode && formData.selectedSenderOwner) {
-      // const ownerNameKey = formData.senderType === 'sender' ? 'senderName' : 'receiverName';
       if (!formData[ownerNameKey]?.trim()) {
-        // Auto-fetch customer details if name empty but ID present
-        handleSelectOwner(null, { zoho_id: formData.selectedSenderOwner }); // Mock event/value to trigger fetch
+        handleSelectOwner(null, { zoho_id: formData.selectedSenderOwner });
       }
     }
   }, [isEditMode, formData.selectedSenderOwner, formData.senderType]);
   const validateForm = () => {
     const newErrors = {};
-    // Core required fields
     const coreRequired = [
       "rglBookingNumber",
       "pointOfOrigin",
@@ -622,26 +609,19 @@ const OrderForm = () => {
       }
     });
 
-    // Validate owner name
     if (!formData[ownerNameKey]?.trim() && formData.selectedSenderOwner) {
       newErrors[ownerNameKey] =
         "Owner name is recommended (fetch from selected ID)";
     }
     const ownerContactKey =
       formData.senderType === "sender" ? "senderContact" : "receiverContact";
-    // if (!formData[ownerContactKey]?.trim()) {
-    //     newErrors[ownerContactKey] = 'Owner contact is required';
-    // }
+
     const ownerAddressKey =
       formData.senderType === "sender" ? "senderAddress" : "receiverAddress";
-    // if (!formData[ownerAddressKey]?.trim()) {
-    //     newErrors[ownerAddressKey] = 'Owner address is required';
-    // }
-    // Validate senderType
+
     if (!formData.senderType) {
       newErrors.senderType = "Sender Type is required";
     }
-    // NEW: Validate selectedReceiver for Drop Off
     if (formData.transportType === "Drop Off") {
       if (!formData.selectedReceiver) {
         newErrors.selectedReceiver =
@@ -754,14 +734,11 @@ const OrderForm = () => {
       setTypes(["Package", "Box", "Bags"]);
     } catch (error) {
       console.error("Error fetching options:", error);
-      setSnackbar({
-        open: true,
-        message:
-          error.response?.data?.error ||
+      toast.error(
+        error.response?.data?.error ||
           error.message ||
           "Failed to fetch options",
-        severity: "error",
-      });
+      );
 
       setCategories(["Electronics", "Clothing", "Books"]);
       setCategorySubMap({
@@ -852,14 +829,11 @@ const OrderForm = () => {
       setContainers(response.data.data || []);
     } catch (error) {
       console.error("❌ Error fetching containers:", error);
-      setSnackbar({
-        open: true,
-        message:
-          error.response?.data?.error ||
+      toast.error(
+        error.response?.data?.error ||
           error.message ||
           "Failed to fetch containers",
-        severity: "error",
-      });
+      );
     } finally {
       setLoadingContainers(false);
     }
@@ -890,7 +864,6 @@ const OrderForm = () => {
         return fallback;
       };
 
-      // ── Parse attachments and gatepass ─────────────────────────────
       let attachments = safeParseArray(orderData.attachments);
       let gatepass = safeParseArray(orderData.gatepass);
 
@@ -904,13 +877,11 @@ const OrderForm = () => {
         .filter((item) => item?.url && typeof item.url === "string")
         .map((item) => (typeof item === "string" ? `${apiBase}${item}` : item));
 
-      // ── Convert snake_case → camelCase + date formatting ───────────
       const camelData = {};
 
       Object.keys(orderData).forEach((key) => {
         let value = orderData[key];
 
-        // Date fields normalization
         if (["eta", "etd", "delivery_date", "drop_date"].includes(key)) {
           if (value) {
             const date = new Date(value);
@@ -925,7 +896,6 @@ const OrderForm = () => {
         camelData[snakeToCamel(key)] = value ?? "";
       });
 
-      // Explicit important fields
       camelData.senderType = orderData.sender_type || "sender";
       camelData.transportType = orderData.transport_type || "Drop Off";
       camelData.collectionScope = orderData.collection_scope || "Partial";
@@ -939,7 +909,6 @@ const OrderForm = () => {
       camelData.finalDestination =
         orderData.final_destination?.toString() || "";
 
-      // Owner fields (sender or receiver)
       const ownerPrefix =
         camelData.senderType === "sender" ? "sender" : "receiver";
       const ownerFields = [
@@ -1027,7 +996,6 @@ const OrderForm = () => {
           camelRec.shippingDetails = [{ ...initialShippingDetail }];
         }
 
-        // ←←← IMPORTANT: Handle drop_off_details per receiver ←←←
         camelRec.dropOffDetails = Array.isArray(rec.drop_off_details)
           ? rec.drop_off_details.map((drop) => ({
               dropMethod: drop.drop_method || drop.dropMethod || "",
@@ -1044,7 +1012,6 @@ const OrderForm = () => {
         return camelRec;
       });
 
-      // Fallback if no receivers
       if (!mappedReceivers.length) {
         mappedReceivers.push({
           ...initialReceiver,
@@ -1055,10 +1022,7 @@ const OrderForm = () => {
 
       camelData[panel2ListKey] = mappedReceivers;
       camelData.senders =
-        camelData.senderType === "receiver" ? mappedReceivers : []; // adjust if needed
-
-      // ── DropOffDetails at root level (for form state) ─────────────
-      // If you use formData.dropOffDetails as object with receiverIndex as key:
+        camelData.senderType === "receiver" ? mappedReceivers : [];
       const dropOffDetailsObj = {};
       mappedReceivers.forEach((rec, index) => {
         if (rec.dropOffDetails && rec.dropOffDetails.length > 0) {
@@ -1067,7 +1031,6 @@ const OrderForm = () => {
       });
       camelData.dropOffDetails = dropOffDetailsObj;
 
-      // Also set selected receiver for drop off (if any has data)
       if (Object.keys(dropOffDetailsObj).length > 0) {
         camelData.selectedReceiverForDropOff =
           Object.keys(dropOffDetailsObj)[0];
@@ -1076,12 +1039,9 @@ const OrderForm = () => {
       setFormData(camelData);
     } catch (err) {
       console.error("[fetchOrder] Error:", err);
-      setSnackbar({
-        open: true,
-        message:
-          err.response?.data?.error || err.message || "Failed to fetch order",
-        severity: "error",
-      });
+      toast.error(
+        err.response?.data?.error || err.message || "Failed to fetch order",
+      );
       if (err.response?.status === 404) navigate("/orders");
     } finally {
       setIsLoading(false);
@@ -1092,7 +1052,6 @@ const OrderForm = () => {
     setFormData((prev) => {
       const updated = { ...prev, [name]: value };
       if (name === "transportType" && value !== prev.transportType) {
-        // Clear transport-specific fields
         updated.dropMethod = "";
         updated.dropoffName = "";
         updated.dropOffCnic = "";
@@ -1111,7 +1070,6 @@ const OrderForm = () => {
         updated.driverPickupLocation = "";
         updated.truckNumber = "";
         updated.thirdPartyTransport = "";
-        // Clear receiver-specific drop-off details when switching transport types
         updated.dropOffDetails = {};
         updated.selectedReceiver = "";
       }
@@ -1126,7 +1084,6 @@ const OrderForm = () => {
         updated.clientReceiverMobile = "";
       }
       if (name === "senderType" && value !== prev.senderType) {
-        // Clear opposite owner fields if switching
         const newPrefix = value;
         const oldPrefix = prev.senderType;
         const fields = [
@@ -1142,14 +1099,12 @@ const OrderForm = () => {
           if (updated[oldKey]) updated[oldKey] = "";
         });
       }
-      // Handle selectedReceiver change: Clear drop-off details for previous receiver
       if (name === "selectedReceiver" && value !== prev.selectedReceiver) {
         if (
           prev.selectedReceiver !== "" &&
           updated.dropOffDetails[prev.selectedReceiver]
         ) {
-          // Optionally persist or clear previous receiver's details
-          delete updated.dropOffDetails[prev.selectedReceiver]; // Clear for new selection
+          delete updated.dropOffDetails[prev.selectedReceiver];
         }
       }
       return updated;
@@ -1159,7 +1114,6 @@ const OrderForm = () => {
     }
   };
 
-  // Receiver handlers
   const addReceiver = () => {
     setFormData((prev) => ({
       ...prev,
@@ -1179,29 +1133,17 @@ const OrderForm = () => {
         `/api/orders/${orderId}/receivers/${order.id}`,
       );
 
-      // Update local state with returned receivers list
       setFormData((prev) => ({
         ...prev,
         receivers: response.data.receivers,
       }));
-
-      setSnackbar({
-        open: true,
-        message: "Receiver removed successfully",
-        severity: "success",
-      });
+      toast.success("Receiver removed successfully");
     } catch (err) {
       console.error(
         "[handleRemoveReceiver] Error:",
         err.response?.data || err.message,
       );
-      setSnackbar({
-        open: true,
-        message: err.response?.data?.error || "Failed to remove receiver",
-        severity: "error",
-      });
     }
-    // };
   };
 
   const loadImageAsBase64 = (url) =>
@@ -1232,16 +1174,13 @@ const OrderForm = () => {
     if (!order) return;
 
     try {
-      // Check libraries
       if (typeof jsPDF === "undefined" || typeof html2canvas === "undefined") {
         console.error("Required libraries not loaded");
         return;
       }
 
-      // Create HTML template (ab yeh async function hai)
       const htmlContent = await createReceiptHTML(order);
 
-      // Create temporary div
       const tempDiv = document.createElement("div");
       tempDiv.innerHTML = htmlContent;
       tempDiv.style.position = "fixed";
@@ -1251,7 +1190,6 @@ const OrderForm = () => {
       tempDiv.style.backgroundColor = "#ffffff";
       document.body.appendChild(tempDiv);
 
-      // Convert to canvas
       const canvas = await html2canvas(tempDiv, {
         scale: 2,
         useCORS: true,
@@ -1259,10 +1197,8 @@ const OrderForm = () => {
         backgroundColor: "#ffffff",
       });
 
-      // Clean up
       document.body.removeChild(tempDiv);
 
-      // Create PDF
       const pdf = new jsPDF({
         orientation: "portrait",
         unit: "mm",
@@ -1281,7 +1217,6 @@ const OrderForm = () => {
         imgHeight,
       );
 
-      // Save PDF
       const fileName = `Receipt_${order.booking_ref || order.id || "order"}_${new Date().toLocaleDateString("en-GB").replace(/\//g, "-")}.pdf`;
       pdf.save(fileName);
     } catch (error) {
@@ -1289,11 +1224,9 @@ const OrderForm = () => {
       throw error;
     }
   };
-  // Function to create dynamic HTML content
   const createReceiptHTML = async (order) => {
     const logoBase64 = await loadImageAsBase64(logoPic);
 
-    // Helper function to format date
     const formatDate = (dateString) => {
       if (!dateString) return "";
       try {
@@ -1315,7 +1248,6 @@ const OrderForm = () => {
       }
     };
 
-    // Format current date and time
     const currentDate = new Date().toLocaleDateString("en-GB", {
       day: "2-digit",
       month: "2-digit",
@@ -1327,7 +1259,6 @@ const OrderForm = () => {
       second: "2-digit",
     });
 
-    // Extract data from order object based on your response structure
     const senderName = order.sender_name || "N/A";
     const senderContact = order.sender_contact || "N/A";
     const senderEmail = order.sender_email || "N/A";
@@ -1356,7 +1287,6 @@ const OrderForm = () => {
       totalWeight = parseFloat(receiver.total_weight || 0);
     }
 
-    // Get container info
     const containers = receiver.containers || [];
     const containerInfo = containers.length > 0 ? containers[0] : "N/A";
 
@@ -1848,7 +1778,6 @@ const OrderForm = () => {
     const receiver = formData.receivers[index];
     const shippingDetail = receiver?.shippingDetails?.[j];
 
-    // If item exists in DB, delete it via API
     if (shippingDetail?.id) {
       try {
         await api.delete(
@@ -1859,12 +1788,9 @@ const OrderForm = () => {
           "[removeReceiverShipping] Failed to delete from DB:",
           err.response?.data || err.message,
         );
-        setSnackbar({
-          open: true,
-          message:
-            err.response?.data?.error || "Failed to remove shipping detail",
-          severity: "error",
-        });
+        toast.error(
+          err.response?.data?.error || "Failed to remove shipping detail",
+        );
         return;
       }
     }
@@ -1884,11 +1810,7 @@ const OrderForm = () => {
 
   const handleSaveShipping = async (index) => {
     if (!validateShippingDetails(index)) {
-      setSnackbar({
-        open: true,
-        message: "Please fix shipping detail errors",
-        severity: "error",
-      });
+      toast.error("Please fix shipping detail errors");
       return;
     }
     setIsLoading(true);
@@ -1946,26 +1868,18 @@ const OrderForm = () => {
       );
       if (response.data.success) {
         await fetchOrder(orderId);
-        setSnackbar({
-          open: true,
-          message: "Shipping details saved successfully",
-          severity: "success",
-        });
+        toast.success("Shipping details saved successfully");
       }
     } catch (err) {
       console.error(
         "[handleSaveShipping] Error:",
         err.response?.data || err.message,
       );
-      const backendMsg =
+      toast.error(
         err.response?.data?.error ||
-        err.message ||
-        "Failed to save shipping details";
-      setSnackbar({
-        open: true,
-        message: `Error: ${backendMsg}`,
-        severity: "error",
-      });
+          err.message ||
+          "Failed to save shipping details",
+      );
     } finally {
       setIsLoading(false);
     }
@@ -2249,7 +2163,7 @@ const OrderForm = () => {
     Object.entries(coreFields).forEach(([key, value]) => {
       if (value !== undefined && value !== null) {
         if (dateFields.includes(key) && value === "") {
-          return; // skip empty dates
+          return;
         }
         formDataToSend.append(key, value);
       }
@@ -2439,38 +2353,26 @@ const OrderForm = () => {
         navigate("/orders");
       }
 
-      setSnackbar({
-        open: true,
-        message: isEditMode
+      toast.success(
+        isEditMode
           ? "Order updated successfully"
           : "Order created successfully",
-        severity: "success",
-      });
+      );
     } catch (err) {
       console.error("[handleSave] Error:", err.response?.data || err.message);
-      const backendMsg =
-        err.response?.data?.error ||
-        err.response?.data?.message ||
-        err.message ||
-        "Failed to save order";
 
-      setSnackbar({
-        open: true,
-        message: `Error: ${backendMsg}`,
-        severity: "error",
-      });
+      toast.error(
+        err.response?.data?.error ||
+          err.response?.data?.message ||
+          err.message ||
+          "Failed to save order",
+      );
     } finally {
       setIsLoading(false);
     }
   };
   const handleCancel = () => {
     navigate(-1);
-  };
-  const handleSnackbarClose = (event, reason) => {
-    if (reason === "clickaway") {
-      return;
-    }
-    setSnackbar({ ...snackbar, open: false });
   };
   const isFieldDisabled = (name) => {
     if (!isEditMode) {
@@ -2499,6 +2401,168 @@ const OrderForm = () => {
     return !editableInEdit.includes(name);
   };
 
+  const openImportModal = async () => {
+    setImportModalOpen(true);
+    setSelectedImportId("");
+    setImportLoading(true);
+    try {
+      const { data } = await api.get("/api/orders/booking/list");
+      setImportForms(data || []);
+    } catch (err) {
+      console.error(
+        "[openImportModal] Error:",
+        err.response?.data || err.message,
+      );
+      toast.error(err.response?.data?.error || "Failed to fetch booking forms");
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  const closeImportModal = () => {
+    setImportModalOpen(false);
+    setSelectedImportId("");
+    setImportForms([]);
+  };
+
+  const handleViewImportDoc = async (bookingId) => {
+    try {
+      const { data } = await api.get(`/api/orders/booking/${bookingId}`);
+      const url = data.formUrl || data.orderData?.formUrl || null;
+      if (!url) {
+        toast.warning("No document available for this form");
+        return;
+      }
+      setPreviewSrc(url);
+      setPreviewOpen(true);
+    } catch (err) {
+      console.error(
+        "[handleViewImportDoc] Error:",
+        err.response?.data || err.message,
+      );
+      toast.error(err.response?.data?.error || "Failed to load document");
+    }
+  };
+
+  const findPlaceIdByName = (name) => {
+    if (!name) return "";
+    const match = filterPlaces.find(
+      (p) => p.label.trim().toLowerCase() === name.trim().toLowerCase(),
+    );
+    return match ? match.value : "";
+  };
+
+  const handleImportDetails = async () => {
+    if (!selectedImportId) return;
+    const form = importForms.find((f) => f.id.toString() === selectedImportId);
+    const senders = form?.senders || [];
+    const receivers = form?.receivers || [];
+    const senderOk =
+      senders.some((s) => s.booking_submitted_at) &&
+      senders.some((s) => !!s.signature_url);
+    const receiverOk =
+      receivers.some((r) => r.booking_submitted_at) &&
+      receivers.some((r) => !!r.signature_url);
+    if (!senderOk || !receiverOk) {
+      toast.error(
+        "This form cannot be imported (missing submission or signature)",
+      );
+      return;
+    }
+    setImportLoading(true);
+    try {
+      const { data } = await api.get(`/api/orders/booking/${selectedImportId}`);
+      const orderData = data.orderData || data;
+      const formSenders = orderData.senders || [];
+      const formReceivers = orderData.receivers || [];
+      const formItems = orderData.items || [];
+
+      const mappedShippingDetails = formItems.length
+        ? formItems.map((item) => ({
+            ...initialShippingDetail,
+            pickupLocation: "",
+            deliveryAddress: "",
+            category: item.category || "",
+            subcategory: item.subcategory || "",
+            type: item.type || "",
+            totalNumber: item.qty != null ? item.qty.toString() : "",
+            weight: item.weight != null ? item.weight.toString() : "",
+          }))
+        : [{ ...initialShippingDetail }];
+
+      const firstItem = formItems[0] || {};
+      const placeOfLoadingId = findPlaceIdByName(firstItem.place_of_loading);
+      const finalDestinationId = findPlaceIdByName(
+        firstItem.place_of_destination,
+      );
+
+      const mappedReceivers = formReceivers.length
+        ? formReceivers.map((r) => ({
+            ...initialReceiver,
+            receiverName: r.name || "",
+            receiverContact: r.phone || "",
+            receiverAddress: r.address || "",
+            receiverEmail: r.email || "",
+            shippingDetails: mappedShippingDetails.map((sd) => ({ ...sd })),
+            isNew: true,
+          }))
+        : [
+            {
+              ...initialReceiver,
+              shippingDetails: mappedShippingDetails.map((sd) => ({ ...sd })),
+              isNew: true,
+            },
+          ];
+
+      const firstSender = formSenders[0] || {};
+
+      setFormData((prev) => ({
+        ...prev,
+        senderType: "sender",
+        senderName: firstSender.name || "",
+        senderContact: firstSender.phone || "",
+        senderAddress: firstSender.address || "",
+        senderEmail: firstSender.email || "",
+        pointOfOrigin: placeOfLoadingId || prev.pointOfOrigin,
+        placeOfDelivery: finalDestinationId || prev.placeOfDelivery,
+        placeOfLoading: placeOfLoadingId || prev.placeOfLoading,
+        finalDestination: finalDestinationId || prev.finalDestination,
+        orderRemarks:
+          orderData.subject || orderData.message || prev.orderRemarks,
+        receivers: mappedReceivers,
+        senders: [],
+      }));
+
+      const skippedPlaceNote =
+        firstItem.place_of_loading && !placeOfLoadingId
+          ? ` "${firstItem.place_of_loading}" (loading)`
+          : firstItem.place_of_destination && !finalDestinationId
+            ? ` "${firstItem.place_of_destination}" (destination)`
+            : "";
+
+      if (skippedPlaceNote) {
+        toast.warning(
+          `Details imported. Could not match place${skippedPlaceNote} to an existing place — please select it manually.`,
+        );
+      } else {
+        toast.success("Details imported.");
+      }
+      closeImportModal();
+    } catch (err) {
+      console.error(
+        "[handleImportDetails] Error:",
+        err.response?.data || err.message,
+      );
+      toast.success(
+        isEditMode
+          ? "Order updated successfully"
+          : "Order created successfully",
+      );
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <Paper sx={{ p: 3, borderRadius: 3, boxShadow: 3, bgcolor: "#fafafa" }}>
@@ -2516,6 +2580,7 @@ const OrderForm = () => {
       </Paper>
     );
   }
+
   const firstPanel2Item =
     (formData.senderType === "sender"
       ? formData.receivers
@@ -2547,6 +2612,19 @@ const OrderForm = () => {
               }}
               gap={1}
             >
+              <Button
+                variant="outlined"
+                onClick={openImportModal}
+                sx={{
+                  borderRadius: 2,
+                  borderColor: "#0d6c6a",
+                  color: "#0d6c6a",
+                  px: 3,
+                }}
+                disabled={isLoading}
+              >
+                IMPORT FROM FORM
+              </Button>
               <Button
                 variant="outlined"
                 onClick={handleCancel}
@@ -2717,7 +2795,6 @@ const OrderForm = () => {
             />
           </Stack>
           <Divider sx={{ my: 3, borderColor: "#e0e0e0" }} />
-          {/* Accordion Sections */}
           <Stack spacing={2}>
             <Accordion
               expanded={expanded.has("panel1")}
@@ -2780,10 +2857,8 @@ const OrderForm = () => {
                           target: { name: ownerNameKey, value: newValue },
                         });
                       } else if (newValue) {
-                        // Selected option, fetch details
                         handleSelectOwner(event, newValue);
                       } else {
-                        // Cleared
                         const fieldMap = {
                           [ownerNameKey]: "",
                           [ownerContactKey]: "",
@@ -3187,7 +3262,6 @@ const OrderForm = () => {
                     const removeRecFn = isSenderMode
                       ? removeSender
                       : removeReceiver;
-                    // Helper function to update nested state immutably (generic for senders/receivers)
                     const updateNestedArray = (
                       indices,
                       field,
@@ -3219,7 +3293,6 @@ const OrderForm = () => {
                         }),
                       }));
                     };
-                    // 1. handleSenderContainerDetailChange
                     const handleSenderContainerDetailChange =
                       (index, shippingIndex, containerIndex, field) =>
                       (eventOrValue) => {
@@ -3233,7 +3306,6 @@ const OrderForm = () => {
                           true,
                         );
                       };
-                    // 2. handleReceiverContainerDetailChange
                     const handleReceiverContainerDetailChange =
                       (index, shippingIndex, containerIndex, field) =>
                       (eventOrValue) => {
@@ -3247,7 +3319,6 @@ const OrderForm = () => {
                           false,
                         );
                       };
-                    // 3. addSenderContainerDetail
                     const addSenderContainerDetail = (index, shippingIndex) => {
                       setFormData((prev) => ({
                         ...prev,
@@ -3276,7 +3347,6 @@ const OrderForm = () => {
                         }),
                       }));
                     };
-                    // 4. addReceiverContainerDetail
                     const addReceiverContainerDetail = (
                       index,
                       shippingIndex,
@@ -3375,7 +3445,6 @@ const OrderForm = () => {
                         );
                       }
                     };
-                    // 5. removeSenderContainerDetail
                     const removeSenderContainerDetail = async (
                       index,
                       shippingIndex,
@@ -3405,29 +3474,23 @@ const OrderForm = () => {
                         await fetchOrder(orderId);
                         await fetchContainers?.();
 
-                        setSnackbar({
-                          open: true,
-                          message: "Container assignment removed successfully",
-                          severity: "success",
-                        });
+                        toast.success(
+                          "Container assignment removed successfully",
+                        );
                       } catch (err) {
                         console.error(
                           "[removeSenderContainerDetail] Error:",
                           err.response?.data || err.message,
                         );
 
-                        setSnackbar({
-                          open: true,
-                          message:
-                            err.response?.data?.details ||
+                        toast.error(
+                          err.response?.data?.details ||
                             err.response?.data?.error ||
                             err.message ||
                             "Failed to remove container",
-                          severity: "error",
-                        });
+                        );
                       }
                     };
-                    // 6. removeReceiverContainerDetail
                     const removeReceiverContainerDetail = async (
                       index,
                       shippingIndex,
@@ -3456,30 +3519,22 @@ const OrderForm = () => {
 
                         await fetchOrder(orderId);
                         await fetchContainers?.();
-
-                        setSnackbar({
-                          open: true,
-                          message: "Container assignment removed successfully",
-                          severity: "success",
-                        });
+                        toast.success(
+                          "Container assignment removed successfully",
+                        );
                       } catch (err) {
                         console.error(
                           "[removeReceiverContainerDetail] Error:",
                           err.response?.data || err.message,
                         );
-
-                        setSnackbar({
-                          open: true,
-                          message:
-                            err.response?.data?.details ||
+                        toast.error(
+                          err.response?.data?.details ||
                             err.response?.data?.error ||
                             err.message ||
                             "Failed to remove container",
-                          severity: "error",
-                        });
+                        );
                       }
                     };
-                    // 7. duplicateSenderContainerDetail
                     const duplicateSenderContainerDetail = (
                       index,
                       shippingIndex,
@@ -3750,7 +3805,11 @@ const OrderForm = () => {
                           const fieldMap = isSenderMode
                             ? {
                                 senderName: value.contact_name || "",
-                                senderContact: value.contact || "",
+                                senderContact:
+                                  value.primary_phone ||
+                                  value.phone_number ||
+                                  value.contact ||
+                                  "",
                                 senderAddress:
                                   value.address || value.zoho_notes || "",
                                 senderEmail: value.email || "",
@@ -3760,7 +3819,11 @@ const OrderForm = () => {
                               }
                             : {
                                 receiverName: value.contact_name || "",
-                                receiverContact: value.contact || "",
+                                receiverContact:
+                                  value.primary_phone ||
+                                  value.phone_number ||
+                                  value.contact ||
+                                  "",
                                 receiverAddress:
                                   value.address || value.zoho_notes || "",
                                 receiverEmail: value.email || "",
@@ -5065,7 +5128,6 @@ const OrderForm = () => {
                               )}
                             </Stack>
                           </Stack>
-                          {/* Show validation warnings if present */}
                           {rec.validationWarnings && (
                             <Alert severity="warning" sx={{ mb: 2 }}>
                               {Object.entries(rec.validationWarnings)
@@ -5078,7 +5140,6 @@ const OrderForm = () => {
                                 .join("; ")}
                             </Alert>
                           )}
-                          {/* Dynamic: Basic Info */}
                           <Box
                             sx={{
                               display: "flex",
@@ -5087,7 +5148,6 @@ const OrderForm = () => {
                               alignItems: "stretch",
                             }}
                           >
-                            {/* ── Panel 2 receiver/sender autocomplete (uses options3 from context) ── */}
                             <Autocomplete
                               options={options3}
                               loading={isLoading}
@@ -6098,11 +6158,7 @@ const OrderForm = () => {
                 onError={(e) => {
                   e.target.src = "/fallback-image.png";
                   e.target.style.objectFit = "contain";
-                  setSnackbar({
-                    open: true,
-                    message: "Failed to load image preview",
-                    severity: "warning",
-                  });
+                  toast.warning("Failed to load image preview");
                 }}
               />
             ) : previewSrc.toLowerCase().endsWith(".pdf") ||
@@ -6123,12 +6179,9 @@ const OrderForm = () => {
                   height="100%"
                   style={{ border: "none" }}
                   onError={() => {
-                    setSnackbar({
-                      open: true,
-                      message:
-                        "Failed to load PDF preview — try downloading instead",
-                      severity: "warning",
-                    });
+                    toast.warning(
+                      "Failed to load PDF preview! Try downloading instead",
+                    );
                   }}
                 />
               </Box>
@@ -6182,20 +6235,160 @@ const OrderForm = () => {
           )}
         </DialogActions>
       </Dialog>
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={6000}
-        onClose={handleSnackbarClose}
-        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      <Dialog
+        open={importModalOpen}
+        onClose={closeImportModal}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 3 } }}
       >
-        <Alert
-          onClose={handleSnackbarClose}
-          severity={snackbar.severity}
-          sx={{ width: "100%" }}
-        >
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
+        <DialogTitle sx={{ position: "relative", pr: 6 }}>
+          Import from Submitted Booking Form
+          <IconButton
+            onClick={closeImportModal}
+            sx={{ position: "absolute", right: 8, top: 8 }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+
+        <DialogContent dividers sx={{ p: 0 }}>
+          {importLoading && (
+            <Box
+              sx={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                py: 6,
+              }}
+            >
+              <CircularProgress size={28} sx={{ mb: 2 }} />
+              <Typography variant="body2" color="text.secondary">
+                Loading forms…
+              </Typography>
+            </Box>
+          )}
+
+          {!importLoading && importForms.length === 0 && (
+            <Box sx={{ py: 6, textAlign: "center" }}>
+              <Typography variant="body2" color="text.secondary">
+                No submitted booking forms found.
+              </Typography>
+            </Box>
+          )}
+
+          {!importLoading && importForms.length > 0 && (
+            <RadioGroup
+              value={selectedImportId}
+              onChange={(e) => setSelectedImportId(e.target.value)}
+            >
+              {importForms.map((form) => {
+                const senders = form.senders || [];
+                const receivers = form.receivers || [];
+
+                const senderSubmitted = senders.some(
+                  (s) => s.booking_submitted_at,
+                );
+                const receiverSubmitted = receivers.some(
+                  (r) => r.booking_submitted_at,
+                );
+
+                const senderHasSignature = senders.some(
+                  (s) => !!s.signature_url,
+                );
+                const receiverHasSignature = receivers.some(
+                  (r) => !!r.signature_url,
+                );
+
+                const missingParts = [];
+                if (!senderSubmitted) missingParts.push("Sender submission");
+                else if (!senderHasSignature)
+                  missingParts.push("Sender signature");
+                if (!receiverSubmitted)
+                  missingParts.push("Receiver submission");
+                else if (!receiverHasSignature)
+                  missingParts.push("Receiver signature");
+
+                const canImport = missingParts.length === 0;
+                const anySubmitted = senderSubmitted || receiverSubmitted;
+                return (
+                  <Box
+                    key={form.id}
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      px: 2,
+                      py: 1.5,
+                      borderBottom: "1px solid",
+                      borderColor: "divider",
+                      "&:hover": { bgcolor: "grey.50" },
+                    }}
+                  >
+                    <FormControlLabel
+                      value={form.id.toString()}
+                      control={<Radio />}
+                      disabled={!canImport}
+                      sx={{ flex: 1, minWidth: 0, mr: 1 }}
+                      label={
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography variant="body2" fontWeight={600} noWrap>
+                            {form.form_id} — {form.company?.company || "—"}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {form.mode} · {(form.senders || []).length}{" "}
+                            sender(s) · {(form.receivers || []).length}{" "}
+                            receiver(s) · Qty {form.total_qty || 0}
+                          </Typography>
+                          {!canImport && (
+                            <Typography
+                              variant="caption"
+                              color="error"
+                              display="block"
+                            >
+                              Missing: {missingParts.join(", ")}
+                            </Typography>
+                          )}
+                        </Box>
+                      }
+                    />
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <Chip
+                        size="small"
+                        label={anySubmitted ? "Submitted" : "Pending"}
+                        color={anySubmitted ? "success" : "default"}
+                      />
+                      <Button
+                        size="small"
+                        onClick={() => handleViewImportDoc(form.id)}
+                      >
+                        View Doc
+                      </Button>
+                    </Stack>
+                  </Box>
+                );
+              })}
+            </RadioGroup>
+          )}
+        </DialogContent>
+
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={closeImportModal}>Cancel</Button>
+          <Button
+            variant="contained"
+            disabled={!selectedImportId || importLoading}
+            onClick={handleImportDetails}
+            sx={{
+              borderRadius: 2,
+              backgroundColor: "#0d6c6a",
+              "&:hover": { backgroundColor: "#0d6c6a" },
+            }}
+          >
+            Import Details
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 };

@@ -18,7 +18,6 @@ import {
   MenuItem,
   FormControl,
   InputLabel,
-  Snackbar,
   Alert,
   CircularProgress,
   Chip,
@@ -30,6 +29,7 @@ import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import IconButton from "@mui/material/IconButton";
+import { toast } from "react-toastify";
 
 const Vessels = () => {
   const [openDialog, setOpenDialog] = useState(false);
@@ -44,11 +44,6 @@ const Vessels = () => {
   const [loading, setLoading] = useState(true);
   const [dialogLoading, setDialogLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [snackbar, setSnackbar] = useState({
-    open: false,
-    message: "",
-    severity: "info",
-  });
 
   useEffect(() => {
     fetchVessels();
@@ -64,11 +59,7 @@ const Vessels = () => {
     } catch (err) {
       console.error("Error fetching vessels:", err);
       setError(err.message);
-      setSnackbar({
-        open: true,
-        message: "Failed to load vessels. Please try again.",
-        severity: "error",
-      });
+      toast.error("Failed to load vessels. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -76,19 +67,11 @@ const Vessels = () => {
 
   const validateForm = () => {
     if (!formData.name.trim()) {
-      setSnackbar({
-        open: true,
-        message: "Vessel name is required.",
-        severity: "warning",
-      });
+      toast.warning("Vessel name is required.");
       return false;
     }
     if (!formData.capacity.trim()) {
-      setSnackbar({
-        open: true,
-        message: "Capacity is required.",
-        severity: "warning",
-      });
+      toast.warning("Capacity is required.");
       return false;
     }
     return true;
@@ -135,20 +118,14 @@ const Vessels = () => {
       }
       await fetchVessels();
       handleCloseDialog();
-      setSnackbar({
-        open: true,
-        message: editMode
+      toast.success(
+        editMode
           ? "Vessel updated successfully!"
           : "Vessel added successfully!",
-        severity: "success",
-      });
+      );
     } catch (err) {
       console.error("Error saving vessel:", err);
-      setSnackbar({
-        open: true,
-        message: err.message || "Failed to save vessel.",
-        severity: "error",
-      });
+      toast.error(err.message || "Failed to save vessel.");
     } finally {
       setDialogLoading(false);
     }
@@ -169,18 +146,10 @@ const Vessels = () => {
         throw new Error(errorData.error || "Failed to delete vessel");
       }
       await fetchVessels();
-      setSnackbar({
-        open: true,
-        message: "Vessel deleted successfully!",
-        severity: "success",
-      });
+      toast.success("Vessel deleted successfully!");
     } catch (err) {
       console.error("Error deleting vessel:", err);
-      setSnackbar({
-        open: true,
-        message: err.message || "Failed to delete vessel.",
-        severity: "error",
-      });
+      toast.error(err.message || "Failed to delete vessel.");
     }
   };
 
@@ -193,10 +162,6 @@ const Vessels = () => {
       default:
         return "default";
     }
-  };
-
-  const handleSnackbarClose = () => {
-    setSnackbar({ ...snackbar, open: false });
   };
 
   const renderEmptyState = () => (
@@ -427,21 +392,6 @@ const Vessels = () => {
           </Button>
         </DialogActions>
       </Dialog>
-
-      {/* Snackbar for notifications */}
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={4000}
-        onClose={handleSnackbarClose}
-      >
-        <Alert
-          onClose={handleSnackbarClose}
-          severity={snackbar.severity}
-          sx={{ width: "100%" }}
-        >
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
     </Box>
   );
 };

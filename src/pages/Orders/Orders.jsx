@@ -72,6 +72,8 @@ import CollectionsModal from "../../components/orders/CollectionsModal";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
 import Menu from "@mui/material/Menu";
 import { toast } from "react-toastify";
+import { OrderConfirmation } from "../../documents/orderConfirmationGenerator";
+import OrderConfirmationEmailModal from "../../components/orders/OrderConfirmationModal";
 
 const OrdersList = () => {
   const navigate = useNavigate();
@@ -138,6 +140,7 @@ const OrdersList = () => {
   const [activeDocKey, setActiveDocKey] = useState(null);
   const [selectedCompanyId, setSelectedCompanyId] = useState("");
   const [activeOrderData, setActiveOrderData] = useState(null);
+  const [openOrderConfirmEmail, setOpenOrderConfirmEmail] = useState(false);
   const printFrameRef = useRef(null);
 
   const handleOpenActionMenu = (e, order) => {
@@ -4512,350 +4515,6 @@ const OrdersList = () => {
     `;
   };
 
-  const OrderConfirmation = (orderData, company) => {
-    const primary = company?.primary_color || "#e67e22";
-    const secondary = company?.secondary_color || "#b8860b";
-    const formatDate = (dateString) => {
-      if (!dateString) return "";
-      try {
-        const date = new Date(dateString);
-        return date.toLocaleDateString("en-GB", {
-          day: "2-digit",
-          month: "2-digit",
-          year: "numeric",
-        });
-      } catch (e) {
-        return dateString || "";
-      }
-    };
-
-    const currentDate = new Date().toLocaleDateString("en-GB", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    });
-
-    const expectedShipDate = new Date();
-    expectedShipDate.setDate(expectedShipDate.getDate() + 7);
-    const formattedShipDate = expectedShipDate.toLocaleDateString("en-US", {
-      weekday: "long",
-      month: "numeric",
-      day: "numeric",
-      year: "numeric",
-    });
-
-    const expectedDeliveryDate = new Date();
-    expectedDeliveryDate.setDate(expectedDeliveryDate.getDate() + 17);
-    const formattedDeliveryDate = expectedDeliveryDate.toLocaleDateString(
-      "en-GB",
-      {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-      },
-    );
-
-    const senderName = orderData.sender_name || "";
-    const senderContact = orderData.sender_contact || "";
-    const senderEmail = orderData.sender_email || "";
-    const senderAddress = orderData.sender_address || "";
-
-    const receiver =
-      orderData.receivers && orderData.receivers[0]
-        ? orderData.receivers[0]
-        : {};
-    const receiverName = receiver.receiverName || "";
-    const receiverContact = receiver.receiverContact || "";
-    const receiverAddress = receiver.receiverAddress || "";
-    const receiverEmail = receiver.receiverEmail || "";
-
-    const shippingDetails = receiver.shippingdetails || [];
-
-    let totalQty = 0;
-
-    shippingDetails.forEach((item) => {
-      totalQty += parseInt(item.totalNumber || 0);
-    });
-
-    if (shippingDetails.length === 0) {
-      totalQty =
-        parseInt(receiver.totalnumber || 0) ||
-        parseInt(orderData.total_assigned_qty || 0);
-    }
-
-    const containers = receiver.containers || [];
-    const containerInfo =
-      containers.length > 0 ? containers.join(", ") : "ABC XYZ";
-
-    const getDescription = () => {
-      if (shippingDetails.length > 0) {
-        return (
-          shippingDetails[0].itemName ||
-          shippingDetails[0].subcategory ||
-          shippingDetails[0].category ||
-          ""
-        );
-      }
-      return "";
-    };
-
-    const getOrderNo = () => {
-      return orderData.booking_ref || "5017";
-    };
-
-    return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Order Confirmation</title>
-        <style>
-            body { 
-                font-family: Arial, sans-serif; 
-                font-size: 12px; 
-                color: #333; 
-                margin: 0;
-                padding: 20px;
-                background-color: #f4f4f4;
-            }
-            .container { 
-                width: 800px; 
-                margin: 0 auto; 
-                border: 1px solid #ccc; 
-                padding: 10px; 
-                background-color: #fff;
-                box-shadow: 0 0 10px rgba(0,0,0,0.1);
-            }
-            
-            .header-table { 
-                width: 100%; 
-                border-collapse: collapse; 
-                margin-bottom: 10px;
-            }
-            .logo-text { 
-                color: ${primary}; 
-                font-weight: bold; 
-                font-size: 18px; 
-            }
-            .sub-logo { 
-                font-size: 10px; 
-                color: #555; 
-            }
-            .main-title { 
-                font-size: 20px; 
-                font-weight: bold; 
-            }
-            
-            table { 
-                width: 100%; 
-                border-collapse: collapse; 
-                margin-bottom: 0px; 
-            }
-            th, td { 
-                padding: 4px; 
-                vertical-align: top; 
-            }
-            
-            .red-text { 
-                color: #000000; 
-                font-weight: 500;
-            }
-            .golden-text {
-                color: ${secondary};
-                font-weight: 500;
-            }
-            .label-cell { 
-                font-weight: bold; 
-                background-color: #f9f9f9; 
-                width: 15%; 
-            }
-            
-            .section-header { 
-                font-weight: bold; 
-                text-align: center; 
-                background-color: white; 
-                padding: 5px; 
-                font-size: 16px; 
-                margin: 10px 0;
-            }
-            .disclaimer { 
-                font-size: 11px; 
-                color: #b8860b; 
-                padding: 5px; 
-                margin: 10px 0;
-            }
-            
-            .footer-sign { 
-                height: 60px; 
-            }
-            
-            .logo-img {
-                max-width: 180px;
-                max-height: 60px;
-            }
-            
-            @media print {
-                body {
-                    background-color: white;
-                    padding: 0;
-                }
-                .container {
-                    box-shadow: none;
-                    border: 1px solid #ccc;
-                }
-            }
-        </style>
-    </head>
-    <body>
-
-    <div class="container">
-        <table class="header-table" style="border:none;">
-            <tr style="border:none;display: flex;align-items: center;gap: 125px;">
-                <td style="border:none;">
-                    ${
-                      company?.logo_url
-                        ? `<img src="${company.logo_url}" alt="${company?.company || ""} Logo" class="logo-img"><br>`
-                        : `<span class="logo-text">${company?.company || ""}</span><br>`
-                    }
-                </td>
-                <td style="border:none; ">
-                    <div class="main-title">ORDER CONFIRMATION</div>
-                </td>
-            </tr>
-        </table>
-
-        <table>
-            <tr>
-                <td class="label-cell">Dated</td>
-                <td class="red-text" colspan="2">${currentDate}</td>
-            </tr>
-            <tr style="background: #eee; font-weight: bold;     border: 1px solid #aaa;">
-                <td style="width: 50%;">TO</td>
-                <td colspan="2">FROM</td>
-            </tr>
-            <tr>
-                <td class="red-text" style="white-space: pre-line;     border: 1px solid #aaa;">
-                    ${senderName}<br>
-                    ${senderAddress.replace(/, /g, ",<br>")}<br>
-                    Contact Person: ${senderName}<br>
-                    Passport No: ${orderData.sender_kyc_approved ? orderData.sender_passport_number || "N/A" : "Not Approved"}<br>
-                    CNIC : ${orderData.sender_kyc_approved ? orderData.sender_emirates_id || "N/A" : "Not Approved"}<br>
-                    Tel: ${senderContact}<br>
-                    E-Mail: ${senderEmail}
-                </td>
-                <td class="red-text" colspan="2" style="white-space: pre-line;     border: 1px solid #aaa;">
-                    ${receiverName}<br>
-                    ${receiverAddress.replace(/, /g, ",<br>")}<br>
-                    Contact Person: ${receiverName}<br>
-                    Passport No: ${receiver.kycApproved ? receiver.passportNumber || "N/A" : "Not Approved"}<br>
-                    Emirates ID #: ${receiver.kycApproved ? receiver.emiratesId || "N/A" : "Not Approved"}<br>
-                    Tel: ${receiverContact}<br>
-                    E-Mail: ${receiverEmail}
-                </td>
-            </tr>
-        </table>
-
-        <div class="disclaimer golden-text">
-            This paper serves as an legal responsibility of sender & receiver for the contents of the cargo being shipped through the company ${company?.company || ""}. The Sender and Receiver will be only responsible for any loss / damages which results in case of any prohibited items attempted to be shipped through this order.
-        </div>
-
-        <div class="section-header">ACKNOWLEDGMENT AND ACCEPTANCE OF ORDER</div>
-
-        <table>
-            <tr>
-                <td><b>Order Date:</b> <span class="red-text">${formatDate(orderData.created_at) || "15/08/11"}</span></td>
-                <td><b>Order Number:</b> <span class="red-text">${orderData.booking_ref || "5017"}</span></td>
-                <td><b>Customer No:</b> <span class="red-text">${orderData.rgl_booking_number || "Sender BB Sys #"}</span></td>
-            </tr>
-        </table>
-
-        <table>
-            <tr style="text-align: center; font-weight: bold; background: #eee;     border: 1px solid #aaa;">
-                <td style="width: 10%;">QTY</td>
-                <td style="width: 30%;">DESCRIPTION</td>
-                <td style="width: 15%;">Order No</td>
-                <td style="width: 15%;">Marks & No</td>
-                <td style="width: 15%;">Port of Loading</td>
-                <td style="width: 15%;">Port of Destination</td>
-            </tr>
-            <tr style="height: 60px; text-align: center;     border: 1px solid #aaa;">
-                <td class="red-text">${totalQty}</td>
-                <td class="red-text">${getDescription()}</td>
-                <td class="red-text">${getOrderNo()}</td>
-                <td class="red-text">${containerInfo}</td>
-                <td class="red-text">${getPlaceName(orderData.place_of_loading)}</td>
-                <td class="red-text">${getPlaceName(orderData.final_destination)}</td>
-            </tr>
-            <tr>
-                <td colspan="4" rowspan="2"><b>Mode:</b> <span class="red-text">${orderData.transport_type || "Sea Shipment"}</span></td>
-                <td style="text-align: right;"><b>SUBTOTAL:</b></td>
-                <td style="text-align: center;">TBC</td>
-            </tr>
-            <tr>
-                <td style="text-align: right; font-size: 9px;">FREIGHT SURCHARGE</td>
-                <td style="text-align: center;">N/a</td>
-            </tr>
-            <tr>
-                <td colspan="4">
-                    <b>EXPECTED SHIP DATE:</b> <span class="red-text">${formattedShipDate}</span><br>
-                    <b>TRANSIT TIME:</b> <span class="red-text">10 Days ( Expected Delivery ${formattedDeliveryDate} )</span>
-                </td>
-                <td style="text-align: right; font-weight: bold;">TOTAL</td>
-                <td style="text-align: center;">N/A</td>
-            </tr>
-        </table>
-
-        <table>
-            <tr style="background: #eee; font-weight: bold; border: 1px solid #aaa;" >
-                <td style="width: 50%;">BILL TO: <span style="font-weight: normal;">(CUSTOMER # 117788)</span></td>
-                <td style="width: 50%;">SHIP TO:</td>
-            </tr>
-            <tr class="red-text">
-                <td>
-                    Either of the Party from<br>sender or receiver paying the Invoice<br>
-                    <span style="color: black;">Attn: ${senderName.split(" ")[0] || ""}</span><br>
-                    Tel: ${senderContact}
-                </td>
-                <td>
-                    Individual or company suppose to be the<br>recipient of the consignment<br>
-                    <span style="color: black;">Attn: ${receiverName.split(" ")[0] || ""}</span><br>
-                    Tel: ${receiverContact}
-                </td>
-            </tr>
-        </table>
-
-        <div style="text-align: center; font-weight: bold; padding: 5px;  margin: 10px 0;">
-            We confirm acceptance of said order, with terms as stated above.
-        </div>
-
-        <table style="margin-top: 10px;">
-            <tr>
-                <td style="width: 15%; border-bottom: none;"><b>Signature:</b></td>
-                <td rowspan="2" style="text-align: center; padding: 8px; vertical-align: middle;">
-                    <div style="display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 2px;">
-                        ${
-                          orderData.sender_kyc_approved &&
-                          orderData.sender_signature_url
-                            ? `<img src="${orderData.sender_signature_url}" style="height:40px; max-width:180px; object-fit:contain; filter: grayscale(100%) contrast(100%); mix-blend-mode: multiply; margin-bottom:2px; left: 0" />`
-                            : `<span>Digitally Signed through verified login and OTP for ID verification</span>`
-                        }
-                        <span><b>Time & Date Stamp:</b> ${currentDate} ${new Date().toLocaleTimeString()}</span>
-                        <span><b>Email Addressed Used:</b> ${senderEmail}</span>
-                    </div>
-                </td>
-            </tr>
-            <tr>
-                <td style="border-top: none;"><b>Name:</b> ${senderName}</td>
-            </tr>
-        </table>
-    </div>
-
-    </body>
-    </html>
-    `;
-  };
-
   const HouseBillOfLading = (orderData, company) => {
     const safeOrder = orderData || {};
     const receivers = safeOrder.receivers || [];
@@ -5492,13 +5151,7 @@ const OrdersList = () => {
       year: "numeric",
     });
 
-    const marksAndNo = [
-      containers.length ? containers.join(", ") : "",
-      getValue(dropOff.dropoff_name),
-      getValue(dropOff.drop_off_mobile),
-    ]
-      .filter(Boolean)
-      .join(" | ");
+    const marksAndNo = receiver?.receiver_marks_and_number || "N/A";
 
     const itemRows = shippingDetails.length
       ? shippingDetails
@@ -6101,7 +5754,6 @@ const OrdersList = () => {
 
   const BRANDABLE_DOCUMENT_GENERATORS = {
     "Bill of Lading.pdf": BillOfLading,
-    "Order Confirmation & Acceptance.pdf": OrderConfirmation,
     "Order Acknowledgement Printabe Version.pdf":
       OrderAcknowledgementPrintableVersion,
     "GP#0121725 - Cargo GatePass.pdf": CargoGatePass,
@@ -6192,7 +5844,6 @@ const OrdersList = () => {
                     color: "#1a7a6e",
                     docs: [
                       "Bill of Lading.pdf",
-                      "Order Confirmation & Acceptance.pdf",
                       "Order Acknowledgement Printabe Version.pdf",
                       "GP#0121725 - Cargo GatePass.pdf",
                       "House Bill of Lading (HBL).pdf",
@@ -6550,6 +6201,23 @@ const OrdersList = () => {
                 <CircularProgress size={20} color="inherit" />
               ) : null}
               Export Orders
+            </Button>
+            <Button
+              variant="outlined"
+              onClick={() => setOpenOrderConfirmEmail(true)}
+              startIcon={<DescriptionIcon />}
+              sx={{
+                borderRadius: 2,
+                borderColor: "#f58220",
+                color: "#f58220",
+                "&:hover": {
+                  borderColor: "#f58220",
+                  backgroundColor: "#f58220",
+                  color: "#fff",
+                },
+              }}
+            >
+              Booking Confirmation
             </Button>
             <Button
               variant="contained"
@@ -6992,6 +6660,12 @@ const OrdersList = () => {
             setOpenCollectionsModal(false);
             fetchOrders();
           }}
+        />
+        <OrderConfirmationEmailModal
+          open={openOrderConfirmEmail}
+          onClose={() => setOpenOrderConfirmEmail(false)}
+          companies={companies}
+          getPlaceName={getPlaceName}
         />
         <Dialog
           open={openDirectAssign}

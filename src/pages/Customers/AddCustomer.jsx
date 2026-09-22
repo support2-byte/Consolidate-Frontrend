@@ -16,11 +16,12 @@ import {
   CardContent,
   IconButton,
   Box,
+  Alert,
 } from "@mui/material";
+import { toast } from "react-toastify";
 import { DataGrid } from "@mui/x-data-grid";
 import { api } from "../../api";
 import { useParams, useNavigate } from "react-router-dom";
-import { Snackbar, Alert } from "@mui/material";
 import { v4 as uuidv4 } from "uuid";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -37,11 +38,6 @@ export default function CustomerForm({ mode = "add" }) {
     address: "",
     system_notes: "",
     type: "sender",
-  });
-  const [snackbar, setSnackbar] = useState({
-    open: false,
-    message: "",
-    severity: "success",
   });
   const [contacts, setContacts] = useState([]);
   const [documents, setDocuments] = useState([]);
@@ -96,7 +92,7 @@ export default function CustomerForm({ mode = "add" }) {
     }
   }, [id, mode]);
   const showToast = (message, severity = "success") => {
-    setSnackbar({ open: true, message, severity });
+    toast[severity] ? toast[severity](message) : toast(message);
   };
 
   const handleChange = (e) => {
@@ -339,20 +335,6 @@ export default function CustomerForm({ mode = "add" }) {
   ];
   return (
     <Paper sx={{ p: 3 }}>
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={3000}
-        onClose={() => setSnackbar({ ...snackbar, open: false })}
-        anchorOrigin={{ vertical: "top", horizontal: "center" }}
-      >
-        <Alert
-          onClose={() => setSnackbar({ ...snackbar, open: false })}
-          severity={snackbar.severity}
-          sx={{ width: "100%" }}
-        >
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
       <Paper elevation={3} sx={{ p: 3, mt: 3 }}>
         <Grid
           container

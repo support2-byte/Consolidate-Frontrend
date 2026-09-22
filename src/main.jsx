@@ -49,7 +49,14 @@ import KycSubmissionsPage from "./pages/Customers/KycSubmissions";
 import ForgotPassword from "./pages/ForgotPassword";
 import CompaniesPage from "./pages/SystemData/CompaniesPage";
 import DocumentTemplatesPage from "./pages/SystemData/DocumentTemplatesPage";
+import ChatSupportPage from "./pages/SystemData/ChatSupportPage";
+import AuthorizeCustomers from "./pages/Customers/AuthorizeCustomers";
+import CustomerRequests from "./pages/Customers/CustomerRequests";
 import RolePermissions from "./pages/Admin/RolePermissions";
+import BookingConfirmationsPage from "./pages/Orders/BookingConfirmations";
+import DriversPage from "./pages/SystemData/DriversPage";
+import InvoicesPage from "./pages/InvoicesPage";
+import SystemRatesPage from "./pages/SystemData/SystemSettings";
 
 const router = createBrowserRouter([
   { path: "/login", element: <Login /> },
@@ -212,7 +219,6 @@ const router = createBrowserRouter([
           </ProtectedRoute>
         ),
       },
-
       {
         path: "notifications",
         element: (
@@ -220,6 +226,14 @@ const router = createBrowserRouter([
             permission={{ module: "notifications", action: "view" }}
           >
             <NotificationSettings />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "invoices",
+        element: (
+          <ProtectedRoute permission={{ module: "invoices", action: "view" }}>
+            <InvoicesPage />
           </ProtectedRoute>
         ),
       },
@@ -269,12 +283,49 @@ const router = createBrowserRouter([
         ),
       },
       {
+        path: "authorize-app-customers",
+        element: (
+          <ProtectedRoute
+            permission={{
+              module: "authorize-mobile-customers",
+              action: "view",
+            }}
+          >
+            <AuthorizeCustomers />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "customer-request",
+        element: (
+          <ProtectedRoute
+            permission={{
+              module: "customer-request",
+              action: "view",
+            }}
+          >
+            <CustomerRequests />
+          </ProtectedRoute>
+        ),
+      },
+
+      {
         path: "role-permissions",
         element: (
           <ProtectedRoute
             permission={{ module: "role-permissions", action: "view" }}
           >
             <RolePermissions />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "booking-confirmations",
+        element: (
+          <ProtectedRoute
+            permission={{ module: "booking-confirmations", action: "view" }}
+          >
+            <BookingConfirmationsPage />
           </ProtectedRoute>
         ),
       },
@@ -369,6 +420,16 @@ const router = createBrowserRouter([
             ),
           },
           {
+            path: "drivers",
+            element: (
+              <ProtectedRoute
+                permission={{ module: "drivers", action: "view" }}
+              >
+                <DriversPage />
+              </ProtectedRoute>
+            ),
+          },
+          {
             path: "barcode-print",
             element: (
               <ProtectedRoute
@@ -389,12 +450,32 @@ const router = createBrowserRouter([
             ),
           },
           {
+            path: "system-settings",
+            element: (
+              <ProtectedRoute
+                permission={{ module: "system-settings", action: "view" }}
+              >
+                <SystemRatesPage />
+              </ProtectedRoute>
+            ),
+          },
+          {
             path: "bug-report",
             element: (
               <ProtectedRoute
                 permission={{ module: "bug-report", action: "view" }}
               >
                 <BugReportPage />
+              </ProtectedRoute>
+            ),
+          },
+          {
+            path: "chat-support",
+            element: (
+              <ProtectedRoute
+                permission={{ module: "chat-support", action: "view" }}
+              >
+                <ChatSupportPage />
               </ProtectedRoute>
             ),
           },

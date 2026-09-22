@@ -32,8 +32,6 @@ import {
   AccordionSummary,
   AccordionDetails,
   Alert,
-  Snackbar,
-  Alert as SnackbarAlert,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -55,6 +53,7 @@ import {
   Card as MuiCard,
   AlertTitle,
 } from "@mui/material";
+import { toast } from "react-toastify";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import InfoIcon from "@mui/icons-material/Info";
@@ -272,11 +271,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
   const effectiveConsignmentId =
     urlConsignmentId || location.state?.consignmentId || propConsignmentId;
   const [mode, setMode] = useState(effectiveConsignmentId ? "edit" : "add");
-  const [snackbar, setSnackbar] = useState({
-    open: false,
-    message: "",
-    severity: "info",
-  });
   const [initialValues, setInitialValues] = useState(null);
   const [values, setValues] = useState({
     id: "",
@@ -538,11 +532,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         }
       } catch (err) {
         console.error("Error fetching options:", err);
-        setSnackbar({
-          open: true,
-          message: "Failed to load options. Using defaults.",
-          severity: "warning",
-        });
+        toast.warning("Failed to load options. Using defaults.");
       } finally {
         setLoading(false);
       }
@@ -1214,11 +1204,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         }
       } catch (err) {
         console.error("Error fetching orders:", err);
-        setSnackbar({
-          open: true,
-          message: "Failed to fetch orders. Please try again.",
-          severity: "error",
-        });
+        toast.error("Failed to fetch orders. Please try again.");
         setOrders([]);
         setOrderTotal(0);
       } finally {
@@ -1548,11 +1534,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       .filter(Boolean);
 
     if (selectedData.length === 0) {
-      setSnackbar({
-        open: true,
-        message: "No containers selected.",
-        severity: "warning",
-      });
+      toast.warning("No containers selected.");
       return;
     }
     const newContainers = selectedData.map((container) => ({
@@ -1580,11 +1562,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
 
     setSelectedContainers([]);
     setContainerModalOpen(false);
-    setSnackbar({
-      open: true,
-      message: `${newContainers.length} container(s) added successfully!`,
-      severity: "success",
-    });
+    toast.success(`${newContainers.length} container(s) added successfully!`);
   };
 
   const validationSchema = Yup.object({
@@ -1803,20 +1781,12 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       loadConsignment(effectiveConsignmentId);
       setLoading(false);
 
-      setSnackbar({
-        open: true,
-        message: message || "Status advanced successfully!",
-        severity: "success",
-      });
+      toast.success(message || "Status advanced successfully!");
     } catch (err) {
       setLoading(false);
 
       console.error("Error advancing status:", err);
-      setSnackbar({
-        open: true,
-        message: "Failed to advance status.",
-        severity: "error",
-      });
+      toast.error("Failed to advance status.");
     }
   };
 
@@ -1853,19 +1823,11 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       setEta(newEta);
       setEtaSuggestion(newEta.format("YYYY-MM-DD"));
 
-      setSnackbar({
-        open: true,
-        message: message || "Status updated successfully!",
-        severity: "success",
-      });
+      toast.success(message || "Status updated successfully!");
     } catch (err) {
       console.error("Error updating status:", err);
 
-      setSnackbar({
-        open: true,
-        message: "Failed to update status.",
-        severity: "error",
-      });
+      toast.error("Failed to update status.");
     }
   };
 
@@ -1886,28 +1848,19 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         fieldErrors[err.path] = err.message;
       });
       setErrors(fieldErrors);
-      setSnackbar({
-        open: true,
-        message: "Please fix the validation errors before submitting.",
-        severity: "error",
-      });
+      toast.error("Please fix the validation errors before submitting.");
       return false;
     }
   };
-
-  // Helper: Validate form + prepare payload using flatShipments as source of truth
 
   const validateAndPrepare = async () => {
     try {
       await validationSchema.validate(values, { abortEarly: false });
 
       if (!flatShipments?.length) {
-        setSnackbar({
-          open: true,
-          message:
-            "No shipments/containers selected. Please select at least one container assignment.",
-          severity: "error",
-        });
+        toast.error(
+          "No shipments/containers selected. Please select at least one container assignment.",
+        );
         return null;
       }
 
@@ -1921,11 +1874,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       );
 
       if (uniqueContainers.length === 0) {
-        setSnackbar({
-          open: true,
-          message: "No valid containers found in selected shipments.",
-          severity: "error",
-        });
+        toast.error("No valid containers found in selected shipments.");
         return null;
       }
 
@@ -1941,12 +1890,9 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       );
 
       if (!activeFlatShipments.length) {
-        setSnackbar({
-          open: true,
-          message:
-            "No shipments/containers selected. Please select at least one container assignment.",
-          severity: "error",
-        });
+        toast.error(
+          "No shipments/containers selected. Please select at least one container assignment.",
+        );
         return null;
       }
 
@@ -1955,11 +1901,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       ];
 
       if (uniqueOrderIds.length === 0) {
-        setSnackbar({
-          open: true,
-          message: "No orders associated with selected shipments.",
-          severity: "error",
-        });
+        toast.error("No orders associated with selected shipments.");
         return null;
       }
 
@@ -2031,18 +1973,10 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
           fieldErrors[e.path] = e.message;
         });
         setErrors(fieldErrors);
-        setSnackbar({
-          open: true,
-          message: "Please fix the highlighted fields.",
-          severity: "error",
-        });
+        toast.error("Please fix the highlighted fields.");
       } else {
         console.error("Validation/Preparation failed:", err);
-        setSnackbar({
-          open: true,
-          message: "Error preparing consignment data. Please check inputs.",
-          severity: "error",
-        });
+        toast.error("Error preparing consignment data. Please check inputs.");
       }
 
       return null;
@@ -2068,45 +2002,27 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
 
       const { data: responseData, message } = res.data || {};
 
-      setSnackbar({
-        open: true,
-        message: message || "Consignment created successfully!",
-        severity: "success",
-      });
+      toast.success(message || "Consignment created successfully!");
 
       navigate("/consignments");
     } catch (err) {
       console.error("[handleCreate] Error:", err);
 
       if (err.name === "ValidationError") {
-        // Yup validation errors
         const formattedErrors = {};
         err.inner.forEach((error) => {
           formattedErrors[error.path] = error.message;
         });
         setErrors(formattedErrors);
-        setSnackbar({
-          open: true,
-          message: "Please fix the validation errors",
-          severity: "error",
-        });
+        toast.error("Please fix the validation errors");
       } else if (err.response) {
-        // Backend errors
         const backendMsg =
           err.response.data?.message ||
           err.response.data?.error ||
           "Failed to create consignment";
-        setSnackbar({
-          open: true,
-          message: backendMsg,
-          severity: "error",
-        });
+        toast.error(backendMsg);
       } else {
-        setSnackbar({
-          open: true,
-          message: "An unexpected error occurred",
-          severity: "error",
-        });
+        toast.error("An unexpected error occurred");
       }
     } finally {
       setSaving(false);
@@ -2115,11 +2031,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
   const handleEditCon = async (e) => {
     if (e) e.preventDefault();
     if (!values.id) {
-      setSnackbar({
-        open: true,
-        message: "No consignment ID found for editing.",
-        severity: "error",
-      });
+      toast.error("No consignment ID found for editing.");
       setSaving(false);
       return;
     }
@@ -2130,11 +2042,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     try {
       const res = await api.put(`/api/consignments/${values.id}`, submitData);
       const { data: responseData, message } = res.data || {};
-      setSnackbar({
-        open: true,
-        message: "Consignment updated successfully!",
-        severity: "success",
-      });
+      toast.success("Consignment updated successfully!");
       await loadConsignment(values.id);
       navigate(`/consignments`);
     } catch (err) {
@@ -2156,17 +2064,9 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
           backendMessage ||
           err.message ||
           "Failed to update consignment";
-        setSnackbar({
-          open: true,
-          message: backendMsg,
-          severity: "error",
-        });
+        toast.error(backendMsg);
       } else {
-        setSnackbar({
-          open: true,
-          message: "An unexpected error occurred. Please try again.",
-          severity: "error",
-        });
+        toast.error("An unexpected error occurred. Please try again.");
       }
     } finally {
       setSaving(false);
@@ -2174,8 +2074,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
   };
 
   const getContainerError = (index) => {
-    // Fixed: Function to get per-row errors
-    // Simple implementation: Check for duplicates and required fields
     const container = values.containers?.[index] || {};
     const errors = {};
     if (!container.containerNo?.trim()) {
@@ -2184,7 +2082,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     if (!container.size?.trim()) {
       errors.size = "Size is required";
     }
-    // Check duplicate
     const isDuplicate = (containerNo) => {
       return (values.containers || []).some(
         (c, i) =>
@@ -2272,7 +2169,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     borderBottom: `2px solid ${theme.palette.primary.dark}`,
   }));
 
-  // Helper to load images as Base64 (ensure this is defined/imported if not already)
   const loadImageAsBase64 = (url) =>
     new Promise((resolve) => {
       const img = new Image();
@@ -2307,11 +2203,9 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     selectedOrderObjects = includedOrders,
   ) => {
     if (!data.consignment_number) {
-      setSnackbar({
-        open: true,
-        severity: "warning",
-        message: "Please enter a consignment number to generate the manifest.",
-      });
+      toast.warning(
+        "Please enter a consignment number to generate the manifest.",
+      );
       return;
     }
 
@@ -2397,7 +2291,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
           // Marks & Nos
           const marksNos = detail.itemRef || "N/A";
 
-          // Calculate packages
           let pkgs = 0;
           detail.containerDetails?.forEach((container) => {
             pkgs += Number(container.assign_total_box) || 0;
@@ -2407,7 +2300,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
             pkgs = detail.totalNumber || 0;
           }
 
-          // Commodity
           const category = detail.category || "Unknown";
           const subcategory = detail.subcategory || "";
           const commodity = subcategory
@@ -2780,11 +2672,9 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     selectedOrderObjects = includedOrders,
   ) => {
     if (!data.consignment_number) {
-      setSnackbar({
-        open: true,
-        severity: "warning",
-        message: "Please enter a consignment number to generate the manifest.",
-      });
+      toast.warning(
+        "Please enter a consignment number to generate the manifest.",
+      );
       return;
     }
 
@@ -3228,11 +3118,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     groupBySubcategory = false,
   ) => {
     if (!data.consignment_number) {
-      setSnackbar({
-        open: true,
-        severity: "warning",
-        message: "Please enter a consignment number to generate the manifest.",
-      });
+      toast.warn("Please enter a consignment number to generate the manifest.");
       return;
     }
 
@@ -3996,11 +3882,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     selectedOrderObjects = includedOrders,
   ) => {
     if (!data.consignment_number) {
-      setSnackbar({
-        open: true,
-        severity: "warning",
-        message: "Please enter a consignment number to generate the manifest.",
-      });
+      toast.warn("Please enter a consignment number to generate the manifest.");
       return;
     }
 
@@ -4789,19 +4671,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
   };
   return (
     <LocalizationProvider dateAdapter={AdapterDayjs}>
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={6000}
-        onClose={() => setSnackbar({ ...snackbar, open: false })}
-      >
-        <Alert
-          onClose={() => setSnackbar({ ...snackbar, open: false })}
-          severity={snackbar.severity}
-          sx={{ width: "100%" }}
-        >
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
       <Box sx={{ backgroundColor: "#f5f7fa", pb: 4 }}>
         <Slide in timeout={1000}>
           <Card sx={{ boxShadow: 4, borderRadius: 3, overflow: "hidden" }}>

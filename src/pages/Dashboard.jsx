@@ -55,12 +55,26 @@ import {
   Article as ArticleIcon,
   Lock,
   LockReset as LockResetIcon,
+  Chat as ChatIcon,
+  GroupAdd,
+  AddToHomeScreen,
+  Book as BookIcon,
 } from "@mui/icons-material";
 import { Link as RouterLink } from "react-router-dom";
 import { useThemeContext } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
 import AdminResetPasswordDialog from "./ResetPassword";
-import { BugIcon } from "lucide-react";
+import {
+  BugIcon,
+  Container,
+  Cuboid,
+  BrushCleaning,
+  Ship,
+  UserKey,
+  Truck,
+  Receipt,
+  Settings,
+} from "lucide-react";
 
 const expandedWidth = 260;
 const collapsedWidth = 80;
@@ -122,6 +136,18 @@ export default function DashboardLayout() {
       module: "customers",
     },
     {
+      label: "Authorize App Customers",
+      path: "/authorize-app-customers",
+      icon: <UserKey />,
+      module: "authorize-mobile-customers",
+    },
+    {
+      label: "Customer Request",
+      path: "/customer-request",
+      icon: <AddToHomeScreen />,
+      module: "customer-request",
+    },
+    {
       label: "KYC",
       path: "/kyc",
       icon: <FingerPrintIcon />,
@@ -136,13 +162,13 @@ export default function DashboardLayout() {
     {
       label: "Containers",
       path: "/containers",
-      icon: <LocalShippingIcon />,
+      icon: <Container />,
       module: "containers",
     },
     {
       label: "Container Release",
       path: "/containers/release",
-      icon: <LocalShippingIcon />,
+      icon: <Cuboid />,
       module: "release",
     },
     {
@@ -152,9 +178,15 @@ export default function DashboardLayout() {
       module: "orders",
     },
     {
+      label: "Booking Confirmations",
+      path: "/booking-confirmations",
+      icon: <BookIcon />,
+      module: "booking-confirmations",
+    },
+    {
       label: "Consignments",
       path: "/consignments",
-      icon: <LocalShippingIcon />,
+      icon: <Ship />,
       module: "consignments",
     },
     {
@@ -174,6 +206,12 @@ export default function DashboardLayout() {
       path: "/notifications",
       icon: <NotificationsIcon />,
       module: "notifications",
+    },
+    {
+      label: "Invoices",
+      path: "/invoices",
+      icon: <Receipt />,
+      module: "invoices",
     },
   ].filter((item) => !item.module || can(item.module, "view"));
 
@@ -227,16 +265,34 @@ export default function DashboardLayout() {
       module: "eta-setup",
     },
     {
+      text: "System Settings",
+      icon: <Settings />,
+      path: "/admin/system-settings",
+      module: "system-settings",
+    },
+    {
       text: "3rd Parties",
       icon: <PeopleIcon />,
       path: "/admin/third-parties",
       module: "third-parties",
     },
     {
+      text: "Drivers",
+      icon: <Truck />,
+      path: "/admin/drivers",
+      module: "drivers",
+    },
+    {
       text: "Bug Report",
       icon: <BugIcon />,
       path: "/admin/bug-report",
       module: "bug-report",
+    },
+    {
+      text: "Chat Support",
+      icon: <ChatIcon />,
+      path: "/admin/chat-support",
+      module: "chat-support",
     },
     {
       text: "Barcode Print",
@@ -691,7 +747,6 @@ export default function DashboardLayout() {
           },
           mt: { xs: 8, md: 9 },
           width: "100%",
-          height: "calc(100vh - 72px)",
           maxWidth: "100%",
           mx: { md: "auto" },
           height: layoutHeight,

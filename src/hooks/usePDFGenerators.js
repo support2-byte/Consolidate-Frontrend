@@ -215,7 +215,7 @@ export const usePDFGenerators = ({
     return { matchedContainerNumber, containerSize };
   };
 
-  const generateFullManifestPDF = async () => {
+  const generateFullManifestPDF = async (unassignedOrders = []) => {
     const consignmentGroups = (usageHistory || []).filter(
       (c) => c.orders?.length > 0,
     );
@@ -313,6 +313,83 @@ export const usePDFGenerators = ({
           margin,
           pageWidth,
           containerIndex: ci,
+        });
+      }
+
+      if (unassignedOrders?.length) {
+        const unassignedIds = [
+          ...new Set(
+            unassignedOrders.map((e) => e.orderId?.toString()).filter(Boolean),
+          ),
+        ];
+        for (const id of unassignedIds) {
+          if (!allOrdersMap[id]) {
+            try {
+              const res = await api.get(`/api/orders/${id}`, {
+                params: { includeOrders: true },
+              });
+              if (res.data) allOrdersMap[id] = res.data;
+            } catch {}
+          }
+        }
+
+        const unassignedReceiversData = [];
+        unassignedOrders.forEach((event) => {
+          const orderData = event.orderId
+            ? allOrdersMap[event.orderId.toString()]
+            : null;
+          if (orderData) {
+            (orderData.receivers || []).forEach((receiver) => {
+              (receiver.shippingDetails || []).forEach((detail) => {
+                unassignedReceiversData.push({
+                  formNo:
+                    orderData.rgl_booking_number || orderData.form_no || "N/A",
+                  receiverName: receiver.receiver_name || "N/A",
+                  category: detail.category || "N/A",
+                  subcategory: detail.subcategory || "N/A",
+                  totalNumber: Number(detail.totalNumber || 0),
+                  weight: Number(detail.weight || 0),
+                  bookingRef:
+                    orderData.booking_ref || event.bookingRef || "N/A",
+                  senderName: orderData.sender_name || "N/A",
+                });
+              });
+            });
+          } else {
+            unassignedReceiversData.push({
+              formNo: event.orderId || "N/A",
+              receiverName: "N/A",
+              category: "N/A",
+              subcategory: "N/A",
+              totalNumber: event.assignedQty || 0,
+              weight: event.assignedWeightKg || 0,
+              bookingRef: event.bookingRef || event.orderId || "N/A",
+              senderName: "N/A",
+            });
+          }
+        });
+
+        doc.addPage();
+        let uy = 20;
+        doc
+          .setFont("helvetica", "bold")
+          .setFontSize(14)
+          .setTextColor(...BRAND.teal);
+        doc.text("UNASSIGNED ORDERS - PENDING CONSIGNMENT", margin, uy);
+        doc
+          .setDrawColor(...BRAND.teal)
+          .setLineWidth(0.6)
+          .line(margin, uy + 3, pageWidth - margin, uy + 3);
+        uy += 10;
+
+        doc.lastAutoTable = { finalY: uy };
+        renderManifestSection(doc, {
+          matchedContainerNumber: selectedContainerNo || "N/A",
+          containerSize: "N/A",
+          receiversData: unassignedReceiversData,
+          margin,
+          pageWidth,
+          containerIndex: consignmentGroups.length,
         });
       }
 
@@ -949,6 +1026,8 @@ export const usePDFGenerators = ({
           (orderData.receivers || []).forEach((receiver) => {
             (receiver.shippingDetails || []).forEach((detail) => {
               receiversData.push({
+                formNo:
+                  orderData.rgl_booking_number || orderData.form_no || "N/A",
                 receiverName: receiver.receiver_name || "N/A",
                 category: detail.category || "N/A",
                 subcategory: detail.subcategory || "N/A",
@@ -961,6 +1040,7 @@ export const usePDFGenerators = ({
           });
         } else {
           receiversData.push({
+            formNo: event.orderId || "N/A",
             receiverName: "N/A",
             category: "N/A",
             subcategory: "N/A",

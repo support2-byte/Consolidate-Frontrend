@@ -30,6 +30,7 @@ import SearchIcon from "@mui/icons-material/Search";
 import EmailOutlinedIcon from "@mui/icons-material/EmailOutlined";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import VisibilityOutlinedIcon from "@mui/icons-material/VisibilityOutlined";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import CloseIcon from "@mui/icons-material/Close";
 import { toast } from "react-toastify";
 import { api } from "../../api";
@@ -55,9 +56,35 @@ const TABS = [
     resendEndpoint: "api/kyc/emails",
     deleteEndpoint: "api/kyc/emails",
   },
+  {
+    index: 3,
+    key: "confirmation",
+    label: "Confirmation Emails",
+    endpoint: "api/notifications/confirmation-emails",
+    resendEndpoint: "api/notifications/confirmation-emails",
+    deleteEndpoint: "api/notifications/confirmation-emails",
+  },
+  {
+    index: 4,
+    key: "invoice",
+    label: "Invoice Emails",
+    endpoint: "api/notifications/invoice-emails",
+    resendEndpoint: "api/notifications/invoice-emails",
+    deleteEndpoint: "api/notifications/invoice-emails",
+  },
 ];
 
-const HIDDEN_COLUMNS = new Set(["id"]);
+const HIDDEN_COLUMNS = new Set([
+  "id",
+  "total_qty",
+  "total_weight",
+  "sender_name",
+  "company",
+  "company_logo_url",
+  "subject",
+  "message",
+  "items",
+]);
 const DATE_COLUMNS = new Set(["created_at", "updated_at", "sent_at"]);
 
 const EMAIL_STATUS_COLORS = {
@@ -90,11 +117,13 @@ const RECIPIENT_TYPE_COLORS = {
 
 const getColors = (map, key) => map[key] || map.default;
 
-const formatLabel = (key) =>
-  key
+const formatLabel = (key) => {
+  if (!key) return "";
+  return String(key)
     .split("_")
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(" ");
+};
 
 const formatDate = (val) => {
   if (!val) return "-";
@@ -102,9 +131,34 @@ const formatDate = (val) => {
   return isNaN(d.getTime()) ? val : d.toLocaleString();
 };
 
+const FRONTEND_URL = "http://localhost:5174";
+
+const STATUS_ACTION_LINKS = {
+  "Order Created": [{ path: "drop-off", text: "Schedule Drop-off" }],
+  "Shipment Delivered": [
+    { path: "purchase-storage", text: "Arrange Storage" },
+    { path: "delivery-request", text: "Request Delivery" },
+  ],
+};
+
+const buildActionLinksHtml = (statusLabel, itemRef) => {
+  const links = STATUS_ACTION_LINKS[statusLabel];
+  if (!links || links.length === 0) return "";
+
+  const buttons = links
+    .map(
+      (link) =>
+        `<a class="cta" style="margin-right:10px" href="${FRONTEND_URL}/${link.path}/${encodeURIComponent(itemRef)}" target="_blank" rel="noopener noreferrer">${link.text}</a>`,
+    )
+    .join("");
+
+  return `<div style="margin-top:6px">${buttons}</div>`;
+};
+
 const buildTemplateData = (row) => ({
   recipientName: row.recipient_name || "Customer",
-  statusLabel: formatLabel(row.email_type || "Status Update"),
+  statusLabel:
+    row.status_label || formatLabel(row.email_type || "Status Update"),
   statusMsg:
     "Sample message — the exact wording is generated when the email is sent.",
   refId: row.item_ref || "—",
@@ -113,12 +167,74 @@ const buildTemplateData = (row) => ({
   eta: "Sample ETA",
   lastUpdated: formatDate(row.created_at),
   trackLink: "https://trackorder.royalgulfshipping.com/",
+  actionLinks: buildActionLinksHtml(
+    row.status_label || formatLabel(row.email_type || "Status Update"),
+    row.item_ref || "—",
+    row.recipient_type,
+  ),
 });
 
 const buildKycTemplateData = (row) => ({
   recipientName: row.recipient_name || "Valued Customer",
   formUrl: row.form_url || "#",
   year: new Date().getFullYear(),
+});
+
+const buildItemsSectionHtml = (items) => {
+  if (!Array.isArray(items) || items.length === 0) return "";
+  const rows = items
+    .map(
+      (it) => `
+        <tr>
+          <td>${it.category || "—"}</td>
+          <td>${it.subcategory || "—"}</td>
+          <td>${it.type || "—"}</td>
+          <td>${it.qty ?? "—"}</td>
+          <td>${it.weight ?? "—"} KG</td>
+          <td>${it.placeOfLoading || "—"}</td>
+          <td>${it.placeOfDestination || "—"}</td>
+        </tr>`,
+    )
+    .join("");
+  return `<div class="info-box" style="margin-top: 16px;">
+      <div class="info-title"><i class="fas fa-boxes-stacked"></i> Items</div>
+      <table class="items-table" role="presentation">
+        <thead><tr><th>Category</th><th>Subcategory</th><th>Type</th><th>Qty</th><th>Weight</th><th>Loading</th><th>Destination</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+};
+
+const buildConfirmationTemplateData = (row) => ({
+  recipientName: row.receiver_name || row.recipient_name || "Customer",
+  senderName: row.sender_name || "—",
+  companyName:
+    row.company || row.company_name || "Royal Gulf Shipping & Logistics",
+  companyLogo:
+    row.company_logo_url ||
+    "https://royalgulfshipping.com/wp-content/uploads/2023/08/RGSL-LOGO.png",
+  subject: row.subject || "Order Confirmation",
+  message: row.message || "Sample message — actual content shown at send time.",
+  mode: row.mode || "—",
+  totalQty: row.total_qty ?? "—",
+  totalWeight: row.total_weight ?? "—",
+  lastUpdated: formatDate(row.created_at),
+  itemsSection: buildItemsSectionHtml(row.items),
+  viewLink: row.form_id
+    ? `https://track.royalgulfshipping.com/order-confirmation/${row.form_id}`
+    : "#",
+  year: new Date().getFullYear(),
+});
+
+const buildInvoiceTemplateData = (row) => ({
+  recipientName: row.recipient_name || "Valued Customer",
+  invoiceId: row.invoice_id || "—",
+  itemRef: row.item_ref || "—",
+  amount: row.amount ? `$${row.amount}` : "—",
+  invoiceLink: row.invoice_url || "#",
+  lastUpdated: formatDate(row.created_at),
+  year: new Date().getFullYear(),
+  otp: row.otp || "—",
 });
 
 const renderTemplate = (templateKey, data) => {
@@ -141,11 +257,15 @@ const NotificationSettings = () => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(25);
   const [previewRow, setPreviewRow] = useState(null);
+  const [detailsRow, setDetailsRow] = useState(null);
 
   const currentTab = TABS[activeTab];
   const isEmailsTab = currentTab.key === "emails";
   const isKycTab = currentTab.key === "kyc";
-  const hasRowActions = isEmailsTab || isKycTab;
+  const isConfirmationTab = currentTab.key === "confirmation";
+  const isInvoiceTab = currentTab.key === "invoice";
+  const hasRowActions =
+    isEmailsTab || isKycTab || isConfirmationTab || isInvoiceTab;
 
   useEffect(() => {
     fetchData(currentTab);
@@ -354,7 +474,11 @@ const NotificationSettings = () => {
   const previewTemplateKey = previewRow
     ? isKycTab
       ? KYC_TEMPLATE_BY_COMPANY[previewRow.company] || "kyc_rgsl"
-      : TEMPLATE_BY_EMAIL_TYPE[previewRow.email_type] || "shipment_update"
+      : isConfirmationTab
+        ? "confirmation_email"
+        : isInvoiceTab
+          ? "invoice_email"
+          : TEMPLATE_BY_EMAIL_TYPE[previewRow.email_type] || "shipment_update"
     : null;
 
   const previewHtml = previewRow
@@ -362,12 +486,16 @@ const NotificationSettings = () => {
         previewTemplateKey,
         isKycTab
           ? buildKycTemplateData(previewRow)
-          : buildTemplateData(previewRow),
+          : isConfirmationTab
+            ? buildConfirmationTemplateData(previewRow)
+            : isInvoiceTab
+              ? buildInvoiceTemplateData(previewRow)
+              : buildTemplateData(previewRow),
       )
     : null;
 
   const handleDelete = async (id) => {
-    if (isEmailsTab || isKycTab) {
+    if (isEmailsTab || isKycTab || isConfirmationTab || isInvoiceTab) {
       const row = rows.find((r) => r.id === id);
       if (row && String(row.status).toLowerCase() === "sent") {
         return toast.error("Sent emails cannot be deleted.");
@@ -391,6 +519,100 @@ const NotificationSettings = () => {
     } finally {
       setDeletingId(null);
     }
+  };
+
+  const renderDetailValue = (key, value) => {
+    if (DATE_COLUMNS.has(key)) {
+      return <Typography variant="body2">{formatDate(value)}</Typography>;
+    }
+    if (key === "status") {
+      const status = String(value || "").toLowerCase();
+      const { bg, text } = getColors(EMAIL_STATUS_COLORS, status);
+      return (
+        <Chip
+          label={formatLabel(status) || "—"}
+          size="small"
+          variant="outlined"
+          sx={{ bgcolor: bg, color: text, borderColor: text, fontWeight: 500 }}
+        />
+      );
+    }
+    if (key === "company") {
+      const code = String(value || "");
+      const { bg, text } = getColors(COMPANY_COLORS, code);
+      return (
+        <Chip
+          label={code || "—"}
+          size="small"
+          variant="outlined"
+          sx={{ bgcolor: bg, color: text, borderColor: text, fontWeight: 500 }}
+        />
+      );
+    }
+    if (key === "items") {
+      if (!Array.isArray(value) || value.length === 0) {
+        return (
+          <Typography variant="body2" color="text.disabled">
+            —
+          </Typography>
+        );
+      }
+      return (
+        <TableContainer component={Paper} variant="outlined" sx={{ mt: 0.5 }}>
+          <Table size="small">
+            <TableHead>
+              <TableRow sx={{ bgcolor: "action.hover" }}>
+                <TableCell>Category</TableCell>
+                <TableCell>Subcategory</TableCell>
+                <TableCell>Type</TableCell>
+                <TableCell align="right">Qty</TableCell>
+                <TableCell align="right">Weight</TableCell>
+                <TableCell>Loading</TableCell>
+                <TableCell>Destination</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {value.map((it, i) => (
+                <TableRow key={i}>
+                  <TableCell>{it.category || "—"}</TableCell>
+                  <TableCell>{it.subcategory || "—"}</TableCell>
+                  <TableCell>{it.type || "—"}</TableCell>
+                  <TableCell align="right">{it.qty ?? "—"}</TableCell>
+                  <TableCell align="right">{it.weight ?? "—"} KG</TableCell>
+                  <TableCell>{it.placeOfLoading || "—"}</TableCell>
+                  <TableCell>{it.placeOfDestination || "—"}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      );
+    }
+    if (value === null || value === undefined || value === "") {
+      return (
+        <Typography variant="body2" color="text.disabled">
+          —
+        </Typography>
+      );
+    }
+    if (key === "company_logo_url") {
+      return (
+        <Box
+          component="img"
+          src={value}
+          alt="Logo"
+          sx={{ height: 32, objectFit: "contain" }}
+        />
+      );
+    }
+    return (
+      <Typography
+        variant="body2"
+        sx={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+      >
+        {String(value)}
+      </Typography>
+    );
   };
 
   return (
@@ -527,8 +749,20 @@ const NotificationSettings = () => {
                         </Button>
                       </TableCell>
                     )}
-                    {isKycTab && (
+                    {(isKycTab || isConfirmationTab || isInvoiceTab) && (
                       <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>
+                        {isConfirmationTab && (
+                          <Button
+                            size="small"
+                            variant="text"
+                            startIcon={<InfoOutlinedIcon />}
+                            onClick={() => setDetailsRow(row)}
+                            sx={{ mr: 1 }}
+                          >
+                            {" "}
+                            Details{" "}
+                          </Button>
+                        )}
                         <Button
                           size="small"
                           variant="text"
@@ -604,8 +838,13 @@ const NotificationSettings = () => {
             </Typography>
             {previewRow && (
               <Typography variant="caption" color="text.secondary">
-                {formatLabel(previewRow.email_type)} • To:{" "}
-                {previewRow.recipient_email}
+                {previewRow.email_type
+                  ? `${formatLabel(previewRow.email_type)} • `
+                  : ""}
+                To:{" "}
+                {previewRow.recipient_email ||
+                  previewRow.recipient_email_address ||
+                  "—"}
               </Typography>
             )}
           </Box>
@@ -633,6 +872,70 @@ const NotificationSettings = () => {
               <Alert severity="warning">
                 No template available for "{previewRow?.email_type}".
               </Alert>
+            </Box>
+          )}
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={Boolean(detailsRow)}
+        onClose={() => setDetailsRow(null)}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 2 } }}
+      >
+        <DialogTitle
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            pr: 1,
+          }}
+        >
+          <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+            Full Record
+          </Typography>
+          <IconButton onClick={() => setDetailsRow(null)} size="small">
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers sx={{ p: 0 }}>
+          {detailsRow && (
+            <Box sx={{ divide: "y" }}>
+              {Object.entries(detailsRow)
+                .filter(([key]) => key !== "id")
+                .map(([key, value]) => (
+                  <Box
+                    key={key}
+                    sx={{
+                      display: "flex",
+                      flexDirection: key === "items" ? "column" : "row",
+                      px: 2.5,
+                      py: 1.25,
+                      borderBottom: "1px solid",
+                      borderColor: "divider",
+                      gap: key === "items" ? 1 : 2,
+                      "&:last-of-type": { borderBottom: "none" },
+                    }}
+                  >
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        width: 160,
+                        flexShrink: 0,
+                        fontWeight: 700,
+                        color: "text.secondary",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.03em",
+                        pt: 0.25,
+                      }}
+                    >
+                      {formatLabel(key)}
+                    </Typography>
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      {renderDetailValue(key, value)}
+                    </Box>
+                  </Box>
+                ))}
             </Box>
           )}
         </DialogContent>

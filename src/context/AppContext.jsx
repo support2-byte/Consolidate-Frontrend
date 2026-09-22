@@ -13,6 +13,10 @@ export const AppProvider = ({ children }) => {
   const [statuses, setStatuses] = useState([]);
   const [modules, setModules] = useState([]);
   const [companies, setCompanies] = useState([]);
+  const [thirdParties, setThirdParties] = useState([]);
+  const [drivers, setDrivers] = useState([]);
+  const [driverTracks, setDriverTracks] = useState([]);
+  const [systemSettings, setSystemSettings] = useState([]);
 
   const [placesLoading, setPlacesLoading] = useState(false);
   const [statusLoading, setStatusLoading] = useState(false);
@@ -20,6 +24,10 @@ export const AppProvider = ({ children }) => {
   const [modulesLoading, setModulesLoading] = useState(false);
   const [companiesLoading, setCompaniesLoading] = useState(false);
   const [companiesError, setCompaniesError] = useState("");
+  const [thirdPartiesLoading, setThirdPartiesLoading] = useState(false);
+  const [driversLoading, setDriversLoading] = useState(false);
+  const [driverTracksLoading, setDriverTracksLoading] = useState(false);
+  const [systemSettingsLoading, setSystemSettingsLoading] = useState(false);
 
   const isInitialized = useRef(false);
 
@@ -115,6 +123,72 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  const fetchThirdParties = async () => {
+    try {
+      setThirdPartiesLoading(true);
+      const response = await api.get("api/options/thirdParty/crud");
+      const data = response.data.third_parties || [];
+      setThirdParties(data);
+    } catch (err) {
+      console.error("Error fetching third parties:", err);
+      toast.error("Failed to load third parties. Please try again.");
+    } finally {
+      setThirdPartiesLoading(false);
+    }
+  };
+
+  const fetchDrivers = async () => {
+    try {
+      setDriversLoading(true);
+      const response = await api.get("api/options/drivers");
+      setDrivers(response.data.rows || []);
+    } catch (err) {
+      if (err.response?.status === 404) {
+        setDrivers([]);
+      } else {
+        console.error("Error fetching drivers:", err);
+        toast.error("Failed to load drivers. Please try again.");
+      }
+    } finally {
+      setDriversLoading(false);
+    }
+  };
+
+  const fetchDriverTracks = async () => {
+    try {
+      setDriverTracksLoading(true);
+      const response = await api.get("api/options/driver-tracks");
+      setDriverTracks(response.data.rows || []);
+    } catch (err) {
+      if (err.response?.status === 404) {
+        setDriverTracks([]);
+      } else {
+        console.error("Error fetching driver tracks:", err);
+        toast.error("Failed to load driver tracks. Please try again.");
+      }
+    } finally {
+      setDriverTracksLoading(false);
+    }
+  };
+
+  const fetchSystemSettings = async () => {
+    try {
+      setSystemSettingsLoading(true);
+      const { data } = await api.get("/api/options/system-settings");
+      setSystemSettings(data.data || []);
+    } catch (err) {
+      console.error("Error fetching system settings:", err);
+      toast.error("Failed to load system settings.");
+    } finally {
+      setSystemSettingsLoading(false);
+    }
+  };
+
+  const getSystemRate = (key, fallback = 0) => {
+    const setting = systemSettings.find((s) => s.key === key);
+    return setting ? Number(setting.value) : fallback;
+  };
+
   useEffect(() => {
     if (authLoading) return;
     if (!isAuthenticated) {
@@ -131,6 +205,11 @@ export const AppProvider = ({ children }) => {
     fetchStatuses();
     fetchModules();
     fetchCompanies();
+    fetchThirdParties();
+    fetchDrivers();
+    fetchDriverTracks();
+    fetchSystemSettings();
+    getSystemRate();
   }, [authLoading, isAuthenticated]);
 
   return (
@@ -154,6 +233,21 @@ export const AppProvider = ({ children }) => {
         companiesLoading,
         companiesError,
         fetchCompanies,
+        thirdParties,
+        setThirdParties,
+        drivers,
+        setDrivers,
+        driversLoading,
+        fetchDrivers,
+        driverTracks,
+        setDriverTracks,
+        driverTracksLoading,
+        fetchDriverTracks,
+        systemSettings,
+        setSystemSettings,
+        systemSettingsLoading,
+        fetchSystemSettings,
+        getSystemRate,
       }}
     >
       {children}

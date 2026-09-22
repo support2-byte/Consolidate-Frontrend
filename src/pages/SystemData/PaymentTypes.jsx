@@ -74,20 +74,19 @@ const PaymentTypes = () => {
         response = await api.put(
           `api/options/payment-types/${selectedType.id}`,
           formData,
-        ); // Updated endpoint
+        );
       } else {
-        response = await api.post("api/options/payment-types", formData); // Updated endpoint
+        response = await api.post("api/options/payment-types", formData);
       }
       if (response.status >= 400) {
-        // For axios, check status
         const errorData = response.data;
         throw new Error(errorData.error || "Failed to save payment type");
       }
-      await fetchPaymentTypes(); // Refresh list
+      await fetchPaymentTypes();
       handleCloseDialog();
     } catch (err) {
       console.error("Error saving payment type:", err);
-      alert(err.message); // Replace with proper error handling (e.g., Snackbar)
+      alert(err.message);
     }
   };
 
@@ -96,16 +95,15 @@ const PaymentTypes = () => {
       return;
     }
     try {
-      const response = await api.delete(`api/options/payment-types/${id}`); // Updated endpoint
+      const response = await api.delete(`api/options/payment-types/${id}`);
       if (response.status >= 400) {
-        // For axios, check status
         const errorData = response.data;
         throw new Error(errorData.error || "Failed to delete payment type");
       }
-      await fetchPaymentTypes(); // Refresh list
+      await fetchPaymentTypes();
     } catch (err) {
       console.error("Error deleting payment type:", err);
-      alert(err.message); // Replace with proper error handling (e.g., Snackbar)
+      alert(err.message);
     }
   };
 
@@ -209,7 +207,6 @@ const PaymentTypes = () => {
         </Box>
       </Paper>
 
-      {/* Dialog for Add/Edit */}
       <Dialog
         open={openDialog}
         onClose={handleCloseDialog}

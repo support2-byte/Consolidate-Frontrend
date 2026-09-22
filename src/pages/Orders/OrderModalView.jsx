@@ -35,7 +35,6 @@ import {
   MenuItem,
   FormControl,
   InputLabel,
-  Snackbar,
   Divider,
   Tooltip,
   Avatar,
@@ -59,6 +58,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { applyPlugin } from "jspdf-autotable";
 import { BRAND } from "../../constants/containers";
+import { toast } from "react-toastify";
 import {
   manifestTableStyles,
   pdfAddFooters,
@@ -173,11 +173,6 @@ const OrderModalView = ({
   const [containers, setContainers] = useState([]);
   const [loadingContainers, setLoadingContainers] = useState(false);
   const [assignmentError, setAssignmentError] = useState(null);
-  const [snackbar, setSnackbar] = useState({
-    open: false,
-    message: "",
-    severity: "info",
-  });
   const [assignments, setAssignments] = useState({});
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
 
@@ -519,20 +514,22 @@ const OrderModalView = ({
   const handleGeneratePDF = async () => {
     if (!selectedOrder) return;
     setIsGeneratingPDF(true);
-    setSnackbar({ open: true, message: "Generating PDF…", severity: "info" });
+    const toastId = toast.loading("Generating PDF…");
     try {
       await generateOrderPDF(selectedOrder);
-      setSnackbar({
-        open: true,
-        message: "PDF downloaded successfully",
-        severity: "success",
+      toast.update(toastId, {
+        render: "PDF downloaded successfully",
+        type: "success",
+        isLoading: false,
+        autoClose: 5000,
       });
     } catch (e) {
       console.error(e);
-      setSnackbar({
-        open: true,
-        message: "Failed to generate PDF",
-        severity: "error",
+      toast.update(toastId, {
+        render: "Failed to generate PDF",
+        type: "error",
+        isLoading: false,
+        autoClose: 5000,
       });
     } finally {
       setIsGeneratingPDF(false);
@@ -1702,21 +1699,6 @@ const OrderModalView = ({
           </Button>
         </DialogActions>
       </Dialog>
-
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={5000}
-        onClose={() => setSnackbar((p) => ({ ...p, open: false }))}
-        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-      >
-        <Alert
-          severity={snackbar.severity}
-          sx={{ width: "100%" }}
-          onClose={() => setSnackbar((p) => ({ ...p, open: false }))}
-        >
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
     </>
   );
 };

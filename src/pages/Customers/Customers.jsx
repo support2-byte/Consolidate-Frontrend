@@ -27,6 +27,8 @@ export default function Customers() {
       loading={customersLoading}
       onDelete={handleDelete}
       onReloadZoho={handleReloadZoho}
+      enableImportFromDoc
+      onImportComplete={refreshCustomers}
       columns={[
         { key: "zoho_id", label: "Zoho ID" },
         { key: "email", label: "Email" },

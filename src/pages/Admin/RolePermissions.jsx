@@ -4,7 +4,6 @@ import {
   Typography,
   Paper,
   CircularProgress,
-  Snackbar,
   Alert,
   Chip,
   Checkbox,
@@ -31,6 +30,7 @@ import {
 } from "@mui/icons-material";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../api";
+import { toast } from "react-toastify";
 
 const ROLE_COLOR = {
   "super admin": "success",
@@ -96,30 +96,41 @@ export default function RolePermissions() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
-  const [snackbar, setSnackbar] = useState({
-    open: false,
-    message: "",
-    severity: "success",
-  });
 
   useEffect(() => {
-    api.get("/auth/roles").then((res) => {
-      if (res.data?.success) setRoles(res.data.data || []);
-    });
-    api.get("/auth/rbac/permissions").then((res) => {
-      if (res.data?.success) {
-        setCatalogModules(res.data.data?.modules || []);
-        setCatalogActions(res.data.data?.actions || []);
+    const loadInitialData = async () => {
+      try {
+        const [rolesRes, permsRes] = await Promise.all([
+          api.get("/auth/roles"),
+          api.get("/auth/rbac/permissions"),
+        ]);
+
+        if (rolesRes.data?.success) {
+          setRoles(rolesRes.data.data || []);
+        }
+
+        if (permsRes.data?.success) {
+          setCatalogModules(permsRes.data.data?.modules || []);
+          setCatalogActions(permsRes.data.data?.actions || []);
+        }
+      } catch (err) {
+        toast.error("Failed to load roles/permissions");
       }
-    });
+    };
+
+    loadInitialData();
   }, []);
 
   useEffect(() => {
     if (!selectedRole) return;
-    setLoading(true);
-    api
-      .get(`/auth/rbac/roles/${selectedRole.name}/permissions`)
-      .then((res) => {
+
+    const loadRolePermissions = async () => {
+      setLoading(true);
+      try {
+        const res = await api.get(
+          `/auth/rbac/roles/${selectedRole.name}/permissions`,
+        );
+
         if (res.data?.success) {
           const map = {};
           for (const p of res.data.data.permissions) {
@@ -129,15 +140,14 @@ export default function RolePermissions() {
           setSelected(map);
           setDirty(false);
         }
-      })
-      .catch(() =>
-        setSnackbar({
-          open: true,
-          message: "Failed to load role permissions",
-          severity: "error",
-        }),
-      )
-      .finally(() => setLoading(false));
+      } catch (err) {
+        toast.error("Failed to load role permissions");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadRolePermissions();
   }, [selectedRole]);
 
   const toggle = useCallback((moduleId, actionId) => {
@@ -166,17 +176,10 @@ export default function RolePermissions() {
         permissions,
       });
       setDirty(false);
-      setSnackbar({
-        open: true,
-        message: `Permissions saved for "${selectedRole.name}"`,
-        severity: "success",
-      });
+      setDirty(false);
+      toast.success(`Permissions saved for "${selectedRole.name}"`);
     } catch {
-      setSnackbar({
-        open: true,
-        message: "Failed to save role permissions",
-        severity: "error",
-      });
+      toast.error("Failed to save role permissions");
     } finally {
       setSaving(false);
     }
@@ -499,21 +502,6 @@ export default function RolePermissions() {
           </Typography>
         </Paper>
       )}
-
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={5000}
-        onClose={() => setSnackbar((p) => ({ ...p, open: false }))}
-        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-      >
-        <Alert
-          onClose={() => setSnackbar((p) => ({ ...p, open: false }))}
-          severity={snackbar.severity}
-          sx={{ width: "100%" }}
-        >
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
     </Box>
   );
 }

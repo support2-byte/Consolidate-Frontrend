@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useContext } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -19,13 +19,19 @@ import {
   Chip,
   Divider,
 } from "@mui/material";
+import { useNavigate } from "react-router-dom";
 import CloseIcon from "@mui/icons-material/Close";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import GatepassCreateModal from "./GatepassCreateModal";
+import CreateInvoiceModal from "./CreateInvoiceModal";
 import { toast } from "react-toastify";
 import { api } from "../../api";
+import { generateGatepassPDF } from "../../documents/gatepassGenerator";
+import { AppContext } from "../../context/AppContext";
+import { pdfDocToPngBlob } from "../../lib/pdfToPng";
 
 const emptyCollection = (idx) => ({
   _key: `c-${Date.now()}-${idx}`,
@@ -33,18 +39,50 @@ const emptyCollection = (idx) => ({
   collectionScope: "Partial",
   qtyDelivered: "",
   receiverId: "",
+  driverId: "",
   clientReceiverId: "",
   clientReceiverMobile: "",
   plateNo: "",
   deliveryDate: "",
+  status: false,
   gatepassFiles: [],
+  gatepasses: [],
   items: {},
 });
 
 const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
+  const { drivers, driverTracks } = useContext(AppContext);
   const [collections, setCollections] = useState([emptyCollection(1)]);
   const [saving, setSaving] = useState(false);
   const [historyExpanded, setHistoryExpanded] = useState(false);
+  const [draftGatepassModalOpen, setDraftGatepassModalOpen] = useState(false);
+  const [draftGatepassTargetKey, setDraftGatepassTargetKey] = useState(null);
+  const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
+  const [invoiceTarget, setInvoiceTarget] = useState(null);
+
+  const getDriverTrack = (driver) =>
+    driverTracks.find((t) => t.driver_code === driver.driver_id);
+
+  const addDraftGatepass = (collectionKey, gpData) => {
+    setCollections((prev) =>
+      prev.map((c) =>
+        c._key === collectionKey
+          ? { ...c, gatepasses: [...c.gatepasses, gpData] }
+          : c,
+      ),
+    );
+  };
+
+  const removeDraftGatepass = (collectionKey, idx) => {
+    setCollections((prev) =>
+      prev.map((c) => {
+        if (c._key !== collectionKey) return c;
+        const gatepasses = [...c.gatepasses];
+        gatepasses.splice(idx, 1);
+        return { ...c, gatepasses };
+      }),
+    );
+  };
 
   useEffect(() => {
     if (open) {
@@ -68,6 +106,16 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
 
   const handleReceiverChange = (key, receiverId) => {
     updateCollection(key, { receiverId, items: {} });
+  };
+
+  const handleDriverChange = (key, driverId) => {
+    const driver = drivers.find((d) => d.id === driverId);
+    updateCollection(key, {
+      driverId,
+      clientReceiverId: driver?.driver_id || "",
+      clientReceiverMobile: driver?.phone_number || "",
+      plateNo: driver?.vehicle_plate || "",
+    });
   };
 
   const toggleItem = (key, itemRef, checked, remaining, orderItemId) => {
@@ -148,10 +196,6 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
       );
       return;
     }
-    if (!items.some((arr) => arr.length > 0)) {
-      toast.error("Select at least one item to collect.");
-      return;
-    }
 
     const formData = new FormData();
     const collectionsPayload = collections.map((c, i) => {
@@ -162,10 +206,12 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
         receiverId: c.receiverId,
         collectionMethod: c.collectionMethod,
         collectionScope: c.collectionScope,
+        driverId: c.driverId,
         clientReceiverId: c.clientReceiverId,
         clientReceiverMobile: c.clientReceiverMobile,
         plateNo: c.plateNo,
         deliveryDate: c.deliveryDate,
+        status: c.status,
         items: Object.entries(c.items)
           .filter(([, v]) => v.checked && Number(v.qtyDelivered) > 0)
           .map(([itemRef, v]) => ({
@@ -176,6 +222,43 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
       };
     });
     formData.append("collections", JSON.stringify(collectionsPayload));
+
+    for (const c of collections) {
+      if (!c.receiverId) continue;
+      if (c.gatepassFiles.length > 0) continue;
+      const receiver = receivers.find((r) => r.id === c.receiverId);
+      const driver = drivers.find((d) => d.id === c.driverId);
+      const cargoDefaults = computeCargoDefaults(receiver, c.items);
+      try {
+        const doc = await generateGatepassPDF({
+          gpNumber: `GP-${Date.now()}`,
+          orderBookingRef: order.booking_ref,
+          receiverName: receiver?.receiver_name,
+          customerName: receiver?.receiver_name,
+          customerContact: receiver?.receiver_contact,
+          marksAndNumber: receiver?.marksAndNumber,
+          driverName: driver?.name || "N/A",
+          driverId: c.clientReceiverId,
+          driverContact: c.clientReceiverMobile,
+          plateNo: c.plateNo,
+          pickupLocation: "",
+          qty: cargoDefaults.qty,
+          weight: cargoDefaults.weight,
+          commodity: cargoDefaults.commodity,
+          gateDate: c.deliveryDate,
+          collectionMethod: c.collectionMethod,
+          download: false,
+        });
+        const pngBlob = await pdfDocToPngBlob(doc);
+        formData.append(
+          `gatepass_${c.receiverId}`,
+          pngBlob,
+          `Gatepass_${c.receiverId}_${Date.now()}.png`,
+        );
+      } catch (err) {
+        console.error("Auto gatepass generation failed:", err);
+      }
+    }
 
     setSaving(true);
     try {
@@ -189,8 +272,74 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
     }
   };
 
+  const fmtDate = (value) => {
+    if (!value) return "No date";
+    const d = new Date(value);
+    return isNaN(d.getTime()) ? "No date" : d.toLocaleDateString();
+  };
+
+  const ITEM_FREE_DAYS = 3;
+
+  const getItemOverstayDays = (item) => {
+    if (item.status !== "Shipment Delivered" || !item.eta) {
+      return 0;
+    }
+    const delivered = new Date(item.eta);
+    if (isNaN(delivered.getTime())) return 0;
+    const msPerDay = 1000 * 60 * 60 * 24;
+    const daysSinceDelivered = Math.floor((new Date() - delivered) / msPerDay);
+    const overstay = daysSinceDelivered - ITEM_FREE_DAYS;
+    return overstay > 0 ? overstay : 0;
+  };
+
+  const fmtShortDate = (value) => {
+    if (!value) return "—";
+    const d = new Date(value);
+    return isNaN(d.getTime())
+      ? "—"
+      : d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+  };
+
+  const computeCargoDefaults = (receiver, selectedEntries) => {
+    const shippingdetails = receiver?.shippingdetails || [];
+
+    const selectedList = Array.isArray(selectedEntries)
+      ? selectedEntries
+      : Object.entries(selectedEntries || {})
+          .filter(([, v]) => v.checked)
+          .map(([itemRef, v]) => ({ itemRef, qtyDelivered: v.qtyDelivered }));
+
+    let totalQty = 0;
+    let totalWeight = 0;
+    const commodities = new Set();
+
+    selectedList.forEach(({ itemRef, qtyDelivered }) => {
+      const qty = Number(qtyDelivered) || 0;
+      if (qty <= 0) return;
+
+      const item = shippingdetails.find((sd) => sd.itemRef === itemRef);
+      if (!item) return;
+
+      totalQty += qty;
+
+      const itemTotal = Number(item.totalNumber) || 0;
+      const itemWeight = Number(item.weight) || 0;
+      const perUnitWeight = itemTotal > 0 ? itemWeight / itemTotal : itemWeight;
+      totalWeight += perUnitWeight * qty;
+
+      const label = item.subcategory || item.category;
+      if (label) commodities.add(label);
+    });
+
+    return {
+      qty: totalQty || "",
+      weight: totalWeight ? Number(totalWeight.toFixed(2)) : "",
+      commodity: [...commodities].join(", "),
+    };
+  };
+
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+    <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
       <DialogTitle
         sx={{
           bgcolor: "#0d6c6a",
@@ -332,12 +481,7 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
                               display="block"
                             >
                               {(c.items || []).length} item(s) •{" "}
-                              {c.deliveryDate
-                                ? new Date(c.deliveryDate).toLocaleDateString()
-                                : "No date"}
-                              {c.clientReceiverMobile
-                                ? ` • ${c.clientReceiverMobile}`
-                                : ""}
+                              {fmtDate(c.deliveryDate)}
                             </Typography>
 
                             {c.items?.length > 0 && (
@@ -447,7 +591,7 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
                   )}
                 </Stack>
 
-                <Grid container spacing={2} mt={2} mb={1}>
+                <Grid container spacing={2} mb={1}>
                   <Grid size={{ xs: 12, sm: 4 }}>
                     <FormControl fullWidth size="small">
                       <InputLabel>Collection Method</InputLabel>
@@ -508,6 +652,112 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
                   </Grid>
                 </Grid>
 
+                <Grid container spacing={2} my={2}>
+                  <Grid size={{ xs: 12, sm: 3 }}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Driver</InputLabel>
+                      <Select
+                        label="Driver"
+                        value={c.driverId}
+                        onChange={(e) =>
+                          handleDriverChange(c._key, e.target.value)
+                        }
+                        renderValue={(val) => {
+                          if (!val) return "Select Driver";
+                          const d = drivers.find((dr) => dr.id === val);
+                          return d ? `${d.name} (${d.driver_id})` : "";
+                        }}
+                      >
+                        <MenuItem value="">
+                          <em>Select Driver</em>
+                        </MenuItem>
+                        {drivers.map((d) => {
+                          const track = getDriverTrack(d);
+                          return (
+                            <MenuItem
+                              key={d.id}
+                              value={d.id}
+                              sx={{ display: "block", py: 1 }}
+                            >
+                              <Typography variant="body2" fontWeight={600}>
+                                {d.name} ({d.driver_id})
+                              </Typography>
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                                display="block"
+                              >
+                                {track?.total_deliveries ?? 0} deliveries
+                              </Typography>
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                                display="block"
+                              >
+                                {track?.routes || "No route on file"}
+                              </Typography>
+                            </MenuItem>
+                          );
+                        })}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid size={{ xs: 12, sm: 3 }}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Emirates ID / CNIC"
+                      placeholder="Emirates ID / CNIC"
+                      value={c.clientReceiverId}
+                      onChange={(e) =>
+                        updateCollection(c._key, {
+                          clientReceiverId: e.target.value,
+                        })
+                      }
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, sm: 2 }}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Phone Number"
+                      placeholder="+971"
+                      value={c.clientReceiverMobile}
+                      onChange={(e) =>
+                        updateCollection(c._key, {
+                          clientReceiverMobile: e.target.value,
+                        })
+                      }
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, sm: 2 }}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Vehicle Plate No (Optional)"
+                      value={c.plateNo}
+                      onChange={(e) =>
+                        updateCollection(c._key, { plateNo: e.target.value })
+                      }
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, sm: 2 }}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      type="date"
+                      label="Delivery Date"
+                      InputLabelProps={{ shrink: true }}
+                      value={c.deliveryDate}
+                      onChange={(e) =>
+                        updateCollection(c._key, {
+                          deliveryDate: e.target.value,
+                        })
+                      }
+                    />
+                  </Grid>
+                </Grid>
+
                 {c.receiverId && (
                   <Box
                     sx={{
@@ -520,7 +770,8 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
                     <Box
                       sx={{
                         display: "grid",
-                        gridTemplateColumns: "32px 1.4fr 0.8fr 1fr 1fr 1.1fr",
+                        gridTemplateColumns:
+                          "32px 1.1fr 0.9fr 0.8fr 0.7fr 0.8fr 0.8fr 1fr 1.1fr",
                         gap: 1,
                         px: 1.5,
                         py: 1,
@@ -531,10 +782,13 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
                       {[
                         "",
                         "Item Ref",
+                        "Delivered Date",
+                        "Overstayed",
                         "Total Qty",
                         "Delivered Qty",
                         "Remaining Qty",
                         "Qty Delivered",
+                        "Action",
                       ].map((h, i) => (
                         <Typography
                           key={i}
@@ -573,13 +827,15 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
                         qtyDelivered: "",
                       };
 
+                      const overstayDays = getItemOverstayDays(item);
+
                       return (
                         <Box
                           key={item.itemRef}
                           sx={{
                             display: "grid",
                             gridTemplateColumns:
-                              "32px 1.4fr 0.8fr 1fr 1fr 1.1fr",
+                              "32px 1.1fr 0.9fr 0.8fr 0.7fr 0.8fr 0.8fr 1fr 1.1fr",
                             gap: 1,
                             alignItems: "center",
                             px: 1.5,
@@ -610,6 +866,18 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
                           <Typography variant="body2" fontWeight={600}>
                             {item.itemRef}
                           </Typography>
+                          <Typography variant="body2">
+                            {item.status === "Shipment Delivered"
+                              ? fmtShortDate(item.eta)
+                              : "—"}
+                          </Typography>
+                          <Typography
+                            variant="body2"
+                            fontWeight={700}
+                            color={overstayDays > 0 ? "#c0392b" : "#16a34a"}
+                          >
+                            {overstayDays > 0 ? `${overstayDays}d` : "—"}
+                          </Typography>
                           <Typography variant="body2">{total}</Typography>
                           <Typography variant="body2">{delivered}</Typography>
                           <Typography
@@ -635,68 +903,30 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
                               )
                             }
                           />
+                          <Button
+                            size="small"
+                            variant="contained"
+                            color="error"
+                            disabled={overstayDays <= 0 || !c.receiverId}
+                            onClick={() => {
+                              setInvoiceTarget({
+                                receiverId: c.receiverId,
+                                receiverName: receiver?.receiver_name,
+                                itemRef: item.itemRef,
+                                category: item.category,
+                                subcategory: item.subcategory,
+                                overstayDays,
+                              });
+                              setInvoiceModalOpen(true);
+                            }}
+                          >
+                            Create Invoice
+                          </Button>
                         </Box>
                       );
                     })}
                   </Box>
                 )}
-
-                <Grid container spacing={2} mt={2} mb={1}>
-                  <Grid size={{ xs: 12, sm: 3 }}>
-                    <TextField
-                      fullWidth
-                      size="small"
-                      label="Emirates ID / CNIC"
-                      placeholder="Emirates ID / CNIC"
-                      value={c.clientReceiverId}
-                      onChange={(e) =>
-                        updateCollection(c._key, {
-                          clientReceiverId: e.target.value,
-                        })
-                      }
-                    />
-                  </Grid>
-                  <Grid size={{ xs: 12, sm: 3 }}>
-                    <TextField
-                      fullWidth
-                      size="small"
-                      label="Phone Number"
-                      placeholder="+971"
-                      value={c.clientReceiverMobile}
-                      onChange={(e) =>
-                        updateCollection(c._key, {
-                          clientReceiverMobile: e.target.value,
-                        })
-                      }
-                    />
-                  </Grid>
-                  <Grid size={{ xs: 12, sm: 3 }}>
-                    <TextField
-                      fullWidth
-                      size="small"
-                      label="Vehicle Plate No (Optional)"
-                      value={c.plateNo}
-                      onChange={(e) =>
-                        updateCollection(c._key, { plateNo: e.target.value })
-                      }
-                    />
-                  </Grid>
-                  <Grid size={{ xs: 12, sm: 3 }}>
-                    <TextField
-                      fullWidth
-                      size="small"
-                      type="date"
-                      label="Delivery Date"
-                      InputLabelProps={{ shrink: true }}
-                      value={c.deliveryDate}
-                      onChange={(e) =>
-                        updateCollection(c._key, {
-                          deliveryDate: e.target.value,
-                        })
-                      }
-                    />
-                  </Grid>
-                </Grid>
 
                 <Box
                   sx={{
@@ -718,28 +948,61 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
                     >
                       Gatepass (Optional)
                     </Typography>
-                    <Button
-                      component="label"
-                      size="small"
-                      startIcon={<CloudUploadIcon />}
-                      sx={{
-                        borderColor: "#f58220",
-                        color: "#f58220",
-                        border: "1px solid #f58220",
-                      }}
-                    >
-                      Upload Gatepass
-                      <input
-                        type="file"
-                        hidden
-                        multiple
-                        accept="image/*"
-                        onChange={(e) =>
-                          handleGatepassUpload(c._key, e.target.files)
-                        }
-                      />
-                    </Button>
+                    <Stack direction="row" spacing={1}>
+                      <Button
+                        component="label"
+                        size="small"
+                        startIcon={<CloudUploadIcon />}
+                        sx={{
+                          borderColor: "#f58220",
+                          color: "#f58220",
+                          border: "1px solid #f58220",
+                        }}
+                      >
+                        Upload Gatepass
+                        <input
+                          type="file"
+                          hidden
+                          multiple
+                          accept="image/*"
+                          onChange={(e) =>
+                            handleGatepassUpload(c._key, e.target.files)
+                          }
+                        />
+                      </Button>
+                    </Stack>
                   </Stack>
+
+                  {c.gatepasses.length > 0 && (
+                    <Stack spacing={1} mt={1.5}>
+                      {c.gatepasses.map((g, i) => (
+                        <Box
+                          key={i}
+                          sx={{
+                            border: "1px solid #fbd9ae",
+                            bgcolor: "#fff",
+                            borderRadius: 1,
+                            p: 1,
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                          }}
+                        >
+                          <Typography variant="caption">
+                            <strong>{g.driverName}</strong> • {g.plateNo}
+                            {g.marksAndNumber ? ` • ${g.marksAndNumber}` : ""}
+                            {g.qty ? ` • ${g.qty} pkgs` : ""}
+                          </Typography>
+                          <IconButton
+                            size="small"
+                            onClick={() => removeDraftGatepass(c._key, i)}
+                          >
+                            <CloseIcon sx={{ fontSize: 14 }} />
+                          </IconButton>
+                        </Box>
+                      ))}
+                    </Stack>
+                  )}
 
                   {c.gatepassFiles.length > 0 ? (
                     <Stack direction="row" flexWrap="wrap" gap={1} mt={1.5}>
@@ -824,6 +1087,60 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
           {saving ? "Saving..." : "Save Collections"}
         </Button>
       </DialogActions>
+      <GatepassCreateModal
+        draft
+        open={draftGatepassModalOpen}
+        onClose={() => setDraftGatepassModalOpen(false)}
+        collection={collections.find((c) => c._key === draftGatepassTargetKey)}
+        order={order}
+        receiverName={
+          receivers.find(
+            (r) =>
+              r.id ===
+              collections.find((c) => c._key === draftGatepassTargetKey)
+                ?.receiverId,
+          )?.receiver_name
+        }
+        marksAndNumber={
+          receivers.find(
+            (r) =>
+              r.id ===
+              collections.find((c) => c._key === draftGatepassTargetKey)
+                ?.receiverId,
+          )?.marksAndNumber
+        }
+        customerContact={
+          receivers.find(
+            (r) =>
+              r.id ===
+              collections.find((c) => c._key === draftGatepassTargetKey)
+                ?.receiverId,
+          )?.receiver_contact
+        }
+        cargoDefaults={(() => {
+          const targetCollection = collections.find(
+            (c) => c._key === draftGatepassTargetKey,
+          );
+          const receiver = receivers.find(
+            (r) => r.id === targetCollection?.receiverId,
+          );
+          return computeCargoDefaults(receiver, targetCollection?.items);
+        })()}
+        onCreated={(gpData) => addDraftGatepass(draftGatepassTargetKey, gpData)}
+      />
+
+      <CreateInvoiceModal
+        open={invoiceModalOpen}
+        onClose={() => setInvoiceModalOpen(false)}
+        order={order}
+        receiverId={invoiceTarget?.receiverId}
+        receiverName={invoiceTarget?.receiverName}
+        itemRef={invoiceTarget?.itemRef}
+        category={invoiceTarget?.category}
+        subcategory={invoiceTarget?.subcategory}
+        overstayDays={invoiceTarget?.overstayDays}
+        onCreated={() => onSave?.()}
+      />
     </Dialog>
   );
 };

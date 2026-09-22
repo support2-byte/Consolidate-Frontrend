@@ -17,8 +17,6 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Snackbar,
-  Alert,
   CircularProgress,
   Stack,
   TablePagination,
@@ -26,14 +24,19 @@ import {
   InputAdornment,
   ToggleButton,
   ToggleButtonGroup,
+  useMediaQuery,
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import AddIcon from "@mui/icons-material/Add";
 import SyncIcon from "@mui/icons-material/Sync";
 import SearchIcon from "@mui/icons-material/Search";
+import UploadFileIcon from "@mui/icons-material/UploadFile";
+import Checkbox from "@mui/material/Checkbox";
+import CloseIconMui from "@mui/icons-material/Close";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import { toast } from "react-toastify";
 
 const TEAL = "#1a7a6e";
 const ORANGE = "#e07b2a";
@@ -47,11 +50,14 @@ export default function CrudPage({
   onDelete,
   onReloadZoho,
   typeField = "type",
+  enableImportFromDoc = false,
+  onImportComplete,
 }) {
   const isControlled = externalRows !== undefined;
   const [internalRows, setInternalRows] = useState([]);
   const [internalLoading, setInternalLoading] = useState(false);
   const [zohoSyncing, setZohoSyncing] = useState(false);
+  const fullScreenImportModal = useMediaQuery("(max-width:600px)");
 
   const rows = isControlled ? externalRows : internalRows;
   const loading = isControlled ? !!externalLoading : internalLoading;
@@ -62,17 +68,158 @@ export default function CrudPage({
   const [searchTerm, setSearchTerm] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
 
-  const [snackbar, setSnackbar] = useState({
-    open: false,
-    message: "",
-    severity: "success",
-  });
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleteId, setDeleteId] = useState(null);
   const navigate = useNavigate();
 
+  const [importDocModalOpen, setImportDocModalOpen] = useState(false);
+  const [importDocLoading, setImportDocLoading] = useState(false);
+  const [importCandidates, setImportCandidates] = useState([]);
+  const [selectedCandidateKeys, setSelectedCandidateKeys] = useState(new Set());
+  const [importSaving, setImportSaving] = useState(false);
+
+  const buildCandidateKey = (formId, kind, id) => `${formId}-${kind}-${id}`;
+
+  const normalize = (v) => (v || "").toString().trim().toLowerCase();
+
+  const openImportDocModal = async () => {
+    setImportDocModalOpen(true);
+    setSelectedCandidateKeys(new Set());
+    setImportDocLoading(true);
+    try {
+      const { data } = await api.get("/api/orders/booking/list");
+
+      const existingEmails = new Set(
+        (rows || []).map((c) => normalize(c.email)).filter(Boolean),
+      );
+      const existingPhones = new Set(
+        (rows || []).map((c) => normalize(c.phone_number)).filter(Boolean),
+      );
+
+      const candidates = [];
+      (data || []).forEach((form) => {
+        (form.senders || []).forEach((s) => {
+          const isExisting =
+            (s.email && existingEmails.has(normalize(s.email))) ||
+            (s.phone && existingPhones.has(normalize(s.phone)));
+          candidates.push({
+            key: buildCandidateKey(form.id, "sender", s.id),
+            formId: form.id,
+            formLabel: `${form.form_id} — ${form.company?.company || ""}`,
+            kind: "sender",
+            name: s.name || "",
+            email: s.email || "",
+            phone: s.phone || "",
+            address: s.address || "",
+            isExisting,
+          });
+        });
+        (form.receivers || []).forEach((r) => {
+          const isExisting =
+            (r.email && existingEmails.has(normalize(r.email))) ||
+            (r.phone && existingPhones.has(normalize(r.phone)));
+          candidates.push({
+            key: buildCandidateKey(form.id, "receiver", r.id),
+            formId: form.id,
+            formLabel: `${form.form_id} — ${form.company?.company || ""}`,
+            kind: "receiver",
+            name: r.name || "",
+            email: r.email || "",
+            phone: r.phone || "",
+            address: r.address || "",
+            isExisting,
+          });
+        });
+      });
+      setImportCandidates(candidates);
+    } catch (err) {
+      console.error(
+        "[openImportDocModal] Error:",
+        err.response?.data || err.message,
+      );
+      showToast(
+        err.response?.data?.error || "Failed to fetch booking forms",
+        "error",
+      );
+    } finally {
+      setImportDocLoading(false);
+    }
+  };
+
+  const closeImportDocModal = () => {
+    setImportDocModalOpen(false);
+    setImportCandidates([]);
+    setSelectedCandidateKeys(new Set());
+  };
+
+  const toggleCandidate = (key) => {
+    const candidate = importCandidates.find((c) => c.key === key);
+    if (candidate?.isExisting) return;
+    setSelectedCandidateKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    const selectableKeys = importCandidates
+      .filter((c) => !c.isExisting)
+      .map((c) => c.key);
+    setSelectedCandidateKeys((prev) =>
+      prev.size === selectableKeys.length ? new Set() : new Set(selectableKeys),
+    );
+  };
+
+  const handleImportSelected = async () => {
+    const selected = importCandidates.filter((c) =>
+      selectedCandidateKeys.has(c.key),
+    );
+    if (!selected.length) return;
+
+    setImportSaving(true);
+    try {
+      const payload = {
+        customers: selected.map((c) => ({
+          name: c.name,
+          email: c.email,
+          phone: c.phone,
+          address: c.address,
+          contact_type: "customer",
+          type: c.kind,
+        })),
+      };
+      const { data } = await api.post(
+        "/api/customers/import-from-doc",
+        payload,
+      );
+      showToast(
+        `Imported ${data.imported} customer(s) successfully!`,
+        "success",
+      );
+      closeImportDocModal();
+      if (onImportComplete) {
+        onImportComplete();
+      } else if (!isControlled) {
+        await load();
+      }
+    } catch (err) {
+      console.error(
+        "[handleImportSelected] Error:",
+        err.response?.data || err.message,
+      );
+      showToast(
+        err.response?.data?.error || "Failed to import customers",
+        "error",
+      );
+    } finally {
+      setImportSaving(false);
+    }
+  };
+
   const showToast = (message, severity = "success") => {
-    setSnackbar({ open: true, message, severity });
+    toast[severity] ? toast[severity](message) : toast(message);
   };
 
   const load = async () => {
@@ -147,8 +294,6 @@ export default function CrudPage({
   };
 
   const handleTypeFilterChange = (_e, newValue) => {
-    // ToggleButtonGroup fires null when clicking the already-selected button;
-    // keep the current selection in that case instead of clearing it.
     if (newValue !== null) {
       setTypeFilter(newValue);
       setPage(0);
@@ -200,14 +345,27 @@ export default function CrudPage({
           gap: 1.5,
         }}
       >
-        <Typography
-          variant="h5"
-          sx={{ fontWeight: 700, color: ORANGE, letterSpacing: -0.5 }}
-        >
+        <Typography variant="h4" fontWeight="bold" color="#f58220">
           {title}
         </Typography>
 
         <Stack direction="row" spacing={1.5}>
+          {enableImportFromDoc && (
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<UploadFileIcon />}
+              onClick={openImportDocModal}
+              sx={{
+                borderColor: ORANGE,
+                color: ORANGE,
+                fontWeight: 600,
+                "&:hover": { borderColor: ORANGE, bgcolor: "#fdf1e7" },
+              }}
+            >
+              Import from Doc
+            </Button>
+          )}
           <Button
             variant="outlined"
             size="small"
@@ -450,6 +608,307 @@ export default function CrudPage({
         rowsPerPageOptions={[10, 20, 50, 100]}
       />
 
+      {enableImportFromDoc && (
+        <Dialog
+          open={importDocModalOpen}
+          onClose={closeImportDocModal}
+          maxWidth="sm"
+          fullWidth
+          fullScreen={fullScreenImportModal}
+          PaperProps={{
+            sx: {
+              borderRadius: fullScreenImportModal ? 0 : 3,
+              overflow: "hidden",
+            },
+          }}
+        >
+          <Box
+            sx={{
+              position: "sticky",
+              top: 0,
+              zIndex: 1,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              px: 3,
+              py: 2,
+              borderBottom: "1px solid",
+              borderColor: "divider",
+              bgcolor: "background.paper",
+            }}
+          >
+            <Box sx={{ minWidth: 0 }}>
+              <Typography variant="subtitle1" fontWeight={700} noWrap>
+                Import from Booking Forms
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Sender &amp; receiver contacts found on submitted forms
+              </Typography>
+            </Box>
+            <IconButton onClick={closeImportDocModal} size="small" edge="end">
+              <CloseIconMui fontSize="small" />
+            </IconButton>
+          </Box>
+
+          <DialogContent sx={{ p: 0 }}>
+            {importDocLoading && (
+              <Box
+                sx={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  py: 8,
+                }}
+              >
+                <CircularProgress size={26} sx={{ color: TEAL, mb: 2 }} />
+                <Typography variant="body2" color="text.secondary">
+                  Loading booking forms…
+                </Typography>
+              </Box>
+            )}
+
+            {!importDocLoading && importCandidates.length === 0 && (
+              <Box sx={{ py: 8, textAlign: "center", px: 3 }}>
+                <Typography variant="body2" color="text.secondary">
+                  No sender/receiver data found on any booking form.
+                </Typography>
+              </Box>
+            )}
+
+            {!importDocLoading && importCandidates.length > 0 && (
+              <>
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    px: 2,
+                    py: 1,
+                    bgcolor: "grey.50",
+                    borderBottom: "1px solid",
+                    borderColor: "divider",
+                  }}
+                >
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Checkbox
+                      size="small"
+                      checked={
+                        selectedCandidateKeys.size > 0 &&
+                        selectedCandidateKeys.size ===
+                          importCandidates.filter((c) => !c.isExisting).length
+                      }
+                      indeterminate={
+                        selectedCandidateKeys.size > 0 &&
+                        selectedCandidateKeys.size <
+                          importCandidates.filter((c) => !c.isExisting).length
+                      }
+                      disabled={importCandidates.every((c) => c.isExisting)}
+                      onChange={toggleSelectAll}
+                    />
+                    <Typography
+                      variant="body2"
+                      fontWeight={600}
+                      sx={{ cursor: "pointer" }}
+                      onClick={toggleSelectAll}
+                    >
+                      Select all (
+                      {importCandidates.filter((c) => !c.isExisting).length}{" "}
+                      new)
+                    </Typography>
+                  </Stack>
+                  <Typography variant="caption" color="text.secondary">
+                    {selectedCandidateKeys.size} selected
+                  </Typography>
+                </Box>
+
+                <Box
+                  sx={{ maxHeight: { xs: "60vh", sm: 420 }, overflowY: "auto" }}
+                >
+                  {importCandidates.map((c) => {
+                    const checked = selectedCandidateKeys.has(c.key);
+                    const disabled = !!c.isExisting;
+                    const initial = (c.name || "?")
+                      .trim()
+                      .charAt(0)
+                      .toUpperCase();
+                    return (
+                      <Box
+                        key={c.key}
+                        onClick={() => toggleCandidate(c.key)}
+                        sx={{
+                          display: "flex",
+                          alignItems: "flex-start",
+                          gap: 1.5,
+                          px: 2,
+                          py: 1.5,
+                          borderBottom: "1px solid",
+                          borderColor: "divider",
+                          cursor: disabled ? "not-allowed" : "pointer",
+                          opacity: disabled ? 0.55 : 1,
+                          bgcolor: checked
+                            ? "rgba(26,122,110,0.06)"
+                            : "transparent",
+                          "&:hover": {
+                            bgcolor: disabled
+                              ? "transparent"
+                              : checked
+                                ? "rgba(26,122,110,0.1)"
+                                : "grey.50",
+                          },
+                        }}
+                      >
+                        <Checkbox
+                          size="small"
+                          checked={checked}
+                          disabled={disabled}
+                          onChange={() => toggleCandidate(c.key)}
+                          onClick={(e) => e.stopPropagation()}
+                          sx={{ mt: 0.5 }}
+                        />
+
+                        <Box
+                          sx={{
+                            width: 36,
+                            height: 36,
+                            flexShrink: 0,
+                            borderRadius: "50%",
+                            bgcolor: c.kind === "sender" ? "#e07b2a" : TEAL,
+                            color: "#fff",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontWeight: 700,
+                            fontSize: 14,
+                            mt: 0.5,
+                            filter: disabled ? "grayscale(1)" : "none",
+                          }}
+                        >
+                          {initial}
+                        </Box>
+
+                        <Box sx={{ minWidth: 0, flex: 1 }}>
+                          <Stack
+                            direction="row"
+                            spacing={1}
+                            alignItems="center"
+                            flexWrap="wrap"
+                            sx={{ mb: 0.25 }}
+                          >
+                            <Typography variant="body2" fontWeight={600} noWrap>
+                              {c.name || "—"}
+                            </Typography>
+                            <Box
+                              sx={{
+                                px: 0.9,
+                                py: 0.1,
+                                borderRadius: 1,
+                                fontSize: 11,
+                                fontWeight: 700,
+                                textTransform: "uppercase",
+                                letterSpacing: 0.3,
+                                color: c.kind === "sender" ? "#e07b2a" : TEAL,
+                                bgcolor:
+                                  c.kind === "sender"
+                                    ? "rgba(224,123,42,0.1)"
+                                    : "rgba(26,122,110,0.1)",
+                              }}
+                            >
+                              {c.kind}
+                            </Box>
+                            {disabled && (
+                              <Box
+                                sx={{
+                                  px: 0.9,
+                                  py: 0.1,
+                                  borderRadius: 1,
+                                  fontSize: 11,
+                                  fontWeight: 700,
+                                  color: "#666",
+                                  bgcolor: "grey.200",
+                                }}
+                              >
+                                Already a customer
+                              </Box>
+                            )}
+                          </Stack>
+
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            component="div"
+                            noWrap
+                          >
+                            {[c.email, c.phone].filter(Boolean).join("  ·  ") ||
+                              "No contact info"}
+                          </Typography>
+                          {c.address && (
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                              component="div"
+                              noWrap
+                            >
+                              {c.address}
+                            </Typography>
+                          )}
+                          <Typography
+                            variant="caption"
+                            color="text.disabled"
+                            component="div"
+                            noWrap
+                            sx={{ mt: 0.25 }}
+                          >
+                            {c.formLabel}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    );
+                  })}
+                </Box>
+              </>
+            )}
+          </DialogContent>
+
+          <DialogActions
+            sx={{
+              p: 2,
+              borderTop: "1px solid",
+              borderColor: "divider",
+              position: "sticky",
+              bottom: 0,
+              bgcolor: "background.paper",
+            }}
+          >
+            <Button onClick={closeImportDocModal} sx={{ color: "#666" }}>
+              Cancel
+            </Button>
+            <Button
+              variant="contained"
+              disabled={selectedCandidateKeys.size === 0 || importSaving}
+              onClick={handleImportSelected}
+              startIcon={
+                importSaving ? (
+                  <CircularProgress size={16} sx={{ color: "#fff" }} />
+                ) : null
+              }
+              sx={{
+                bgcolor: TEAL,
+                fontWeight: 600,
+                borderRadius: 2,
+                textTransform: "none",
+                "&:hover": { bgcolor: "#155f55" },
+              }}
+            >
+              Import{" "}
+              {selectedCandidateKeys.size > 0
+                ? `(${selectedCandidateKeys.size})`
+                : ""}
+            </Button>
+          </DialogActions>
+        </Dialog>
+      )}
+
       <Dialog
         open={confirmOpen}
         onClose={() => setConfirmOpen(false)}
@@ -473,22 +932,6 @@ export default function CrudPage({
           </Button>
         </DialogActions>
       </Dialog>
-
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={3000}
-        onClose={() => setSnackbar({ ...snackbar, open: false })}
-        anchorOrigin={{ vertical: "top", horizontal: "center" }}
-      >
-        <Alert
-          onClose={() => setSnackbar({ ...snackbar, open: false })}
-          severity={snackbar.severity}
-          variant="filled"
-          sx={{ width: "100%" }}
-        >
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
     </Box>
   );
 }

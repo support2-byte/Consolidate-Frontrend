@@ -14,8 +14,6 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Snackbar,
-  Alert,
   CircularProgress,
   TextField,
   TablePagination,
@@ -27,6 +25,7 @@ import dayjs from "dayjs";
 import { api } from "../../api";
 import { useAuth } from "../../context/AuthContext";
 import { data } from "react-router-dom";
+import { toast } from "react-toastify";
 
 const StyledTableRow = styled(TableRow)(({ theme }) => ({
   "&:nth-of-type(odd)": {
@@ -61,12 +60,6 @@ export default function ContainerReleases() {
 
   const [releaseDate, setReleaseDate] = useState(dayjs().format("YYYY-MM-DD"));
 
-  const [snackbar, setSnackbar] = useState({
-    open: false,
-    message: "",
-    severity: "success",
-  });
-
   const getAssignments = useCallback(async () => {
     try {
       setLoading(true);
@@ -77,11 +70,7 @@ export default function ContainerReleases() {
     } catch (err) {
       console.error(err);
 
-      setSnackbar({
-        open: true,
-        severity: "error",
-        message: "Failed to load container assignments",
-      });
+      toast.error("Failed to load container assignments");
     } finally {
       setLoading(false);
     }
@@ -101,11 +90,7 @@ export default function ContainerReleases() {
     if (!selectedAssignment) return;
 
     if (!releaseDate) {
-      setSnackbar({
-        open: true,
-        severity: "error",
-        message: "Please select a release date",
-      });
+      toast.error("Please select a release date");
       return;
     }
 
@@ -118,11 +103,7 @@ export default function ContainerReleases() {
         },
       );
 
-      setSnackbar({
-        open: true,
-        severity: "success",
-        message: "Container released successfully",
-      });
+      toast.success("Container released successfully");
 
       setOpenReleaseDialog(false);
       setSelectedAssignment(null);
@@ -131,11 +112,7 @@ export default function ContainerReleases() {
     } catch (err) {
       console.error(err);
 
-      setSnackbar({
-        open: true,
-        severity: "error",
-        message: err.response?.data?.message || "Failed to release container",
-      });
+      toast.error(err.response?.data?.message || "Failed to release container");
     }
   };
 
@@ -364,19 +341,6 @@ export default function ContainerReleases() {
           </Button>
         </DialogActions>
       </Dialog>
-
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={4000}
-        onClose={() =>
-          setSnackbar({
-            ...snackbar,
-            open: false,
-          })
-        }
-      >
-        <Alert severity={snackbar.severity}>{snackbar.message}</Alert>
-      </Snackbar>
     </Paper>
   );
 }
