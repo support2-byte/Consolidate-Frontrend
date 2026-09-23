@@ -238,12 +238,10 @@ const InvoicesPage = () => {
         />
       );
     }
-    if (
-      ["amount", "subtotal", "baseRate"].includes(key) &&
-      value !== null &&
-      value !== undefined
-    ) {
-      return <Typography variant="body2">{formatCurrency(value)}</Typography>;
+    if (key === "storageType") {
+      return (
+        <Typography variant="body2">{formatLabel(value) || "—"}</Typography>
+      );
     }
     if (value === null || value === undefined || value === "") {
       return (
@@ -413,7 +411,7 @@ const InvoicesPage = () => {
                       )}
                       {currentTab.key === "storage" && (
                         <TableCell sx={{ whiteSpace: "nowrap" }}>
-                          {row.storageType || "—"}
+                          {formatLabel(row.storageType) || "—"}
                         </TableCell>
                       )}
                       <TableCell sx={{ whiteSpace: "nowrap" }} align="right">

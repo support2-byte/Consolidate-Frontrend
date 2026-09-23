@@ -30,6 +30,7 @@ export async function generateInvoicePDF({
   taxPercent,
   subtotal,
   total,
+  discount,
   invoiceDate,
   download = true,
 }) {
@@ -219,6 +220,11 @@ export async function generateInvoicePDF({
   doc.setFont("helvetica", "normal").setFontSize(8.5).setTextColor(40, 40, 40);
   doc.text("Subtotal", margin, y);
   doc.text(`${Number(subtotal ?? 0).toFixed(2)} AED`, pageWidth - margin, y, {
+    align: "right",
+  });
+  y += 5;
+  doc.text("Discount", margin, y);
+  doc.text(`${Number(discount ?? 0).toFixed(2)} AED`, pageWidth - margin, y, {
     align: "right",
   });
   y += 5;

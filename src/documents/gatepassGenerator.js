@@ -139,14 +139,13 @@ export async function generateGatepassPDF({
   ry = drawMetaRow(doc, rightX, ry, "Driver Contact", driverContact);
   ry = drawMetaRow(doc, rightX, ry, "Driver NIC", driverId);
   ry = drawMetaRow(doc, rightX, ry, "Truck No", plateNo);
-  ry = drawMetaRow(doc, rightX, ry, "Pick Up Loc.", pickupLocation);
 
   y = Math.max(ly, ry) + 4;
 
   doc.setFillColor(240, 240, 240);
   doc.rect(margin, y, contentWidth, 7, "F");
   doc.setFont("helvetica", "bold").setFontSize(8.5).setTextColor(20, 20, 20);
-  doc.text("Bill To", margin + 3, y + 4.8);
+  doc.text("Gatepass To", margin + 3, y + 4.8);
   y += 12;
 
   doc.setFont("helvetica", "bold").setFontSize(11).setTextColor(192, 57, 43);

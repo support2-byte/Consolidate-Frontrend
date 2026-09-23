@@ -28,6 +28,7 @@ import {
   Grow,
   Fade,
   Zoom,
+  Grid,
 } from "@mui/material";
 import SaveIcon from "@mui/icons-material/Save";
 import AddIcon from "@mui/icons-material/Add";
@@ -40,6 +41,7 @@ import TollIcon from "@mui/icons-material/Toll";
 import CloseIcon from "@mui/icons-material/Close";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
+import EditIcon from "@mui/icons-material/Edit";
 import { toast } from "react-toastify";
 import { api } from "../../api";
 import { AppContext } from "../../context/AppContext";
@@ -90,8 +92,10 @@ export default function SystemRatesPage() {
   const [search, setSearch] = useState("");
   const [order, setOrder] = useState("asc");
   const [orderBy, setOrderBy] = useState("label");
-  const [collapsed, setCollapsed] = useState({}); // { [category]: true } = collapsed
+  const [collapsed, setCollapsed] = useState({});
   const [newVar, setNewVar] = useState(emptyNewVar);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editRow, setEditRow] = useState(null);
 
   const handleChange = (id, value) => setDirty((d) => ({ ...d, [id]: value }));
   const hasChanges = Object.keys(dirty).length > 0;
@@ -111,7 +115,6 @@ export default function SystemRatesPage() {
       .sort();
   }, [settings]);
 
-  // merge dirty values, apply search, then group by category, then sort within each group
   const grouped = useMemo(() => {
     const merged = settings.map((s) => ({
       ...s,
@@ -142,7 +145,7 @@ export default function SystemRatesPage() {
       );
     });
 
-    return map; // { [category]: rows[] }
+    return map;
   }, [settings, dirty, search, order, orderBy]);
 
   const handleSaveAll = async () => {
@@ -178,6 +181,39 @@ export default function SystemRatesPage() {
     }
   };
 
+  const openEdit = (row) => {
+    setEditRow({ ...row });
+    setEditOpen(true);
+  };
+
+  const handleSaveEdit = async () => {
+    try {
+      const { data } = await api.put("/api/options/system-settings", {
+        settings: [
+          {
+            id: editRow.id,
+            label: editRow.label,
+            value: editRow.value,
+            unit: editRow.unit,
+            category: editRow.category,
+            description: editRow.description,
+          },
+        ],
+      });
+      const updatedMap = new Map(data.data.map((row) => [row.id, row]));
+      setSettings((prev) => prev.map((s) => updatedMap.get(s.id) ?? s));
+      setDirty((d) => {
+        const { [editRow.id]: _, ...rest } = d;
+        return rest;
+      });
+      setEditOpen(false);
+      setEditRow(null);
+      toast.success(data.message || "Variable updated");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to update variable");
+    }
+  };
+
   const handleDelete = async (id) => {
     if (!window.confirm("Remove this variable? This cannot be undone.")) return;
     try {
@@ -199,8 +235,9 @@ export default function SystemRatesPage() {
       new Date(s.updated_at) > new Date(max.updated_at) ? s : max,
     );
     return new Date(latest.updated_at).toLocaleString(undefined, {
-      month: "short",
       day: "numeric",
+      month: "short",
+      year: "numeric",
       hour: "2-digit",
       minute: "2-digit",
     });
@@ -214,31 +251,18 @@ export default function SystemRatesPage() {
   ];
 
   return (
-    <Box sx={{ p: { xs: 2, md: 4 }, maxWidth: 1100, mx: "auto" }}>
-      {/* Header */}
+    <Box sx={{ p: { xs: 2, md: 4 }, maxWidth: 1400, mx: "auto" }}>
       <Box
         sx={{
           borderRadius: 4,
           p: { xs: 3, md: 4 },
           mb: 3,
-          background:
-            "linear-gradient(135deg, #1e293b 0%, #334155 60%, #0f172a 100%)",
+          background: "#0d6c6a",
           color: "#fff",
           position: "relative",
           overflow: "hidden",
         }}
       >
-        <Box
-          sx={{
-            position: "absolute",
-            top: -40,
-            right: -40,
-            width: 180,
-            height: 180,
-            borderRadius: "50%",
-            background: "rgba(255,255,255,0.06)",
-          }}
-        />
         <Stack
           direction={{ xs: "column", sm: "row" }}
           justifyContent="space-between"
@@ -248,7 +272,7 @@ export default function SystemRatesPage() {
         >
           <Box>
             <Stack direction="row" alignItems="center" spacing={1.5}>
-              <Avatar sx={{ bgcolor: "rgba(255,255,255,0.15)" }}>
+              <Avatar sx={{ bgcolor: "#e07b2a" }}>
                 <TuneIcon />
               </Avatar>
               <Box>
@@ -256,7 +280,7 @@ export default function SystemRatesPage() {
                   System Variables
                 </Typography>
                 <Typography variant="body2" sx={{ opacity: 0.75 }}>
-                  Rates, distances, durations, taxes — any global variable used
+                  Rates, distances, durations, taxes, any global variable used
                   across Consolidate.
                 </Typography>
               </Box>
@@ -330,7 +354,6 @@ export default function SystemRatesPage() {
         </Stack>
       </Box>
 
-      {/* Search only — no tabs anymore, every category renders as its own section */}
       <TextField
         placeholder="Search variables by name or key..."
         size="small"
@@ -371,166 +394,176 @@ export default function SystemRatesPage() {
           </Typography>
         </Paper>
       ) : (
-        <Stack spacing={3} sx={{ pb: hasChanges ? 10 : 2 }}>
+        <Grid container spacing={3} sx={{ pb: hasChanges ? 10 : 2 }}>
           {Object.keys(grouped)
             .sort()
             .map((cat) => {
               const rows = grouped[cat];
               const isCollapsed = !!collapsed[cat];
               return (
-                <Paper
-                  key={cat}
-                  variant="outlined"
-                  sx={{ borderRadius: 3, overflow: "hidden" }}
-                >
-                  {/* Section header */}
-                  <Box
-                    onClick={() => toggleCollapsed(cat)}
-                    sx={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      px: 3,
-                      py: 2,
-                      bgcolor: "action.hover",
-                      cursor: "pointer",
-                      userSelect: "none",
-                    }}
+                <Grid size={{ md: 6, xs: 12 }}>
+                  <Paper
+                    key={cat}
+                    variant="outlined"
+                    sx={{ borderRadius: 3, overflow: "hidden" }}
                   >
-                    <Stack direction="row" alignItems="center" spacing={1.5}>
-                      <Chip
-                        label={cat}
-                        size="small"
-                        color={categoryColor(cat)}
-                        sx={{ textTransform: "capitalize", fontWeight: 700 }}
-                      />
-                      <Typography variant="body2" color="text.secondary">
-                        {rows.length} variable{rows.length !== 1 ? "s" : ""}
-                      </Typography>
-                    </Stack>
-                    <IconButton size="small">
-                      {isCollapsed ? <ExpandMoreIcon /> : <ExpandLessIcon />}
-                    </IconButton>
-                  </Box>
+                    <Box
+                      onClick={() => toggleCollapsed(cat)}
+                      sx={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        px: 3,
+                        py: 2,
+                        bgcolor: "action.hover",
+                        cursor: "pointer",
+                        userSelect: "none",
+                      }}
+                    >
+                      <Stack direction="row" alignItems="center" spacing={1.5}>
+                        <Chip
+                          label={cat}
+                          size="small"
+                          color={categoryColor(cat)}
+                          sx={{ textTransform: "capitalize", fontWeight: 700 }}
+                        />
+                        <Typography variant="body2" color="text.secondary">
+                          {rows.length} variable{rows.length !== 1 ? "s" : ""}
+                        </Typography>
+                      </Stack>
+                      <IconButton size="small">
+                        {isCollapsed ? <ExpandMoreIcon /> : <ExpandLessIcon />}
+                      </IconButton>
+                    </Box>
 
-                  {/* Section table */}
-                  <Collapse in={!isCollapsed}>
-                    <TableContainer>
-                      <Table>
-                        <TableHead>
-                          <TableRow>
-                            {columns.map((col) => (
-                              <TableCell key={col.id}>
-                                {col.sortable === false ? (
-                                  col.label
-                                ) : (
-                                  <TableSortLabel
-                                    active={orderBy === col.id}
-                                    direction={
-                                      orderBy === col.id ? order : "asc"
-                                    }
-                                    onClick={() => handleSort(col.id)}
-                                  >
-                                    <Typography
-                                      variant="caption"
-                                      fontWeight={700}
+                    <Collapse in={!isCollapsed}>
+                      <TableContainer>
+                        <Table>
+                          <TableHead>
+                            <TableRow>
+                              {columns.map((col) => (
+                                <TableCell key={col.id}>
+                                  {col.sortable === false ? (
+                                    col.label
+                                  ) : (
+                                    <TableSortLabel
+                                      active={orderBy === col.id}
+                                      direction={
+                                        orderBy === col.id ? order : "asc"
+                                      }
+                                      onClick={() => handleSort(col.id)}
                                     >
-                                      {col.label.toUpperCase()}
-                                    </Typography>
-                                  </TableSortLabel>
-                                )}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          {rows.map((s) => (
-                            <Grow in key={s.id} timeout={250}>
-                              <TableRow
-                                hover
-                                sx={{
-                                  transition: "background-color 0.2s",
-                                  bgcolor: s._edited ? "warning.50" : "inherit",
-                                }}
-                              >
-                                <TableCell>
-                                  <Box>
-                                    <Typography
-                                      variant="body2"
-                                      fontWeight={600}
-                                    >
-                                      {s.label}
-                                    </Typography>
+                                      <Typography
+                                        variant="caption"
+                                        fontWeight={700}
+                                      >
+                                        {col.label.toUpperCase()}
+                                      </Typography>
+                                    </TableSortLabel>
+                                  )}
+                                </TableCell>
+                              ))}
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {rows.map((s) => (
+                              <Grow in key={s.id} timeout={250}>
+                                <TableRow
+                                  hover
+                                  sx={{
+                                    transition: "background-color 0.2s",
+                                    bgcolor: s._edited
+                                      ? "warning.50"
+                                      : "inherit",
+                                  }}
+                                >
+                                  <TableCell>
+                                    <Box>
+                                      <Typography
+                                        variant="body2"
+                                        fontWeight={600}
+                                      >
+                                        {s.label}
+                                      </Typography>
+                                      <Typography
+                                        variant="caption"
+                                        color="text.secondary"
+                                        sx={{ fontFamily: "monospace" }}
+                                      >
+                                        {s.key}
+                                      </Typography>
+                                    </Box>
+                                  </TableCell>
+
+                                  <TableCell>
+                                    <TextField
+                                      size="small"
+                                      type="number"
+                                      value={dirty[s.id] ?? s.value}
+                                      onChange={(e) =>
+                                        handleChange(s.id, e.target.value)
+                                      }
+                                      sx={{ width: 140 }}
+                                      InputProps={{
+                                        endAdornment: s.unit ? (
+                                          <InputAdornment position="end">
+                                            {s.unit}
+                                          </InputAdornment>
+                                        ) : null,
+                                      }}
+                                    />
+                                  </TableCell>
+
+                                  <TableCell>
                                     <Typography
                                       variant="caption"
                                       color="text.secondary"
-                                      sx={{ fontFamily: "monospace" }}
                                     >
-                                      {s.key}
+                                      {s.updated_at
+                                        ? new Date(
+                                            s.updated_at,
+                                          ).toLocaleDateString(undefined, {
+                                            month: "short",
+                                            year: "numeric",
+                                            day: "numeric",
+                                          })
+                                        : "—"}
                                     </Typography>
-                                  </Box>
-                                </TableCell>
+                                  </TableCell>
 
-                                <TableCell>
-                                  <TextField
-                                    size="small"
-                                    type="number"
-                                    value={dirty[s.id] ?? s.value}
-                                    onChange={(e) =>
-                                      handleChange(s.id, e.target.value)
-                                    }
-                                    sx={{ width: 140 }}
-                                    InputProps={{
-                                      endAdornment: s.unit ? (
-                                        <InputAdornment position="end">
-                                          {s.unit}
-                                        </InputAdornment>
-                                      ) : null,
-                                    }}
-                                  />
-                                </TableCell>
-
-                                <TableCell>
-                                  <Typography
-                                    variant="caption"
-                                    color="text.secondary"
-                                  >
-                                    {s.updated_at
-                                      ? new Date(
-                                          s.updated_at,
-                                        ).toLocaleDateString(undefined, {
-                                          month: "short",
-                                          day: "numeric",
-                                        })
-                                      : "—"}
-                                  </Typography>
-                                </TableCell>
-
-                                <TableCell align="right">
-                                  <Tooltip title="Remove this variable">
-                                    <IconButton
-                                      size="small"
-                                      color="error"
-                                      onClick={() => handleDelete(s.id)}
-                                    >
-                                      <DeleteIcon fontSize="small" />
-                                    </IconButton>
-                                  </Tooltip>
-                                </TableCell>
-                              </TableRow>
-                            </Grow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </TableContainer>
-                  </Collapse>
-                </Paper>
+                                  <TableCell align="right">
+                                    <Tooltip title="Edit this variable">
+                                      <IconButton
+                                        size="small"
+                                        onClick={() => openEdit(s)}
+                                      >
+                                        <EditIcon fontSize="small" />
+                                      </IconButton>
+                                    </Tooltip>
+                                    <Tooltip title="Remove this variable">
+                                      <IconButton
+                                        size="small"
+                                        color="error"
+                                        onClick={() => handleDelete(s.id)}
+                                      >
+                                        <DeleteIcon fontSize="small" />
+                                      </IconButton>
+                                    </Tooltip>
+                                  </TableCell>
+                                </TableRow>
+                              </Grow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    </Collapse>
+                  </Paper>
+                </Grid>
               );
             })}
-        </Stack>
+        </Grid>
       )}
 
-      {/* Floating save bar */}
       <Fade in={hasChanges}>
         <Box
           sx={{
@@ -579,7 +612,6 @@ export default function SystemRatesPage() {
         </Box>
       </Fade>
 
-      {/* Add variable dialog */}
       <Dialog
         open={addOpen}
         onClose={() => setAddOpen(false)}
@@ -672,6 +704,98 @@ export default function SystemRatesPage() {
           </Button>
         </DialogActions>
       </Dialog>
+      {editRow && (
+        <Dialog
+          open={editOpen}
+          onClose={() => setEditOpen(false)}
+          fullWidth
+          maxWidth="xs"
+          TransitionComponent={Zoom}
+        >
+          <DialogTitle
+            sx={{ display: "flex", justifyContent: "space-between" }}
+          >
+            Edit Variable
+            <IconButton size="small" onClick={() => setEditOpen(false)}>
+              <CloseIcon fontSize="small" />
+            </IconButton>
+          </DialogTitle>
+          <DialogContent>
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <TextField
+                label="Key"
+                value={editRow.key}
+                fullWidth
+                disabled
+                helperText="Key can't be changed after creation"
+              />
+              <Autocomplete
+                freeSolo
+                options={categories}
+                value={editRow.category}
+                onInputChange={(_, val) =>
+                  setEditRow((v) => ({ ...v, category: val }))
+                }
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Category"
+                    placeholder="e.g. rates, pickup_zone, tax..."
+                  />
+                )}
+              />
+              <TextField
+                label="Display Label"
+                value={editRow.label}
+                onChange={(e) =>
+                  setEditRow((v) => ({ ...v, label: e.target.value }))
+                }
+                fullWidth
+              />
+              <Stack direction="row" spacing={2}>
+                <TextField
+                  label="Value"
+                  type="number"
+                  value={editRow.value}
+                  onChange={(e) =>
+                    setEditRow((v) => ({ ...v, value: e.target.value }))
+                  }
+                  fullWidth
+                />
+                <TextField
+                  label="Unit"
+                  value={editRow.unit || ""}
+                  onChange={(e) =>
+                    setEditRow((v) => ({ ...v, unit: e.target.value }))
+                  }
+                  placeholder="USD, km, hrs, %"
+                  fullWidth
+                />
+              </Stack>
+              <TextField
+                label="Description"
+                value={editRow.description || ""}
+                onChange={(e) =>
+                  setEditRow((v) => ({ ...v, description: e.target.value }))
+                }
+                multiline
+                rows={2}
+                fullWidth
+              />
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setEditOpen(false)}>Cancel</Button>
+            <Button
+              variant="contained"
+              disabled={!editRow.label || !editRow.category}
+              onClick={handleSaveEdit}
+            >
+              Save Changes
+            </Button>
+          </DialogActions>
+        </Dialog>
+      )}
     </Box>
   );
 }

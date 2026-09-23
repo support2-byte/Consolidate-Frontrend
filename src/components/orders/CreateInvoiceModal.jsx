@@ -44,6 +44,7 @@ const CreateInvoiceModal = ({
   const [taxPercent, setTaxPercent] = useState(
     getSystemRate("tax", DEFAULT_TAX_PERCENT),
   );
+  const [discount, setDistount] = useState(0);
   const [creating, setCreating] = useState(false);
   const [createdInvoice, setCreatedInvoice] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
@@ -62,7 +63,7 @@ const CreateInvoiceModal = ({
   const invoiceId = `INV-${generateFormSeed()}`;
   const subtotal = (Number(baseRate) || 0) * (Number(overstayDays) || 0);
   const taxAmount = subtotal * ((Number(taxPercent) || 0) / 100);
-  const total = subtotal + taxAmount;
+  const total = subtotal + taxAmount - discount;
 
   const buildPreview = async () => {
     if (!open) return;
@@ -79,6 +80,7 @@ const CreateInvoiceModal = ({
         taxPercent,
         subtotal,
         total,
+        discount,
         invoiceDate:
           createdInvoice?.createdAt || createdInvoice?.created_at || new Date(),
         dueDate: createdInvoice?.dueAt || createdInvoice?.due_at,
@@ -107,6 +109,7 @@ const CreateInvoiceModal = ({
     open,
     baseRate,
     taxPercent,
+    discount,
     overstayDays,
     receiverName,
     category,
@@ -135,6 +138,7 @@ const CreateInvoiceModal = ({
         taxPercent: Number(taxPercent) || 0,
         subtotal: Number(subtotal.toFixed(2)),
         total: Number(total.toFixed(2)),
+        discount: Number(discount.toFixed(2)),
       });
       setCreatedInvoice(data.invoice);
       toast.success("Invoice created and notification queued");
@@ -160,6 +164,7 @@ const CreateInvoiceModal = ({
         taxPercent,
         subtotal,
         total,
+        discount,
         invoiceDate:
           createdInvoice.createdAt || createdInvoice.created_at || new Date(),
         dueDate: createdInvoice.dueAt || createdInvoice.due_at,
@@ -259,6 +264,16 @@ const CreateInvoiceModal = ({
                 onChange={(e) => setTaxPercent(e.target.value)}
                 disabled={!!createdInvoice}
               />
+              <TextField
+                fullWidth
+                size="small"
+                type="number"
+                label="Discount (AED)"
+                value={discount}
+                inputProps={{ min: 0 }}
+                onChange={(e) => setDistount(e.target.value)}
+                disabled={!!createdInvoice}
+              />
 
               <Divider />
 
@@ -283,6 +298,14 @@ const CreateInvoiceModal = ({
                   </Typography>
                   <Typography variant="body2" fontWeight={600}>
                     {taxAmount.toFixed(2)}
+                  </Typography>
+                </Stack>
+                <Stack direction="row" justifyContent="space-between" mb={0.5}>
+                  <Typography variant="body2" color="text.secondary">
+                    Discount ({Number(discount) || 0} AED)
+                  </Typography>
+                  <Typography variant="body2" fontWeight={600}>
+                    {discount}
                   </Typography>
                 </Stack>
                 <Divider sx={{ my: 1 }} />

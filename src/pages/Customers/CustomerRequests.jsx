@@ -33,8 +33,6 @@ const TABS = [
   { key: "dropoff", label: "Drop-off Requests" },
 ];
 
-const STORAGE_TYPES = ["Dry Storage", "Cold Storage", "Hazardous"];
-
 export default function CustomerRequests() {
   const { getSystemRate } = useContext(AppContext);
   const [tab, setTab] = useState("delivery");
@@ -45,6 +43,7 @@ export default function CustomerRequests() {
   const [storageType, setStorageType] = useState("");
   const [storageAmount, setStorageAmount] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [storageTypeRates, setStorageTypeRates] = useState([]);
 
   const fetchRequests = useCallback(async () => {
     setLoading(true);
@@ -63,15 +62,47 @@ export default function CustomerRequests() {
     fetchRequests();
   }, [fetchRequests]);
 
+  useEffect(() => {
+    const fetchStorageTypes = async () => {
+      try {
+        const res = await api.get("/api/options/system-settings");
+        const rates = (res.data?.data || res.data || []).filter(
+          (s) => s.category === "Storage Type",
+        );
+        setStorageTypeRates(rates);
+      } catch {
+        setStorageTypeRates([]);
+      }
+    };
+    fetchStorageTypes();
+  }, []);
+
   const openConfirm = (type, row, action) => {
     setReason("");
     setStorageType("");
-    const rate = getSystemRate("storage_rate", 1);
-    const months = Number(row.duration_months) || 1;
-    const computed = Number(row.storage || 0) * rate * months;
-    setStorageAmount(String(computed || row.amount || ""));
+    setStorageAmount(String(toNumber(row.amount)));
     setConfirm({ type, row, action });
   };
+
+  const toNumber = (val) => {
+    if (val === null || val === undefined) return 0;
+    if (typeof val === "number") return Number.isFinite(val) ? val : 0;
+    const cleaned = String(val).replace(/[^0-9.-]/g, "");
+    const parsed = parseFloat(cleaned);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
+  useEffect(() => {
+    if (!confirm || confirm.type !== "storage" || confirm.action !== "approve")
+      return;
+    if (!storageType) return;
+
+    const typeRate = storageTypeRates.find((r) => r.key === storageType);
+    const rateValue = toNumber(typeRate?.value);
+    const baseAmount = toNumber(confirm.row.amount);
+
+    setStorageAmount(String(baseAmount + rateValue));
+  }, [storageType, storageTypeRates, confirm]);
 
   const handleConfirm = async () => {
     if (!confirm) return;
@@ -173,7 +204,7 @@ export default function CustomerRequests() {
                     {tab === "storage" && (
                       <TableCell>{row.storage_type || "—"}</TableCell>
                     )}
-                    <TableCell>{row.amount}</TableCell>
+                    <TableCell>{row.amount} AED</TableCell>
                     <TableCell>
                       <Chip
                         label={
@@ -246,9 +277,9 @@ export default function CustomerRequests() {
                 onChange={(e) => setStorageType(e.target.value)}
                 sx={{ mb: 2 }}
               >
-                {STORAGE_TYPES.map((t) => (
-                  <MenuItem key={t} value={t}>
-                    {t}
+                {storageTypeRates.map((t) => (
+                  <MenuItem key={t.key} value={t.key}>
+                    {t.label} (AED {Number(t.value).toFixed(2)})
                   </MenuItem>
                 ))}
               </TextField>

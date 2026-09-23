@@ -59,6 +59,14 @@ export async function generateGenericInvoicePDF({
   const margin = 14;
   const contentWidth = pageWidth - 2 * margin;
 
+  const formatLabel = (key) => {
+    if (!key) return "";
+    return String(key)
+      .split("_")
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ");
+  };
+
   const fmtDate = (value) =>
     value
       ? new Date(value).toLocaleDateString("en-GB", {
@@ -200,7 +208,9 @@ export async function generateGenericInvoicePDF({
   doc.text(commodityLabel, margin + idxColW + 2, y + 4.5);
 
   if (invoiceType === "storage" && (size || storageType)) {
-    const detailLine = [size, storageType].filter(Boolean).join(" • ");
+    const detailLine = [size, formatLabel(storageType)]
+      .filter(Boolean)
+      .join(" • ");
     doc.text(detailLine, margin + idxColW + 2, y + 8.5);
   }
 
