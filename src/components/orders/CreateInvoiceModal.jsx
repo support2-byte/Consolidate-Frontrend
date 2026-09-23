@@ -63,7 +63,7 @@ const CreateInvoiceModal = ({
   const invoiceId = `INV-${generateFormSeed()}`;
   const subtotal = (Number(baseRate) || 0) * (Number(overstayDays) || 0);
   const taxAmount = subtotal * ((Number(taxPercent) || 0) / 100);
-  const total = subtotal + taxAmount - discount;
+  const total = subtotal + taxAmount - (Number(discount) || 0);
 
   const buildPreview = async () => {
     if (!open) return;
@@ -138,7 +138,7 @@ const CreateInvoiceModal = ({
         taxPercent: Number(taxPercent) || 0,
         subtotal: Number(subtotal.toFixed(2)),
         total: Number(total.toFixed(2)),
-        discount: Number(discount.toFixed(2)),
+        discount: Number((Number(discount) || 0).toFixed(2)),
       });
       setCreatedInvoice(data.invoice);
       toast.success("Invoice created and notification queued");

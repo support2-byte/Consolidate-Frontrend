@@ -131,28 +131,57 @@ const formatDate = (val) => {
   return isNaN(d.getTime()) ? val : d.toLocaleString();
 };
 
-const FRONTEND_URL = "http://localhost:5174";
+const FRONTEND_URL = "https://consolidate-forms-fw4x.onrender.com";
 
 const STATUS_ACTION_LINKS = {
-  "Order Created": [{ path: "drop-off", text: "Schedule Drop-off" }],
-  "Shipment Delivered": [
-    { path: "purchase-storage", text: "Arrange Storage" },
-    { path: "delivery-request", text: "Request Delivery" },
-  ],
+  "order created": {
+    heading: "Want to schedule your drop-off?",
+    links: [
+      {
+        path: "drop-off-request",
+        text: "Schedule Drop-off",
+        description:
+          "Choose a pickup date and zone so we can collect your shipment from your address.",
+      },
+    ],
+  },
+  "shipment delivered": {
+    heading: "Your shipment has arrived. What would you like to do next?",
+    links: [
+      {
+        path: "purchase-storage",
+        text: "Arrange Storage",
+        description:
+          "Need more time before collecting? Request storage space for your goods.",
+      },
+      {
+        path: "request-delivery",
+        text: "Request Delivery",
+        description:
+          "Want it brought to you? Request delivery to your address.",
+      },
+    ],
+  },
 };
 
 const buildActionLinksHtml = (statusLabel, itemRef) => {
-  const links = STATUS_ACTION_LINKS[statusLabel];
-  if (!links || links.length === 0) return "";
+  const config =
+    STATUS_ACTION_LINKS[
+      String(statusLabel || "")
+        .trim()
+        .toLowerCase()
+    ];
+  if (!config) return "";
 
-  const buttons = links
+  const width = Math.floor(100 / config.links.length);
+  const cells = config.links
     .map(
       (link) =>
-        `<a class="cta" style="margin-right:10px" href="${FRONTEND_URL}/${link.path}/${encodeURIComponent(itemRef)}" target="_blank" rel="noopener noreferrer">${link.text}</a>`,
+        `<td style="vertical-align:top;width:${width}%;padding:0 10px 0 0"><p style="margin:0 0 6px;font-size:13px;color:#475569">${link.description}</p><a class="cta" style="margin:0" href="${FRONTEND_URL}/${link.path}/${encodeURIComponent(itemRef)}" target="_blank" rel="noopener noreferrer">${link.text}</a></td>`,
     )
     .join("");
 
-  return `<div style="margin-top:6px">${buttons}</div>`;
+  return `<div style="margin-top:18px"><p style="margin:0;font-weight:700;color:#0f172a">${config.heading}</p><table role="presentation" style="width:100%;margin-top:14px;border-collapse:collapse"><tr>${cells}</tr></table></div>`;
 };
 
 const buildTemplateData = (row) => ({
