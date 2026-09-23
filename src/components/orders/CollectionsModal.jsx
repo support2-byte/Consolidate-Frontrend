@@ -24,14 +24,35 @@ import CloseIcon from "@mui/icons-material/Close";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
+import DownloadIcon from "@mui/icons-material/Download";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
-import GatepassCreateModal from "./GatepassCreateModal";
 import CreateInvoiceModal from "./CreateInvoiceModal";
 import { toast } from "react-toastify";
 import { api } from "../../api";
 import { generateGatepassPDF } from "../../documents/gatepassGenerator";
 import { AppContext } from "../../context/AppContext";
 import { pdfDocToPngBlob } from "../../lib/pdfToPng";
+
+const triggerDownload = (href, filename) => {
+  const a = document.createElement("a");
+  a.href = href;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+};
+
+const downloadFromUrl = async (url, filename) => {
+  try {
+    const res = await fetch(url);
+    const blob = await res.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    triggerDownload(objectUrl, filename);
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+  } catch {
+    window.open(url, "_blank");
+  }
+};
 
 const emptyCollection = (idx) => ({
   _key: `c-${Date.now()}-${idx}`,
@@ -46,7 +67,6 @@ const emptyCollection = (idx) => ({
   deliveryDate: "",
   status: false,
   gatepassFiles: [],
-  gatepasses: [],
   items: {},
 });
 
@@ -55,8 +75,6 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
   const [collections, setCollections] = useState([emptyCollection(1)]);
   const [saving, setSaving] = useState(false);
   const [historyExpanded, setHistoryExpanded] = useState(false);
-  const [draftGatepassModalOpen, setDraftGatepassModalOpen] = useState(false);
-  const [draftGatepassTargetKey, setDraftGatepassTargetKey] = useState(null);
   const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
   const [invoiceTarget, setInvoiceTarget] = useState(null);
 
@@ -223,6 +241,8 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
     });
     formData.append("collections", JSON.stringify(collectionsPayload));
 
+    const autoDownloads = [];
+
     for (const c of collections) {
       if (!c.receiverId) continue;
       if (c.gatepassFiles.length > 0) continue;
@@ -250,11 +270,9 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
           download: false,
         });
         const pngBlob = await pdfDocToPngBlob(doc);
-        formData.append(
-          `gatepass_${c.receiverId}`,
-          pngBlob,
-          `Gatepass_${c.receiverId}_${Date.now()}.png`,
-        );
+        const fileName = `Gatepass_${order.rgl_booking_number}_${Date.now()}.png`;
+        formData.append(`gatepass_${c.receiverId}`, pngBlob, fileName);
+        autoDownloads.push({ blob: pngBlob, fileName });
       } catch (err) {
         console.error("Auto gatepass generation failed:", err);
       }
@@ -263,6 +281,11 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
     setSaving(true);
     try {
       await api.post(`/api/orders/${order.id}/collections`, formData);
+      autoDownloads.forEach(({ blob, fileName }) => {
+        const url = URL.createObjectURL(blob);
+        triggerDownload(url, fileName);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      });
       onSave?.();
       onClose();
     } catch (err) {
@@ -517,24 +540,36 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
                             {c.gatepass?.length > 0 && (
                               <Stack direction="row" gap={0.5} mt={0.5}>
                                 {c.gatepass.map((g, i) => (
-                                  <a
-                                    key={i}
-                                    href={g.url}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                  >
-                                    <img
-                                      src={g.url}
-                                      alt="gatepass"
-                                      style={{
-                                        width: 50,
-                                        height: 50,
-                                        objectFit: "cover",
-                                        borderRadius: 4,
-                                        border: "0.5px solid #a2a2a2",
-                                      }}
-                                    />
-                                  </a>
+                                  <Stack key={i} alignItems="center">
+                                    <a
+                                      href={g.url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                    >
+                                      <img
+                                        src={g.url}
+                                        alt="gatepass"
+                                        style={{
+                                          width: 50,
+                                          height: 50,
+                                          objectFit: "cover",
+                                          borderRadius: 4,
+                                          border: "0.5px solid #a2a2a2",
+                                        }}
+                                      />
+                                    </a>
+                                    <IconButton
+                                      size="small"
+                                      onClick={() =>
+                                        downloadFromUrl(
+                                          g.url,
+                                          `Gatepass_${order.booking_ref}_${i + 1}.png`,
+                                        )
+                                      }
+                                    >
+                                      <DownloadIcon fontSize="small" />
+                                    </IconButton>
+                                  </Stack>
                                 ))}
                               </Stack>
                             )}
@@ -973,37 +1008,6 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
                     </Stack>
                   </Stack>
 
-                  {c.gatepasses.length > 0 && (
-                    <Stack spacing={1} mt={1.5}>
-                      {c.gatepasses.map((g, i) => (
-                        <Box
-                          key={i}
-                          sx={{
-                            border: "1px solid #fbd9ae",
-                            bgcolor: "#fff",
-                            borderRadius: 1,
-                            p: 1,
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                          }}
-                        >
-                          <Typography variant="caption">
-                            <strong>{g.driverName}</strong> • {g.plateNo}
-                            {g.marksAndNumber ? ` • ${g.marksAndNumber}` : ""}
-                            {g.qty ? ` • ${g.qty} pkgs` : ""}
-                          </Typography>
-                          <IconButton
-                            size="small"
-                            onClick={() => removeDraftGatepass(c._key, i)}
-                          >
-                            <CloseIcon sx={{ fontSize: 14 }} />
-                          </IconButton>
-                        </Box>
-                      ))}
-                    </Stack>
-                  )}
-
                   {c.gatepassFiles.length > 0 ? (
                     <Stack direction="row" flexWrap="wrap" gap={1} mt={1.5}>
                       {c.gatepassFiles.map((g, i) => (
@@ -1087,48 +1091,6 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
           {saving ? "Saving..." : "Save Collections"}
         </Button>
       </DialogActions>
-      <GatepassCreateModal
-        draft
-        open={draftGatepassModalOpen}
-        onClose={() => setDraftGatepassModalOpen(false)}
-        collection={collections.find((c) => c._key === draftGatepassTargetKey)}
-        order={order}
-        receiverName={
-          receivers.find(
-            (r) =>
-              r.id ===
-              collections.find((c) => c._key === draftGatepassTargetKey)
-                ?.receiverId,
-          )?.receiver_name
-        }
-        marksAndNumber={
-          receivers.find(
-            (r) =>
-              r.id ===
-              collections.find((c) => c._key === draftGatepassTargetKey)
-                ?.receiverId,
-          )?.marksAndNumber
-        }
-        customerContact={
-          receivers.find(
-            (r) =>
-              r.id ===
-              collections.find((c) => c._key === draftGatepassTargetKey)
-                ?.receiverId,
-          )?.receiver_contact
-        }
-        cargoDefaults={(() => {
-          const targetCollection = collections.find(
-            (c) => c._key === draftGatepassTargetKey,
-          );
-          const receiver = receivers.find(
-            (r) => r.id === targetCollection?.receiverId,
-          );
-          return computeCargoDefaults(receiver, targetCollection?.items);
-        })()}
-        onCreated={(gpData) => addDraftGatepass(draftGatepassTargetKey, gpData)}
-      />
-
       <CreateInvoiceModal
         open={invoiceModalOpen}
         onClose={() => setInvoiceModalOpen(false)}
