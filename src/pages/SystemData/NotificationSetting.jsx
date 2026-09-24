@@ -131,7 +131,8 @@ const formatDate = (val) => {
   return isNaN(d.getTime()) ? val : d.toLocaleString();
 };
 
-const FRONTEND_URL = "https://consolidate-forms-fw4x.onrender.com";
+const FORM_BASE_URL = import.meta.env.VITE_FORM_URL || "http://localhost:5174";
+const KYC_PATH_BY_COMPANY = { RGSL: "rgsl", MF: "mf", CAS: "cas" };
 
 const STATUS_ACTION_LINKS = {
   "order created": {
@@ -171,13 +172,23 @@ const buildActionLinksHtml = (statusLabel, itemRef) => {
         .trim()
         .toLowerCase()
     ];
+
+  console.log("[actionLinks]", {
+    statusLabel,
+    key: String(statusLabel || "")
+      .trim()
+      .toLowerCase(),
+    itemRef,
+    matched: Boolean(config),
+  });
+
   if (!config) return "";
 
   const width = Math.floor(100 / config.links.length);
   const cells = config.links
     .map(
       (link) =>
-        `<td style="vertical-align:top;width:${width}%;padding:0 10px 0 0"><p style="margin:0 0 6px;font-size:13px;color:#475569">${link.description}</p><a class="cta" style="margin:0" href="${FRONTEND_URL}/${link.path}/${encodeURIComponent(itemRef)}" target="_blank" rel="noopener noreferrer">${link.text}</a></td>`,
+        `<td style="vertical-align:top;width:${width}%;padding:0 10px 0 0"><p style="margin:0 0 6px;font-size:13px;color:#475569">${link.description}</p><a class="cta" style="margin:0" href="${FORM_BASE_URL}/${link.path}/${encodeURIComponent(itemRef)}" target="_blank" rel="noopener noreferrer">${link.text}</a></td>`,
     )
     .join("");
 
@@ -187,7 +198,9 @@ const buildActionLinksHtml = (statusLabel, itemRef) => {
 const buildTemplateData = (row) => ({
   recipientName: row.recipient_name || "Customer",
   statusLabel:
-    row.status_label || formatLabel(row.email_type || "Status Update"),
+    row.item_status ||
+    row.status_label ||
+    formatLabel(row.email_type || "Status Update"),
   statusMsg:
     "Sample message — the exact wording is generated when the email is sent.",
   refId: row.item_ref || "—",
@@ -195,17 +208,23 @@ const buildTemplateData = (row) => ({
   route: "Sample Route (e.g. Dubai, UAE → Karachi, PK)",
   eta: "Sample ETA",
   lastUpdated: formatDate(row.created_at),
-  trackLink: "https://trackorder.royalgulfshipping.com/",
+  year: new Date().getFullYear(),
+  trackLink: `https://trackorder.royalgulfshipping.com/?ref=${encodeURIComponent(row.item_ref || "")}`,
   actionLinks: buildActionLinksHtml(
-    row.status_label || formatLabel(row.email_type || "Status Update"),
+    row.item_status ||
+      row.status_label ||
+      formatLabel(row.email_type || "Status Update"),
     row.item_ref || "—",
     row.recipient_type,
   ),
 });
 
 const buildKycTemplateData = (row) => ({
-  recipientName: row.recipient_name || "Valued Customer",
-  formUrl: row.form_url || "#",
+  recipientName: row.customer_name || "Valued Customer",
+  formUrl:
+    KYC_PATH_BY_COMPANY[row.company] && row.customer_id && row.form_token
+      ? `${FORM_BASE_URL}/${KYC_PATH_BY_COMPANY[row.company]}/${row.customer_id}/${row.form_token}`
+      : "#",
   year: new Date().getFullYear(),
 });
 
@@ -249,9 +268,10 @@ const buildConfirmationTemplateData = (row) => ({
   totalWeight: row.total_weight ?? "—",
   lastUpdated: formatDate(row.created_at),
   itemsSection: buildItemsSectionHtml(row.items),
-  viewLink: row.form_id
-    ? `https://track.royalgulfshipping.com/order-confirmation/${row.form_id}`
-    : "#",
+  viewLink:
+    row.form_id && row.party_uuid
+      ? `${FORM_BASE_URL}/booking-confirmation/${row.party_uuid}/${row.party_type}`
+      : "#",
   year: new Date().getFullYear(),
 });
 
@@ -260,7 +280,9 @@ const buildInvoiceTemplateData = (row) => ({
   invoiceId: row.invoice_id || "—",
   itemRef: row.item_ref || "—",
   amount: row.amount ? `$${row.amount}` : "—",
-  invoiceLink: row.invoice_url || "#",
+  invoiceLink: row.invoice_id
+    ? `${FORM_BASE_URL}/invoice-payment/${encodeURIComponent(row.invoice_id)}`
+    : "#",
   lastUpdated: formatDate(row.created_at),
   year: new Date().getFullYear(),
   otp: row.otp || "—",
@@ -269,9 +291,11 @@ const buildInvoiceTemplateData = (row) => ({
 const renderTemplate = (templateKey, data) => {
   const template = EMAIL_TEMPLATES[templateKey];
   if (!template) return null;
-  return template.replace(/{{\s*(\w+)\s*}}/g, (_, key) =>
-    data[key] !== undefined && data[key] !== null ? String(data[key]) : "",
-  );
+  return template
+    .replace("<head>", '<head><base target="_blank">')
+    .replace(/{{\s*(\w+)\s*}}/g, (_, key) =>
+      data[key] !== undefined && data[key] !== null ? String(data[key]) : "",
+    );
 };
 
 const NotificationSettings = () => {
@@ -499,6 +523,8 @@ const NotificationSettings = () => {
 
     return <Typography variant="body2">{String(value)}</Typography>;
   };
+
+  if (previewRow) console.log("[preview row]", previewRow);
 
   const previewTemplateKey = previewRow
     ? isKycTab
@@ -872,6 +898,7 @@ const NotificationSettings = () => {
                   : ""}
                 To:{" "}
                 {previewRow.recipient_email ||
+                  previewRow.customer_email ||
                   previewRow.recipient_email_address ||
                   "—"}
               </Typography>
@@ -894,7 +921,7 @@ const NotificationSettings = () => {
               title="email-preview"
               srcDoc={previewHtml}
               style={{ flex: 1, width: "100%", border: "none" }}
-              sandbox=""
+              sandbox="allow-popups allow-popups-to-escape-sandbox"
             />
           ) : (
             <Box sx={{ p: 3 }}>

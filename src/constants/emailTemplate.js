@@ -84,9 +84,9 @@ export const EMAIL_TEMPLATES = {
         </div>
       </div>
       <div class="foot">
-        © 2025 Royal Gulf Shipping &amp; Logistics LLC — All rights reserved.<br />
-        Need help? Call +971 555 658 321 or email
-        <a href="mailto:sales@royalgulfshipping.com" style="color: #68bb75">sales@royalgulfshipping.com</a>
+        © {{year}} Royal Gulf Shipping &amp; Logistics LLC — All rights reserved.<br />
+        Need help? Call +971 50 9724214 or email
+        <a href="mailto:info@royalgulfshipping.com" style="color: #68bb75">info@royalgulfshipping.com</a>
       </div>
     </div>
   </body>
@@ -166,9 +166,9 @@ export const EMAIL_TEMPLATES = {
         </div>
       </div>
       <div class="foot">
-        © 2025 Royal Gulf Shipping &amp; Logistics LLC — All rights reserved.<br />
-        Need help? Call +971 555 658 321 or email
-        <a href="mailto:sales@royalgulfshipping.com" style="color: #68bb75">sales@royalgulfshipping.com</a>
+        © {{year}} Royal Gulf Shipping &amp; Logistics LLC — All rights reserved.<br />
+        Need help? Call +971 50 9724214 or email
+        <a href="mailto:info@royalgulfshipping.com" style="color: #68bb75">info@royalgulfshipping.com</a>
       </div>
     </div>
   </body>
