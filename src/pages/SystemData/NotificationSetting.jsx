@@ -84,6 +84,7 @@ const HIDDEN_COLUMNS = new Set([
   "subject",
   "message",
   "items",
+  "item_status",
 ]);
 const DATE_COLUMNS = new Set(["created_at", "updated_at", "sent_at"]);
 
@@ -136,6 +137,7 @@ const KYC_PATH_BY_COMPANY = { RGSL: "rgsl", MF: "mf", CAS: "cas" };
 
 const STATUS_ACTION_LINKS = {
   "order created": {
+    recipientType: "sender",
     heading: "Want to schedule your drop-off?",
     links: [
       {
@@ -147,6 +149,7 @@ const STATUS_ACTION_LINKS = {
     ],
   },
   "shipment delivered": {
+    recipientType: "receiver",
     heading: "Your shipment has arrived. What would you like to do next?",
     links: [
       {
@@ -165,7 +168,7 @@ const STATUS_ACTION_LINKS = {
   },
 };
 
-const buildActionLinksHtml = (statusLabel, itemRef) => {
+const buildActionLinksHtml = (statusLabel, itemRef, recipientType) => {
   const config =
     STATUS_ACTION_LINKS[
       String(statusLabel || "")
@@ -173,16 +176,14 @@ const buildActionLinksHtml = (statusLabel, itemRef) => {
         .toLowerCase()
     ];
 
-  console.log("[actionLinks]", {
-    statusLabel,
-    key: String(statusLabel || "")
-      .trim()
-      .toLowerCase(),
-    itemRef,
-    matched: Boolean(config),
-  });
-
   if (!config) return "";
+
+  if (
+    !config ||
+    config.recipientType !== String(recipientType || "").toLowerCase()
+  ) {
+    return "";
+  }
 
   const width = Math.floor(100 / config.links.length);
   const cells = config.links
@@ -195,29 +196,36 @@ const buildActionLinksHtml = (statusLabel, itemRef) => {
   return `<div style="margin-top:18px"><p style="margin:0;font-weight:700;color:#0f172a">${config.heading}</p><table role="presentation" style="width:100%;margin-top:14px;border-collapse:collapse"><tr>${cells}</tr></table></div>`;
 };
 
-const buildTemplateData = (row) => ({
-  recipientName: row.recipient_name || "Customer",
-  statusLabel:
-    row.item_status ||
-    row.status_label ||
-    formatLabel(row.email_type || "Status Update"),
-  statusMsg:
-    "Sample message — the exact wording is generated when the email is sent.",
-  refId: row.item_ref || "—",
-  orderId: row.order_form_no || "—",
-  route: "Sample Route (e.g. Dubai, UAE → Karachi, PK)",
-  eta: "Sample ETA",
-  lastUpdated: formatDate(row.created_at),
-  year: new Date().getFullYear(),
-  trackLink: `https://trackorder.royalgulfshipping.com/?ref=${encodeURIComponent(row.item_ref || "")}`,
-  actionLinks: buildActionLinksHtml(
-    row.item_status ||
+const resolveStatusLabel = (row) =>
+  row.email_type === "order_created"
+    ? "Order Created"
+    : row.item_status ||
       row.status_label ||
-      formatLabel(row.email_type || "Status Update"),
-    row.item_ref || "—",
-    row.recipient_type,
-  ),
-});
+      formatLabel(row.email_type || "Status Update");
+
+const buildTemplateData = (row) => {
+  const label = resolveStatusLabel(row);
+  const isCreatedEmail = row.email_type === "order_created";
+  const isCreatedLabel = label.toLowerCase() === "order created";
+
+  return {
+    recipientName: row.recipient_name || "Customer",
+    statusLabel: label,
+    statusMsg:
+      "Sample message — the exact wording is generated when the email is sent.",
+    refId: row.item_ref || "—",
+    orderId: row.order_form_no || "—",
+    route: "Sample Route (e.g. Dubai, UAE → Karachi, PK)",
+    eta: "Sample ETA",
+    lastUpdated: formatDate(row.created_at),
+    year: new Date().getFullYear(),
+    trackLink: `https://trackorder.royalgulfshipping.com/?ref=${encodeURIComponent(row.item_ref || "")}`,
+    actionLinks:
+      isCreatedEmail === isCreatedLabel
+        ? buildActionLinksHtml(label, row.item_ref || "—", row.recipient_type)
+        : "",
+  };
+};
 
 const buildKycTemplateData = (row) => ({
   recipientName: row.customer_name || "Valued Customer",
@@ -523,8 +531,6 @@ const NotificationSettings = () => {
 
     return <Typography variant="body2">{String(value)}</Typography>;
   };
-
-  if (previewRow) console.log("[preview row]", previewRow);
 
   const previewTemplateKey = previewRow
     ? isKycTab
