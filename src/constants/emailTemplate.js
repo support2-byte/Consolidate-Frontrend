@@ -634,11 +634,6 @@ export const EMAIL_TEMPLATES = {
           <div class="amount-label">Amount Due</div>
           <div class="amount-value">{{amount}}</div>
         </div>
-        <div class="amount-box">
-          <div class="amount-label">Verification Code</div>
-          <div class="amount-value" style="letter-spacing: 6px;">{{otp}}</div>
-          <div style="font-size: 12px; color: #64748b; margin-top: 6px;">Enter this code on the payment page to unlock payment.</div>
-        </div>
         <div class="info-box">
           <div class="info-title">
             <i class="fas fa-clipboard-list"></i>
