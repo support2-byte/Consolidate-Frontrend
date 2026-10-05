@@ -5062,7 +5062,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                   value="shipments"
                   label={tabLabel("🛒 Shipments", flatShipments.length)}
                 />
-                <Tab value="billing" label={tabLabel("💰 Vendor Bill")} />
+                <Tab value="billing" label={tabLabel("💰 Job Details")} />
                 <Tab
                   value="documents"
                   label={tabLabel("📄 Documents", documents.length)}
@@ -5839,7 +5839,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                   <>
                     {mode !== "edit" ? (
                       <Typography color="text.secondary">
-                        Save the consignment first to see its vendor bills and
+                        Save the consignment first to see its job details and
                         invoices.
                       </Typography>
                     ) : (
@@ -5886,7 +5886,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                                 </TableCell>
                                 <TableCell sx={headCellSx}>Form No</TableCell>
                                 <TableCell sx={headCellSx} align="center">
-                                  Vendor Bills
+                                  Job Details
                                 </TableCell>
                                 <TableCell sx={headCellSx} align="center">
                                   Invoices
@@ -5910,7 +5910,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                                     >
                                       {billingLoading || billingSyncing
                                         ? "Loading billing data..."
-                                        : "No invoices or vendor bills found for this consignment"}
+                                        : "No invoices or Job Details found for this consignment"}
                                     </Typography>
                                   </TableCell>
                                 </TableRow>
@@ -6030,7 +6030,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                                   ),
                                 )}
                                 {stat(
-                                  "Total Vendor Bills (Cost)",
+                                  "Total Job Details (Cost)",
                                   fmtMoney(
                                     selectedBill.vendorTotal,
                                     selectedBill.currency ||
@@ -6065,7 +6065,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                               Bills. Void and draft documents are excluded.
                             </Typography>
                             {billingTable(
-                              "Vendor Bills",
+                              "Job Details",
                               selectedBill.vendorBills,
                               "Vendor",
                               "vendor",
