@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useContext } from "react";
+import { useState, useEffect, useRef, useContext, useMemo } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -25,6 +25,15 @@ import { AppContext } from "../../context/AppContext";
 const DEFAULT_BASE_RATE = 50;
 const DEFAULT_TAX_PERCENT = 5;
 
+const normalizeName = (v) =>
+  String(v ?? "")
+    .toLowerCase()
+    .replace(/[.,]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^(mr|mrs|ms|miss|dr|eng|sir|madam)\b\s*/, "")
+    .trim();
+
 const CreateInvoiceModal = ({
   open,
   onClose,
@@ -37,7 +46,7 @@ const CreateInvoiceModal = ({
   overstayDays,
   onCreated,
 }) => {
-  const { getSystemRate } = useContext(AppContext);
+  const { getSystemRate, zohoInvoices } = useContext(AppContext);
   const [baseRate, setBaseRate] = useState(
     getSystemRate("overstay_rate", DEFAULT_BASE_RATE),
   );
@@ -65,6 +74,30 @@ const CreateInvoiceModal = ({
   const taxAmount = subtotal * ((Number(taxPercent) || 0) / 100);
   const total = subtotal + taxAmount - (Number(discount) || 0);
 
+  const localDueInvoices = useMemo(
+    () =>
+      (zohoInvoices || [])
+        .filter(
+          (i) =>
+            i.order_number &&
+            i.order_number === order?.rgl_booking_number &&
+            normalizeName(i.customer_name) === normalizeName(receiverName) &&
+            !["paid", "void"].includes(i.status) &&
+            i.balance > 0 &&
+            i.currency_code === "AED",
+        )
+        .map((i) => ({
+          zohoInvoiceId: i.invoice_id,
+          invoiceNumber: i.invoice_number,
+          dueDate: i.due_date,
+          balance: i.balance,
+        })),
+    [zohoInvoices, order?.rgl_booking_number, receiverName],
+  );
+  const dueInvoices = createdInvoice?.dueInvoices ?? localDueInvoices;
+  const dueAmount = dueInvoices.reduce((s, d) => s + Number(d.balance || 0), 0);
+  const grandTotal = total + dueAmount;
+
   const buildPreview = async () => {
     if (!open) return;
     setPreviewLoading(true);
@@ -79,8 +112,10 @@ const CreateInvoiceModal = ({
         baseRate,
         taxPercent,
         subtotal,
-        total,
+        total: grandTotal,
+        dueInvoices,
         discount,
+        dueAmount,
         invoiceDate:
           createdInvoice?.createdAt || createdInvoice?.created_at || new Date(),
         dueDate: createdInvoice?.dueAt || createdInvoice?.due_at,
@@ -163,7 +198,8 @@ const CreateInvoiceModal = ({
         baseRate,
         taxPercent,
         subtotal,
-        total,
+        total: grandTotal,
+        dueInvoices,
         discount,
         invoiceDate:
           createdInvoice.createdAt || createdInvoice.created_at || new Date(),
@@ -308,13 +344,27 @@ const CreateInvoiceModal = ({
                     {discount}
                   </Typography>
                 </Stack>
+                {dueAmount > 0 && (
+                  <Stack
+                    direction="row"
+                    justifyContent="space-between"
+                    mb={0.5}
+                  >
+                    <Typography variant="body2" color="text.secondary">
+                      Previous Due ({dueInvoices.length})
+                    </Typography>
+                    <Typography variant="body2" fontWeight={600}>
+                      {dueAmount.toFixed(2)}
+                    </Typography>
+                  </Stack>
+                )}
                 <Divider sx={{ my: 1 }} />
                 <Stack direction="row" justifyContent="space-between">
                   <Typography variant="body1" fontWeight={700}>
                     Total
                   </Typography>
                   <Typography variant="body1" fontWeight={700} color="#f58220">
-                    {total.toFixed(2)}
+                    {grandTotal.toFixed(2)}
                   </Typography>
                 </Stack>
               </Box>
