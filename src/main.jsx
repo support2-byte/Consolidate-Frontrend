@@ -57,6 +57,7 @@ import BookingConfirmationsPage from "./pages/Orders/BookingConfirmations";
 import DriversPage from "./pages/SystemData/DriversPage";
 import InvoicesPage from "./pages/InvoicesPage";
 import SystemRatesPage from "./pages/SystemData/SystemSettings";
+import ZohoInvoicesPage from "./pages/ZohoInvoicesPage";
 
 const router = createBrowserRouter([
   { path: "/login", element: <Login /> },
@@ -326,6 +327,16 @@ const router = createBrowserRouter([
             permission={{ module: "booking-confirmations", action: "view" }}
           >
             <BookingConfirmationsPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "zoho-invoices",
+        element: (
+          <ProtectedRoute
+            permission={{ module: "zoho-invoices", action: "view" }}
+          >
+            <ZohoInvoicesPage />
           </ProtectedRoute>
         ),
       },

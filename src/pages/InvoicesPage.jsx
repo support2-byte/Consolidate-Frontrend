@@ -30,6 +30,7 @@ import SearchIcon from "@mui/icons-material/Search";
 import DownloadOutlinedIcon from "@mui/icons-material/DownloadOutlined";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import CloseIcon from "@mui/icons-material/Close";
+import CloudUploadOutlinedIcon from "@mui/icons-material/CloudUploadOutlined";
 import { toast } from "react-toastify";
 import { api } from "../api";
 import { generateInvoicePDF } from "../documents/invoiceGenerator";
@@ -99,6 +100,7 @@ const InvoicesPage = () => {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [downloadingId, setDownloadingId] = useState(null);
+  const [uploadingId, setUploadingId] = useState(null);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(25);
   const [detailsRow, setDetailsRow] = useState(null);
@@ -196,6 +198,7 @@ const InvoicesPage = () => {
           subtotal: row.subtotal,
           total: row.amount,
           invoiceDate: row.createdAt,
+          dueInvoices: row.dueInvoices,
           download: true,
         });
       } else {
@@ -209,7 +212,8 @@ const InvoicesPage = () => {
           subcategory: row.subcategory,
           size: row.size,
           storageType: row.storageType,
-          amount: row.amount,
+          amount: row.amount - (row.dueAmount || 0),
+          dueInvoices: row.dueInvoices,
           invoiceDate: row.createdAt,
           download: true,
         });
@@ -219,6 +223,24 @@ const InvoicesPage = () => {
       toast.error("Failed to generate invoice PDF");
     } finally {
       setDownloadingId(null);
+    }
+  };
+
+  const handleUploadZoho = async (row) => {
+    setUploadingId(row.id);
+    try {
+      const res = await api.post(`/api/invoices/zoho/${row.invoiceId}`);
+      toast.success("Invoice uploaded to Zoho");
+      setRows((prev) =>
+        prev.map((r) =>
+          r.id === row.id ? { ...r, zohoInvoiceId: res.data.zohoInvoiceId } : r,
+        ),
+      );
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to upload to Zoho");
+      if (err.response?.status === 409) fetchData(currentTab);
+    } finally {
+      setUploadingId(null);
     }
   };
 
@@ -238,11 +260,29 @@ const InvoicesPage = () => {
         />
       );
     }
+
     if (key === "storageType") {
       return (
         <Typography variant="body2">{formatLabel(value) || "—"}</Typography>
       );
     }
+
+    if (key === "dueInvoices") {
+      return Array.isArray(value) && value.length ? (
+        <Box>
+          {value.map((d) => (
+            <Typography key={d.zohoInvoiceId} variant="body2">
+              {d.invoiceNumber} — {formatCurrency(d.balance)}
+            </Typography>
+          ))}
+        </Box>
+      ) : (
+        <Typography variant="body2" color="text.disabled">
+          —
+        </Typography>
+      );
+    }
+
     if (value === null || value === undefined || value === "") {
       return (
         <Typography variant="body2" color="text.disabled">
@@ -365,7 +405,7 @@ const InvoicesPage = () => {
                   <TableCell
                     align="right"
                     sx={{ whiteSpace: "nowrap" }}
-                    width={180}
+                    width={340}
                   />
                 </TableRow>
               </TableHead>
@@ -446,6 +486,22 @@ const InvoicesPage = () => {
                           sx={{ mr: 1 }}
                         >
                           Details
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="contained"
+                          startIcon={<CloudUploadOutlinedIcon />}
+                          disabled={
+                            Boolean(row.zohoInvoiceId) || uploadingId === row.id
+                          }
+                          onClick={() => handleUploadZoho(row)}
+                          sx={{ mr: 1 }}
+                        >
+                          {row.zohoInvoiceId
+                            ? "In Zoho"
+                            : uploadingId === row.id
+                              ? "Uploading..."
+                              : "Upload to Zoho"}
                         </Button>
                         <Button
                           size="small"

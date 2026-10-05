@@ -44,6 +44,8 @@ export default function CustomerRequests() {
   const [storageAmount, setStorageAmount] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [storageTypeRates, setStorageTypeRates] = useState([]);
+  const [dueContext, setDueContext] = useState(null);
+  const [dueLoading, setDueLoading] = useState(false);
 
   const fetchRequests = useCallback(async () => {
     setLoading(true);
@@ -82,6 +84,15 @@ export default function CustomerRequests() {
     setStorageType("");
     setStorageAmount(String(toNumber(row.amount)));
     setConfirm({ type, row, action });
+    setDueContext(null);
+    if (action === "approve") {
+      setDueLoading(true);
+      api
+        .get(`/api/internal/requests/${type}/${row.id}/due-preview`)
+        .then(({ data }) => setDueContext(data?.due || null))
+        .catch(() => setDueContext(null))
+        .finally(() => setDueLoading(false));
+    }
   };
 
   const toNumber = (val) => {
@@ -261,6 +272,36 @@ export default function CustomerRequests() {
             : "Reject request?"}
         </DialogTitle>
         <DialogContent>
+          {confirm?.action === "approve" && (
+            <Box sx={{ mb: 2 }}>
+              {dueLoading ? (
+                <Typography variant="body2" color="text.secondary">
+                  Checking for unpaid balances...
+                </Typography>
+              ) : dueContext?.dueAmount > 0 ? (
+                <Box sx={{ bgcolor: "#fff3e0", borderRadius: 1, p: 1.5 }}>
+                  <Typography variant="body2" fontWeight={700}>
+                    {dueContext.dueInvoices.length} unpaid invoice(s) will be
+                    added — {dueContext.dueAmount.toFixed(2)} AED
+                  </Typography>
+                  {dueContext.dueInvoices.map((d) => (
+                    <Typography
+                      key={d.zohoInvoiceId}
+                      variant="caption"
+                      display="block"
+                      color="text.secondary"
+                    >
+                      {d.invoiceNumber} — {d.balance.toFixed(2)} AED
+                    </Typography>
+                  ))}
+                </Box>
+              ) : (
+                <Typography variant="body2" color="text.secondary">
+                  No unpaid balance for this order.
+                </Typography>
+              )}
+            </Box>
+          )}
           <Typography variant="body2" mb={2}>
             {confirm?.action === "approve"
               ? "This will create an invoice for this customer."

@@ -52,6 +52,9 @@ import {
   CircularProgress,
   Card as MuiCard,
   AlertTitle,
+  Tabs,
+  Tab,
+  InputAdornment,
 } from "@mui/material";
 import { toast } from "react-toastify";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
@@ -59,7 +62,7 @@ import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import InfoIcon from "@mui/icons-material/Info";
 import dayjs from "dayjs";
 import * as Yup from "yup";
-import { styled } from "@mui/material/styles";
+import { styled, useTheme, alpha } from "@mui/material/styles";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import ExpandMoreIconMui from "@mui/icons-material/ExpandMore";
 import { useParams } from "react-router-dom";
@@ -76,6 +79,7 @@ import { useBlocker } from "react-router-dom";
 import UpdateIcon from "@mui/icons-material/Update";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import EditIcon from "@mui/icons-material/Edit";
+import SearchIcon from "@mui/icons-material/Search";
 import EmojiEventsIcon from "@mui/icons-material/EmojiEvents";
 import { api } from "../../api";
 import { useNavigate } from "react-router-dom";
@@ -93,6 +97,24 @@ import { AppContext } from "../../context/AppContext";
 import { getStatusColors } from "../../Utlis/statusColors";
 
 applyPlugin(jsPDF);
+
+const docStatusColor = (s) =>
+  s === "paid"
+    ? "success"
+    : s === "overdue"
+      ? "error"
+      : s === "void" || s === "draft"
+        ? "default"
+        : "warning";
+
+const fmtStatus = (s = "") =>
+  s.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
+
+const fmtMoney = (n, cur) =>
+  `${cur} ${Number(n).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 
 const getRowBoundaries = (container, scale) => {
   const containerRect = container.getBoundingClientRect();
@@ -151,7 +173,7 @@ const CustomTextField = ({
         startAdornment,
         endAdornment,
         readOnly,
-        sx: readOnly ? { backgroundColor: "#e3f2fd" } : undefined,
+        sx: readOnly ? { backgroundColor: "action.hover" } : undefined,
       }}
       {...props}
     />
@@ -254,6 +276,16 @@ const CustomDatePicker = ({
 
 const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
   const context = useAuth();
+  const theme = useTheme();
+  const [tab, setTab] = useState("details");
+  const [shipmentSearch, setShipmentSearch] = useState("");
+  const [shipmentStatus, setShipmentStatus] = useState("");
+  const [selectedBilling, setSelectedBilling] = useState(null);
+  const [previewDoc, setPreviewDoc] = useState(null);
+  const [billingRows, setBillingRows] = useState([]);
+  const [billingLoading, setBillingLoading] = useState(false);
+  const [billingSyncing, setBillingSyncing] = useState(false);
+  const [pdfLoadingId, setPdfLoadingId] = useState(null);
   const user_id = context.user.id;
   const currentDate = dayjs();
   const { places, statuses } = useContext(AppContext);
@@ -708,7 +740,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       options.originOptions?.length > 0 &&
       options.destinationOptions?.length > 0
     ) {
-      // If we have IDs but options are now loaded, force re-sync the display names
       if (values.origin && !values.originName) {
         const found = options.originOptions.find(
           (opt) => opt.value === values.origin.toString(),
@@ -757,13 +788,11 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
 
   useEffect(() => {
     if (!loading && initialValues === null) {
-      // Capture snapshot after options and data are loaded
       setInitialValues({ ...values });
     }
   }, [loading, values]);
   const isDirty = useMemo(() => {
     if (!initialValues) return false;
-    // List of primitive fields to compare directly
     const primitives = [
       "id",
       "consignment_number",
@@ -792,23 +821,17 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       "netWeight",
       "gross_weight",
     ];
-    // Compare primitives
     for (let key of primitives) {
       if (values[key] !== initialValues[key]) {
         return true;
       }
     }
-    // Compare dates (using dayjs format for string comparison)
     if (
       values.eform_date?.format("YYYY-MM-DD") !==
       initialValues.eform_date?.format("YYYY-MM-DD")
     ) {
       return true;
     }
-    // if (values.eta?.format('YYYY-MM-DD') !== initialValues.eta?.format('YYYY-MM-DD')) {
-    //   return true;
-    // }
-    // Compare arrays using JSON.stringify (simple and sufficient for containers/orders structure)
     if (
       JSON.stringify(values.containers) !==
       JSON.stringify(initialValues.containers)
@@ -823,8 +846,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     return false;
   }, [values, initialValues]);
 
-  // Optional: Add a manual confirmation for back button or custom nav (e.g., in resetForm or navigate calls)
-  // But useBlocker handles most cases. For example, update resetForm:
   const resetForm = () => {
     if (isDirty) {
       const confirmed = window.confirm(
@@ -834,7 +855,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     }
     setValues({
       id: "",
-      // consignment_number: '', // Note: If you want to reset this too, uncomment
       status: "",
       remarks: "",
       shipper: "",
@@ -855,7 +875,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       voyage: "",
       consignment_value: 0,
       currency_code: "",
-      // eta: suggestedEta || currentDate,
       vessel: "",
       shippingLine: "",
       delivered: 0,
@@ -929,23 +948,20 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       });
     });
 
-    // Round to 3 decimals (common for tons), or 2 for kg
     const assignedWt = parseFloat(totalAssignedWeight.toFixed(3));
 
     return {
       totalAssignedWeight: assignedWt,
       netWeight: assignedWt,
-      grossWeight: parseFloat((assignedWt * 1.15).toFixed(3)), // 15% packaging/pallet
+      grossWeight: parseFloat((assignedWt * 1.15).toFixed(3)),
     };
   }, [includedOrders, orders]);
 
-  // Sync to form values
   useEffect(() => {
     setValues((prev) => ({
       ...prev,
       netWeight: calculatedTotals.netWeight,
       gross_weight: calculatedTotals.grossWeight,
-      // optional: also store the raw assigned weight if needed
       totalAssignedWeight: calculatedTotals.totalAssignedWeight,
     }));
   }, [calculatedTotals]);
@@ -977,7 +993,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
   };
   const numSelected = (orders || []).filter((o) => isSelected(o.id)).length;
 
-  // Sync missing options for vessel, paymentType, status
   useEffect(() => {
     const syncMissingOptions = () => {
       let updatedOptions = { ...options };
@@ -994,7 +1009,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       };
       appendIfMissing("vesselOptions", values.vessel);
       appendIfMissing("paymentTypeOptions", values.paymentType);
-      // statusOptions now comes from AppContext, no need to append
       if (hasUpdate) {
         setOptions(updatedOptions);
       }
@@ -1024,9 +1038,8 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       setErrors((prev) => ({ ...prev, [name]: error.message }));
     }
   };
-  // Fetch containers
+
   useEffect(() => {
-    // setSaving(false)
     const fetchContainers = async () => {
       setContainersLoading(true);
       try {
@@ -1063,11 +1076,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     setSelectedOrders([]);
   };
 
-  // ────────────────────────────────────────────────────────────────
-  // Main fetch function
   useEffect(() => {
-    // ────────────────────────────────────────────────────────────────
-    // Helper: Check if a shipping detail uses at least one selected container
     const itemUsesSelectedContainers = (shippingDetail, selectedCidsSet) => {
       if (!shippingDetail?.containerDetails?.length) return false;
 
@@ -1077,7 +1086,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       });
     };
 
-    // Helper: Filter containerDetails array to keep only selected containers
     const filterContainerDetails = (containerDetails, selectedCidsSet) => {
       if (!Array.isArray(containerDetails)) return [];
 
@@ -1087,7 +1095,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       });
     };
 
-    // Client-side filter: keep only matching shipping details + filter their containers
     const filterOrdersByContainers = (orders, selectedContainerIds) => {
       if (!Array.isArray(orders)) {
         console.warn(
@@ -1097,13 +1104,12 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         return [];
       }
 
-      // No containers selected → return original orders
       if (!selectedContainerIds?.length) {
         return orders.map((order) => ({
           ...order,
           receivers: (order.receivers || []).map((receiver) => ({
             ...receiver,
-            order, // optional: attach full order if needed downstream
+            order,
           })),
         }));
       }
@@ -1115,7 +1121,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       );
 
       if (selectedCidsSet.size === 0) {
-        // console.warn('No valid numeric container IDs for filtering');
         return [];
       }
       return orders
@@ -1128,25 +1133,21 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                 )
                 .map((detail) => ({
                   ...detail,
-                  // Also filter the containerDetails inside each kept shipping detail
                   containerDetails: filterContainerDetails(
                     detail.containerDetails,
                     selectedCidsSet,
                   ),
                 }));
 
-              // Skip this receiver if no matching shipping details remain
               if (filteredShippingDetails.length === 0) return null;
 
               return {
                 ...receiver,
                 shippingdetails: filteredShippingDetails,
-                order, // optional attachment
+                order,
               };
             })
-            .filter(Boolean); // remove null receivers
-
-          // Skip this order if no receivers remain after filtering
+            .filter(Boolean);
           if (filteredReceivers.length === 0) return null;
 
           return {
@@ -1154,13 +1155,10 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
             receivers: filteredReceivers,
           };
         })
-        .filter(Boolean); // remove null orders
+        .filter(Boolean);
     };
 
-    // ────────────────────────────────────────────────────────────────
-    // Main fetch function
     const fetchOrders = async () => {
-      // Early exit if no containers selected
       if (!addedContainerIds?.length) {
         setOrders([]);
         setOrderTotal(0);
@@ -1258,6 +1256,27 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     );
   }, [orders]);
 
+  const shipmentStatusOptions = useMemo(
+    () =>
+      [
+        ...new Set(flatShipments.map((s) => s.receiverStatus).filter(Boolean)),
+      ].sort(),
+    [flatShipments],
+  );
+
+  const filteredShipments = useMemo(() => {
+    const q = shipmentSearch.trim().toLowerCase();
+    return flatShipments.filter((s) => {
+      if (shipmentStatus && s.receiverStatus !== shipmentStatus) return false;
+      if (!q) return true;
+      return [s.itemRef, s.bookingRef, s.formNo].some((v) =>
+        String(v ?? "")
+          .toLowerCase()
+          .includes(q),
+      );
+    });
+  }, [flatShipments, shipmentSearch, shipmentStatus]);
+
   const hasDeliveredShipment = useMemo(() => {
     return orders.some((order) =>
       (order.receivers || []).some((receiver) =>
@@ -1267,6 +1286,33 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       ),
     );
   }, [orders]);
+
+  const fetchBilling = useCallback(
+    async (sync = false) => {
+      if (mode !== "edit" || !effectiveConsignmentId) return;
+      const base = `/api/zoho-invoice/consignment/${effectiveConsignmentId}/billing`;
+      try {
+        if (sync) setBillingSyncing(true);
+        else setBillingLoading(true);
+        const { data } = sync
+          ? await api.post(`${base}/sync`)
+          : await api.get(base);
+        setBillingRows(data?.rows || []);
+      } catch (err) {
+        toast.error(
+          err.response?.data?.message || "Failed to load billing data.",
+        );
+      } finally {
+        setBillingLoading(false);
+        setBillingSyncing(false);
+      }
+    },
+    [mode, effectiveConsignmentId],
+  );
+
+  useEffect(() => {
+    if (tab === "billing") fetchBilling();
+  }, [tab, fetchBilling]);
 
   const handleRemoveShipment = (shipment) => {
     setOrders((prev) => {
@@ -1371,7 +1417,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
 
                   <Divider sx={{ mt: 1 }} />
 
-                  {/* Shipping Details */}
                   {receiver.shippingdetails?.length > 0 ? (
                     receiver.shippingdetails.map((item, sIdx) => (
                       <Box key={sIdx} sx={{ mt: 1, pl: 1 }}>
@@ -1403,7 +1448,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                             ).toLocaleString()}
                           </Typography>
                         </Box>
-                        {/* Container Details */}
                         {item.containerDetails?.length > 0 ? (
                           <Stack
                             direction="row"
@@ -1438,8 +1482,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                                   spacing={1}
                                 />
                                 <StatusChip status={c.status} size="small" />
-
-                                {/* <Divider /> */}
                               </div>
                             ))}
                           </Stack>
@@ -1464,7 +1506,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                     </Typography>
                   )}
 
-                  {/* Drop Off Details */}
                   {receiver.drop_off_details?.length > 0 && (
                     <Box sx={{ mt: 1, pl: 1 }}>
                       <Typography variant="body2" fontWeight="medium">
@@ -1509,9 +1550,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     );
   };
 
-  // Combine both receivers and container details into one tooltip content
   const CombinedTooltip = ({ order }) => {
-    // You can merge both datasets or just pass receivers since shippingdetails contains containers
     return (
       <PrettyList receivers={order.receivers} title="Receivers & Containers" />
     );
@@ -1587,23 +1626,16 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     netWeight: Yup.number().min(0).required("Net Weight is required"),
     gross_weight: Yup.number().min(0).required("Gross Weight is required"),
 
-    // Updated: We now expect containers array from UI
     containers: Yup.array()
       .of(
         Yup.object({
           containerNo: Yup.string().required("Container No. is required"),
-          // size: Yup.string().oneOf(['20ft', '40ft', 'Other']).required('Size is required'),
-          // // optional fields depending on your backend
-          // ownership: Yup.string().optional(),
-          // status: Yup.string().optional(),
         }),
       )
       .min(1, "At least one container is required"),
 
-    // Still keep orders (or order IDs) if backend requires them
     orders: Yup.array(),
 
-    // Optional: if backend wants explicit assignment mapping
     assignments: Yup.array()
       .of(
         Yup.object({
@@ -2001,6 +2033,16 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       const res = await api.post("/api/consignments", submitData);
 
       const { data: responseData, message } = res.data || {};
+
+      const zoho = res.data?.zoho;
+      if (zoho?.created?.length) {
+        toast.success(`${zoho.created.length} invoice(s) uploaded to Zoho`);
+      }
+      if (zoho?.failed?.length) {
+        toast.warning(
+          `${zoho.failed.length} invoice(s) failed to upload to Zoho`,
+        );
+      }
 
       toast.success(message || "Consignment created successfully!");
 
@@ -4669,240 +4711,452 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       `Manifest_${data.consignment_number}_Containers_${Date.now()}.pdf`,
     );
   };
+  const isDark = theme.palette.mode === "dark";
+  const teal = "#0d6c6a";
+  const tealText = isDark ? "#4db6ac" : teal;
+  const orange = "#f58220";
+  const span = (n) => ({
+    gridColumn: {
+      xs: "span 12",
+      sm: `span ${n === 3 ? 6 : n}`,
+      md: `span ${n}`,
+    },
+  });
+  const gridSx = {
+    display: "grid",
+    gridTemplateColumns: "repeat(12, 1fr)",
+    gap: 2,
+  };
+  const outlineBtn = {
+    borderColor: orange,
+    color: orange,
+    "&:hover": {
+      borderColor: "#e65100",
+      backgroundColor: alpha(orange, 0.1),
+    },
+  };
+  const headCellSx = {
+    bgcolor: teal,
+    color: "#fff",
+    fontWeight: "bold",
+    whiteSpace: "nowrap",
+  };
+  const sectionTitle = (text) => (
+    <Typography
+      sx={{
+        gridColumn: "span 12",
+        mt: 1.5,
+        pb: 0.75,
+        fontWeight: 600,
+        color: tealText,
+        borderBottom: 1,
+        borderColor: "divider",
+      }}
+    >
+      {text}
+    </Typography>
+  );
+  const tabLabel = (text, count) => (
+    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+      {text}
+      {count !== undefined && (
+        <Box
+          component="span"
+          sx={{
+            bgcolor: orange,
+            color: "#fff",
+            borderRadius: "10px",
+            fontSize: 11,
+            px: "7px",
+            lineHeight: "18px",
+          }}
+        >
+          {count}
+        </Box>
+      )}
+    </Box>
+  );
+  const shipmentHeaders = [
+    "Item Ref No",
+    "Booking Ref",
+    "Form No",
+    "Product",
+    "POL",
+    "POD",
+    "Sender",
+    "Receiver",
+    "Container",
+    "Assign Weight & Items",
+    "Status",
+    "Actions",
+  ];
+  const documents = [
+    {
+      icon: "📄",
+      title: "HBL (Shipments & Orders)",
+      text: "House bill of lading with all shipments and orders in this consignment.",
+      label: "Download PDF",
+      run: () => generateshipmentsAndOrdersPDFWithCanvas(values, orders),
+    },
+    {
+      icon: "🖨️",
+      title: "Print Manifest",
+      text: "Cargo manifest listing every shipment.",
+      label: "Print",
+      run: () => generateManifestPDFWithCanvas(values, orders),
+    },
+    {
+      icon: "🖨️",
+      title: "Print Manifest with Subcategory",
+      text: "Manifest with items grouped by product subcategory.",
+      label: "Print",
+      run: () =>
+        generateManifestPDFWithCanvas(values, orders, includedOrders, true),
+    },
+    {
+      icon: "📄",
+      title: "Container & Orders PDF",
+      text: "Each container with the orders loaded in it.",
+      label: "Download PDF",
+      run: () => generateContainersAndOrdersPDFWithCanvas(values, orders),
+    },
+  ];
+
+  const selectedBill = billingRows.find((r) => r.orderId === selectedBilling);
+
+  const openDocPdf = async (kind, doc) => {
+    setPdfLoadingId(doc.id);
+    try {
+      const path =
+        kind === "Bill"
+          ? `/api/zoho-invoice/bill/${doc.id}/pdf`
+          : `/api/zoho-invoice/${doc.id}/pdf`;
+      const { data } = await api.get(path, { responseType: "blob" });
+      setPreviewDoc({
+        kind,
+        doc,
+        url: URL.createObjectURL(new Blob([data], { type: "application/pdf" })),
+      });
+    } catch {
+      toast.error("Failed to load PDF.");
+    } finally {
+      setPdfLoadingId(null);
+    }
+  };
+
+  const closePreview = () => {
+    if (previewDoc?.url) URL.revokeObjectURL(previewDoc.url);
+    setPreviewDoc(null);
+  };
+
+  const stat = (label, value, color) => (
+    <Box
+      sx={{
+        border: 1,
+        borderColor: "divider",
+        borderRadius: 2,
+        p: 2,
+        bgcolor: "action.hover",
+      }}
+    >
+      <Typography variant="caption" color="text.secondary">
+        {label}
+      </Typography>
+      <Typography
+        sx={{ fontWeight: 700, fontSize: 18, color: color || "text.primary" }}
+      >
+        {value}
+      </Typography>
+    </Box>
+  );
+
+  const billingTable = (title, docs, partyLabel, partyKey, kind) => (
+    <Box sx={{ mt: 2 }}>
+      <Typography sx={{ fontWeight: 600, color: tealText, mb: 1 }}>
+        {title} ({docs.length})
+      </Typography>
+      <TableContainer
+        sx={{ border: 1, borderColor: "divider", borderRadius: 2 }}
+      >
+        <Table size="small" sx={{ minWidth: 640 }}>
+          <TableHead>
+            <TableRow>
+              {[`${kind} No`, partyLabel, "Date", "Due Date", "Status"].map(
+                (h) => (
+                  <TableCell key={h} sx={headCellSx}>
+                    {h}
+                  </TableCell>
+                ),
+              )}
+              <TableCell sx={headCellSx} align="right">
+                Amount
+              </TableCell>
+              <TableCell sx={headCellSx} align="right">
+                Balance
+              </TableCell>
+              <TableCell sx={headCellSx} align="center">
+                Preview
+              </TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {docs.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={8} align="center" sx={{ py: 3 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    No {title.toLowerCase()} found
+                  </Typography>
+                </TableCell>
+              </TableRow>
+            ) : (
+              docs.map((d) => (
+                <TableRow hover key={d.id}>
+                  <TableCell>{d.number}</TableCell>
+                  <TableCell>{d[partyKey]}</TableCell>
+                  <TableCell>
+                    {d.date ? dayjs(d.date).format("DD MMM YYYY") : "-"}
+                  </TableCell>
+                  <TableCell>
+                    {d.dueDate ? dayjs(d.dueDate).format("DD MMM YYYY") : "-"}
+                  </TableCell>
+                  <TableCell>
+                    <Chip
+                      label={fmtStatus(d.status)}
+                      size="small"
+                      variant="outlined"
+                      color={docStatusColor(d.status)}
+                    />
+                  </TableCell>
+                  <TableCell align="right">
+                    {fmtMoney(d.total, d.currency)}
+                  </TableCell>
+                  <TableCell align="right">
+                    {fmtMoney(d.balance, d.currency)}
+                  </TableCell>
+                  <TableCell align="center">
+                    <IconButton
+                      size="small"
+                      disabled={pdfLoadingId === d.id}
+                      onClick={() => openDocPdf(kind, d)}
+                    >
+                      {pdfLoadingId === d.id ? (
+                        <CircularProgress size={18} />
+                      ) : (
+                        <VisibilityIcon fontSize="small" />
+                      )}
+                    </IconButton>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    </Box>
+  );
+
+  const statusColors = getStatusColors(values.status);
+
   return (
     <LocalizationProvider dateAdapter={AdapterDayjs}>
-      <Box sx={{ backgroundColor: "#f5f7fa", pb: 4 }}>
+      <Box sx={{ bgcolor: "background.default", pb: 4, minHeight: "100%" }}>
         <Slide in timeout={1000}>
-          <Card sx={{ boxShadow: 4, borderRadius: 3, overflow: "hidden" }}>
+          <Box sx={{ mx: "auto", p: 2 }}>
             <form onSubmit={mode === "edit" ? handleEditCon : handleCreate}>
-              <CardContent sx={{ p: 3 }}>
-                <Box
-                  sx={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    mb: 3,
-                  }}
-                >
+              <Box
+                sx={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 1.5,
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  mb: 1.5,
+                }}
+              >
+                <Box>
                   <Typography
                     variant="h4"
-                    gutterBottom
-                    sx={{ color: "#0d6c6a", fontWeight: "bold", mb: 3 }}
+                    sx={{ color: tealText, fontWeight: "bold", fontSize: 24 }}
                   >
                     {mode === "add" ? "Add" : "Edit"} Consignment Details
                   </Typography>
-
-                  <Button
-                    variant="outlined"
-                    startIcon={<DescriptionIcon />}
-                    onClick={() =>
-                      generateConsignmentNotePDFWithCanvas(
-                        values,
-                        includedOrders,
-                      )
-                    }
-                    disabled={saving || !values.consignment_number}
-                    sx={{
-                      borderColor: "#f58220",
-                      color: "#f58220",
-                      "&:hover": {
-                        borderColor: "#e65100",
-                        backgroundColor: "#fff3e0",
-                      },
-                    }}
+                  <Stack
+                    direction="row"
+                    spacing={1}
+                    alignItems="center"
+                    flexWrap="wrap"
+                    sx={{ color: "text.secondary", fontSize: 13 }}
                   >
-                    Consignment Note PDF
-                  </Button>
-                </Box>
-                {/* Main Data Section */}
-                <Accordion
-                  defaultExpanded
-                  sx={{
-                    boxShadow: 2,
-                    borderRadius: 2,
-                    mb: 3,
-                    "&:before": { display: "none" },
-                  }}
-                >
-                  <AccordionSummary
-                    expandIcon={
-                      <ExpandMoreIconMui
+                    {values.consignment_number && (
+                      <span>#{values.consignment_number}</span>
+                    )}
+                    {values.originName && values.destinationName && (
+                      <span>
+                        · {values.originName.split(",")[0]} →{" "}
+                        {values.destinationName.split(",")[0]}
+                      </span>
+                    )}
+                    {values.status && (
+                      <Chip
+                        label={values.status}
+                        size="small"
                         sx={{
-                          color: "#fff",
-                          backgroundColor: "#0d6c6a",
-                          borderRadius: "50%",
-                          p: 0.5,
+                          bgcolor: statusColors.bg,
+                          color: statusColors.text,
                         }}
                       />
-                    }
-                    sx={{
-                      backgroundColor: "#0d6c6a",
-                      color: "white",
-                      borderRadius: 2,
-                    }}
-                  >
-                    <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-                      📦 Consignment Details
-                    </Typography>
-                  </AccordionSummary>
+                    )}
+                  </Stack>
+                </Box>
+                <Button
+                  variant="outlined"
+                  startIcon={<DescriptionIcon />}
+                  onClick={() =>
+                    generateConsignmentNotePDFWithCanvas(values, includedOrders)
+                  }
+                  disabled={saving || !values.consignment_number}
+                  sx={outlineBtn}
+                >
+                  Consignment Note PDF
+                </Button>
+              </Box>
 
-                  <AccordionDetails sx={{ p: 3 }}>
-                    <Box
-                      sx={{
-                        display: "flex",
-                        gap: 2,
-                        mb: 2,
-                        flexDirection: {
-                          xs: "column",
-                          sm: "row",
-                        },
-                      }}
-                    >
-                      <CustomTextField
-                        name="consignment_number"
-                        value={values.consignment_number}
-                        onChange={handleChange}
-                        onBlur={handleBlur}
-                        label="Consignment #"
-                        startAdornment={
-                          <DescriptionIcon sx={{ mr: 1, color: "#f58220" }} />
-                        }
-                        readOnly={mode === "edit"}
-                        required
-                        error={
-                          touched.consignment_number &&
-                          Boolean(errors.consignment_number)
-                        }
-                        helperText={
-                          touched.consignment_number &&
-                          errors.consignment_number
-                            ? errors.consignment_number
-                            : "Enter unique consignment number"
-                        }
-                      />
-                      <CustomTextField
-                        name="eform"
-                        value={values.eform}
-                        onChange={handleChange}
-                        onBlur={handleBlur}
-                        label="Eform #"
-                        inputProps={{
-                          pattern: "^[A-Z]{3}-\\d{6}$",
-                          placeholder: "ABC-123456",
-                        }}
-                        required
-                        error={touched.eform && Boolean(errors.eform)}
-                        helperText={
-                          touched.eform && errors.eform ? errors.eform : ""
-                        }
-                        tooltip="Format: ABC-123456"
-                      />
-                      <CustomDatePicker
-                        name="eform_date"
-                        tooltip="Select Date"
-                        value={values.eform_date}
-                        onChange={handleDateChange}
-                        onBlur={() => handleDateBlur("eform_date")}
-                        label="Eform Date"
-                        required
-                        error={touched.eform_date && Boolean(errors.eform_date)}
-                        helperText={
-                          touched.eform_date && errors.eform_date
-                            ? errors.eform_date
-                            : ""
-                        }
-                        slotProps={{
-                          textField: {
-                            InputProps: {
-                              startAdornment: (
-                                <DateRangeIcon
-                                  sx={{ mr: 1, color: "#f58220" }}
-                                />
-                              ),
+              <Tabs
+                value={tab}
+                onChange={(_, v) => setTab(v)}
+                variant="scrollable"
+                scrollButtons="auto"
+                TabIndicatorProps={{ sx: { display: "none" } }}
+                sx={{
+                  bgcolor: teal,
+                  borderRadius: "10px 10px 0 0",
+                  px: 0.75,
+                  pt: 0.75,
+                  minHeight: 0,
+                  "& .MuiTabs-scrollButtons": { color: "#cfe6e6" },
+                  "& .MuiTab-root": {
+                    color: "#cfe6e6",
+                    textTransform: "none",
+                    fontWeight: 500,
+                    fontSize: 14,
+                    minHeight: 44,
+                    borderRadius: "8px 8px 0 0",
+                    "&:hover": { bgcolor: "rgba(255,255,255,.1)" },
+                  },
+                  "& .MuiTab-root.Mui-selected": {
+                    bgcolor: "background.paper",
+                    color: tealText,
+                    fontWeight: 600,
+                  },
+                }}
+              >
+                <Tab value="details" label={tabLabel("📦 Details")} />
+                <Tab
+                  value="containers"
+                  label={tabLabel(
+                    "🚛 Containers",
+                    (values.containers || []).length,
+                  )}
+                />
+                <Tab
+                  value="shipments"
+                  label={tabLabel("🛒 Shipments", flatShipments.length)}
+                />
+                <Tab value="billing" label={tabLabel("💰 Vendor Bill")} />
+                <Tab
+                  value="documents"
+                  label={tabLabel("📄 Documents", documents.length)}
+                />
+              </Tabs>
+
+              <Box
+                sx={{
+                  bgcolor: "background.paper",
+                  border: 1,
+                  borderTop: 0,
+                  borderColor: "divider",
+                  borderRadius: "0 0 10px 10px",
+                  p: { xs: 1.75, sm: 2.5 },
+                }}
+              >
+                {tab === "details" && (
+                  <>
+                    <Box sx={gridSx}>
+                      <Box sx={span(3)}>
+                        <CustomTextField
+                          name="consignment_number"
+                          value={values.consignment_number}
+                          onChange={handleChange}
+                          onBlur={handleBlur}
+                          label="Consignment #"
+                          startAdornment={
+                            <DescriptionIcon sx={{ mr: 1, color: orange }} />
+                          }
+                          readOnly={mode === "edit"}
+                          required
+                          error={
+                            touched.consignment_number &&
+                            Boolean(errors.consignment_number)
+                          }
+                          helperText={
+                            touched.consignment_number &&
+                            errors.consignment_number
+                              ? errors.consignment_number
+                              : "Enter unique consignment number"
+                          }
+                        />
+                      </Box>
+                      <Box sx={span(3)}>
+                        <CustomTextField
+                          name="eform"
+                          value={values.eform}
+                          onChange={handleChange}
+                          onBlur={handleBlur}
+                          label="Eform #"
+                          inputProps={{
+                            pattern: "^[A-Z]{3}-\\d{6}$",
+                            placeholder: "ABC-123456",
+                          }}
+                          required
+                          error={touched.eform && Boolean(errors.eform)}
+                          helperText={
+                            touched.eform && errors.eform ? errors.eform : ""
+                          }
+                          tooltip="Format: ABC-123456"
+                        />
+                      </Box>
+                      <Box sx={span(3)}>
+                        <CustomDatePicker
+                          name="eform_date"
+                          tooltip="Select Date"
+                          value={values.eform_date}
+                          onChange={handleDateChange}
+                          onBlur={() => handleDateBlur("eform_date")}
+                          label="Eform Date"
+                          required
+                          error={
+                            touched.eform_date && Boolean(errors.eform_date)
+                          }
+                          helperText={
+                            touched.eform_date && errors.eform_date
+                              ? errors.eform_date
+                              : ""
+                          }
+                          slotProps={{
+                            textField: {
+                              InputProps: {
+                                startAdornment: (
+                                  <DateRangeIcon
+                                    sx={{ mr: 1, color: orange }}
+                                  />
+                                ),
+                              },
                             },
-                          },
-                        }}
-                      />
-                      <CustomSelect
-                        name="status"
-                        value={values.status}
-                        onChange={handleStatusChange}
-                        label="Status"
-                        options={(mode === "add"
-                          ? [{ value: "Draft", label: "Draft" }]
-                          : values.status &&
-                              !(options.statusOptions || []).some(
-                                (o) => o.value === values.status,
-                              )
-                            ? [
-                                {
-                                  value: values.status,
-                                  label: values.status,
-                                },
-                                ...(options.statusOptions || []),
-                              ]
-                            : options.statusOptions || []
-                        ).map((opt) =>
-                          opt.value === "Delivered"
-                            ? {
-                                ...opt,
-                                disabled: hasDeliveredShipment,
-                                label: "Delivered",
-                              }
-                            : opt,
-                        )}
-                        disabled={mode === "add"}
-                        error={touched.status && Boolean(errors.status)}
-                        helperText={
-                          touched.status && errors.status ? errors.status : ""
-                        }
-                        loading={etaLoading}
-                      />
-
+                          }}
+                        />
+                      </Box>
                       {mode === "edit" && (
-                        <Box display="flex">
-                          <Button
-                            variant="outlined"
-                            size="small"
-                            onClick={advanceStatus}
-                            sx={{ maxHeight: 58 }}
-                          >
-                            Change
-                          </Button>
-                          <Button
-                            variant="outlined"
-                            size="small"
-                            onClick={updateStatusChange}
-                            sx={{ maxHeight: 58 }}
-                          >
-                            Update
-                          </Button>
-                        </Box>
-                      )}
-                    </Box>
-                    <Box
-                      sx={{
-                        display: "flex",
-                        gap: 2,
-                        mb: 2,
-                        flexDirection: {
-                          xs: "column",
-                          sm: "row",
-                        },
-                      }}
-                    >
-                      <CustomTextField
-                        name="remarks"
-                        value={values.remarks}
-                        onChange={handleChange}
-                        label="Remarks"
-                        multiline
-                        startAdornment={
-                          <AttachFileIcon sx={{ mr: 1, color: "#f58220" }} />
-                        }
-                      />
-                      {mode === "edit" && (
-                        <LocalizationProvider dateAdapter={AdapterDayjs}>
+                        <Box sx={span(3)}>
                           <DatePicker
                             label="ETA"
                             value={eta ? dayjs(eta) : dayjs(etaSuggestion)}
@@ -4922,6 +5176,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                             readOnly={true}
                             slotProps={{
                               textField: {
+                                fullWidth: true,
                                 helperText: etaLoading
                                   ? "Calculating ETA..."
                                   : etaSuggestion && eta !== etaSuggestion
@@ -4936,21 +5191,81 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                             )}
                             name="eta"
                           />
-                        </LocalizationProvider>
+                        </Box>
                       )}
-                    </Box>
-                    <Box
-                      sx={{
-                        display: "flex",
-                        gap: 2,
-                        mb: 2,
-                        flexDirection: {
-                          xs: "column",
-                          sm: "row",
-                        },
-                      }}
-                    >
-                      <Box sx={{ flex: 1, minWidth: 250 }}>
+
+                      <Box sx={{ ...span(6), display: "flex", gap: 1 }}>
+                        <CustomSelect
+                          name="status"
+                          value={values.status}
+                          onChange={handleStatusChange}
+                          label="Status"
+                          options={(mode === "add"
+                            ? [{ value: "Draft", label: "Draft" }]
+                            : values.status &&
+                                !(options.statusOptions || []).some(
+                                  (o) => o.value === values.status,
+                                )
+                              ? [
+                                  {
+                                    value: values.status,
+                                    label: values.status,
+                                  },
+                                  ...(options.statusOptions || []),
+                                ]
+                              : options.statusOptions || []
+                          ).map((opt) =>
+                            opt.value === "Delivered"
+                              ? {
+                                  ...opt,
+                                  disabled: hasDeliveredShipment,
+                                  label: "Delivered",
+                                }
+                              : opt,
+                          )}
+                          disabled={mode === "add"}
+                          error={touched.status && Boolean(errors.status)}
+                          helperText={
+                            touched.status && errors.status ? errors.status : ""
+                          }
+                          loading={etaLoading}
+                        />
+                        {mode === "edit" && (
+                          <>
+                            <Button
+                              variant="outlined"
+                              size="small"
+                              onClick={advanceStatus}
+                              sx={{ ...outlineBtn, maxHeight: 56 }}
+                            >
+                              Change
+                            </Button>
+                            <Button
+                              variant="outlined"
+                              size="small"
+                              onClick={updateStatusChange}
+                              sx={{ ...outlineBtn, maxHeight: 56 }}
+                            >
+                              Update
+                            </Button>
+                          </>
+                        )}
+                      </Box>
+                      <Box sx={span(6)}>
+                        <CustomTextField
+                          name="remarks"
+                          value={values.remarks}
+                          onChange={handleChange}
+                          label="Remarks"
+                          multiline
+                          startAdornment={
+                            <AttachFileIcon sx={{ mr: 1, color: orange }} />
+                          }
+                        />
+                      </Box>
+
+                      {sectionTitle("Parties")}
+                      <Box sx={span(6)}>
                         <CustomSelect
                           name="shipper"
                           value={values.shipper}
@@ -4967,16 +5282,8 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                           }
                           tooltip="Select shipper"
                         />
-                        <CustomTextField
-                          name="shipperAddress"
-                          value={values.shipperAddress}
-                          label="Shipper Address"
-                          multiline
-                          rows={4}
-                          sx={{ mt: 2 }}
-                        />
                       </Box>
-                      <Box sx={{ flex: 1, minWidth: 250 }}>
+                      <Box sx={span(6)}>
                         <CustomSelect
                           name="consignee"
                           value={values.consignee}
@@ -4993,28 +5300,28 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                           }
                           tooltip="Select consignee"
                         />
+                      </Box>
+                      <Box sx={span(6)}>
+                        <CustomTextField
+                          name="shipperAddress"
+                          value={values.shipperAddress}
+                          label="Shipper Address"
+                          multiline
+                          rows={3}
+                        />
+                      </Box>
+                      <Box sx={span(6)}>
                         <CustomTextField
                           name="consigneeAddress"
                           value={values.consigneeAddress}
                           label="Consignee Address"
                           multiline
-                          rows={4}
-                          sx={{ mt: 2 }}
+                          rows={3}
                         />
                       </Box>
-                    </Box>
-                    <Box
-                      sx={{
-                        display: "flex",
-                        gap: 2,
-                        mb: 2,
-                        flexDirection: {
-                          xs: "column",
-                          sm: "row",
-                        },
-                      }}
-                    >
-                      <Box sx={{ flex: 1, minWidth: 250 }}>
+
+                      {sectionTitle("Route & Vessel")}
+                      <Box sx={span(6)}>
                         <CustomSelect
                           name="origin"
                           value={values.origin}
@@ -5034,7 +5341,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                           tooltip="Select origin port"
                         />
                       </Box>
-                      <Box sx={{ flex: 1, minWidth: 250 }}>
+                      <Box sx={span(6)}>
                         <CustomSelect
                           name="destination"
                           value={values.destination}
@@ -5058,217 +5365,192 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                           tooltip="Select destination port"
                         />
                       </Box>
-                    </Box>
-                    <Box
-                      sx={{
-                        display: "flex",
-                        gap: 2,
-                        mb: 2,
-                        flexDirection: {
-                          xs: "column",
-                          sm: "row",
-                        },
-                      }}
-                    >
-                      <CustomTextField
-                        name="shippingLine"
-                        value={values.shippingLine || ""}
-                        onChange={handleChange}
-                        onBlur={handleBlur}
-                        label="Shipping Line"
-                        type="text"
-                        placeholder="e.g., Maersk, MSC, COSCO"
-                        fullWidth
-                        variant="outlined"
-                      />
-                      <FormControl fullWidth error={!!errors.paymentType}>
-                        <Select
-                          name="paymentType"
-                          value={values.paymentType || ""}
-                          onChange={(e) => {
-                            const newValue = e.target.value || "";
-                            setValues((prev) => ({
-                              ...prev,
-                              paymentType: newValue,
-                            }));
-                            if (touched.paymentType) {
-                              validateField("paymentType", newValue);
-                            }
-                            setTouched((prev) => ({
-                              ...prev,
-                              paymentType: true,
-                            }));
-                          }}
-                          displayEmpty
-                        >
-                          <MenuItem value="" disabled>
-                            <em>Select Payment Type</em>
-                          </MenuItem>
-                          {options.paymentTypeOptions?.map((option) => (
-                            <MenuItem key={option.value} value={option.value}>
-                              {option.label}
-                            </MenuItem>
-                          )) || null}
-                        </Select>
-                        {errors.paymentType && (
-                          <FormHelperText>{errors.paymentType}</FormHelperText>
-                        )}
-                        {!errors.paymentType && (
-                          <FormHelperText sx={{ color: "text.secondary" }}>
-                            (Required)
-                          </FormHelperText>
-                        )}
-                      </FormControl>
+                      <Box sx={span(3)}>
+                        <CustomTextField
+                          name="shippingLine"
+                          value={values.shippingLine || ""}
+                          onChange={handleChange}
+                          onBlur={handleBlur}
+                          label="Shipping Line"
+                          type="text"
+                          placeholder="e.g., Maersk, MSC, COSCO"
+                        />
+                      </Box>
+                      <Box sx={span(3)}>
+                        <CustomSelect
+                          name="vessel"
+                          value={values.vessel ?? ""}
+                          onChange={handleChange}
+                          onBlur={() => handleSelectBlur("vessel")}
+                          label="Vessel"
+                          options={options.vesselOptions || []}
+                          required
+                          error={touched.vessel && Boolean(errors.vessel)}
+                          helperText={
+                            touched.vessel && errors.vessel ? errors.vessel : ""
+                          }
+                          tooltip="Select vessel"
+                        />
+                      </Box>
+                      <Box sx={span(3)}>
+                        <CustomTextField
+                          name="voyage"
+                          value={values.voyage}
+                          onChange={handleChange}
+                          onBlur={handleBlur}
+                          label="Voyage"
+                          startAdornment={
+                            <DirectionsBoatIcon sx={{ mr: 1, color: orange }} />
+                          }
+                          required
+                          error={touched.voyage && Boolean(errors.voyage)}
+                          helperText={
+                            touched.voyage && errors.voyage ? errors.voyage : ""
+                          }
+                          tooltip="Enter voyage number (min 3 chars)"
+                        />
+                      </Box>
+                      <Box sx={span(3)}>
+                        <CustomTextField
+                          name="seal_no"
+                          value={values.seal_no}
+                          onChange={handleChange}
+                          label="Seal No"
+                          startAdornment={
+                            <LocalPrintshopIcon sx={{ mr: 1, color: orange }} />
+                          }
+                        />
+                      </Box>
 
-                      <CustomTextField
-                        name="consignment_value"
-                        value={values.consignment_value}
-                        onChange={handleNumberChange}
-                        onBlur={handleBlur}
-                        onFocus={handleNumberFocus}
-                        label="Consignment Value"
-                        type="number"
-                        required
-                        startAdornment={
-                          <AttachFileIcon sx={{ mr: 1, color: "#f58220" }} />
-                        }
-                        endAdornment={
-                          <FormControl size="small" sx={{ minWidth: 60 }}>
-                            <Select
-                              name="currency_code"
-                              value={
-                                (options.currencyOptions || []).length > 0 &&
-                                (options.currencyOptions || []).some(
-                                  (opt) => opt.value === values.currency_code,
-                                )
-                                  ? values.currency_code
-                                  : ""
+                      {sectionTitle("Payment & Weight")}
+                      <Box sx={span(3)}>
+                        <FormControl fullWidth error={!!errors.paymentType}>
+                          <InputLabel id="paymentType-label">
+                            Payment Terms*
+                          </InputLabel>
+                          <Select
+                            labelId="paymentType-label"
+                            label="Payment Terms*"
+                            name="paymentType"
+                            value={values.paymentType || ""}
+                            onChange={(e) => {
+                              const newValue = e.target.value || "";
+                              setValues((prev) => ({
+                                ...prev,
+                                paymentType: newValue,
+                              }));
+                              if (touched.paymentType) {
+                                validateField("paymentType", newValue);
                               }
-                              onChange={handleChange}
-                            >
-                              {(options.currencyOptions || [])?.length > 0 ? (
-                                (options.currencyOptions || []).map((opt) => (
-                                  <MenuItem key={opt.value} value={opt.value}>
-                                    {opt.label}
-                                  </MenuItem>
-                                ))
-                              ) : (
-                                <MenuItem value="">Select Currency</MenuItem>
-                              )}
-                            </Select>
-                          </FormControl>
-                        }
-                        error={
-                          touched.consignment_value &&
-                          Boolean(errors.consignment_value)
-                        }
-                        helperText={
-                          touched.consignment_value && errors.consignment_value
-                            ? errors.consignment_value
-                            : ""
-                        }
-                      />
-                      <CustomSelect
-                        name="bank"
-                        value={values.bank}
-                        onChange={handleBankChange}
-                        onBlur={() => handleSelectBlur("bank")}
-                        label="Bank"
-                        options={options.bankOptions || []}
-                        required
-                        error={touched.bank && Boolean(errors.bank)}
-                        helperText={
-                          touched.bank && errors.bank ? errors.bank : ""
-                        }
-                        tooltip="Select associated bank"
-                      />
-                    </Box>
-                    <Box
-                      sx={{
-                        display: "flex",
-                        gap: 2,
-                        mb: 2,
-                        flexDirection: {
-                          xs: "column",
-                          sm: "row",
-                        },
-                      }}
-                    >
-                      <CustomSelect
-                        name="vessel"
-                        value={values.vessel ?? ""}
-                        onChange={handleChange}
-                        onBlur={() => handleSelectBlur("vessel")}
-                        label="Vessel"
-                        options={options.vesselOptions || []}
-                        required
-                        error={touched.vessel && Boolean(errors.vessel)}
-                        helperText={
-                          touched.vessel && errors.vessel ? errors.vessel : ""
-                        }
-                        tooltip="Select vessel"
-                      />
-                      <CustomTextField
-                        name="voyage"
-                        value={values.voyage}
-                        onChange={handleChange}
-                        onBlur={handleBlur}
-                        label="Voyage"
-                        startAdornment={
-                          <DirectionsBoatIcon
-                            sx={{ mr: 1, color: "#f58220" }}
-                          />
-                        }
-                        required
-                        error={touched.voyage && Boolean(errors.voyage)}
-                        helperText={
-                          touched.voyage && errors.voyage ? errors.voyage : ""
-                        }
-                        tooltip="Enter voyage number (min 3 chars)"
-                      />
-
-                      <CustomTextField
-                        name="seal_no"
-                        value={values.seal_no}
-                        onChange={handleChange}
-                        label="Seal No"
-                        startAdornment={
-                          <LocalPrintshopIcon
-                            sx={{ mr: 1, color: "#f58220" }}
-                          />
-                        }
-                      />
-                      <CustomTextField
-                        name="netWeight"
-                        value={values.netWeight || 0}
-                        label="Net Weight"
-                        type="number"
-                        required
-                        disabled
-                        InputProps={{ readOnly: true }}
-                        startAdornment={
-                          <LocalShippingIcon sx={{ mr: 1, color: "#f58220" }} />
-                        }
-                        endAdornment={
-                          <Typography variant="body2" color="text.secondary">
-                            KGS
-                          </Typography>
-                        }
-                        helperText="Auto-calculated from selected orders"
-                        sx={{
-                          "& .MuiInputBase-input.Mui-disabled": {
-                            WebkitTextFillColor: "#000000",
-                            color: "#000000",
-                            fontWeight: "bold",
-                          },
-                        }}
-                      />
+                              setTouched((prev) => ({
+                                ...prev,
+                                paymentType: true,
+                              }));
+                            }}
+                          >
+                            {options.paymentTypeOptions?.map((option) => (
+                              <MenuItem key={option.value} value={option.value}>
+                                {option.label}
+                              </MenuItem>
+                            )) || null}
+                          </Select>
+                          <FormHelperText
+                            sx={{
+                              color: errors.paymentType
+                                ? "error.main"
+                                : "text.secondary",
+                            }}
+                          >
+                            {errors.paymentType || "(Required)"}
+                          </FormHelperText>
+                        </FormControl>
+                      </Box>
+                      <Box sx={span(3)}>
+                        <CustomTextField
+                          name="consignment_value"
+                          value={values.consignment_value}
+                          onChange={handleNumberChange}
+                          onBlur={handleBlur}
+                          onFocus={handleNumberFocus}
+                          label="Consignment Value"
+                          type="number"
+                          required
+                          endAdornment={
+                            <FormControl size="small" sx={{ minWidth: 60 }}>
+                              <Select
+                                name="currency_code"
+                                value={
+                                  (options.currencyOptions || []).length > 0 &&
+                                  (options.currencyOptions || []).some(
+                                    (opt) => opt.value === values.currency_code,
+                                  )
+                                    ? values.currency_code
+                                    : ""
+                                }
+                                onChange={handleChange}
+                              >
+                                {(options.currencyOptions || [])?.length > 0 ? (
+                                  (options.currencyOptions || []).map((opt) => (
+                                    <MenuItem key={opt.value} value={opt.value}>
+                                      {opt.label}
+                                    </MenuItem>
+                                  ))
+                                ) : (
+                                  <MenuItem value="">Select Currency</MenuItem>
+                                )}
+                              </Select>
+                            </FormControl>
+                          }
+                          error={
+                            touched.consignment_value &&
+                            Boolean(errors.consignment_value)
+                          }
+                          helperText={
+                            touched.consignment_value &&
+                            errors.consignment_value
+                              ? errors.consignment_value
+                              : ""
+                          }
+                        />
+                      </Box>
+                      <Box sx={span(3)}>
+                        <CustomSelect
+                          name="bank"
+                          value={values.bank}
+                          onChange={handleBankChange}
+                          onBlur={() => handleSelectBlur("bank")}
+                          label="Bank"
+                          options={options.bankOptions || []}
+                          required
+                          error={touched.bank && Boolean(errors.bank)}
+                          helperText={
+                            touched.bank && errors.bank ? errors.bank : ""
+                          }
+                          tooltip="Select associated bank"
+                        />
+                      </Box>
+                      <Box sx={span(3)}>
+                        <CustomTextField
+                          name="netWeight"
+                          value={values.netWeight || 0}
+                          label="Net Weight"
+                          type="number"
+                          required
+                          readOnly
+                          endAdornment={
+                            <Typography variant="body2" color="text.secondary">
+                              KGS
+                            </Typography>
+                          }
+                          helperText="Auto-calculated from selected orders"
+                        />
+                      </Box>
                     </Box>
                     {selectedOrders.length > 0 && (
                       <Alert
                         severity="info"
                         icon={<InfoIcon />}
-                        sx={{ borderLeft: "4px solid #f58220" }}
+                        sx={{ mt: 2, borderLeft: `4px solid ${orange}` }}
                       >
                         <AlertTitle>Weight Summary</AlertTitle>
                         Based on <strong>{selectedOrders.length}</strong>{" "}
@@ -5276,582 +5558,185 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                         <strong>{calculatedTotals.netWeight} KGS</strong> net
                       </Alert>
                     )}
+                  </>
+                )}
 
-                    <Fade in={true} timeout={800}>
-                      <Box
-                        sx={{
-                          mt: 3,
-                          display: "flex",
-                          gap: 2,
-                          justifyContent: "flex-end",
-                          flexWrap: "wrap",
-                        }}
-                      >
-                        <Tooltip title="Download simple Shipment note as PDF">
-                          <Button
-                            variant="outlined"
-                            startIcon={<DescriptionIcon />}
-                            onClick={() =>
-                              generateshipmentsAndOrdersPDFWithCanvas(
-                                values,
-                                orders,
-                              )
-                            }
-                            disabled={saving || !values.consignment_number}
-                            sx={{
-                              borderColor: "#f58220",
-                              color: "#f58220",
-                              "&:hover": {
-                                borderColor: "#e65100",
-                                backgroundColor: "#fff3e0",
-                              },
-                            }}
-                          >
-                            Shipment & Orders PDF
-                          </Button>
-                        </Tooltip>
-                        <Tooltip title="Download simple consignment note as PDF">
-                          <Button
-                            variant="outlined"
-                            startIcon={<DescriptionIcon />}
-                            onClick={() =>
-                              generateContainersAndOrdersPDFWithCanvas(
-                                values,
-                                orders,
-                              )
-                            }
-                            disabled={saving || !values.consignment_number}
-                            sx={{
-                              borderColor: "#f58220",
-                              color: "#f58220",
-                              "&:hover": {
-                                borderColor: "#e65100",
-                                backgroundColor: "#fff3e0",
-                              },
-                            }}
-                          >
-                            Containers & Orders PDF
-                          </Button>
-                        </Tooltip>
-
-                        <Tooltip title="Download PDF manifest with details, containers, and orders">
-                          <Button
-                            variant="outlined"
-                            startIcon={<LocalPrintshopIcon />}
-                            onClick={() =>
-                              generateManifestPDFWithCanvas(values, orders)
-                            }
-                            disabled={saving || !values.consignment_number}
-                            sx={{
-                              borderColor: "#f58220",
-                              color: "#f58220",
-                              "&:hover": {
-                                borderColor: "#e65100",
-                                backgroundColor: "#fff3e0",
-                              },
-                            }}
-                          >
-                            {saving ? (
-                              <CircularProgress size={20} />
-                            ) : (
-                              "Print Manifest"
-                            )}
-                          </Button>
-                        </Tooltip>
-
-                        <Tooltip title="Download PDF manifest with commodity summary split by subcategory">
-                          <Button
-                            variant="outlined"
-                            startIcon={<LocalPrintshopIcon />}
-                            onClick={() =>
-                              generateManifestPDFWithCanvas(
-                                values,
-                                orders,
-                                includedOrders,
-                                true,
-                              )
-                            }
-                            disabled={saving || !values.consignment_number}
-                            sx={{
-                              borderColor: "#f58220",
-                              color: "#f58220",
-                              "&:hover": {
-                                borderColor: "#e65100",
-                                backgroundColor: "#fff3e0",
-                              },
-                            }}
-                          >
-                            {saving ? (
-                              <CircularProgress size={20} />
-                            ) : (
-                              "Print Manifest with Subcategory"
-                            )}
-                          </Button>
-                        </Tooltip>
-                      </Box>
-                    </Fade>
-                  </AccordionDetails>
-                </Accordion>
-
-                <Divider sx={{ my: 3 }} />
-
-                <Accordion
-                  sx={{
-                    boxShadow: 2,
-                    borderRadius: 2,
-                    mt: 3,
-                    "&:before": { display: "none" },
-                  }}
-                >
-                  <AccordionSummary
-                    expandIcon={
-                      <ExpandMoreIconMui
-                        sx={{
-                          color: "#fff",
-                          backgroundColor: "#0d6c6a",
-                          borderRadius: "50%",
-                          p: 0.5,
-                        }}
-                      />
-                    }
-                    sx={{
-                      backgroundColor: "#0d6c6a",
-                      color: "white",
-                      borderRadius: 2,
-                    }}
-                  >
-                    <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-                      🚚 Containers
-                    </Typography>
-                  </AccordionSummary>
-                  <AccordionDetails sx={{ p: 3 }}>
-                    <Tooltip title="Download simple consignment note as PDF">
-                      <Button
-                        variant="outlined"
-                        startIcon={<DescriptionIcon />}
-                        onClick={() =>
-                          generateContainersAndOrdersPDFWithCanvas(
-                            values,
-                            includedOrders,
-                          )
-                        } // Fixed: Pass includedOrders
-                        disabled={saving || !values.consignment_number}
-                        sx={{
-                          borderColor: "#f58220",
-                          color: "#f58220",
-                          mb: 2,
-                          float: "right",
-                          flexDirection: "row",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "flex-end",
-                          alignSelf: "flex-end",
-                          "&:hover": {
-                            borderColor: "#e65100",
-                            backgroundColor: "#fff3e0",
-                          },
-                        }}
-                      >
-                        Containers & Orders PDF
-                      </Button>
-                    </Tooltip>
-                    <Table
+                {tab === "containers" && (
+                  <>
+                    <TableContainer
                       sx={{
-                        minWidth: "100%",
-                        boxShadow: 1,
-                        borderRadius: 1,
-                        mb: 2,
-                        overflow: "hidden",
+                        border: 1,
+                        borderColor: "divider",
+                        borderRadius: 2,
                       }}
-                      aria-label="Containers table"
                     >
-                      <TableHead>
-                        <TableRow sx={{ backgroundColor: "#e3f2fd" }}>
-                          <TableCell sx={{ fontWeight: "bold" }}>
-                            Container No.
-                          </TableCell>
-                          <TableCell sx={{ fontWeight: "bold" }}>
-                            Location
-                          </TableCell>
-                          <TableCell sx={{ fontWeight: "bold" }}>
-                            Size
-                          </TableCell>
-                          <TableCell sx={{ fontWeight: "bold" }}>
-                            Type
-                          </TableCell>
-                          <TableCell sx={{ fontWeight: "bold" }}>
-                            Ownership
-                          </TableCell>
-                          <TableCell sx={{ fontWeight: "bold" }}>
-                            Status
-                          </TableCell>
-                          <TableCell sx={{ fontWeight: "bold" }}>
-                            Actions
-                          </TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {(values.containers || []).length === 0 ? (
-                          <TableRow>
-                            <TableCell
-                              colSpan={7}
-                              align="center"
-                              sx={{ py: 4 }}
-                            >
-                              <Typography
-                                variant="body2"
-                                color="text.secondary"
-                              >
-                                No containers added. Click "Select from List" to
-                                get started.
-                              </Typography>
-                            </TableCell>
-                          </TableRow>
-                        ) : (
-                          (values.containers || []).map((container, index) => {
-                            return (
-                              <Fade
-                                in
-                                key={`${container.containerNo || "new"}-${index}`}
-                                timeout={300 * index}
-                              >
-                                <TableRow
-                                  hover
-                                  sx={{ transition: "all 0.2s ease" }}
-                                >
-                                  <TableCell>
-                                    <TextField
-                                      size="small"
-                                      fullWidth
-                                      value={container.containerNo || ""}
-                                      disabled
-                                    />
-                                  </TableCell>
-
-                                  <TableCell>
-                                    <TextField
-                                      size="small"
-                                      fullWidth
-                                      value={container.location || ""}
-                                      disabled
-                                    />
-                                  </TableCell>
-
-                                  <TableCell>
-                                    <TextField
-                                      size="small"
-                                      fullWidth
-                                      value={container.size || ""}
-                                      disabled
-                                    />
-                                  </TableCell>
-
-                                  <TableCell>
-                                    <TextField
-                                      size="small"
-                                      fullWidth
-                                      value={container.containerType || ""}
-                                      disabled
-                                    />
-                                  </TableCell>
-
-                                  <TableCell>
-                                    <TextField
-                                      size="small"
-                                      fullWidth
-                                      value={container.ownership || ""}
-                                      disabled
-                                    />
-                                  </TableCell>
-
-                                  <TableCell>
-                                    <TextField
-                                      size="small"
-                                      fullWidth
-                                      value={container.status || "Available"}
-                                      disabled
-                                    />
-                                  </TableCell>
-
-                                  <TableCell>
-                                    <IconButton
-                                      onClick={() => removeContainer(index)}
-                                      color="error"
-                                      size="small"
-                                    >
-                                      <DeleteIconMui fontSize="small" />
-                                    </IconButton>
-                                  </TableCell>
-                                </TableRow>
-                              </Fade>
-                            );
-                          })
-                        )}
-                      </TableBody>
-                    </Table>
-                    <div style={{ display: "flex", gap: 8, mt: 2 }}>
-                      <Button
-                        startIcon={<AddIcon />}
-                        onClick={() => {
-                          setContainerModalOpen(true);
-                        }}
-                        variant="contained"
-                        disabled={containersLoading}
-                        sx={{
-                          flex: 1,
-                          backgroundColor: "#0d6c6a",
-                          color: "white",
-                          "&:hover": { backgroundColor: "#0a5553" },
-                        }}
+                      <Table
+                        sx={{ minWidth: 760 }}
+                        aria-label="Containers table"
                       >
-                        {containersLoading ? "Loading..." : "Select from List"}
-                      </Button>
-                    </div>
+                        <TableHead>
+                          <TableRow>
+                            {[
+                              "Container No.",
+                              "Location",
+                              "Size",
+                              "Type",
+                              "Ownership",
+                              "Status",
+                              "Actions",
+                            ].map((h) => (
+                              <TableCell key={h} sx={headCellSx}>
+                                {h}
+                              </TableCell>
+                            ))}
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {(values.containers || []).length === 0 ? (
+                            <TableRow>
+                              <TableCell
+                                colSpan={7}
+                                align="center"
+                                sx={{ py: 4 }}
+                              >
+                                <Typography
+                                  variant="body2"
+                                  color="text.secondary"
+                                >
+                                  No containers added. Click "Select from List"
+                                  to get started.
+                                </Typography>
+                              </TableCell>
+                            </TableRow>
+                          ) : (
+                            (values.containers || []).map(
+                              (container, index) => (
+                                <Fade
+                                  in
+                                  key={`${container.containerNo || "new"}-${index}`}
+                                  timeout={300 * index}
+                                >
+                                  <TableRow hover>
+                                    <TableCell>
+                                      {container.containerNo}
+                                    </TableCell>
+                                    <TableCell>{container.location}</TableCell>
+                                    <TableCell>{container.size}</TableCell>
+                                    <TableCell>
+                                      {container.containerType}
+                                    </TableCell>
+                                    <TableCell>{container.ownership}</TableCell>
+                                    <TableCell>
+                                      {container.status || "Available"}
+                                    </TableCell>
+                                    <TableCell>
+                                      <Button
+                                        color="error"
+                                        variant="contained"
+                                        size="small"
+                                        onClick={() => removeContainer(index)}
+                                      >
+                                        Remove
+                                      </Button>
+                                    </TableCell>
+                                  </TableRow>
+                                </Fade>
+                              ),
+                            )
+                          )}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                    <Button
+                      fullWidth
+                      startIcon={<AddIcon />}
+                      onClick={() => setContainerModalOpen(true)}
+                      variant="contained"
+                      disabled={containersLoading}
+                      sx={{
+                        mt: 1.5,
+                        backgroundColor: teal,
+                        color: "white",
+                        "&:hover": { backgroundColor: "#0a5553" },
+                      }}
+                    >
+                      {containersLoading ? "Loading..." : "Select from List"}
+                    </Button>
                     {touched.containers && errors.containers && (
                       <Alert severity="error" sx={{ mt: 1 }}>
                         {errors.containers}
                       </Alert>
                     )}
-                  </AccordionDetails>
-                </Accordion>
+                  </>
+                )}
 
-                <Dialog
-                  open={containerModalOpen}
-                  onClose={() => setContainerModalOpen(false)}
-                  maxWidth="xl"
-                  fullWidth
-                >
-                  <DialogContent>
-                    {containersLoading ? (
-                      <Typography>Loading containers...</Typography>
-                    ) : (
-                      <ContainerModule
-                        isConsignment={true}
-                        containers={containers || []}
-                        selectedContainers={selectedContainers || []}
-                        onToggle={handleContainerToggle}
-                      />
-                    )}
-                  </DialogContent>
-                  <DialogActions>
-                    <Button onClick={() => setContainerModalOpen(false)}>
-                      Cancel
-                    </Button>
-                    <Button
-                      onClick={addSelectedContainers}
-                      disabled={(selectedContainers || []).length === 0}
-                      variant="contained"
-                    >
-                      Add Selected ({(selectedContainers || []).length})
-                    </Button>
-                  </DialogActions>
-                </Dialog>
-
-                <Divider sx={{ my: 3 }} />
-
-                <Accordion
-                  sx={{
-                    mt: 2,
-                    boxShadow: 2,
-                    borderRadius: 2,
-                    "&:before": { display: "none" },
-                  }}
-                >
-                  <AccordionSummary
-                    expandIcon={
-                      <ExpandMoreIcon
-                        sx={{
-                          color: "#fff",
-                          backgroundColor: "#f58220",
-                          borderRadius: "50%",
-                          p: 0.5,
-                        }}
-                      />
-                    }
-                    sx={{
-                      backgroundColor: "#f58220",
-                      color: "white",
-                      borderRadius: 2,
-                    }}
-                  >
-                    <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-                      🛒 Shipments by Container ({flatShipments.length} lines)
-                    </Typography>
-                  </AccordionSummary>
-                  <Box
-                    sx={{
-                      mt: 3,
-                      display: "flex",
-                      gap: 2,
-                      justifyContent: "flex-end",
-                      flexWrap: "wrap",
-                      mr: 3,
-                    }}
-                  >
-                    <Tooltip title="Download simple Shipment note as PDF">
-                      <Button
-                        variant="outlined"
-                        startIcon={<DescriptionIcon />}
-                        onClick={() =>
-                          generateshipmentsAndOrdersPDFWithCanvas(
-                            values,
-                            includedOrders,
-                          )
-                        }
-                        disabled={saving || !values.consignment_number}
-                        sx={{
-                          borderColor: "#f58220",
-                          color: "#f58220",
-                          "&:hover": {
-                            borderColor: "#e65100",
-                            backgroundColor: "#fff3e0",
-                          },
-                        }}
-                      >
-                        Shipment & Orders PDF
-                      </Button>
-                    </Tooltip>
-                  </Box>
-                  <AccordionDetails>
-                    <TableContainer
-                      component={Paper}
+                {tab === "shipments" && (
+                  <>
+                    <Box
                       sx={{
+                        display: "flex",
+                        gap: 2,
+                        mb: 2,
+                        flexDirection: { xs: "column", sm: "row" },
+                      }}
+                    >
+                      <TextField
+                        size="small"
+                        sx={{ maxWidth: 800 }}
+                        placeholder="Search Item Ref No, Booking Ref or Form No"
+                        value={shipmentSearch}
+                        onChange={(e) => setShipmentSearch(e.target.value)}
+                        InputProps={{
+                          startAdornment: (
+                            <InputAdornment position="start">
+                              <SearchIcon fontSize="small" />
+                            </InputAdornment>
+                          ),
+                        }}
+                      />
+                      <FormControl size="small" sx={{ minWidth: 220 }}>
+                        <InputLabel id="shipment-status-label">
+                          Status
+                        </InputLabel>
+                        <Select
+                          labelId="shipment-status-label"
+                          label="Status"
+                          value={shipmentStatus}
+                          onChange={(e) => setShipmentStatus(e.target.value)}
+                        >
+                          <MenuItem value="">All</MenuItem>
+                          {shipmentStatusOptions.map((st) => (
+                            <MenuItem key={st} value={st}>
+                              {st}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </Box>
+                    <TableContainer
+                      sx={{
+                        border: 1,
+                        borderColor: "divider",
                         borderRadius: 2,
-                        overflow: "auto",
-                        boxShadow: 2,
                         maxHeight: 580,
-                        width: "100%",
-                        "&::-webkit-scrollbar": { height: 8, width: 8 },
-                        "&::-webkit-scrollbar-thumb": {
-                          background: "#0d6c6a",
-                          borderRadius: 4,
-                        },
                       }}
                     >
                       <Table
-                        size="large"
+                        stickyHeader
+                        sx={{ minWidth: 760 }}
                         aria-label="shipments-by-container-table"
                       >
-                        <TableHead sx={{ bgcolor: "#0d6c6a" }}>
-                          <TableRow sx={{ bgcolor: "#0d6c6a" }}>
-                            <TableCell
-                              sx={{
-                                bgcolor: "#0d6c6a",
-                                color: "#fff",
-                                fontWeight: "Bold",
-                              }}
-                            >
-                              Item Ref No
-                            </TableCell>
-                            <TableCell
-                              sx={{
-                                bgcolor: "#0d6c6a",
-                                color: "#fff",
-                                fontWeight: "Bold",
-                              }}
-                            >
-                              Booking Ref
-                            </TableCell>
-                            <TableCell
-                              sx={{
-                                bgcolor: "#0d6c6a",
-                                color: "#fff",
-                                fontWeight: "Bold",
-                              }}
-                            >
-                              Form No
-                            </TableCell>
-                            <TableCell
-                              sx={{
-                                bgcolor: "#0d6c6a",
-                                color: "#fff",
-                                fontWeight: "Bold",
-                              }}
-                            >
-                              Product
-                            </TableCell>
-                            <TableCell
-                              sx={{
-                                bgcolor: "#0d6c6a",
-                                color: "#fff",
-                                fontWeight: "Bold",
-                              }}
-                            >
-                              POL
-                            </TableCell>
-                            <TableCell
-                              sx={{
-                                bgcolor: "#0d6c6a",
-                                color: "#fff",
-                                fontWeight: "Bold",
-                              }}
-                            >
-                              POD
-                            </TableCell>
-                            <TableCell
-                              sx={{
-                                bgcolor: "#0d6c6a",
-                                color: "#fff",
-                                fontWeight: "Bold",
-                              }}
-                            >
-                              Sender
-                            </TableCell>
-                            <TableCell
-                              sx={{
-                                bgcolor: "#0d6c6a",
-                                color: "#fff",
-                                fontWeight: "Bold",
-                              }}
-                            >
-                              Receiver
-                            </TableCell>
-
-                            <TableCell
-                              sx={{
-                                bgcolor: "#0d6c6a",
-                                color: "#fff",
-                                fontWeight: "Bold",
-                              }}
-                            >
-                              Container
-                            </TableCell>
-                            <TableCell
-                              sx={{
-                                bgcolor: "#0d6c6a",
-                                color: "#fff",
-                                fontWeight: "Bold",
-                                width: 200,
-                              }}
-                            >
-                              Assign Weight & Items
-                            </TableCell>
-                            <TableCell
-                              align="center"
-                              sx={{
-                                bgcolor: "#0d6c6a",
-                                color: "#fff",
-                                fontWeight: "Bold",
-                              }}
-                            >
-                              Status
-                            </TableCell>
-
-                            <TableCell
-                              align="center"
-                              sx={{
-                                bgcolor: "#0d6c6a",
-                                color: "#fff",
-                                fontWeight: "Bold",
-                              }}
-                            >
-                              Actions
-                            </TableCell>
+                        <TableHead>
+                          <TableRow>
+                            {shipmentHeaders.map((h) => (
+                              <TableCell key={h} sx={headCellSx}>
+                                {h}
+                              </TableCell>
+                            ))}
                           </TableRow>
                         </TableHead>
-
                         <TableBody>
-                          {flatShipments.length === 0 ? (
+                          {filteredShipments.length === 0 ? (
                             <TableRow>
                               <TableCell
                                 colSpan={12}
@@ -5862,36 +5747,35 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                                   variant="body1"
                                   color="text.secondary"
                                 >
-                                  No shipments with container assignments found
+                                  {flatShipments.length === 0
+                                    ? "No shipments with container assignments found"
+                                    : "No shipments match your search or filter"}
                                 </Typography>
                               </TableCell>
                             </TableRow>
                           ) : (
-                            flatShipments.map((shipment, index) => (
+                            filteredShipments.map((shipment, index) => (
                               <TableRow
+                                hover
                                 key={`${shipment.orderId}-${shipment.containerNumber}-${index}`}
                               >
                                 <TableCell>{shipment.itemRef}</TableCell>
                                 <TableCell>{shipment.bookingRef}</TableCell>
                                 <TableCell>{shipment.formNo}</TableCell>
                                 <TableCell>
-                                  <Box>
-                                    <Typography
-                                      variant="body2"
-                                      fontWeight="medium"
-                                    >
-                                      {shipment.category}
-                                    </Typography>
-                                    <Typography
-                                      variant="caption"
-                                      color="text.secondary"
-                                    >
-                                      {shipment.subcategory &&
-                                        ` • ${shipment.subcategory}`}
-                                    </Typography>
-                                  </Box>
+                                  <Typography
+                                    variant="body2"
+                                    fontWeight="medium"
+                                  >
+                                    {shipment.category}
+                                  </Typography>
+                                  <Typography
+                                    variant="caption"
+                                    color="text.secondary"
+                                  >
+                                    {shipment.subcategory}
+                                  </Typography>
                                 </TableCell>
-
                                 <TableCell>
                                   {String(shipment.pol ?? "-").substring(0, 15)}
                                 </TableCell>
@@ -5909,16 +5793,15 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                                     shipment.receiverName ?? "-",
                                   ).substring(0, 15)}
                                 </TableCell>
-
                                 <TableCell>
                                   <Chip
                                     label={shipment.containerNumber}
                                     size="small"
-                                    color="primary"
                                     variant="outlined"
+                                    sx={{ borderColor: orange, color: orange }}
                                   />
                                 </TableCell>
-                                <TableCell align="center">
+                                <TableCell>
                                   {shipment.assignWeight > 0
                                     ? `${shipment.assignWeight.toLocaleString()} kg`
                                     : "-"}{" "}
@@ -5926,18 +5809,17 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                                     ? `${shipment.assignBoxes.toLocaleString()} ${shipment.type}`
                                     : "-"}
                                 </TableCell>
-
                                 <TableCell>
                                   <StatusChip
                                     status={shipment.receiverStatus}
                                     size="small"
                                   />
                                 </TableCell>
-
                                 <TableCell>
                                   <Button
                                     color="error"
                                     variant="contained"
+                                    size="small"
                                     onClick={() =>
                                       handleRemoveShipment(shipment)
                                     }
@@ -5951,24 +5833,340 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                         </TableBody>
                       </Table>
                     </TableContainer>
-                  </AccordionDetails>
-                </Accordion>
-              </CardContent>
+                  </>
+                )}
+                {tab === "billing" && (
+                  <>
+                    {mode !== "edit" ? (
+                      <Typography color="text.secondary">
+                        Save the consignment first to see its vendor bills and
+                        invoices.
+                      </Typography>
+                    ) : (
+                      <>
+                        <Box
+                          sx={{
+                            display: "flex",
+                            justifyContent: "flex-end",
+                            mb: 1.5,
+                          }}
+                        >
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={() => fetchBilling(true)}
+                            disabled={billingLoading || billingSyncing}
+                            startIcon={
+                              billingSyncing ? (
+                                <CircularProgress size={14} />
+                              ) : (
+                                <UpdateIcon />
+                              )
+                            }
+                            sx={outlineBtn}
+                          >
+                            Sync from Zoho
+                          </Button>
+                        </Box>
+                        <TableContainer
+                          sx={{
+                            border: 1,
+                            borderColor: "divider",
+                            borderRadius: 2,
+                          }}
+                        >
+                          <Table
+                            sx={{ minWidth: 640 }}
+                            aria-label="vendor-bill-table"
+                          >
+                            <TableHead>
+                              <TableRow>
+                                <TableCell sx={headCellSx}>
+                                  Booking Ref
+                                </TableCell>
+                                <TableCell sx={headCellSx}>Form No</TableCell>
+                                <TableCell sx={headCellSx} align="center">
+                                  Vendor Bills
+                                </TableCell>
+                                <TableCell sx={headCellSx} align="center">
+                                  Invoices
+                                </TableCell>
+                                <TableCell sx={headCellSx} align="right">
+                                  Gross Profit
+                                </TableCell>
+                              </TableRow>
+                            </TableHead>
+                            <TableBody>
+                              {billingRows.length === 0 ? (
+                                <TableRow>
+                                  <TableCell
+                                    colSpan={5}
+                                    align="center"
+                                    sx={{ py: 5 }}
+                                  >
+                                    <Typography
+                                      variant="body2"
+                                      color="text.secondary"
+                                    >
+                                      {billingLoading || billingSyncing
+                                        ? "Loading billing data..."
+                                        : "No invoices or vendor bills found for this consignment"}
+                                    </Typography>
+                                  </TableCell>
+                                </TableRow>
+                              ) : (
+                                billingRows.map((row) => (
+                                  <TableRow
+                                    hover
+                                    key={row.orderId}
+                                    selected={selectedBilling === row.orderId}
+                                    onClick={() =>
+                                      setSelectedBilling(row.orderId)
+                                    }
+                                    sx={{ cursor: "pointer" }}
+                                  >
+                                    <TableCell>{row.bookingRef}</TableCell>
+                                    <TableCell>{row.formNo}</TableCell>
+                                    <TableCell align="center">
+                                      {row.vendorBills.length}
+                                    </TableCell>
+                                    <TableCell align="center">
+                                      {row.invoices.length}
+                                    </TableCell>
+                                    <TableCell
+                                      align="right"
+                                      sx={{
+                                        fontWeight: 600,
+                                        color:
+                                          row.gross === null
+                                            ? "text.secondary"
+                                            : row.gross >= 0
+                                              ? "success.main"
+                                              : "error.main",
+                                      }}
+                                    >
+                                      {row.gross === null
+                                        ? "Mixed currencies"
+                                        : fmtMoney(
+                                            row.gross,
+                                            row.currency ||
+                                              values.currency_code,
+                                          )}
+                                    </TableCell>
+                                  </TableRow>
+                                ))
+                              )}
+                            </TableBody>
+                          </Table>
+                        </TableContainer>
+
+                        {selectedBill && (
+                          <Box
+                            sx={{
+                              mt: 3,
+                              border: 1,
+                              borderColor: "divider",
+                              borderRadius: 2.5,
+                              p: 2.5,
+                            }}
+                          >
+                            <Box
+                              sx={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                                flexWrap: "wrap",
+                                gap: 1,
+                              }}
+                            >
+                              <Typography
+                                sx={{ fontWeight: 700, fontSize: 16 }}
+                              >
+                                {selectedBill.bookingRef} ·{" "}
+                                {selectedBill.formNo}
+                              </Typography>
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                onClick={() => setSelectedBilling(null)}
+                                sx={outlineBtn}
+                              >
+                                Close
+                              </Button>
+                            </Box>
+                            <Typography
+                              sx={{
+                                fontWeight: 600,
+                                color: tealText,
+                                mt: 3,
+                                mb: 1,
+                              }}
+                            >
+                              Gross Profit Calculation
+                            </Typography>
+                            {selectedBill.mixedCurrency ? (
+                              <Alert severity="warning">
+                                Invoices and bills use different currencies, so
+                                gross profit can't be calculated automatically.
+                              </Alert>
+                            ) : (
+                              <Box
+                                sx={{
+                                  display: "grid",
+                                  gridTemplateColumns: {
+                                    xs: "1fr",
+                                    sm: "repeat(2, 1fr)",
+                                    md: "repeat(4, 1fr)",
+                                  },
+                                  gap: 2,
+                                }}
+                              >
+                                {stat(
+                                  "Total Invoices (Revenue)",
+                                  fmtMoney(
+                                    selectedBill.invoiceTotal,
+                                    selectedBill.currency ||
+                                      values.currency_code,
+                                  ),
+                                )}
+                                {stat(
+                                  "Total Vendor Bills (Cost)",
+                                  fmtMoney(
+                                    selectedBill.vendorTotal,
+                                    selectedBill.currency ||
+                                      values.currency_code,
+                                  ),
+                                )}
+                                {stat(
+                                  "Gross Profit",
+                                  fmtMoney(
+                                    selectedBill.gross,
+                                    selectedBill.currency ||
+                                      values.currency_code,
+                                  ),
+                                  selectedBill.gross >= 0
+                                    ? "success.main"
+                                    : "error.main",
+                                )}
+                                {stat(
+                                  "Margin",
+                                  selectedBill.invoiceTotal > 0
+                                    ? `${((selectedBill.gross / selectedBill.invoiceTotal) * 100).toFixed(1)}%`
+                                    : "-",
+                                )}
+                              </Box>
+                            )}
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                              sx={{ display: "block", mt: 1 }}
+                            >
+                              Gross Profit = Total Invoices − Total Vendor
+                              Bills. Void and draft documents are excluded.
+                            </Typography>
+                            {billingTable(
+                              "Vendor Bills",
+                              selectedBill.vendorBills,
+                              "Vendor",
+                              "vendor",
+                              "Bill",
+                            )}
+                            {billingTable(
+                              "Invoices",
+                              selectedBill.invoices,
+                              "Customer",
+                              "customer",
+                              "Invoice",
+                            )}
+                          </Box>
+                        )}
+                      </>
+                    )}
+                  </>
+                )}
+                {tab === "documents" && (
+                  <Box
+                    sx={{
+                      display: "grid",
+                      gridTemplateColumns:
+                        "repeat(auto-fill, minmax(240px, 1fr))",
+                      gap: 2,
+                    }}
+                  >
+                    {documents.map((doc) => (
+                      <Box
+                        key={doc.title}
+                        sx={{
+                          border: 1,
+                          borderColor: "divider",
+                          borderRadius: 2.5,
+                          p: 2,
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 0.75,
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            width: 38,
+                            height: 38,
+                            borderRadius: 2,
+                            bgcolor: alpha(orange, 0.14),
+                            display: "grid",
+                            placeItems: "center",
+                            fontSize: 19,
+                          }}
+                        >
+                          {doc.icon}
+                        </Box>
+                        <Typography sx={{ fontWeight: 600, fontSize: 15 }}>
+                          {doc.title}
+                        </Typography>
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ flex: 1, mb: 1 }}
+                        >
+                          {doc.text}
+                        </Typography>
+                        <Button
+                          variant="outlined"
+                          onClick={doc.run}
+                          disabled={saving || !values.consignment_number}
+                          sx={outlineBtn}
+                        >
+                          {doc.label}
+                        </Button>
+                      </Box>
+                    ))}
+                  </Box>
+                )}
+              </Box>
+
               <Box
                 sx={{
+                  position: "sticky",
+                  bottom: 0,
+                  zIndex: 2,
                   display: "flex",
-                  justifyContent: "space-around",
-                  gap: 2,
-                  mb: 2,
+                  justifyContent: "flex-end",
+                  gap: 1.25,
+                  px: 2,
+                  py: 1.5,
+                  mt: 2,
+                  bgcolor: "background.paper",
+                  borderTop: 1,
+                  borderColor: "divider",
+                  borderRadius: 2,
                 }}
               >
                 <Button
                   variant="outlined"
                   onClick={resetForm}
                   sx={{
-                    borderColor: "#9e9e9e",
-                    color: "#9e9e9e",
-                    "&:hover": { borderColor: "#757575" },
+                    borderColor: "divider",
+                    color: "text.secondary",
+                    "&:hover": { borderColor: "text.secondary" },
                   }}
                 >
                   Reset
@@ -5978,7 +6176,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                   variant="contained"
                   disabled={saving}
                   sx={{
-                    backgroundColor: "#f58220",
+                    backgroundColor: orange,
                     color: "white",
                     px: 4,
                     "&:hover": { backgroundColor: "#e65100" },
@@ -5991,8 +6189,64 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                       : "Add Consignment"}
                 </Button>
               </Box>
+
+              <Dialog
+                open={containerModalOpen}
+                onClose={() => setContainerModalOpen(false)}
+                maxWidth="xl"
+                fullWidth
+              >
+                <DialogContent>
+                  {containersLoading ? (
+                    <Typography>Loading containers...</Typography>
+                  ) : (
+                    <ContainerModule
+                      isConsignment={true}
+                      containers={containers || []}
+                      selectedContainers={selectedContainers || []}
+                      onToggle={handleContainerToggle}
+                    />
+                  )}
+                </DialogContent>
+                <DialogActions>
+                  <Button onClick={() => setContainerModalOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={addSelectedContainers}
+                    disabled={(selectedContainers || []).length === 0}
+                    variant="contained"
+                  >
+                    Add Selected ({(selectedContainers || []).length})
+                  </Button>
+                </DialogActions>
+              </Dialog>
+              <Dialog
+                open={Boolean(previewDoc)}
+                onClose={closePreview}
+                maxWidth="lg"
+                fullWidth
+              >
+                {previewDoc && (
+                  <>
+                    <DialogTitle>
+                      {previewDoc.kind} Preview · {previewDoc.doc.number}
+                    </DialogTitle>
+                    <DialogContent dividers sx={{ p: 0 }}>
+                      <iframe
+                        title="document-preview"
+                        src={previewDoc.url}
+                        style={{ width: "100%", height: "75vh", border: 0 }}
+                      />
+                    </DialogContent>
+                    <DialogActions>
+                      <Button onClick={closePreview}>Close</Button>
+                    </DialogActions>
+                  </>
+                )}
+              </Dialog>
             </form>
-          </Card>
+          </Box>
         </Slide>
       </Box>
     </LocalizationProvider>

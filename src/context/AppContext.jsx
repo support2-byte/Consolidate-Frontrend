@@ -17,6 +17,9 @@ export const AppProvider = ({ children }) => {
   const [drivers, setDrivers] = useState([]);
   const [driverTracks, setDriverTracks] = useState([]);
   const [systemSettings, setSystemSettings] = useState([]);
+  const [zohoInvoices, setZohoInvoices] = useState([]);
+  const [zohoInvoicesLoading, setZohoInvoicesLoading] = useState(false);
+  const [zohoInvoicesSyncing, setZohoInvoicesSyncing] = useState(false);
 
   const [placesLoading, setPlacesLoading] = useState(false);
   const [statusLoading, setStatusLoading] = useState(false);
@@ -184,6 +187,33 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  const fetchZohoInvoices = async () => {
+    try {
+      setZohoInvoicesLoading(true);
+      const { data } = await api.get("/api/zoho-invoice");
+      setZohoInvoices(data?.invoices || []);
+    } catch (err) {
+      if (err.response?.status !== 403) {
+        toast.error(err.response?.data?.message || "Failed to fetch invoices.");
+      }
+    } finally {
+      setZohoInvoicesLoading(false);
+    }
+  };
+
+  const syncZohoInvoices = async () => {
+    try {
+      setZohoInvoicesSyncing(true);
+      await api.post("/api/zoho-invoice/sync");
+      const { data } = await api.get("/api/zoho-invoice");
+      setZohoInvoices(data?.invoices || []);
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to sync invoices.");
+    } finally {
+      setZohoInvoicesSyncing(false);
+    }
+  };
+
   const getSystemRate = (key, fallback = 0) => {
     const setting = systemSettings.find((s) => s.key === key);
     return setting ? Number(setting.value) : fallback;
@@ -210,6 +240,7 @@ export const AppProvider = ({ children }) => {
     fetchDriverTracks();
     fetchSystemSettings();
     getSystemRate();
+    fetchZohoInvoices();
   }, [authLoading, isAuthenticated]);
 
   return (
@@ -248,6 +279,11 @@ export const AppProvider = ({ children }) => {
         systemSettingsLoading,
         fetchSystemSettings,
         getSystemRate,
+        zohoInvoices,
+        zohoInvoicesLoading,
+        zohoInvoicesSyncing,
+        fetchZohoInvoices,
+        syncZohoInvoices,
       }}
     >
       {children}

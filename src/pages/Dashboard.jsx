@@ -213,6 +213,12 @@ export default function DashboardLayout() {
       icon: <Receipt />,
       module: "invoices",
     },
+    {
+      label: "Zoho Invoices",
+      path: "/zoho-invoices",
+      icon: <Receipt />,
+      module: "zoho-invoices",
+    },
   ].filter((item) => !item.module || can(item.module, "view"));
 
   const adminSubItems = [
