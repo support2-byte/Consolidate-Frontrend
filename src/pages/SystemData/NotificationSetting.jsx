@@ -287,13 +287,12 @@ const buildInvoiceTemplateData = (row) => ({
   recipientName: row.recipient_name || "Valued Customer",
   invoiceId: row.invoice_id || "—",
   itemRef: row.item_ref || "—",
-  amount: row.amount ? `$${row.amount}` : "—",
+  amount: row.amount ? ` AED ${row.amount}` : "—",
   invoiceLink: row.invoice_id
     ? `${FORM_BASE_URL}/invoice-payment/${encodeURIComponent(row.invoice_id)}`
     : "#",
   lastUpdated: formatDate(row.created_at),
   year: new Date().getFullYear(),
-  otp: row.otp || "—",
 });
 
 const renderTemplate = (templateKey, data) => {
