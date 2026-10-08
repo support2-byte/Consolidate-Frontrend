@@ -61,7 +61,7 @@ import RefreshIcon from "@mui/icons-material/Close";
 import UpdateIcon from "@mui/icons-material/Update";
 import SearchIcon from "@mui/icons-material/Search";
 import { useNavigate } from "react-router-dom";
-import OrderModalView from "./OrderModalView";
+import OrderModalView from "../../components/orders/OrderModalView";
 import AssignModal from "./AssignContainer";
 import logoRickmers from "../../../public/RICKMERS-LOGO.jpg";
 import { api } from "../../api";
@@ -380,6 +380,25 @@ const OrdersList = () => {
       setIsLoading(false);
     }
   };
+
+  const refreshOrdersSilently = async () => {
+    try {
+      const params = {
+        status: filters.status?.trim() || "",
+        search: filters.search?.trim() || "",
+        page: page + 1,
+        limit: rowsPerPage,
+        includeContainer: true,
+      };
+      const response = await api.get("/api/orders", { params });
+      const ordersData =
+        response.data.data || response.data.orders || response.data || [];
+      setOrders(ordersData);
+    } catch (err) {
+      console.error("Silent refresh failed:", err);
+    }
+  };
+
   useEffect(() => {
     setFilterPlaces(
       places.map((p) => ({ value: p.id.toString(), label: p.name })),
@@ -6655,10 +6674,16 @@ const OrdersList = () => {
           onClose={() => setOpenCollectionsModal(false)}
           order={collectionsOrder}
           getPlaceName={getPlaceName}
-          onSave={async (collectionsPayload) => {
-            toast.success("Collections saved");
-            setOpenCollectionsModal(false);
-            fetchOrders();
+          onSave={async () => {
+            refreshOrdersSilently();
+            try {
+              const { data } = await api.get(
+                `/api/orders/${collectionsOrder.id}`,
+              );
+              setCollectionsOrder(data);
+            } catch (err) {
+              console.error("Failed to refresh collections order:", err);
+            }
           }}
         />
         <OrderConfirmationEmailModal

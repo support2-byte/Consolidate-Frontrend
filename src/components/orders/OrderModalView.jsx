@@ -51,9 +51,12 @@ import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import EventIcon from "@mui/icons-material/Event";
 import EditIcon from "@mui/icons-material/Edit";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
-import { getOrderStatusColor } from "./Utlis";
+import PaymentsIcon from "@mui/icons-material/Payments";
+import { getOrderStatusColor } from "../../pages/Orders/Utlis";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../api";
+import { useAuth } from "../../context/AuthContext";
+import JobDetailsPanel, { PAYMENT_STATUS } from "./JobDetailsPanel";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { applyPlugin } from "jspdf-autotable";
@@ -175,6 +178,10 @@ const OrderModalView = ({
   const [assignmentError, setAssignmentError] = useState(null);
   const [assignments, setAssignments] = useState({});
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+  const { isSuperAdmin, isAdmin } = useAuth();
+  const canViewJobDetails = isSuperAdmin() || isAdmin();
+  const [billing, setBilling] = useState(null);
+  const [billingLoading, setBillingLoading] = useState(false);
 
   const getPlaceName = (id) => {
     if (!id) return "N/A";
@@ -201,6 +208,28 @@ const OrderModalView = ({
       setTabValue(0);
     }
   }, [openModal, selectedOrder]);
+
+  useEffect(() => {
+    setBilling(null);
+    if (!openModal || !selectedOrder?.id || !canViewJobDetails) return;
+
+    let active = true;
+    setBillingLoading(true);
+    api
+      .get(`/api/zoho-invoice/order/${selectedOrder.id}/billing`)
+      .then(({ data }) => active && setBilling(data.row))
+      .catch((err) => {
+        if (active)
+          toast.error(
+            err.response?.data?.message || "Failed to load billing data.",
+          );
+      })
+      .finally(() => active && setBillingLoading(false));
+
+    return () => {
+      active = false;
+    };
+  }, [openModal, selectedOrder?.id, canViewJobDetails]);
 
   const statusColor = getOrderStatusColor(
     selectedOrder?.overall_status || selectedOrder?.status,
@@ -1219,6 +1248,14 @@ const OrderModalView = ({
       label: "Files",
       icon: <AttachFileIcon sx={{ fontSize: 18, color: T.teal }} />,
     },
+    ...(canViewJobDetails
+      ? [
+          {
+            label: "Job Details",
+            icon: <PaymentsIcon sx={{ fontSize: 18, color: T.teal }} />,
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -1474,6 +1511,20 @@ const OrderModalView = ({
                       title="Shipping Details"
                     />
                     {renderOrderItems()}
+                    {canViewJobDetails &&
+                      (billingLoading ? (
+                        <CircularProgress size={18} sx={{ mb: 2 }} />
+                      ) : (
+                        billing && (
+                          <Chip
+                            label={`Payment: ${PAYMENT_STATUS[billing.paymentStatus].label}`}
+                            color={PAYMENT_STATUS[billing.paymentStatus].color}
+                            size="small"
+                            sx={{ mb: 2, fontWeight: 700 }}
+                          />
+                        )
+                      ))}
+                    {renderOrderItems()}
                   </CardContent>
                 </Card>
               </TabPanel>
@@ -1624,6 +1675,25 @@ const OrderModalView = ({
                   </Grid>
                 </Grid>
               </TabPanel>
+
+              {canViewJobDetails && (
+                <TabPanel value={tabValue} index={5}>
+                  <Card
+                    variant="outlined"
+                    sx={{ borderRadius: 2.5, border: `1px solid ${T.grey200}` }}
+                  >
+                    <CardContent sx={{ p: 3 }}>
+                      <SectionHeader
+                        icon={
+                          <PaymentsIcon sx={{ color: T.teal, fontSize: 20 }} />
+                        }
+                        title="Job Details"
+                      />
+                      <JobDetailsPanel row={billing} loading={billingLoading} />
+                    </CardContent>
+                  </Card>
+                </TabPanel>
+              )}
             </Box>
           ) : (
             <Box

@@ -71,15 +71,15 @@ const emptyCollection = (idx) => ({
 });
 
 const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
-  const { drivers, driverTracks } = useContext(AppContext);
+  const { drivers, driverTrucks } = useContext(AppContext);
   const [collections, setCollections] = useState([emptyCollection(1)]);
   const [saving, setSaving] = useState(false);
   const [historyExpanded, setHistoryExpanded] = useState(false);
   const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
   const [invoiceTarget, setInvoiceTarget] = useState(null);
 
-  const getDriverTrack = (driver) =>
-    driverTracks.find((t) => t.driver_code === driver.driver_id);
+  const getDriverTrucks = (driver) =>
+    driverTrucks.filter((t) => t.driver_id === driver.id);
 
   const addDraftGatepass = (collectionKey, gpData) => {
     setCollections((prev) =>
@@ -128,11 +128,12 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
 
   const handleDriverChange = (key, driverId) => {
     const driver = drivers.find((d) => d.id === driverId);
+    const trucks = driverTrucks.filter((t) => t.driver_id === driverId);
     updateCollection(key, {
       driverId,
       clientReceiverId: driver?.driver_id || "",
       clientReceiverMobile: driver?.phone_number || "",
-      plateNo: driver?.vehicle_plate || "",
+      plateNo: trucks.length === 1 ? trucks[0].plate_no : "",
     });
   };
 
@@ -241,8 +242,6 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
     });
     formData.append("collections", JSON.stringify(collectionsPayload));
 
-    const autoDownloads = [];
-
     for (const c of collections) {
       if (!c.receiverId) continue;
       if (c.gatepassFiles.length > 0) continue;
@@ -272,7 +271,6 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
         const pngBlob = await pdfDocToPngBlob(doc);
         const fileName = `Gatepass_${order.rgl_booking_number}_${Date.now()}.png`;
         formData.append(`gatepass_${c.receiverId}`, pngBlob, fileName);
-        autoDownloads.push({ blob: pngBlob, fileName });
       } catch (err) {
         console.error("Auto gatepass generation failed:", err);
       }
@@ -281,13 +279,13 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
     setSaving(true);
     try {
       await api.post(`/api/orders/${order.id}/collections`, formData);
-      autoDownloads.forEach(({ blob, fileName }) => {
-        const url = URL.createObjectURL(blob);
-        triggerDownload(url, fileName);
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
-      });
+      toast.success("Collection saved successfully");
+      collections.forEach((c) =>
+        c.gatepassFiles.forEach((g) => URL.revokeObjectURL(g.previewUrl)),
+      );
+      setCollections([emptyCollection(1)]);
+      setHistoryExpanded(true);
       onSave?.();
-      onClose();
     } catch (err) {
       toast.error(err?.response?.data?.error || "Failed to save collections");
     } finally {
@@ -707,7 +705,11 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
                           <em>Select Driver</em>
                         </MenuItem>
                         {drivers.map((d) => {
-                          const track = getDriverTrack(d);
+                          const trucks = getDriverTrucks(d);
+                          const deliveries = trucks.reduce(
+                            (sum, t) => sum + (Number(t.total_deliveries) || 0),
+                            0,
+                          );
                           return (
                             <MenuItem
                               key={d.id}
@@ -722,14 +724,16 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
                                 color="text.secondary"
                                 display="block"
                               >
-                                {track?.total_deliveries ?? 0} deliveries
+                                {deliveries} deliveries
                               </Typography>
                               <Typography
                                 variant="caption"
                                 color="text.secondary"
                                 display="block"
                               >
-                                {track?.routes || "No route on file"}
+                                {trucks.length
+                                  ? trucks.map((t) => t.plate_no).join(", ")
+                                  : "No truck on file"}
                               </Typography>
                             </MenuItem>
                           );

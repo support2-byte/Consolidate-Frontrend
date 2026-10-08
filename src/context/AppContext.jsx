@@ -15,7 +15,7 @@ export const AppProvider = ({ children }) => {
   const [companies, setCompanies] = useState([]);
   const [thirdParties, setThirdParties] = useState([]);
   const [drivers, setDrivers] = useState([]);
-  const [driverTracks, setDriverTracks] = useState([]);
+  const [driverTrucks, setDriverTracks] = useState([]);
   const [systemSettings, setSystemSettings] = useState([]);
   const [zohoInvoices, setZohoInvoices] = useState([]);
   const [zohoInvoicesLoading, setZohoInvoicesLoading] = useState(false);
@@ -29,7 +29,7 @@ export const AppProvider = ({ children }) => {
   const [companiesError, setCompaniesError] = useState("");
   const [thirdPartiesLoading, setThirdPartiesLoading] = useState(false);
   const [driversLoading, setDriversLoading] = useState(false);
-  const [driverTracksLoading, setDriverTracksLoading] = useState(false);
+  const [driverTrucksLoading, setDriverTrucksLoading] = useState(false);
   const [systemSettingsLoading, setSystemSettingsLoading] = useState(false);
 
   const isInitialized = useRef(false);
@@ -157,10 +157,10 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  const fetchDriverTracks = async () => {
+  const fetchDriverTrucks = async () => {
     try {
-      setDriverTracksLoading(true);
-      const response = await api.get("api/options/driver-tracks");
+      setDriverTrucksLoading(true);
+      const response = await api.get("api/options/driver-trucks");
       setDriverTracks(response.data.rows || []);
     } catch (err) {
       if (err.response?.status === 404) {
@@ -170,7 +170,7 @@ export const AppProvider = ({ children }) => {
         toast.error("Failed to load driver tracks. Please try again.");
       }
     } finally {
-      setDriverTracksLoading(false);
+      setDriverTrucksLoading(false);
     }
   };
 
@@ -237,7 +237,7 @@ export const AppProvider = ({ children }) => {
     fetchCompanies();
     fetchThirdParties();
     fetchDrivers();
-    fetchDriverTracks();
+    fetchDriverTrucks();
     fetchSystemSettings();
     getSystemRate();
     fetchZohoInvoices();
@@ -270,10 +270,10 @@ export const AppProvider = ({ children }) => {
         setDrivers,
         driversLoading,
         fetchDrivers,
-        driverTracks,
+        driverTrucks,
         setDriverTracks,
-        driverTracksLoading,
-        fetchDriverTracks,
+        driverTrucksLoading,
+        fetchDriverTrucks,
         systemSettings,
         setSystemSettings,
         systemSettingsLoading,
