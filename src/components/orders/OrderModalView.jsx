@@ -182,6 +182,9 @@ const OrderModalView = ({
   const canViewJobDetails = isSuperAdmin() || isAdmin();
   const [billing, setBilling] = useState(null);
   const [billingLoading, setBillingLoading] = useState(false);
+  const [receiverPayments, setReceiverPayments] = useState({});
+  const paymentOf = (receiverId) =>
+    PAYMENT_STATUS[receiverPayments[receiverId]]?.label;
 
   const getPlaceName = (id) => {
     if (!id) return "N/A";
@@ -211,13 +214,18 @@ const OrderModalView = ({
 
   useEffect(() => {
     setBilling(null);
+    setReceiverPayments({});
     if (!openModal || !selectedOrder?.id || !canViewJobDetails) return;
 
     let active = true;
     setBillingLoading(true);
     api
       .get(`/api/zoho-invoice/order/${selectedOrder.id}/billing`)
-      .then(({ data }) => active && setBilling(data.row))
+      .then(({ data }) => {
+        if (!active) return;
+        setBilling(data.row);
+        setReceiverPayments(data.receiverPayments || {});
+      })
       .catch((err) => {
         if (active)
           toast.error(
@@ -852,6 +860,9 @@ const OrderModalView = ({
                   ["Delivery Address", item.deliveryAddress],
                   ["Item Ref", item.itemRef],
                   ["Remaining Items", item.remainingItems],
+                  ...(canViewJobDetails && paymentOf(rec.id)
+                    ? [["Payment", paymentOf(rec.id)]]
+                    : []),
                 ].map(([label, val]) => (
                   <Grid item xs={12} sm={6} md={4} key={label}>
                     <FieldCard label={label} value={val} />
@@ -1510,20 +1521,6 @@ const OrderModalView = ({
                       }
                       title="Shipping Details"
                     />
-                    {renderOrderItems()}
-                    {canViewJobDetails &&
-                      (billingLoading ? (
-                        <CircularProgress size={18} sx={{ mb: 2 }} />
-                      ) : (
-                        billing && (
-                          <Chip
-                            label={`Payment: ${PAYMENT_STATUS[billing.paymentStatus].label}`}
-                            color={PAYMENT_STATUS[billing.paymentStatus].color}
-                            size="small"
-                            sx={{ mb: 2, fontWeight: 700 }}
-                          />
-                        )
-                      ))}
                     {renderOrderItems()}
                   </CardContent>
                 </Card>

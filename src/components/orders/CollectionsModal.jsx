@@ -77,6 +77,8 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
   const [historyExpanded, setHistoryExpanded] = useState(false);
   const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
   const [invoiceTarget, setInvoiceTarget] = useState(null);
+  const [payments, setPayments] = useState(null);
+  const isPaid = (receiverId) => payments?.[receiverId] === "paid";
 
   const getDriverTrucks = (driver) =>
     driverTrucks.filter((t) => t.driver_id === driver.id);
@@ -106,6 +108,23 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
     if (open) {
       setCollections([emptyCollection(1)]);
     }
+  }, [open, order?.id]);
+
+  useEffect(() => {
+    if (!open || !order?.id) return;
+    let active = true;
+    setPayments(null);
+    api
+      .get(`/api/zoho-invoice/order/${order.id}/payment-status`)
+      .then(({ data }) => active && setPayments(data.receiverPayments || {}))
+      .catch(() => {
+        if (!active) return;
+        setPayments({});
+        toast.error("Failed to verify payment status.");
+      });
+    return () => {
+      active = false;
+    };
   }, [open, order?.id]);
 
   if (!order) return null;
@@ -213,6 +232,11 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
       toast.error(
         "Select at least one item with a delivered quantity greater than 0.",
       );
+      return;
+    }
+
+    if (collections.some((c) => c.receiverId && !isPaid(c.receiverId))) {
+      toast.error("Payment is not completed for the selected receiver.");
       return;
     }
 
@@ -676,8 +700,13 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
                       >
                         <MenuItem value="">Select Receiver</MenuItem>
                         {receivers.map((r) => (
-                          <MenuItem key={r.id} value={r.id}>
+                          <MenuItem
+                            key={r.id}
+                            value={r.id}
+                            disabled={!isPaid(r.id)}
+                          >
                             {r.receiver_name || "Unnamed Receiver"}
+                            {payments && !isPaid(r.id) && " — Payment pending"}
                           </MenuItem>
                         ))}
                       </Select>
