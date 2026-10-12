@@ -276,6 +276,7 @@ const CustomDatePicker = ({
 
 const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
   const context = useAuth();
+  const canViewJobDetails = context.isSuperAdmin() || context.isAdmin();
   const theme = useTheme();
   const [tab, setTab] = useState("details");
   const [shipmentSearch, setShipmentSearch] = useState("");
@@ -1289,7 +1290,8 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
 
   const fetchBilling = useCallback(
     async (sync = false) => {
-      if (mode !== "edit" || !effectiveConsignmentId) return;
+      if (!canViewJobDetails || mode !== "edit" || !effectiveConsignmentId)
+        return;
       const base = `/api/zoho-invoice/consignment/${effectiveConsignmentId}/billing`;
       try {
         if (sync) setBillingSyncing(true);
@@ -1307,12 +1309,12 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         setBillingSyncing(false);
       }
     },
-    [mode, effectiveConsignmentId],
+    [canViewJobDetails, mode, effectiveConsignmentId],
   );
 
   useEffect(() => {
-    if (tab === "billing") fetchBilling();
-  }, [tab, fetchBilling]);
+    if (tab === "billing" && canViewJobDetails) fetchBilling();
+  }, [tab, canViewJobDetails, fetchBilling]);
 
   const handleRemoveShipment = (shipment) => {
     setOrders((prev) => {
@@ -5062,7 +5064,9 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                   value="shipments"
                   label={tabLabel("🛒 Shipments", flatShipments.length)}
                 />
-                <Tab value="billing" label={tabLabel("💰 Job Details")} />
+                {canViewJobDetails && (
+                  <Tab value="billing" label={tabLabel("💰 Job Details")} />
+                )}
                 <Tab
                   value="documents"
                   label={tabLabel("📄 Documents", documents.length)}
@@ -5835,7 +5839,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                     </TableContainer>
                   </>
                 )}
-                {tab === "billing" && (
+                {tab === "billing" && canViewJobDetails && (
                   <>
                     {mode !== "edit" ? (
                       <Typography color="text.secondary">

@@ -85,6 +85,7 @@ const HIDDEN_COLUMNS = new Set([
   "message",
   "items",
   "item_status",
+  "recipient_id",
 ]);
 const DATE_COLUMNS = new Set(["created_at", "updated_at", "sent_at"]);
 
@@ -288,6 +289,18 @@ const buildInvoiceTemplateData = (row) => ({
   invoiceId: row.invoice_id || "—",
   itemRef: row.item_ref || "—",
   amount: row.amount ? ` AED ${row.amount}` : "—",
+  invoiceLink: row.invoice_id
+    ? `${FORM_BASE_URL}/invoice-payment/${encodeURIComponent(row.invoice_id)}`
+    : "#",
+  lastUpdated: formatDate(row.created_at),
+  year: new Date().getFullYear(),
+});
+
+const buildZohoInvoiceTemplateData = (row) => ({
+  recipientName: row.recipient_name || "Valued Customer",
+  invoiceId: row.invoice_id || "—",
+  itemRef: row.item_ref || "—",
+  amount: row.amount ? ` AED ${Number(row.amount).toFixed(2)}` : "—",
   invoiceLink: row.invoice_id
     ? `${FORM_BASE_URL}/invoice-payment/${encodeURIComponent(row.invoice_id)}`
     : "#",

@@ -94,7 +94,6 @@ export default function ZohoInvoicesPage() {
     syncZohoInvoices,
   } = useContext(AppContext);
   const [pdfLoadingId, setPdfLoadingId] = useState(null);
-
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(25);
   const [status, setStatus] = useState("");
@@ -287,6 +286,7 @@ export default function ZohoInvoicesPage() {
                 </TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Due date</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Payment mode</TableCell>
                 <TableCell align="right" sx={{ fontWeight: 600 }}>
                   Total
                 </TableCell>
@@ -301,7 +301,7 @@ export default function ZohoInvoicesPage() {
             <TableBody>
               {invoices.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} align="center" sx={{ py: 8 }}>
+                  <TableCell colSpan={11} align="center" sx={{ py: 8 }}>
                     <Typography
                       variant="body1"
                       color="text.secondary"
@@ -371,6 +371,11 @@ export default function ZohoInvoicesPage() {
                         color={getStatusColor(inv.status)}
                         variant="outlined"
                       />
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" color="text.secondary">
+                        {inv.payment_mode || "—"}
+                      </Typography>
                     </TableCell>
                     <TableCell align="right">
                       <Typography variant="body2" sx={{ fontWeight: 600 }}>

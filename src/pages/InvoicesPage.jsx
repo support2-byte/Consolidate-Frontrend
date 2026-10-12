@@ -230,7 +230,8 @@ const InvoicesPage = () => {
     setUploadingId(row.id);
     try {
       const res = await api.post(`/api/invoices/zoho/${row.invoiceId}`);
-      toast.success("Invoice uploaded to Zoho");
+      if (res.data.warning) toast.warning(res.data.warning);
+      else toast.success("Invoice uploaded to Zoho");
       setRows((prev) =>
         prev.map((r) =>
           r.id === row.id ? { ...r, zohoInvoiceId: res.data.zohoInvoiceId } : r,
@@ -400,6 +401,9 @@ const InvoicesPage = () => {
                     <strong>Status</strong>
                   </TableCell>
                   <TableCell sx={{ whiteSpace: "nowrap" }}>
+                    <strong>Payment Mode</strong>
+                  </TableCell>
+                  <TableCell sx={{ whiteSpace: "nowrap" }}>
                     <strong>Created</strong>
                   </TableCell>
                   <TableCell
@@ -471,6 +475,9 @@ const InvoicesPage = () => {
                             fontWeight: 500,
                           }}
                         />
+                      </TableCell>
+                      <TableCell sx={{ whiteSpace: "nowrap" }}>
+                        {row.paymentMode || "—"}
                       </TableCell>
                       <TableCell sx={{ whiteSpace: "nowrap" }}>
                         <Typography variant="body2" color="text.secondary">
