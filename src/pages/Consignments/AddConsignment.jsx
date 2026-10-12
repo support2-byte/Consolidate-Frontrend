@@ -5890,7 +5890,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                                 </TableCell>
                                 <TableCell sx={headCellSx}>Form No</TableCell>
                                 <TableCell sx={headCellSx} align="center">
-                                  Job Details
+                                  Bills
                                 </TableCell>
                                 <TableCell sx={headCellSx} align="center">
                                   Invoices
