@@ -2140,7 +2140,20 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     return errors;
   };
   const hasErrors = Object.values(errors).some(Boolean);
-  if (loading || !places || places.length === 0) return <div>Loading...</div>;
+  if (loading || !places || places.length === 0) {
+    return (
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          height: "100%",
+        }}
+      >
+        <CircularProgress />
+      </Box>
+    );
+  }
 
   const StyledTooltip = styled(Tooltip)(({ theme }) => ({
     [`& .MuiTooltip-tooltip`]: {
