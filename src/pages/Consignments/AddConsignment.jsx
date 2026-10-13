@@ -4826,6 +4826,36 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
 
   const selectedBill = billingRows.find((r) => r.orderId === selectedBilling);
 
+  const billingTotals = billingRows.reduce(
+    (t, r) => {
+      t.revenue += r.invoiceTotal || 0;
+      t.cost += r.vendorTotal || 0;
+      t.draft += r.draftInvoiceTotal || 0;
+      t.received += r.received || 0;
+      t.paidOut += r.paidOut || 0;
+      t.toCollect += r.toCollect || 0;
+      t.toPay += r.toPay || 0;
+      if (r.rateMissing) t.missing += 1;
+      return t;
+    },
+    {
+      revenue: 0,
+      cost: 0,
+      draft: 0,
+      received: 0,
+      paidOut: 0,
+      toCollect: 0,
+      toPay: 0,
+      missing: 0,
+    },
+  );
+  const netProfit = billingTotals.revenue - billingTotals.cost;
+  const currentProfit = billingTotals.received - billingTotals.paidOut;
+  const netMargin =
+    billingTotals.revenue > 0
+      ? (netProfit / billingTotals.revenue) * 100
+      : null;
+
   const openDocPdf = async (kind, doc) => {
     setPdfLoadingId(doc.id);
     try {
@@ -4880,7 +4910,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       <TableContainer
         sx={{ border: 1, borderColor: "divider", borderRadius: 2 }}
       >
-        <Table size="small" sx={{ minWidth: 640 }}>
+        <Table size="small" sx={{ minWidth: 800 }}>
           <TableHead>
             <TableRow>
               {[`${kind} No`, partyLabel, "Date", "Due Date", "Status"].map(
@@ -4896,6 +4926,12 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
               <TableCell sx={headCellSx} align="right">
                 Balance
               </TableCell>
+              <TableCell sx={headCellSx} align="right">
+                Rate
+              </TableCell>
+              <TableCell sx={headCellSx} align="right">
+                Amount (AED)
+              </TableCell>
               <TableCell sx={headCellSx} align="center">
                 Preview
               </TableCell>
@@ -4904,7 +4940,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
           <TableBody>
             {docs.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} align="center" sx={{ py: 3 }}>
+                <TableCell colSpan={10} align="center" sx={{ py: 3 }}>
                   <Typography variant="body2" color="text.secondary">
                     No {title.toLowerCase()} found
                   </Typography>
@@ -4934,6 +4970,12 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                   </TableCell>
                   <TableCell align="right">
                     {fmtMoney(d.balance, d.currency)}
+                  </TableCell>
+                  <TableCell align="right">
+                    {d.currency === "AED" ? "-" : (d.exchangeRate ?? "N/A")}
+                  </TableCell>
+                  <TableCell align="right">
+                    {d.totalAed == null ? "N/A" : fmtMoney(d.totalAed, "AED")}
                   </TableCell>
                   <TableCell align="center">
                     <IconButton
@@ -5872,6 +5914,87 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                             Sync from Zoho
                           </Button>
                         </Box>
+                        {billingRows.length > 0 && (
+                          <>
+                            <Typography
+                              sx={{
+                                fontWeight: 600,
+                                color: tealText,
+                                mt: 3,
+                                mb: 1,
+                              }}
+                            >
+                              Net Profit Calculation
+                            </Typography>
+                            <Box
+                              sx={{
+                                display: "grid",
+                                gridTemplateColumns: {
+                                  xs: "1fr",
+                                  sm: "repeat(2, 1fr)",
+                                  md: "repeat(4, 1fr)",
+                                },
+                                gap: 2,
+                                mb: 2,
+                              }}
+                            >
+                              {stat(
+                                "Total Invoices (AED)",
+                                fmtMoney(billingTotals.revenue, "AED"),
+                              )}
+                              {stat(
+                                "Total Bills (AED)",
+                                fmtMoney(billingTotals.cost, "AED"),
+                              )}
+                              {stat(
+                                "Expected Profit (AED)",
+                                fmtMoney(netProfit, "AED"),
+                                netProfit >= 0 ? "success.main" : "error.main",
+                              )}
+                              {stat(
+                                "Net Margin",
+                                netMargin === null
+                                  ? "-"
+                                  : `${netMargin.toFixed(1)}%`,
+                                netProfit >= 0 ? "success.main" : "error.main",
+                              )}
+                              {stat(
+                                "Received (AED)",
+                                fmtMoney(billingTotals.received, "AED"),
+                                "success.main",
+                              )}
+                              {stat(
+                                "Paid Out (AED)",
+                                fmtMoney(billingTotals.paidOut, "AED"),
+                              )}
+                              {stat(
+                                "Current Profit (AED)",
+                                fmtMoney(currentProfit, "AED"),
+                                currentProfit >= 0
+                                  ? "success.main"
+                                  : "error.main",
+                              )}
+
+                              {stat(
+                                "To Collect (AED)",
+                                fmtMoney(billingTotals.toCollect, "AED"),
+                                "warning.main",
+                              )}
+                              {stat(
+                                "To Pay (AED)",
+                                fmtMoney(billingTotals.toPay, "AED"),
+                                "error.main",
+                              )}
+                            </Box>
+                            {billingTotals.missing > 0 && (
+                              <Alert severity="warning" sx={{ mb: 2 }}>
+                                {billingTotals.missing} order(s) have documents
+                                without an exchange rate. Click "Sync from Zoho"
+                                to load it. Totals above exclude them.
+                              </Alert>
+                            )}
+                          </>
+                        )}
                         <TableContainer
                           sx={{
                             border: 1,
@@ -5896,7 +6019,16 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                                   Invoices
                                 </TableCell>
                                 <TableCell sx={headCellSx} align="right">
-                                  Gross Profit
+                                  To Collect
+                                </TableCell>
+                                <TableCell sx={headCellSx} align="right">
+                                  To Pay
+                                </TableCell>
+                                <TableCell sx={headCellSx} align="right">
+                                  Current Profit
+                                </TableCell>
+                                <TableCell sx={headCellSx} align="right">
+                                  Expected Profit
                                 </TableCell>
                               </TableRow>
                             </TableHead>
@@ -5904,7 +6036,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                               {billingRows.length === 0 ? (
                                 <TableRow>
                                   <TableCell
-                                    colSpan={5}
+                                    colSpan={8}
                                     align="center"
                                     sx={{ py: 5 }}
                                   >
@@ -5940,23 +6072,43 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                                     <TableCell
                                       align="right"
                                       sx={{
+                                        color: "warning.main",
                                         fontWeight: 600,
-                                        color:
-                                          row.gross === null
-                                            ? "text.secondary"
-                                            : row.gross >= 0
-                                              ? "success.main"
-                                              : "error.main",
                                       }}
                                     >
-                                      {row.gross === null
-                                        ? "Mixed currencies"
-                                        : fmtMoney(
-                                            row.gross,
-                                            row.currency ||
-                                              values.currency_code,
-                                          )}
+                                      {fmtMoney(row.toCollect, "AED")}
                                     </TableCell>
+                                    <TableCell
+                                      align="right"
+                                      sx={{
+                                        color: "error.main",
+                                        fontWeight: 600,
+                                      }}
+                                    >
+                                      {fmtMoney(row.toPay, "AED")}
+                                    </TableCell>
+                                    {[
+                                      row.currentProfit,
+                                      row.expectedProfit,
+                                    ].map((v, i) => (
+                                      <TableCell
+                                        key={i}
+                                        align="right"
+                                        sx={{
+                                          fontWeight: 600,
+                                          color:
+                                            v === null
+                                              ? "text.secondary"
+                                              : v >= 0
+                                                ? "success.main"
+                                                : "error.main",
+                                        }}
+                                      >
+                                        {v === null
+                                          ? "Rate missing"
+                                          : fmtMoney(v, "AED")}
+                                      </TableCell>
+                                    ))}
                                   </TableRow>
                                 ))
                               )}
@@ -6008,10 +6160,10 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                             >
                               Gross Profit Calculation
                             </Typography>
-                            {selectedBill.mixedCurrency ? (
+                            {selectedBill.rateMissing ? (
                               <Alert severity="warning">
-                                Invoices and bills use different currencies, so
-                                gross profit can't be calculated automatically.
+                                Some documents have no exchange rate yet. Click
+                                "Sync from Zoho" to load it.
                               </Alert>
                             ) : (
                               <Box
@@ -6027,36 +6179,51 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                               >
                                 {stat(
                                   "Total Invoices (Revenue)",
-                                  fmtMoney(
-                                    selectedBill.invoiceTotal,
-                                    selectedBill.currency ||
-                                      values.currency_code,
-                                  ),
+                                  fmtMoney(selectedBill.invoiceTotal, "AED"),
                                 )}
                                 {stat(
-                                  "Total Job Details (Cost)",
-                                  fmtMoney(
-                                    selectedBill.vendorTotal,
-                                    selectedBill.currency ||
-                                      values.currency_code,
-                                  ),
+                                  "Total Bills (Cost)",
+                                  fmtMoney(selectedBill.vendorTotal, "AED"),
                                 )}
                                 {stat(
-                                  "Gross Profit",
-                                  fmtMoney(
-                                    selectedBill.gross,
-                                    selectedBill.currency ||
-                                      values.currency_code,
-                                  ),
-                                  selectedBill.gross >= 0
+                                  "Expected Profit",
+                                  fmtMoney(selectedBill.expectedProfit, "AED"),
+                                  selectedBill.expectedProfit >= 0
                                     ? "success.main"
                                     : "error.main",
                                 )}
                                 {stat(
                                   "Margin",
                                   selectedBill.invoiceTotal > 0
-                                    ? `${((selectedBill.gross / selectedBill.invoiceTotal) * 100).toFixed(1)}%`
+                                    ? `${((selectedBill.expectedProfit / selectedBill.invoiceTotal) * 100).toFixed(1)}%`
                                     : "-",
+                                )}
+                                {stat(
+                                  "Received",
+                                  fmtMoney(selectedBill.received, "AED"),
+                                  "success.main",
+                                )}
+                                {stat(
+                                  "Paid Out",
+                                  fmtMoney(selectedBill.paidOut, "AED"),
+                                )}
+                                {stat(
+                                  "Current Profit",
+                                  fmtMoney(selectedBill.currentProfit, "AED"),
+                                  selectedBill.currentProfit >= 0
+                                    ? "success.main"
+                                    : "error.main",
+                                )}
+
+                                {stat(
+                                  "To Collect",
+                                  fmtMoney(selectedBill.toCollect, "AED"),
+                                  "warning.main",
+                                )}
+                                {stat(
+                                  "To Pay",
+                                  fmtMoney(selectedBill.toPay, "AED"),
+                                  "error.main",
                                 )}
                               </Box>
                             )}
@@ -6065,8 +6232,10 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                               color="text.secondary"
                               sx={{ display: "block", mt: 1 }}
                             >
-                              Gross Profit = Total Invoices − Total Vendor
-                              Bills. Void and draft documents are excluded.
+                              Expected Profit = all invoices − all bills (void
+                              excluded). Current Profit = received − paid out.
+                              To Collect and To Pay are the unpaid balances on
+                              invoices and bills.
                             </Typography>
                             {billingTable(
                               "Job Details",
