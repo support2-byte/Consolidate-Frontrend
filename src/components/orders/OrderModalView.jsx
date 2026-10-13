@@ -52,11 +52,12 @@ import EventIcon from "@mui/icons-material/Event";
 import EditIcon from "@mui/icons-material/Edit";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import PaymentsIcon from "@mui/icons-material/Payments";
+import SyncIcon from "@mui/icons-material/Sync";
 import { getOrderStatusColor } from "../../pages/Orders/Utlis";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../api";
 import { useAuth } from "../../context/AuthContext";
-import JobDetailsPanel, { PAYMENT_STATUS } from "./JobDetailsPanel";
+import { PAYMENT_STATUS } from "./JobDetailsPanel";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { applyPlugin } from "jspdf-autotable";
@@ -159,6 +160,24 @@ function TabPanel({ children, value, index }) {
   );
 }
 
+const docStatusColor = (s) =>
+  s === "paid"
+    ? "success"
+    : s === "overdue"
+      ? "error"
+      : s === "void" || s === "draft"
+        ? "default"
+        : "warning";
+
+const fmtStatus = (s = "") =>
+  s.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
+
+const fmtMoney = (n, cur) =>
+  `${cur} ${Number(n || 0).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+
 function a11yProps(i) {
   return { id: `tab-${i}`, "aria-controls": `tabpanel-${i}` };
 }
@@ -183,6 +202,7 @@ const OrderModalView = ({
   const [billing, setBilling] = useState(null);
   const [billingLoading, setBillingLoading] = useState(false);
   const [receiverPayments, setReceiverPayments] = useState({});
+  const [syncingZoho, setSyncingZoho] = useState(false);
   const paymentOf = (receiverId) =>
     PAYMENT_STATUS[receiverPayments[receiverId]]?.label;
 
@@ -238,6 +258,23 @@ const OrderModalView = ({
       active = false;
     };
   }, [openModal, selectedOrder?.id, canViewJobDetails]);
+
+  const handleSyncZoho = async () => {
+    if (!selectedOrder?.id) return;
+    setSyncingZoho(true);
+    try {
+      const { data } = await api.post(
+        `/api/zoho-invoice/order/${selectedOrder.id}/billing/sync`,
+      );
+      setBilling(data.row);
+      setReceiverPayments(data.receiverPayments || {});
+      toast.success("Zoho sync complete");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to sync with Zoho.");
+    } finally {
+      setSyncingZoho(false);
+    }
+  };
 
   const statusColor = getOrderStatusColor(
     selectedOrder?.overall_status || selectedOrder?.status,
@@ -1238,6 +1275,202 @@ const OrderModalView = ({
     );
   };
 
+  const jobStat = (label, value, color) => (
+    <Box
+      sx={{
+        border: 1,
+        borderColor: "divider",
+        borderRadius: 2,
+        p: 2,
+        bgcolor: "action.hover",
+      }}
+    >
+      <Typography variant="caption" color="text.secondary">
+        {label}
+      </Typography>
+      <Typography
+        sx={{ fontWeight: 700, fontSize: 18, color: color || "text.primary" }}
+      >
+        {value}
+      </Typography>
+    </Box>
+  );
+
+  const jobTable = (title, docs, partyLabel, partyKey, kind) => (
+    <Box sx={{ mt: 3 }}>
+      <Typography sx={{ fontWeight: 600, color: T.teal, mb: 1 }}>
+        {title} ({docs.length})
+      </Typography>
+      <TableContainer
+        sx={{ border: 1, borderColor: "divider", borderRadius: 2 }}
+      >
+        <Table size="small" sx={{ minWidth: 800 }}>
+          <TableHead>
+            <TableRow>
+              {[`${kind} No`, partyLabel, "Date", "Due Date", "Status"].map(
+                (h) => (
+                  <TableCell
+                    key={h}
+                    sx={{ bgcolor: T.teal, color: "#fff", fontWeight: "bold" }}
+                  >
+                    {h}
+                  </TableCell>
+                ),
+              )}
+              {["Amount", "Balance", "Rate", "Amount (AED)"].map((h) => (
+                <TableCell
+                  key={h}
+                  align="right"
+                  sx={{ bgcolor: T.teal, color: "#fff", fontWeight: "bold" }}
+                >
+                  {h}
+                </TableCell>
+              ))}
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {docs.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={9} align="center" sx={{ py: 3 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    No {title.toLowerCase()} found
+                  </Typography>
+                </TableCell>
+              </TableRow>
+            ) : (
+              docs.map((d) => (
+                <TableRow hover key={d.id}>
+                  <TableCell>{d.number}</TableCell>
+                  <TableCell>{d[partyKey]}</TableCell>
+                  <TableCell>{d.date ? formatDate(d.date) : "-"}</TableCell>
+                  <TableCell>
+                    {d.dueDate ? formatDate(d.dueDate) : "-"}
+                  </TableCell>
+                  <TableCell>
+                    <Chip
+                      label={fmtStatus(d.status)}
+                      size="small"
+                      variant="outlined"
+                      color={docStatusColor(d.status)}
+                    />
+                  </TableCell>
+                  <TableCell align="right">
+                    {fmtMoney(d.total, d.currency)}
+                  </TableCell>
+                  <TableCell align="right">
+                    {fmtMoney(d.balance, d.currency)}
+                  </TableCell>
+                  <TableCell align="right">
+                    {d.currency === "AED" ? "-" : (d.exchangeRate ?? "N/A")}
+                  </TableCell>
+                  <TableCell align="right">
+                    {d.totalAed == null ? "N/A" : fmtMoney(d.totalAed, "AED")}
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    </Box>
+  );
+
+  const renderJobDetails = () => {
+    if (!billing) {
+      return (
+        <Typography variant="body2" color="text.secondary">
+          {billingLoading || syncingZoho
+            ? "Loading billing data..."
+            : "No invoices or bills found for this order. Click Sync Zoho to fetch them."}
+        </Typography>
+      );
+    }
+    const margin =
+      billing.invoiceTotal > 0 && billing.expectedProfit !== null
+        ? `${((billing.expectedProfit / billing.invoiceTotal) * 100).toFixed(1)}%`
+        : "-";
+    return (
+      <>
+        <Typography sx={{ fontWeight: 600, color: T.teal, mb: 1 }}>
+          Gross Profit Calculation
+        </Typography>
+        {billing.rateMissing ? (
+          <Alert severity="warning">
+            Some documents have no exchange rate yet. Click "Sync Zoho" to load
+            it.
+          </Alert>
+        ) : (
+          <Box
+            sx={{
+              display: "grid",
+              gridTemplateColumns: {
+                xs: "1fr",
+                sm: "repeat(2, 1fr)",
+                md: "repeat(4, 1fr)",
+              },
+              gap: 2,
+            }}
+          >
+            {jobStat(
+              "Total Invoices (Revenue)",
+              fmtMoney(billing.invoiceTotal, "AED"),
+            )}
+            {jobStat(
+              "Total Bills (Cost)",
+              fmtMoney(billing.vendorTotal, "AED"),
+            )}
+            {jobStat(
+              "Expected Profit",
+              fmtMoney(billing.expectedProfit, "AED"),
+              billing.expectedProfit >= 0 ? "success.main" : "error.main",
+            )}
+            {jobStat("Margin", margin)}
+            {jobStat(
+              "Received",
+              fmtMoney(billing.received, "AED"),
+              "success.main",
+            )}
+            {jobStat("Paid Out", fmtMoney(billing.paidOut, "AED"))}
+            {jobStat(
+              "Current Profit",
+              fmtMoney(billing.currentProfit, "AED"),
+              billing.currentProfit >= 0 ? "success.main" : "error.main",
+            )}
+            {jobStat(
+              "To Collect",
+              fmtMoney(billing.toCollect, "AED"),
+              "warning.main",
+            )}
+            {jobStat("To Pay", fmtMoney(billing.toPay, "AED"), "error.main")}
+          </Box>
+        )}
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ display: "block", mt: 1 }}
+        >
+          Expected Profit = all invoices − all bills (void excluded). Current
+          Profit = received − paid out. To Collect and To Pay are the unpaid
+          balances on invoices and bills.
+        </Typography>
+        {jobTable(
+          "Bills",
+          billing.vendorBills || [],
+          "Vendor",
+          "vendor",
+          "Bill",
+        )}
+        {jobTable(
+          "Invoices",
+          billing.invoices || [],
+          "Customer",
+          "customer",
+          "Invoice",
+        )}
+      </>
+    );
+  };
+
   const tabs = [
     {
       label: "Overview",
@@ -1686,7 +1919,31 @@ const OrderModalView = ({
                         }
                         title="Job Details"
                       />
-                      <JobDetailsPanel row={billing} loading={billingLoading} />
+                      <Box
+                        sx={{
+                          display: "flex",
+                          justifyContent: "flex-end",
+                          mb: 2,
+                        }}
+                      >
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          onClick={handleSyncZoho}
+                          disabled={syncingZoho}
+                          startIcon={
+                            syncingZoho ? (
+                              <CircularProgress size={14} color="inherit" />
+                            ) : (
+                              <SyncIcon />
+                            )
+                          }
+                          sx={{ borderColor: T.teal, color: T.teal }}
+                        >
+                          {syncingZoho ? "Syncing…" : "Sync Zoho"}
+                        </Button>
+                      </Box>
+                      {renderJobDetails()}
                     </CardContent>
                   </Card>
                 </TabPanel>
