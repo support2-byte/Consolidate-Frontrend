@@ -78,6 +78,7 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
   const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
   const [invoiceTarget, setInvoiceTarget] = useState(null);
   const [payments, setPayments] = useState(null);
+  const [checkingPayment, setCheckingPayment] = useState(false);
   const isPaid = (receiverId) => payments?.[receiverId] === "paid";
 
   const getDriverTrucks = (driver) =>
@@ -113,15 +114,20 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
   useEffect(() => {
     if (!open || !order?.id) return;
     let active = true;
-    setPayments(null);
-    api
-      .get(`/api/zoho-invoice/order/${order.id}/payment-status`)
-      .then(({ data }) => active && setPayments(data.receiverPayments || {}))
-      .catch(() => {
+    const loadPayments = async () => {
+      setPayments(null);
+      try {
+        const { data } = await api.get(
+          `/api/zoho-invoice/order/${order.id}/payment-status`,
+        );
+        if (active) setPayments(data.receiverPayments || {});
+      } catch {
         if (!active) return;
         setPayments({});
         toast.error("Failed to verify payment status.");
-      });
+      }
+    };
+    loadPayments();
     return () => {
       active = false;
     };
@@ -130,6 +136,31 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
   if (!order) return null;
 
   const receivers = order.receivers || [];
+
+  const handleCheckPayment = async () => {
+    setCheckingPayment(true);
+    try {
+      const { data } = await api.post(
+        `/api/zoho-invoice/order/${order.id}/payment-status/sync`,
+      );
+      const result = data.receiverPayments || {};
+      setPayments(result);
+      const paidCount = receivers.filter((r) => result[r.id] === "paid").length;
+      if (paidCount > 0) {
+        toast.success(
+          `Payment verified for ${paidCount} of ${receivers.length} receiver(s).`,
+        );
+      } else {
+        toast.warning("Payment is not completed for this order.");
+      }
+    } catch (err) {
+      toast.error(
+        err?.response?.data?.message || "Failed to check payment status.",
+      );
+    } finally {
+      setCheckingPayment(false);
+    }
+  };
 
   const updateCollection = (key, patch) => {
     setCollections((prev) =>
@@ -450,6 +481,23 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
             </Grid>
           </Grid>
         </Box>
+
+        <Stack direction="row" alignItems="center" spacing={2} mb={3}>
+          <Button
+            variant="outlined"
+            onClick={handleCheckPayment}
+            disabled={checkingPayment || !order.rgl_booking_number}
+            sx={{ borderColor: "#0d6c6a", color: "#0d6c6a" }}
+          >
+            {checkingPayment ? "Checking..." : "Check Payment Status"}
+          </Button>
+          {payments && receivers.length > 0 && (
+            <Typography variant="caption" color="text.secondary">
+              {receivers.filter((r) => isPaid(r.id)).length} of{" "}
+              {receivers.length} receiver(s) paid
+            </Typography>
+          )}
+        </Stack>
         {receivers.some((r) => r.collections?.length > 0) && (
           <Box
             sx={{
@@ -1020,6 +1068,7 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
                       <Button
                         component="label"
                         size="small"
+                        disabled={!c.receiverId || !isPaid(c.receiverId)}
                         startIcon={<CloudUploadIcon />}
                         sx={{
                           borderColor: "#f58220",
