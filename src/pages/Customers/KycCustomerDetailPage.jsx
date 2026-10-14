@@ -215,7 +215,7 @@ export default function KycCustomerDetailPage() {
   }
 
   return (
-    <Box sx={{ p: { xs: 2, md: 3 } }}>
+    <Box sx={{ maxWidth: "100%", mx: "auto", py: 4, px: { xs: 2, md: 4 } }}>
       <Stack spacing={3} className="no-print">
         <Stack
           direction={{ xs: "column", md: "row" }}

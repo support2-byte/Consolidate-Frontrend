@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useContext } from "react";
 import {
   Box,
   Typography,
@@ -19,7 +19,6 @@ import {
   Radio,
   FormControl,
   FormLabel,
-  Snackbar,
   Alert,
   CircularProgress,
   Chip,
@@ -30,8 +29,13 @@ import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import IconButton from "@mui/material/IconButton";
+import { AppContext } from "../../context/AppContext";
+import { toast } from "react-toastify";
 
 const ThirdParties = () => {
+  const { thirdParties, thirdPartiesLoading, fetchThirdParties } =
+    useContext(AppContext);
+
   const [openDialog, setOpenDialog] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [selectedParty, setSelectedParty] = useState(null);
@@ -43,71 +47,25 @@ const ThirdParties = () => {
     address: "",
     type: "",
   });
-  const [thirdParties, setThirdParties] = useState([]);
-  const [loading, setLoading] = useState(true);
+
   const [dialogLoading, setDialogLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [snackbar, setSnackbar] = useState({
-    open: false,
-    message: "",
-    severity: "info",
-  });
-
-  useEffect(() => {
-    fetchThirdParties();
-  }, []);
-
-  const fetchThirdParties = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const response = await api.get("api/options/thirdParty/crud");
-      const data = response.data.third_parties || [];
-      setThirdParties(data);
-    } catch (err) {
-      console.error("Error fetching third parties:", err);
-      setError(err.message);
-      setSnackbar({
-        open: true,
-        message: "Failed to load third parties. Please try again.",
-        severity: "error",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const validateForm = () => {
     if (!formData.company_name.trim()) {
-      setSnackbar({
-        open: true,
-        message: "Company name is required.",
-        severity: "warning",
-      });
+      toast.warning("Company name is required.");
       return false;
     }
     if (!formData.contact_name.trim()) {
-      setSnackbar({
-        open: true,
-        message: "Contact name is required.",
-        severity: "warning",
-      });
+      toast.warning("Contact name is required.");
       return false;
     }
     if (!formData.address.trim()) {
-      setSnackbar({
-        open: true,
-        message: "Address is required.",
-        severity: "warning",
-      });
+      toast.warning("Address is required.");
       return false;
     }
     if (!formData.type) {
-      setSnackbar({
-        open: true,
-        message: "Type is required.",
-        severity: "warning",
-      });
+      toast.warning("Type is required.");
       return false;
     }
     return true;
@@ -180,22 +138,17 @@ const ThirdParties = () => {
         const errorData = response.data;
         throw new Error(errorData.error || "Failed to save third party");
       }
+
       await fetchThirdParties();
       handleCloseDialog();
-      setSnackbar({
-        open: true,
-        message: editMode
+      toast.success(
+        editMode
           ? "Third party updated successfully!"
           : "Third party added successfully!",
-        severity: "success",
-      });
+      );
     } catch (err) {
       console.error("Error saving third party:", err);
-      setSnackbar({
-        open: true,
-        message: err.message || "Failed to save third party.",
-        severity: "error",
-      });
+      toast.error(err.message || "Failed to save third party.");
     } finally {
       setDialogLoading(false);
     }
@@ -215,19 +168,12 @@ const ThirdParties = () => {
         const errorData = response.data;
         throw new Error(errorData.error || "Failed to delete third party");
       }
+
       await fetchThirdParties();
-      setSnackbar({
-        open: true,
-        message: "Third party deleted successfully!",
-        severity: "success",
-      });
+      toast.success("Third party deleted successfully!");
     } catch (err) {
       console.error("Error deleting third party:", err);
-      setSnackbar({
-        open: true,
-        message: err.message || "Failed to delete third party.",
-        severity: "error",
-      });
+      toast.error(err.message || "Failed to delete third party.");
     }
   };
 
@@ -242,10 +188,6 @@ const ThirdParties = () => {
       default:
         return "None";
     }
-  };
-
-  const handleSnackbarClose = () => {
-    setSnackbar({ ...snackbar, open: false });
   };
 
   const renderEmptyState = () => (
@@ -298,7 +240,7 @@ const ThirdParties = () => {
       </Box>
 
       <Paper sx={{ p: 2, overflowX: "auto", position: "relative" }}>
-        {loading && (
+        {thirdPartiesLoading && (
           <Box
             sx={{
               position: "absolute",
@@ -310,7 +252,7 @@ const ThirdParties = () => {
             <CircularProgress />
           </Box>
         )}
-        {error && !loading && (
+        {error && !thirdPartiesLoading && (
           <Alert severity="error" sx={{ mb: 2 }}>
             {error}.{" "}
             <Button size="small" onClick={fetchThirdParties}>
@@ -348,7 +290,7 @@ const ThirdParties = () => {
             </TableRow>
           </TableHead>
           <TableBody>
-            {thirdParties.length === 0 && !loading
+            {thirdParties.length === 0 && !thirdPartiesLoading
               ? renderEmptyState()
               : thirdParties.map((party) => (
                   <TableRow
@@ -540,21 +482,6 @@ const ThirdParties = () => {
           </Button>
         </DialogActions>
       </Dialog>
-
-      {/* Snackbar for notifications */}
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={4000}
-        onClose={handleSnackbarClose}
-      >
-        <Alert
-          onClose={handleSnackbarClose}
-          severity={snackbar.severity}
-          sx={{ width: "100%" }}
-        >
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
     </Box>
   );
 };

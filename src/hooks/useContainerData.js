@@ -8,6 +8,7 @@ import {
 } from "react";
 import { AppContext } from "../context/AppContext";
 import { api } from "../api";
+import { toast } from "react-toastify";
 import { DEFAULT_FORM_DATA } from "../constants/containers";
 import { buildContainerPayload, validateForm } from "../Utlis/containerBuilder";
 
@@ -58,11 +59,6 @@ const initialUIState = {
   loadingUnassigned: false,
   generatingPDF: false,
   error: null,
-  snackbar: {
-    open: false,
-    message: "",
-    severity: "info",
-  },
   editingId: null,
   tempData: {
     current_status: "",
@@ -199,18 +195,6 @@ const uiReducer = (state, action) => {
           [action.cid]: action.value,
         },
       };
-    case "SHOW_SNACKBAR":
-      return {
-        ...state,
-        snackbar: {
-          open: true,
-          message: action.message,
-          severity: action.severity || "info",
-        },
-        error: null,
-      };
-    case "HIDE_SNACKBAR":
-      return { ...state, snackbar: { ...state.snackbar, open: false } };
     case "SET_ERROR":
       return { ...state, error: action.error };
     case "START_QUICK_EDIT":
@@ -297,12 +281,6 @@ const uiActions = {
     cid,
     value,
   }),
-  showSnackbar: (message, severity) => ({
-    type: "SHOW_SNACKBAR",
-    message,
-    severity,
-  }),
-  hideSnackbar: () => ({ type: "HIDE_SNACKBAR" }),
   setError: (error) => ({ type: "SET_ERROR", error }),
   startQuickEdit: (cid, tempData) => ({
     type: "START_QUICK_EDIT",
@@ -354,7 +332,10 @@ export const useContainerData = (propContainers = []) => {
   );
 
   const showToast = useCallback((message, severity = "info") => {
-    uiDispatch(uiActions.showSnackbar(message, severity));
+    if (severity === "error") toast.error(message);
+    else if (severity === "success") toast.success(message);
+    else if (severity === "warning") toast.warning(message);
+    else toast.info(message);
   }, []);
 
   const handleError = useCallback(
@@ -363,7 +344,7 @@ export const useContainerData = (propContainers = []) => {
       const message =
         err.response?.data?.error || err.message || defaultMessage;
       uiDispatch(uiActions.setError(message));
-      uiDispatch(uiActions.showSnackbar(message, "error"));
+      toast.error(message);
     },
     [],
   );
@@ -719,10 +700,6 @@ export const useContainerData = (propContainers = []) => {
     [handleError, showToast, fetchContainers],
   );
 
-  const handleSnackbarClose = useCallback(() => {
-    uiDispatch(uiActions.hideSnackbar());
-  }, []);
-
   return {
     filters: dataState.filters,
     currentPage: dataState.currentPage,
@@ -751,7 +728,6 @@ export const useContainerData = (propContainers = []) => {
     loadingUnassigned: uiState.loadingUnassigned,
     generatingPDF: uiState.generatingPDF,
     error: uiState.error,
-    snackbar: uiState.snackbar,
     editingId: uiState.editingId,
     tempData: uiState.tempData,
     jobStatusOptions,
@@ -797,7 +773,6 @@ export const useContainerData = (propContainers = []) => {
     handleQuickCancel,
     markReturned,
     openHistory,
-    handleSnackbarClose,
     fetchContainers,
     handleFileChange,
     removeFile,

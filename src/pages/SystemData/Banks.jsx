@@ -18,7 +18,6 @@ import {
   MenuItem,
   FormControl,
   InputLabel,
-  Snackbar,
   Alert,
   CircularProgress,
   Chip,
@@ -29,6 +28,7 @@ import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import IconButton from "@mui/material/IconButton";
+import { toast } from "react-toastify";
 
 const Banks = () => {
   const [openDialog, setOpenDialog] = useState(false);
@@ -46,11 +46,6 @@ const Banks = () => {
   const [loading, setLoading] = useState(true);
   const [dialogLoading, setDialogLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [snackbar, setSnackbar] = useState({
-    open: false,
-    message: "",
-    severity: "info",
-  });
 
   useEffect(() => {
     fetchBanks();
@@ -66,11 +61,7 @@ const Banks = () => {
     } catch (err) {
       console.error("Error fetching banks:", err);
       setError(err.message);
-      setSnackbar({
-        open: true,
-        message: "Failed to load banks. Please try again.",
-        severity: "error",
-      });
+      toast.error("Failed to load banks. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -78,27 +69,15 @@ const Banks = () => {
 
   const validateForm = () => {
     if (!formData.name.trim()) {
-      setSnackbar({
-        open: true,
-        message: "Bank name is required.",
-        severity: "warning",
-      });
+      toast.warning("Bank name is required.");
       return false;
     }
     if (!formData.account_number.trim()) {
-      setSnackbar({
-        open: true,
-        message: "Account number is required.",
-        severity: "warning",
-      });
+      toast.warning("Account number is required.");
       return false;
     }
     if (!formData.swift_code.trim()) {
-      setSnackbar({
-        open: true,
-        message: "SWIFT code is required.",
-        severity: "warning",
-      });
+      toast.warning("SWIFT code is required.");
       return false;
     }
     return true;
@@ -173,20 +152,12 @@ const Banks = () => {
       }
       await fetchBanks();
       handleCloseDialog();
-      setSnackbar({
-        open: true,
-        message: editMode
-          ? "Bank updated successfully!"
-          : "Bank added successfully!",
-        severity: "success",
-      });
+      toast.success(
+        editMode ? "Bank updated successfully!" : "Bank added successfully!",
+      );
     } catch (err) {
       console.error("Error saving bank:", err);
-      setSnackbar({
-        open: true,
-        message: err.message || "Failed to save bank.",
-        severity: "error",
-      });
+      toast.error(err.message || "Failed to save bank.");
     } finally {
       setDialogLoading(false);
     }
@@ -207,23 +178,11 @@ const Banks = () => {
         throw new Error(errorData.error || "Failed to delete bank");
       }
       await fetchBanks();
-      setSnackbar({
-        open: true,
-        message: "Bank deleted successfully!",
-        severity: "success",
-      });
+      toast.success("Bank deleted successfully!");
     } catch (err) {
       console.error("Error deleting bank:", err);
-      setSnackbar({
-        open: true,
-        message: err.message || "Failed to delete bank.",
-        severity: "error",
-      });
+      toast.error(err.message || "Failed to delete bank.");
     }
-  };
-
-  const handleSnackbarClose = () => {
-    setSnackbar({ ...snackbar, open: false });
   };
 
   const renderEmptyState = () => (
@@ -496,21 +455,6 @@ const Banks = () => {
           </Button>
         </DialogActions>
       </Dialog>
-
-      {/* Snackbar for notifications */}
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={4000}
-        onClose={handleSnackbarClose}
-      >
-        <Alert
-          onClose={handleSnackbarClose}
-          severity={snackbar.severity}
-          sx={{ width: "100%" }}
-        >
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
     </Box>
   );
 };

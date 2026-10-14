@@ -124,13 +124,13 @@ export default function KycSubmissionsPage() {
   }
 
   return (
-    <Box sx={{ p: { xs: 2, md: 3 } }}>
+    <Box sx={{ maxWidth: "100%", mx: "auto", py: 4, px: { xs: 2, md: 4 } }}>
       <Stack spacing={3}>
         <Box>
-          <Typography variant="h4" fontWeight={700} sx={{ color: ORANGE }}>
+          <Typography variant="h4" fontWeight="bold" color="#f58220">
             KYC Submissions
           </Typography>
-          <Typography color="text.secondary">
+          <Typography color="text.secondary" sx={{ mb: 4 }}>
             All submitted KYC forms across customers.
           </Typography>
         </Box>

@@ -189,8 +189,8 @@ const DashboardCharts = () => {
           gap: 1,
         }}
       >
-        <Typography variant="h5" fontWeight="bold">
-          Dashboard Overview
+        <Typography variant="h4" fontWeight="bold" color="#f58220">
+          Dashboard
         </Typography>
         <Button
           startIcon={<RefreshIcon size={16} />}

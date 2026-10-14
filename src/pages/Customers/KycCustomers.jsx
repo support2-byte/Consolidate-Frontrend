@@ -450,7 +450,7 @@ export default function KycCustomers() {
   const loading = loadingCustomers || statusLoading;
 
   return (
-    <Box sx={{ p: { xs: 1.5, md: 3 } }}>
+    <Box sx={{ maxWidth: "100%", mx: "auto", py: 4, px: { xs: 2, md: 4 } }}>
       <Stack spacing={3}>
         <Stack
           direction={{ xs: "column", md: "row" }}
@@ -459,12 +459,7 @@ export default function KycCustomers() {
           spacing={2}
         >
           <Box>
-            <Typography
-              variant="h4"
-              fontWeight={700}
-              sx={{ fontSize: { xs: "1.5rem", md: "2.125rem" } }}
-              color="#f58220"
-            >
+            <Typography variant="h4" fontWeight="bold" color="#f58220">
               KYC Customer Module
             </Typography>
             <Typography color="text.secondary" variant="body2">

@@ -13,6 +13,13 @@ export const AppProvider = ({ children }) => {
   const [statuses, setStatuses] = useState([]);
   const [modules, setModules] = useState([]);
   const [companies, setCompanies] = useState([]);
+  const [thirdParties, setThirdParties] = useState([]);
+  const [drivers, setDrivers] = useState([]);
+  const [driverTrucks, setDriverTracks] = useState([]);
+  const [systemSettings, setSystemSettings] = useState([]);
+  const [zohoInvoices, setZohoInvoices] = useState([]);
+  const [zohoInvoicesLoading, setZohoInvoicesLoading] = useState(false);
+  const [zohoInvoicesSyncing, setZohoInvoicesSyncing] = useState(false);
 
   const [placesLoading, setPlacesLoading] = useState(false);
   const [statusLoading, setStatusLoading] = useState(false);
@@ -20,6 +27,10 @@ export const AppProvider = ({ children }) => {
   const [modulesLoading, setModulesLoading] = useState(false);
   const [companiesLoading, setCompaniesLoading] = useState(false);
   const [companiesError, setCompaniesError] = useState("");
+  const [thirdPartiesLoading, setThirdPartiesLoading] = useState(false);
+  const [driversLoading, setDriversLoading] = useState(false);
+  const [driverTrucksLoading, setDriverTrucksLoading] = useState(false);
+  const [systemSettingsLoading, setSystemSettingsLoading] = useState(false);
 
   const isInitialized = useRef(false);
 
@@ -115,6 +126,99 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  const fetchThirdParties = async () => {
+    try {
+      setThirdPartiesLoading(true);
+      const response = await api.get("api/options/thirdParty/crud");
+      const data = response.data.third_parties || [];
+      setThirdParties(data);
+    } catch (err) {
+      console.error("Error fetching third parties:", err);
+      toast.error("Failed to load third parties. Please try again.");
+    } finally {
+      setThirdPartiesLoading(false);
+    }
+  };
+
+  const fetchDrivers = async () => {
+    try {
+      setDriversLoading(true);
+      const response = await api.get("api/options/drivers");
+      setDrivers(response.data.rows || []);
+    } catch (err) {
+      if (err.response?.status === 404) {
+        setDrivers([]);
+      } else {
+        console.error("Error fetching drivers:", err);
+        toast.error("Failed to load drivers. Please try again.");
+      }
+    } finally {
+      setDriversLoading(false);
+    }
+  };
+
+  const fetchDriverTrucks = async () => {
+    try {
+      setDriverTrucksLoading(true);
+      const response = await api.get("api/options/driver-trucks");
+      setDriverTracks(response.data.rows || []);
+    } catch (err) {
+      if (err.response?.status === 404) {
+        setDriverTracks([]);
+      } else {
+        console.error("Error fetching driver tracks:", err);
+        toast.error("Failed to load driver tracks. Please try again.");
+      }
+    } finally {
+      setDriverTrucksLoading(false);
+    }
+  };
+
+  const fetchSystemSettings = async () => {
+    try {
+      setSystemSettingsLoading(true);
+      const { data } = await api.get("/api/options/system-settings");
+      setSystemSettings(data.data || []);
+    } catch (err) {
+      console.error("Error fetching system settings:", err);
+      toast.error("Failed to load system settings.");
+    } finally {
+      setSystemSettingsLoading(false);
+    }
+  };
+
+  const fetchZohoInvoices = async () => {
+    try {
+      setZohoInvoicesLoading(true);
+      const { data } = await api.get("/api/zoho-invoice");
+      setZohoInvoices(data?.invoices || []);
+    } catch (err) {
+      if (err.response?.status !== 403) {
+        toast.error(err.response?.data?.message || "Failed to fetch invoices.");
+      }
+    } finally {
+      setZohoInvoicesLoading(false);
+    }
+  };
+
+  const syncZohoInvoices = async () => {
+    try {
+      setZohoInvoicesSyncing(true);
+      await api.post("/api/zoho-invoice/sync");
+      const { data } = await api.get("/api/zoho-invoice");
+      setZohoInvoices(data?.invoices || []);
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to sync invoices.");
+    } finally {
+      setZohoInvoicesSyncing(false);
+    }
+  };
+
+  const getSystemRate = (key, fallback = 0) => {
+    const setting = systemSettings.find((s) => s.key === key);
+    return setting ? Number(setting.value) : fallback;
+  };
+
   useEffect(() => {
     if (authLoading) return;
     if (!isAuthenticated) {
@@ -131,6 +235,12 @@ export const AppProvider = ({ children }) => {
     fetchStatuses();
     fetchModules();
     fetchCompanies();
+    fetchThirdParties();
+    fetchDrivers();
+    fetchDriverTrucks();
+    fetchSystemSettings();
+    getSystemRate();
+    fetchZohoInvoices();
   }, [authLoading, isAuthenticated]);
 
   return (
@@ -154,6 +264,26 @@ export const AppProvider = ({ children }) => {
         companiesLoading,
         companiesError,
         fetchCompanies,
+        thirdParties,
+        setThirdParties,
+        drivers,
+        setDrivers,
+        driversLoading,
+        fetchDrivers,
+        driverTrucks,
+        setDriverTracks,
+        driverTrucksLoading,
+        fetchDriverTrucks,
+        systemSettings,
+        setSystemSettings,
+        systemSettingsLoading,
+        fetchSystemSettings,
+        getSystemRate,
+        zohoInvoices,
+        zohoInvoicesLoading,
+        zohoInvoicesSyncing,
+        fetchZohoInvoices,
+        syncZohoInvoices,
       }}
     >
       {children}

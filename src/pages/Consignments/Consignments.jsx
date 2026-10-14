@@ -62,7 +62,6 @@ import { get } from "lodash";
 import { useLoading } from "../../context/LoadingContext";
 applyPlugin(jsPDF);
 
-// Styled components
 const StyledTableRow = styled(TableRow)(({ theme }) => ({
   "&:nth-of-type(odd)": { backgroundColor: theme.palette.action.hover },
   "&:last-child td, &:last-child th": { border: 0 },
@@ -114,7 +113,6 @@ export default function Consignments() {
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState(null);
 
-  // Server-side params
   const params = useMemo(
     () => ({
       page: page + 1,
@@ -188,7 +186,6 @@ export default function Consignments() {
     />
   );
 
-  // Columns
   const columns = [
     { key: "consignment_number", label: "Consignment", sortable: true },
     { key: "shipper", label: "Shippers", sortable: true },
@@ -200,7 +197,6 @@ export default function Consignments() {
     { key: "status", label: "Status", sortable: true },
   ];
 
-  // Handlers
   const handleRequestSort = (property) => {
     const isAsc = orderBy === property && order === "asc";
     setOrder(isAsc ? "desc" : "asc");
@@ -283,7 +279,6 @@ export default function Consignments() {
     }
 
     setOpenStatusDialog(false);
-    // setSnackbar({ open: true, message: 'Status updated successfully!', severity: 'success' });
   };
 
   const handleCloseStatusDialog = () => {
@@ -295,14 +290,13 @@ export default function Consignments() {
   const handleCloseSnackbar = () => {
     setSnackbar({ ...snackbar, open: false });
   };
-  // Safe JSON parse helper to avoid errors
   const safeParseOrders = (orders) => {
     if (!orders) return [];
     if (
       Array.isArray(orders) ||
       (typeof orders === "object" && orders !== null)
     ) {
-      return orders; // Already parsed (from DB JSONB)
+      return orders;
     }
     if (orders === "[]") return [];
     try {
@@ -313,11 +307,8 @@ export default function Consignments() {
     }
   };
 
-  // ... (keep your other handlers: handleExport, handleView, handleEdit, etc.)
-
   return (
     <Paper sx={{ p: 3, borderRadius: 3, boxShadow: 3, bgcolor: "#fafafa" }}>
-      {/* Header + Add Button */}
       <Stack
         direction="row"
         justifyContent="space-between"
@@ -337,7 +328,6 @@ export default function Consignments() {
         </Button>
       </Stack>
 
-      {/* Filters */}
       <Stack direction={{ xs: "column", sm: "row" }} spacing={2} mb={3}>
         <TextField
           label="Search Consignment #"
@@ -375,7 +365,6 @@ export default function Consignments() {
         </FormControl>
       </Stack>
 
-      {/* Table */}
       <TableContainer
         sx={{
           borderRadius: 2,
@@ -494,7 +483,6 @@ export default function Consignments() {
         </Table>
       </TableContainer>
 
-      {/* Pagination */}
       <TablePagination
         rowsPerPageOptions={[5, 10, 25, 50]}
         component="div"
@@ -508,7 +496,6 @@ export default function Consignments() {
         }}
       />
 
-      {/* Status Update Dialog */}
       <Dialog
         fullWidth
         open={openStatusDialog}
@@ -557,7 +544,6 @@ export default function Consignments() {
         </DialogActions>
       </Dialog>
 
-      {/* Snackbar */}
       <Snackbar
         open={snackbar.open}
         autoHideDuration={4000}

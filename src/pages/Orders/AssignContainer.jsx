@@ -37,7 +37,6 @@ import {
   ListItemText,
   Checkbox,
   Divider,
-  Alert,
   AlertTitle,
   LinearProgress,
   Collapse,
@@ -46,7 +45,6 @@ import {
   AccordionDetails,
   CircularProgress,
 } from "@mui/material";
-import { Snackbar } from "@mui/material";
 import {
   Close as CloseIcon,
   LocalShipping as LocalShippingIcon,
@@ -68,6 +66,7 @@ import ExpandLess from "@mui/icons-material/ExpandLess";
 import { api } from "../../api";
 import AssignmentForm from "./AssignForm";
 import dayjs from "dayjs";
+import { toast } from "react-toastify";
 
 const theme = {
   primary: "#f58220",
@@ -96,11 +95,6 @@ const AssignModal = ({
 }) => {
   const [detailedOrders, setDetailedOrders] = useState({});
   const [fetchingDetails, setFetchingDetails] = useState(false);
-  const [snackbar, setSnackbar] = useState({
-    open: false,
-    message: "",
-    severity: "success",
-  });
   const [expandedReceivers, setExpandedReceivers] = useState(new Set());
   const [assignmentQuantities, setAssignmentQuantities] = useState({});
   const [assignmentWeights, setAssignmentWeights] = useState({});
@@ -145,7 +139,6 @@ const AssignModal = ({
     [],
   );
 
-  // Fetch single order
   const fetchOrder = useCallback(
     async (id) => {
       try {
@@ -478,21 +471,13 @@ const AssignModal = ({
         });
 
         if (res.data.success) {
-          setSnackbar({
-            open: true,
-            message: "Removed successfully",
-            severity: "success",
-          });
+          toast.success("Removed successfully");
           fetchOrders?.();
           fetchContainers?.();
         } else throw new Error("Failed");
       } catch (err) {
         setLocalShippingDetails(prevState);
-        setSnackbar({
-          open: true,
-          message: "Failed to remove",
-          severity: "error",
-        });
+        toast.error("Failed to remove");
       }
     };
 
@@ -552,20 +537,12 @@ const AssignModal = ({
         });
 
         if (res.data.success) {
-          setSnackbar({
-            open: true,
-            message: "Container removed",
-            severity: "success",
-          });
+          toast.success("Container removed");
           fetchOrders?.();
         } else throw new Error();
       } catch {
         setLocalShippingDetails(prevState);
-        setSnackbar({
-          open: true,
-          message: "Failed to remove container",
-          severity: "error",
-        });
+        toast.error("Failed to remove container");
       }
     };
 
@@ -666,7 +643,6 @@ const AssignModal = ({
                         keyDetail={keyDetail}
                         detailRemaining={remainingUnits}
                         detailRemainingWeight={getRemainingWeight(detail)}
-                        // Must pass these:
                         assignmentQuantities={assignmentQuantities}
                         setAssignmentQuantities={setAssignmentQuantities}
                         assignmentWeights={assignmentWeights}
@@ -753,9 +729,7 @@ const AssignModal = ({
             />
           </TableCell>
           <TableCell>
-            <Typography fontWeight="medium">
-              {/* You can show new assignment preview here if needed */}
-            </Typography>
+            <Typography fontWeight="medium"></Typography>
           </TableCell>
           <TableCell>
             <Chip
@@ -805,23 +779,8 @@ const AssignModal = ({
     );
   });
 
-  // Main render
   return (
     <>
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={4000}
-        onClose={() => setSnackbar({ ...snackbar, open: false })}
-        anchorOrigin={{ vertical: "top", horizontal: "center" }}
-      >
-        <Alert
-          severity={snackbar.severity}
-          onClose={() => setSnackbar({ ...snackbar, open: false })}
-        >
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
-
       <Dialog
         open={openAssignModal}
         onClose={() => setOpenAssignModal(false)}

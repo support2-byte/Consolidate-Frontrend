@@ -12,8 +12,6 @@ import {
   TableHead,
   TableRow,
   Paper,
-  Snackbar,
-  Alert,
   CircularProgress,
   Backdrop,
   TablePagination,
@@ -79,10 +77,8 @@ const ContainerModule = ({ propContainers = [] }) => {
     loadingUnassigned,
     generatingPDF,
     error,
-    snackbar,
     selectedFiles,
     existingAttachments,
-    handleSnackbarClose,
     handleFilterChange,
     handleFormChange,
     handleFormSubmit,
@@ -310,28 +306,13 @@ const ContainerModule = ({ propContainers = [] }) => {
           onPrintStatusHistory={() =>
             generateStatusHistoryPDF(selectedContainerNo)
           }
-          onPrintFullManifest={generateFullManifestPDF}
+          onPrintFullManifest={() => generateFullManifestPDF(unassignedOrders)}
           onSingleJobPDF={generateSingleJobManifestPDF}
           onDetailManifestPDF={generateJobDetailManifestPDF}
           onGenerateUnassignedManifest={() =>
             generateUnassignedManifestPDF(unassignedOrders, selectedContainerNo)
           }
         />
-
-        <Snackbar
-          open={snackbar.open}
-          autoHideDuration={6000}
-          onClose={handleSnackbarClose}
-          anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-        >
-          <Alert
-            onClose={handleSnackbarClose}
-            severity={snackbar.severity}
-            sx={{ width: "100%" }}
-          >
-            {snackbar.message}
-          </Alert>
-        </Snackbar>
 
         <Backdrop
           sx={{ color: "#fff", zIndex: (theme) => theme.zIndex.drawer + 1 }}
