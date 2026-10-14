@@ -20,12 +20,18 @@ import {
   MenuItem,
   InputAdornment,
   CircularProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Alert,
 } from "@mui/material";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
 import PictureAsPdfRoundedIcon from "@mui/icons-material/PictureAsPdfRounded";
 import NavigateBeforeRoundedIcon from "@mui/icons-material/NavigateBeforeRounded";
 import NavigateNextRoundedIcon from "@mui/icons-material/NavigateNextRounded";
+import WarningAmberRoundedIcon from "@mui/icons-material/WarningAmberRounded";
 import { toast } from "react-toastify";
 import { api } from "../api";
 import { useThemeContext } from "../context/ThemeContext";
@@ -99,12 +105,18 @@ export default function ZohoInvoicesPage() {
   const [status, setStatus] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const showNotification = (msg, severity = "success") => {
     if (severity === "error") toast.error(msg);
     else if (severity === "warning") toast.warning(msg);
     else if (severity === "info") toast.info(msg);
     else toast.success(msg);
+  };
+
+  const handleConfirmSync = () => {
+    setConfirmOpen(false);
+    syncZohoInvoices();
   };
 
   useEffect(() => {
@@ -181,7 +193,7 @@ export default function ZohoInvoicesPage() {
 
         <Tooltip title="Refresh data">
           <IconButton
-            onClick={syncZohoInvoices}
+            onClick={() => setConfirmOpen(true)}
             disabled={tableLoading}
             sx={{ border: "1px solid", borderColor: "divider" }}
           >
@@ -464,6 +476,39 @@ export default function ZohoInvoicesPage() {
           </Box>
         </Box>
       </Card>
+
+      <Dialog
+        open={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <WarningAmberRoundedIcon color="warning" />
+          Sync with Zoho Books?
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            This will fetch all invoices from Zoho Books and replace the data
+            currently shown.
+          </Typography>
+          <Alert severity="warning" sx={{ mb: 1 }}>
+            <strong>API usage:</strong> Each sync consumes Zoho API calls from
+            the organization's daily quota. Large invoice volumes use more
+            calls.
+          </Alert>
+          <Alert severity="info">
+            <strong>Time:</strong> This can take a few minutes depending on the
+            number of invoices. Please stay on this page until it finishes.
+          </Alert>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setConfirmOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleConfirmSync}>
+            Sync now
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
