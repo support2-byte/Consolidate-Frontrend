@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Fragment } from "react";
 import html2canvas from "html2canvas";
 import {
   Box,
@@ -38,6 +38,8 @@ import {
   Divider,
   Tooltip,
   Avatar,
+  Checkbox,
+  FormControlLabel,
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import InfoIcon from "@mui/icons-material/Info";
@@ -197,12 +199,16 @@ const OrderModalView = ({
   const [assignmentError, setAssignmentError] = useState(null);
   const [assignments, setAssignments] = useState({});
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
-  const { isSuperAdmin, isAdmin } = useAuth();
+  const { isSuperAdmin, isAdmin, isManager } = useAuth();
   const canViewJobDetails = isSuperAdmin() || isAdmin();
+  const canApprove = isSuperAdmin() || isAdmin() || isManager();
   const [billing, setBilling] = useState(null);
   const [billingLoading, setBillingLoading] = useState(false);
   const [receiverPayments, setReceiverPayments] = useState({});
+  const [receiverApprovals, setReceiverApprovals] = useState({});
+  const [approvingId, setApprovingId] = useState(null);
   const [syncingZoho, setSyncingZoho] = useState(false);
+
   const paymentOf = (receiverId) =>
     PAYMENT_STATUS[receiverPayments[receiverId]]?.label;
 
@@ -231,6 +237,27 @@ const OrderModalView = ({
       setTabValue(0);
     }
   }, [openModal, selectedOrder]);
+
+  useEffect(() => {
+    setReceiverApprovals({});
+    if (!openModal || !selectedOrder?.id) return;
+
+    let active = true;
+    api
+      .get(`/api/zoho-invoice/order/${selectedOrder.id}/payment-status`)
+      .then(({ data }) => {
+        if (!active) return;
+        setReceiverPayments(data.receiverPayments || {});
+        setReceiverApprovals(data.receiverApprovals || {});
+      })
+      .catch(() => {
+        if (active) toast.error("Failed to load payment status.");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [openModal, selectedOrder?.id]);
 
   useEffect(() => {
     setBilling(null);
@@ -268,11 +295,32 @@ const OrderModalView = ({
       );
       setBilling(data.row);
       setReceiverPayments(data.receiverPayments || {});
+      setReceiverPayments(data.receiverPayments || {});
+      setReceiverApprovals(data.receiverApprovals || {});
       toast.success("Zoho sync complete");
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to sync with Zoho.");
     } finally {
       setSyncingZoho(false);
+    }
+  };
+
+  const handleToggleApproval = async (receiverId, approved) => {
+    setApprovingId(receiverId);
+    try {
+      const { data } = await api.patch(
+        `/api/zoho-invoice/order/${selectedOrder.id}/receiver/${receiverId}/payment-approval`,
+        { approved },
+      );
+      setReceiverApprovals((prev) => ({
+        ...prev,
+        [receiverId]: data.approval,
+      }));
+      toast.success(approved ? "Release approved" : "Approval removed");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to update approval.");
+    } finally {
+      setApprovingId(null);
     }
   };
 
@@ -814,6 +862,74 @@ const OrderModalView = ({
     );
   };
 
+  const renderApprovalBar = (rec) => {
+    const approval = receiverApprovals[rec.id];
+    const approved = approval?.approved === true;
+    if (!canApprove && !approved) return null;
+
+    return (
+      <Box
+        sx={{
+          px: 2,
+          py: 1,
+          borderRadius: 2,
+          border: `1px dashed ${T.orange}55`,
+          bgcolor: approved ? T.orangeLight : T.grey50,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: 1,
+        }}
+      >
+        <Box>
+          <Typography
+            variant="caption"
+            fontWeight={700}
+            color={T.grey600}
+            sx={{ textTransform: "uppercase", letterSpacing: 0.5 }}
+          >
+            {rec.receiver_name} — Release Approval
+          </Typography>
+          {approved && approval.approvedAt && (
+            <Typography variant="caption" display="block" color={T.grey600}>
+              Approved on {formatDate(approval.approvedAt)}
+            </Typography>
+          )}
+        </Box>
+
+        {canApprove ? (
+          <FormControlLabel
+            control={
+              <Checkbox
+                size="small"
+                checked={approved}
+                disabled={approvingId === rec.id}
+                onChange={(e) => handleToggleApproval(rec.id, e.target.checked)}
+                sx={{ color: T.orange, "&.Mui-checked": { color: T.orange } }}
+              />
+            }
+            label={
+              <Typography variant="body2">
+                Approved to release without payment
+              </Typography>
+            }
+          />
+        ) : (
+          <Chip
+            label="Approved without payment"
+            size="small"
+            sx={{
+              bgcolor: T.orangeLight,
+              color: T.orangeDark,
+              fontWeight: 600,
+            }}
+          />
+        )}
+      </Box>
+    );
+  };
+
   const renderOrderItems = () => {
     const receivers = selectedOrder?.receivers || [];
     const allItems = receivers.flatMap((rec, ri) =>
@@ -834,171 +950,175 @@ const OrderModalView = ({
     return (
       <Stack spacing={2}>
         {allItems.map(({ rec, ri, item, ii }) => (
-          <Card
-            key={`${ri}-${ii}`}
-            variant="outlined"
-            sx={{
-              borderRadius: 2.5,
-              border: `1px solid ${T.grey200}`,
-              "&:hover": { boxShadow: "0 4px 16px rgba(0,0,0,0.08)" },
-            }}
-          >
-            <Box
+          <Fragment key={`${ri}-${ii}`}>
+            {ii === 0 && renderApprovalBar(rec)}
+            <Card
+              variant="outlined"
               sx={{
-                px: 2.5,
-                py: 1.5,
-                bgcolor: T.orangeLight,
-                borderBottom: `1px solid #ffe0b2`,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                flexWrap: "wrap",
-                gap: 1,
+                borderRadius: 2.5,
+                border: `1px solid ${T.grey200}`,
+                "&:hover": { boxShadow: "0 4px 16px rgba(0,0,0,0.08)" },
               }}
             >
-              <Box>
-                <Typography
-                  variant="caption"
-                  color={T.grey600}
-                  fontWeight={700}
-                  sx={{ textTransform: "uppercase", letterSpacing: 0.5 }}
-                >
-                  {rec.receiver_name}
-                </Typography>
-                <Typography
-                  variant="subtitle2"
-                  fontWeight={700}
-                  color={T.orangeDark}
-                >
-                  {item.category} › {item.subcategory}
-                </Typography>
-              </Box>
-              <Chip
-                label={item.status || "Order Created"}
-                size="small"
+              <Box
                 sx={{
-                  bgcolor: "#00695c",
-                  color: "#fff",
-                  fontWeight: 700,
+                  px: 2.5,
+                  py: 1.5,
+                  bgcolor: T.orangeLight,
+                  borderBottom: `1px solid #ffe0b2`,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  flexWrap: "wrap",
+                  gap: 1,
                 }}
-              />
-            </Box>
-
-            <CardContent sx={{ p: 2.5 }}>
-              <Grid container spacing={1.5}>
-                {[
-                  ["Type", item.type],
-                  ["Status", item.status],
-                  ["ETA", item.eta],
-                  ["ETD", item.etd],
-                  ["Total Number", item.totalNumber],
-                  ["Weight", item.weight ? `${item.weight} kg` : null],
-                  ["Pickup Location", item.pickupLocation],
-                  ["Delivery Address", item.deliveryAddress],
-                  ["Item Ref", item.itemRef],
-                  ["Remaining Items", item.remainingItems],
-                  ...(canViewJobDetails && paymentOf(rec.id)
-                    ? [["Payment", paymentOf(rec.id)]]
-                    : []),
-                ].map(([label, val]) => (
-                  <Grid item xs={12} sm={6} md={4} key={label}>
-                    <FieldCard label={label} value={val} />
-                  </Grid>
-                ))}
-              </Grid>
-
-              {item.containerDetails?.length > 0 && (
-                <Box sx={{ mt: 2.5 }}>
+              >
+                <Box>
                   <Typography
                     variant="caption"
-                    fontWeight={700}
                     color={T.grey600}
-                    sx={{
-                      textTransform: "uppercase",
-                      letterSpacing: 0.5,
-                      display: "block",
-                      mb: 1,
-                    }}
+                    fontWeight={700}
+                    sx={{ textTransform: "uppercase", letterSpacing: 0.5 }}
                   >
-                    Container Assignments
+                    {rec.receiver_name}
                   </Typography>
-                  <TableContainer
-                    component={Paper}
-                    variant="outlined"
-                    sx={{ borderRadius: 2 }}
+                  <Typography
+                    variant="subtitle2"
+                    fontWeight={700}
+                    color={T.orangeDark}
                   >
-                    <Table size="small">
-                      <TableHead>
-                        <TableRow sx={{ bgcolor: T.tealLight }}>
-                          {[
-                            "Status",
-                            "Container #",
-                            "Consignment #",
-                            "Assigned Weight",
-                            "Assigned Boxes",
-                            "Remaining",
-                          ].map((h) => (
-                            <TableCell
-                              key={h}
-                              sx={{
-                                fontWeight: 700,
-                                color: "white",
-                                fontSize: 12,
-                              }}
-                            >
-                              {h}
-                            </TableCell>
-                          ))}
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {item.containerDetails.map((cd, cdi) => (
-                          <TableRow
-                            key={cdi}
-                            sx={{ "&:last-child td": { borderBottom: 0 } }}
-                          >
-                            <TableCell>
-                              <Chip
-                                label={cd.status}
-                                size="small"
-                                sx={{
-                                  bgcolor:
-                                    cd.status === "Occupied"
-                                      ? "#e8f5e9"
-                                      : "#fff3e0",
-                                  color:
-                                    cd.status === "Occupied"
-                                      ? "#2e7d32"
-                                      : T.orangeDark,
-                                  fontWeight: 600,
-                                  fontSize: 11,
-                                }}
-                              />
-                            </TableCell>
-                            <TableCell sx={{ fontWeight: 600 }}>
-                              {cd.container?.container_number || "N/A"}
-                            </TableCell>
-                            <TableCell sx={{ fontWeight: 600 }}>
-                              {cd.consignment_number || "N/A"}
-                            </TableCell>
-                            <TableCell>
-                              {cd.assign_weight
-                                ? `${cd.assign_weight} kg`
-                                : "N/A"}
-                            </TableCell>
-                            <TableCell>
-                              {cd.assign_total_box || "N/A"}
-                            </TableCell>
-                            <TableCell>{cd.remaining_items ?? "N/A"}</TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
+                    {item.category} › {item.subcategory}
+                  </Typography>
                 </Box>
-              )}
-            </CardContent>
-          </Card>
+                <Chip
+                  label={item.status || "Order Created"}
+                  size="small"
+                  sx={{
+                    bgcolor: "#00695c",
+                    color: "#fff",
+                    fontWeight: 700,
+                  }}
+                />
+              </Box>
+
+              <CardContent sx={{ p: 2.5 }}>
+                <Grid container spacing={1.5}>
+                  {[
+                    ["Type", item.type],
+                    ["Status", item.status],
+                    ["ETA", item.eta],
+                    ["ETD", item.etd],
+                    ["Total Number", item.totalNumber],
+                    ["Weight", item.weight ? `${item.weight} kg` : null],
+                    ["Pickup Location", item.pickupLocation],
+                    ["Delivery Address", item.deliveryAddress],
+                    ["Item Ref", item.itemRef],
+                    ["Remaining Items", item.remainingItems],
+                    ...(paymentOf(rec.id)
+                      ? [["Payment", paymentOf(rec.id)]]
+                      : []),
+                  ].map(([label, val]) => (
+                    <Grid item xs={12} sm={6} md={4} key={label}>
+                      <FieldCard label={label} value={val} />
+                    </Grid>
+                  ))}
+                </Grid>
+
+                {item.containerDetails?.length > 0 && (
+                  <Box sx={{ mt: 2.5 }}>
+                    <Typography
+                      variant="caption"
+                      fontWeight={700}
+                      color={T.grey600}
+                      sx={{
+                        textTransform: "uppercase",
+                        letterSpacing: 0.5,
+                        display: "block",
+                        mb: 1,
+                      }}
+                    >
+                      Container Assignments
+                    </Typography>
+                    <TableContainer
+                      component={Paper}
+                      variant="outlined"
+                      sx={{ borderRadius: 2 }}
+                    >
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow sx={{ bgcolor: T.tealLight }}>
+                            {[
+                              "Status",
+                              "Container #",
+                              "Consignment #",
+                              "Assigned Weight",
+                              "Assigned Boxes",
+                              "Remaining",
+                            ].map((h) => (
+                              <TableCell
+                                key={h}
+                                sx={{
+                                  fontWeight: 700,
+                                  color: "white",
+                                  fontSize: 12,
+                                }}
+                              >
+                                {h}
+                              </TableCell>
+                            ))}
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {item.containerDetails.map((cd, cdi) => (
+                            <TableRow
+                              key={cdi}
+                              sx={{ "&:last-child td": { borderBottom: 0 } }}
+                            >
+                              <TableCell>
+                                <Chip
+                                  label={cd.status}
+                                  size="small"
+                                  sx={{
+                                    bgcolor:
+                                      cd.status === "Occupied"
+                                        ? "#e8f5e9"
+                                        : "#fff3e0",
+                                    color:
+                                      cd.status === "Occupied"
+                                        ? "#2e7d32"
+                                        : T.orangeDark,
+                                    fontWeight: 600,
+                                    fontSize: 11,
+                                  }}
+                                />
+                              </TableCell>
+                              <TableCell sx={{ fontWeight: 600 }}>
+                                {cd.container?.container_number || "N/A"}
+                              </TableCell>
+                              <TableCell sx={{ fontWeight: 600 }}>
+                                {cd.consignment_number || "N/A"}
+                              </TableCell>
+                              <TableCell>
+                                {cd.assign_weight
+                                  ? `${cd.assign_weight} kg`
+                                  : "N/A"}
+                              </TableCell>
+                              <TableCell>
+                                {cd.assign_total_box || "N/A"}
+                              </TableCell>
+                              <TableCell>
+                                {cd.remaining_items ?? "N/A"}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  </Box>
+                )}
+              </CardContent>
+            </Card>
+          </Fragment>
         ))}
       </Stack>
     );
