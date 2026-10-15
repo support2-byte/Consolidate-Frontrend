@@ -401,77 +401,76 @@ export default function DashboardLayout() {
             </Tooltip>
           ))}
 
-          {(can("settings", "view") || user?.role === "admin") &&
-            adminSubItems.length > 0 && (
-              <>
-                <ListItemButton
-                  onClick={() => setOpenAdmin(!openAdmin)}
+          {adminSubItems.length > 0 && (
+            <>
+              <ListItemButton
+                onClick={() => setOpenAdmin(!openAdmin)}
+                sx={{
+                  mt: 2,
+                  minHeight: 48,
+                  borderRadius: 2,
+                  color: "#f58220",
+                  justifyContent: collapsed ? "center" : "flex-start",
+                }}
+              >
+                <ListItemIcon
                   sx={{
-                    mt: 2,
-                    minHeight: 48,
-                    borderRadius: 2,
+                    minWidth: collapsed ? 0 : 40,
                     color: "#f58220",
-                    justifyContent: collapsed ? "center" : "flex-start",
                   }}
                 >
-                  <ListItemIcon
-                    sx={{
-                      minWidth: collapsed ? 0 : 40,
-                      color: "#f58220",
-                    }}
-                  >
-                    <SettingsIcon />
-                  </ListItemIcon>
+                  <SettingsIcon />
+                </ListItemIcon>
 
-                  {!collapsed && (
-                    <>
-                      <ListItemText
-                        primary="Admin Settings"
-                        primaryTypographyProps={{
-                          fontWeight: 600,
-                          fontSize: 14,
-                        }}
-                      />
+                {!collapsed && (
+                  <>
+                    <ListItemText
+                      primary="Admin Settings"
+                      primaryTypographyProps={{
+                        fontWeight: 600,
+                        fontSize: 14,
+                      }}
+                    />
 
-                      {openAdmin ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                    </>
-                  )}
-                </ListItemButton>
+                    {openAdmin ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                  </>
+                )}
+              </ListItemButton>
 
-                <Collapse in={openAdmin && !collapsed}>
-                  <List disablePadding>
-                    {adminSubItems.map((item) => (
-                      <ListItemButton
-                        key={item.path}
-                        component={RouterLink}
-                        to={item.path}
-                        selected={location.pathname === item.path}
+              <Collapse in={openAdmin && !collapsed}>
+                <List disablePadding>
+                  {adminSubItems.map((item) => (
+                    <ListItemButton
+                      key={item.path}
+                      component={RouterLink}
+                      to={item.path}
+                      selected={location.pathname === item.path}
+                      sx={{
+                        pl: 4,
+                        minHeight: 42,
+                        borderRadius: 2,
+                      }}
+                    >
+                      <ListItemIcon
                         sx={{
-                          pl: 4,
-                          minHeight: 42,
-                          borderRadius: 2,
+                          minWidth: 40,
                         }}
                       >
-                        <ListItemIcon
-                          sx={{
-                            minWidth: 40,
-                          }}
-                        >
-                          {item.icon}
-                        </ListItemIcon>
+                        {item.icon}
+                      </ListItemIcon>
 
-                        <ListItemText
-                          primary={item.text}
-                          primaryTypographyProps={{
-                            fontSize: 13,
-                          }}
-                        />
-                      </ListItemButton>
-                    ))}
-                  </List>
-                </Collapse>
-              </>
-            )}
+                      <ListItemText
+                        primary={item.text}
+                        primaryTypographyProps={{
+                          fontSize: 13,
+                        }}
+                      />
+                    </ListItemButton>
+                  ))}
+                </List>
+              </Collapse>
+            </>
+          )}
         </List>
       </Box>
 

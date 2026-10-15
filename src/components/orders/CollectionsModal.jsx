@@ -13,6 +13,7 @@ import {
   MenuItem,
   Select,
   FormControl,
+  FormControlLabel,
   InputLabel,
   Checkbox,
   Grid,
@@ -31,6 +32,7 @@ import { toast } from "react-toastify";
 import { api } from "../../api";
 import { generateGatepassPDF } from "../../documents/gatepassGenerator";
 import { AppContext } from "../../context/AppContext";
+import { useAuth } from "../../context/AuthContext";
 import { pdfDocToPngBlob } from "../../lib/pdfToPng";
 
 const triggerDownload = (href, filename) => {
@@ -66,20 +68,27 @@ const emptyCollection = (idx) => ({
   plateNo: "",
   deliveryDate: "",
   status: false,
+  paymentApproved: false,
   gatepassFiles: [],
   items: {},
 });
 
 const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
   const { drivers, driverTrucks } = useContext(AppContext);
+  const { isSuperAdmin, isAdmin, isManager } = useAuth();
+  const canApprove = isSuperAdmin() || isAdmin() || isManager();
   const [collections, setCollections] = useState([emptyCollection(1)]);
   const [saving, setSaving] = useState(false);
   const [historyExpanded, setHistoryExpanded] = useState(false);
   const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
   const [invoiceTarget, setInvoiceTarget] = useState(null);
   const [payments, setPayments] = useState(null);
+  const [approvals, setApprovals] = useState({});
   const [checkingPayment, setCheckingPayment] = useState(false);
   const isPaid = (receiverId) => payments?.[receiverId] === "paid";
+  const isApproved = (receiverId) => approvals?.[receiverId]?.approved === true;
+  const canRelease = (receiverId) =>
+    isPaid(receiverId) || isApproved(receiverId);
 
   const getDriverTrucks = (driver) =>
     driverTrucks.filter((t) => t.driver_id === driver.id);
@@ -116,11 +125,15 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
     let active = true;
     const loadPayments = async () => {
       setPayments(null);
+      setApprovals({});
       try {
         const { data } = await api.get(
           `/api/zoho-invoice/order/${order.id}/payment-status`,
         );
-        if (active) setPayments(data.receiverPayments || {});
+        if (active) {
+          setPayments(data.receiverPayments || {});
+          setApprovals(data.receiverApprovals || {});
+        }
       } catch {
         if (!active) return;
         setPayments({});
@@ -144,11 +157,15 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
         `/api/zoho-invoice/order/${order.id}/payment-status/sync`,
       );
       const result = data.receiverPayments || {};
+      const approved = data.receiverApprovals || {};
       setPayments(result);
-      const paidCount = receivers.filter((r) => result[r.id] === "paid").length;
-      if (paidCount > 0) {
+      setApprovals(approved);
+      const releasedCount = receivers.filter(
+        (r) => result[r.id] === "paid" || approved[r.id]?.approved,
+      ).length;
+      if (releasedCount > 0) {
         toast.success(
-          `Payment verified for ${paidCount} of ${receivers.length} receiver(s).`,
+          `Payment verified or approved for ${releasedCount} of ${receivers.length} receiver(s).`,
         );
       } else {
         toast.warning("Payment is not completed for this order.");
@@ -265,9 +282,10 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
       );
       return;
     }
-
-    if (collections.some((c) => c.receiverId && !isPaid(c.receiverId))) {
-      toast.error("Payment is not completed for the selected receiver.");
+    if (collections.some((c) => c.receiverId && !canRelease(c.receiverId))) {
+      toast.error(
+        "Payment is not completed for the selected receiver and no approval is on file.",
+      );
       return;
     }
 
@@ -286,6 +304,7 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
         plateNo: c.plateNo,
         deliveryDate: c.deliveryDate,
         status: c.status,
+        paymentApproved: c.paymentApproved,
         items: Object.entries(c.items)
           .filter(([, v]) => v.checked && Number(v.qtyDelivered) > 0)
           .map(([itemRef, v]) => ({
@@ -751,7 +770,7 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
                           <MenuItem
                             key={r.id}
                             value={r.id}
-                            disabled={!isPaid(r.id)}
+                            disabled={!canRelease(r.id)}
                           >
                             {r.receiver_name || "Unnamed Receiver"}
                             {payments && !isPaid(r.id) && " — Payment pending"}
@@ -1068,8 +1087,7 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
                       <Button
                         component="label"
                         size="small"
-                        disabled={!c.receiverId || !isPaid(c.receiverId)}
-                        startIcon={<CloudUploadIcon />}
+                        disabled={!c.receiverId || !canRelease(c.receiverId)}
                         sx={{
                           borderColor: "#f58220",
                           color: "#f58220",
