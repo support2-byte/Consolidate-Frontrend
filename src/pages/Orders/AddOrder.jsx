@@ -159,6 +159,9 @@ const OrderForm = () => {
   const { isLoading, setIsLoading } = useLoading();
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewSrc, setPreviewSrc] = useState("");
+  const [previewName, setPreviewName] = useState("");
+  const [previewMime, setPreviewMime] = useState("");
+  const [previewIsBlob, setPreviewIsBlob] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const [expanded, setExpanded] = useState(new Set(["panel1"]));
@@ -867,15 +870,28 @@ const OrderForm = () => {
       let attachments = safeParseArray(orderData.attachments);
       let gatepass = safeParseArray(orderData.gatepass);
 
-      const apiBase = import.meta.env.VITE_API_URL || "";
+      const apiBase = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
+      const toAbs = (u) =>
+        /^(https?:|blob:|data:)/i.test(u)
+          ? u
+          : `${apiBase}/${String(u).replace(/^\/+/, "")}`;
 
-      attachments = attachments
-        .filter((item) => item?.url && typeof item.url === "string")
-        .map((item) => (typeof item === "string" ? `${apiBase}${item}` : item));
+      const normalizeFiles = (arr) =>
+        arr
+          .map((item) => {
+            if (typeof item === "string") {
+              return {
+                url: toAbs(item),
+                originalname: item.split("?")[0].split("/").pop(),
+              };
+            }
+            const raw = item?.url || item?.secure_url || item?.path;
+            return raw ? { ...item, url: toAbs(raw) } : null;
+          })
+          .filter(Boolean);
 
-      gatepass = gatepass
-        .filter((item) => item?.url && typeof item.url === "string")
-        .map((item) => (typeof item === "string" ? `${apiBase}${item}` : item));
+      attachments = normalizeFiles(attachments);
+      gatepass = normalizeFiles(gatepass);
 
       const camelData = {};
 
@@ -2129,6 +2145,58 @@ const OrderForm = () => {
     }));
   };
 
+  const cleanPath = (s) => (s || "").toLowerCase().split("?")[0].split("#")[0];
+
+  const getPreviewKind = (src, name, mime) => {
+    const n = cleanPath(name);
+    const u = cleanPath(src);
+    if (mime === "application/pdf" || n.endsWith(".pdf") || u.endsWith(".pdf"))
+      return "pdf";
+    if (
+      mime?.startsWith("image/") ||
+      /\.(jpe?g|png|gif|webp|bmp|svg)$/.test(n) ||
+      /\.(jpe?g|png|gif|webp|bmp|svg)$/.test(u)
+    )
+      return "image";
+    return "other";
+  };
+
+  const openPreview = (src, name = "", mime = "", isBlob = false) => {
+    setPreviewSrc(src);
+    setPreviewName(name || src.split("?")[0].split("/").pop() || "Attachment");
+    setPreviewMime(mime || "");
+    setPreviewIsBlob(isBlob);
+    setPreviewOpen(true);
+  };
+
+  const closePreview = () => {
+    if (previewIsBlob && previewSrc) URL.revokeObjectURL(previewSrc);
+    setPreviewOpen(false);
+    setPreviewSrc("");
+    setPreviewName("");
+    setPreviewMime("");
+    setPreviewIsBlob(false);
+  };
+
+  const downloadFile = async (src, name) => {
+    if (!src) return;
+    try {
+      const res = await fetch(src);
+      if (!res.ok) throw new Error("Download failed");
+      const blob = await res.blob();
+      const objUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objUrl;
+      a.download = name || "file";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(objUrl);
+    } catch {
+      window.open(src, "_blank", "noopener,noreferrer");
+    }
+  };
+
   const handleGatepassUpload = (e) => {
     const files = Array.from(e.target.files);
     setFormData((prev) => ({
@@ -2433,8 +2501,7 @@ const OrderForm = () => {
         toast.warning("No document available for this form");
         return;
       }
-      setPreviewSrc(url);
-      setPreviewOpen(true);
+      openPreview(url, "Booking Form", "", false);
     } catch (err) {
       console.error(
         "[handleViewImportDoc] Error:",
@@ -6000,36 +6067,20 @@ const OrderForm = () => {
                         gap={1}
                       >
                         {formData.attachments.map((attachment, i) => {
-                          let label = "File";
-                          let previewSrc;
-
-                          if (typeof attachment === "string") {
-                            label = attachment.split("/").pop() || "File";
-                            previewSrc = attachment.startsWith("http")
+                          const isLocalFile = attachment instanceof File;
+                          const label = isLocalFile
+                            ? attachment.name
+                            : attachment?.originalname ||
+                              attachment?.filename ||
+                              (typeof attachment === "string"
+                                ? attachment.split("/").pop()
+                                : "File");
+                          const remoteUrl = isLocalFile
+                            ? null
+                            : typeof attachment === "string"
                               ? attachment
-                              : `${import.meta.env.VITE_API_URL || ""}${attachment}`;
-                          } else if (attachment?.url) {
-                            label =
-                              attachment.originalname ||
-                              attachment.filename ||
-                              "File";
-                            previewSrc = attachment.url;
-                          } else if (
-                            attachment instanceof File ||
-                            attachment?.previewUrl
-                          ) {
-                            previewSrc =
-                              attachment.previewUrl ||
-                              URL.createObjectURL(attachment);
-                            label = attachment.name || "File";
-                          } else {
-                            label = "Unknown";
-                            previewSrc = null;
-                          }
-
-                          const isImage =
-                            previewSrc?.match(/\.(jpg|jpeg|png|gif|webp)$/i) ||
-                            attachment?.mimetype?.startsWith("image/");
+                              : attachment?.url;
+                          const canPreview = isLocalFile || !!remoteUrl;
 
                           return (
                             <Chip
@@ -6039,33 +6090,36 @@ const OrderForm = () => {
                               size="small"
                               variant="outlined"
                               onClick={() => {
-                                if (previewSrc) {
-                                  setPreviewSrc(previewSrc);
-                                  setPreviewOpen(true);
-                                } else {
-                                  console.warn(
-                                    "No valid preview source for attachment:",
-                                    attachment,
+                                if (isLocalFile) {
+                                  // create the blob URL only when clicked
+                                  openPreview(
+                                    URL.createObjectURL(attachment),
+                                    attachment.name,
+                                    attachment.type,
+                                    true,
                                   );
+                                } else if (remoteUrl) {
+                                  openPreview(
+                                    remoteUrl,
+                                    label,
+                                    attachment?.mimetype || "",
+                                    false,
+                                  );
+                                } else {
+                                  toast.warning("No file URL available");
                                 }
                               }}
-                              onDelete={() => {
-                                if (attachment.previewUrl) {
-                                  URL.revokeObjectURL(attachment.previewUrl);
-                                }
-
-                                const newAttachments =
-                                  formData.attachments.filter(
-                                    (_, index) => index !== i,
-                                  );
+                              onDelete={() =>
                                 setFormData((prev) => ({
                                   ...prev,
-                                  attachments: newAttachments,
-                                }));
-                              }}
+                                  attachments: prev.attachments.filter(
+                                    (_, index) => index !== i,
+                                  ),
+                                }))
+                              }
                               sx={{
-                                cursor: previewSrc ? "pointer" : "default",
-                                "&:hover": previewSrc
+                                cursor: canPreview ? "pointer" : "default",
+                                "&:hover": canPreview
                                   ? {
                                       backgroundColor: "#f58220",
                                       color: "white",
@@ -6105,26 +6159,18 @@ const OrderForm = () => {
       </Paper>
       <Dialog
         open={previewOpen}
-        onClose={() => setPreviewOpen(false)}
+        onClose={closePreview}
         maxWidth="lg"
         fullWidth
         PaperProps={{
-          sx: {
-            height: "90vh",
-            display: "flex",
-            flexDirection: "column",
-          },
+          sx: { height: "90vh", display: "flex", flexDirection: "column" },
         }}
       >
         <DialogTitle sx={{ position: "relative", pr: 6 }}>
-          File Preview — {previewSrc?.split("/").pop() || "Attachment"}
+          File Preview — {previewName || "Attachment"}
           <IconButton
-            onClick={() => setPreviewOpen(false)}
-            sx={{
-              position: "absolute",
-              right: 8,
-              top: 8,
-            }}
+            onClick={closePreview}
+            sx={{ position: "absolute", right: 8, top: 8 }}
           >
             <CloseIcon />
           </IconButton>
@@ -6141,97 +6187,107 @@ const OrderForm = () => {
             justifyContent: previewSrc ? "center" : "flex-start",
           }}
         >
-          {previewSrc ? (
-            previewSrc.match(/\.(jpg|jpeg|png|gif|webp)$/i) ||
-            previewSrc.includes("image/upload") ? (
-              <img
-                src={previewSrc}
-                alt="Preview"
-                style={{
-                  maxWidth: "100%",
-                  maxHeight: "75vh",
-                  objectFit: "contain",
-                  borderRadius: 8,
-                  boxShadow: "0 8px 32px rgba(0,0,0,0.15)",
-                  background: "#f8f9fa",
-                }}
-                onError={(e) => {
-                  e.target.src = "/fallback-image.png";
-                  e.target.style.objectFit = "contain";
-                  toast.warning("Failed to load image preview");
-                }}
-              />
-            ) : previewSrc.toLowerCase().endsWith(".pdf") ||
-              previewSrc.includes("application/pdf") ? (
-              <Box
-                sx={{
-                  width: "100%",
-                  height: "75vh",
-                  borderRadius: 2,
-                  overflow: "hidden",
-                  boxShadow: 3,
-                }}
-              >
-                <iframe
-                  src={previewSrc}
-                  title="PDF Preview"
-                  width="100%"
-                  height="100%"
-                  style={{ border: "none" }}
-                  onError={() => {
-                    toast.warning(
-                      "Failed to load PDF preview! Try downloading instead",
-                    );
-                  }}
-                />
-              </Box>
-            ) : (
-              <Box
-                sx={{
-                  textAlign: "center",
-                  py: 8,
-                  px: 4,
-                  bgcolor: "grey.100",
-                  borderRadius: 2,
-                  width: "100%",
-                  maxWidth: 500,
-                }}
-              >
-                <Typography variant="h6" color="text.secondary" gutterBottom>
-                  Preview not available for this file type
-                </Typography>
-                <Typography variant="body2" color="text.secondary" paragraph>
-                  {previewSrc.split("/").pop() || "Unknown file"}
-                </Typography>
-                <Button
-                  variant="contained"
-                  startIcon={<DownloadIcon />}
-                  href={previewSrc}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  sx={{ mt: 2 }}
-                >
-                  Download File
-                </Button>
-              </Box>
-            )
-          ) : (
+          {!previewSrc ? (
             <Typography color="text.secondary">No preview available</Typography>
+          ) : (
+            (() => {
+              const kind = getPreviewKind(previewSrc, previewName, previewMime);
+              if (kind === "image") {
+                return (
+                  <img
+                    src={previewSrc}
+                    alt={previewName || "Preview"}
+                    style={{
+                      maxWidth: "100%",
+                      maxHeight: "75vh",
+                      objectFit: "contain",
+                      borderRadius: 8,
+                      boxShadow: "0 8px 32px rgba(0,0,0,0.15)",
+                      background: "#f8f9fa",
+                    }}
+                    onError={(e) => {
+                      e.target.onerror = null; // prevents the infinite error loop
+                      e.target.style.display = "none";
+                      toast.warning(
+                        "Failed to load image preview. Try Download instead.",
+                      );
+                    }}
+                  />
+                );
+              }
+              if (kind === "pdf") {
+                return (
+                  <Box
+                    sx={{
+                      width: "100%",
+                      height: "75vh",
+                      borderRadius: 2,
+                      overflow: "hidden",
+                      boxShadow: 3,
+                    }}
+                  >
+                    <iframe
+                      src={previewSrc}
+                      title="PDF Preview"
+                      width="100%"
+                      height="100%"
+                      style={{ border: "none" }}
+                    />
+                  </Box>
+                );
+              }
+              return (
+                <Box
+                  sx={{
+                    textAlign: "center",
+                    py: 8,
+                    px: 4,
+                    bgcolor: "grey.100",
+                    borderRadius: 2,
+                    width: "100%",
+                    maxWidth: 500,
+                  }}
+                >
+                  <Typography variant="h6" color="text.secondary" gutterBottom>
+                    Preview not available for this file type
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {previewName}
+                  </Typography>
+                  <Button
+                    variant="contained"
+                    startIcon={<DownloadIcon />}
+                    onClick={() => downloadFile(previewSrc, previewName)}
+                    sx={{ mt: 2 }}
+                  >
+                    Download File
+                  </Button>
+                </Box>
+              );
+            })()
           )}
         </DialogContent>
 
         <DialogActions>
-          <Button onClick={() => setPreviewOpen(false)}>Close</Button>
+          <Button onClick={closePreview}>Close</Button>
           {previewSrc && (
-            <Button
-              variant="outlined"
-              startIcon={<DownloadIcon />}
-              href={previewSrc}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Download
-            </Button>
+            <>
+              <Button
+                variant="outlined"
+                onClick={() =>
+                  window.open(previewSrc, "_blank", "noopener,noreferrer")
+                }
+              >
+                Open in New Tab
+              </Button>
+              <Button
+                variant="outlined"
+                startIcon={<DownloadIcon />}
+                onClick={() => downloadFile(previewSrc, previewName)}
+              >
+                Download
+              </Button>
+            </>
           )}
         </DialogActions>
       </Dialog>
