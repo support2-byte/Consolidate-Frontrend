@@ -50,6 +50,7 @@ import DriveEtaIcon from "@mui/icons-material/DriveEta";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
 import DownloadIcon from "@mui/icons-material/Download";
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
+import VisibilityIcon from "@mui/icons-material/Visibility";
 import EventIcon from "@mui/icons-material/Event";
 import EditIcon from "@mui/icons-material/Edit";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
@@ -208,6 +209,38 @@ const OrderModalView = ({
   const [receiverApprovals, setReceiverApprovals] = useState({});
   const [approvingId, setApprovingId] = useState(null);
   const [syncingZoho, setSyncingZoho] = useState(false);
+  const [previewFile, setPreviewFile] = useState(null);
+
+  const resolveFileUrl = (file) => {
+    const raw = file?.url || file?.secure_url || file?.location || file?.path;
+    if (!raw) return null;
+    if (/^(https?:|blob:|data:)/i.test(raw)) return raw;
+    const base = (api.defaults?.baseURL || "").replace(/\/$/, "");
+    return `${base}/${String(raw).replace(/^\/+/, "")}`;
+  };
+
+  const isImage = (f) => f?.mimetype?.startsWith("image/");
+  const isPdf = (f) => f?.mimetype === "application/pdf";
+
+  const handleDownloadFile = async (file) => {
+    const url = resolveFileUrl(file);
+    if (!url) return toast.error("File URL not available.");
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Download failed");
+      const blob = await res.blob();
+      const objUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objUrl;
+      a.download = file.originalname || "file";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(objUrl);
+    } catch {
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
+  };
 
   const paymentOf = (receiverId) =>
     PAYMENT_STATUS[receiverPayments[receiverId]]?.label;
@@ -676,27 +709,64 @@ const OrderModalView = ({
           </Typography>
         </Box>
       );
+
     return (
       <List disablePadding>
-        {files.map((file, i) => (
-          <ListItem
-            key={i}
-            divider={i !== files.length - 1}
-            sx={{ py: 1.5, px: 2 }}
-          >
-            <ListItemIcon>
-              <AttachFileIcon sx={{ color: T.orange }} />
-            </ListItemIcon>
-            <ListItemText
-              primary={
-                <Typography fontWeight={600} noWrap>
-                  {file?.originalname || "File"}
-                </Typography>
+        {files.map((file, i) => {
+          const url = resolveFileUrl(file);
+          return (
+            <ListItem
+              key={file.id || i}
+              divider={i !== files.length - 1}
+              sx={{ py: 1.5, px: 2 }}
+              secondaryAction={
+                <Stack direction="row" spacing={0.5}>
+                  <Tooltip title={url ? "View" : "No file URL"}>
+                    <span>
+                      <IconButton
+                        size="small"
+                        disabled={!url}
+                        onClick={() =>
+                          isImage(file) || isPdf(file)
+                            ? setPreviewFile(file)
+                            : window.open(url, "_blank", "noopener,noreferrer")
+                        }
+                        sx={{ color: T.teal }}
+                      >
+                        <VisibilityIcon fontSize="small" />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                  <Tooltip title="Download">
+                    <span>
+                      <IconButton
+                        size="small"
+                        disabled={!url}
+                        onClick={() => handleDownloadFile(file)}
+                        sx={{ color: T.orange }}
+                      >
+                        <DownloadIcon fontSize="small" />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                </Stack>
               }
-              secondary={`${file?.mimetype || "Unknown"} • ${((file?.size || 0) / 1024).toFixed(1)} KB`}
-            />
-          </ListItem>
-        ))}
+            >
+              <ListItemIcon>
+                <AttachFileIcon sx={{ color: T.orange }} />
+              </ListItemIcon>
+              <ListItemText
+                sx={{ pr: 9 }}
+                primary={
+                  <Typography fontWeight={600} noWrap>
+                    {file?.originalname || "File"}
+                  </Typography>
+                }
+                secondary={`${file?.mimetype || "Unknown"} • ${((file?.size || 0) / 1024).toFixed(1)} KB`}
+              />
+            </ListItem>
+          );
+        })}
       </List>
     );
   };
@@ -2142,6 +2212,52 @@ const OrderModalView = ({
             Edit Order
           </Button>
         </DialogActions>
+      </Dialog>
+      <Dialog
+        open={!!previewFile}
+        onClose={() => setPreviewFile(null)}
+        maxWidth="lg"
+        fullWidth
+      >
+        <DialogTitle
+          sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <Typography fontWeight={700} noWrap>
+            {previewFile?.originalname}
+          </Typography>
+          <Box>
+            <IconButton onClick={() => handleDownloadFile(previewFile)}>
+              <DownloadIcon />
+            </IconButton>
+            <IconButton onClick={() => setPreviewFile(null)}>
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent
+          dividers
+          sx={{ p: 0, bgcolor: T.grey100, textAlign: "center" }}
+        >
+          {previewFile && isImage(previewFile) && (
+            <Box
+              component="img"
+              src={resolveFileUrl(previewFile)}
+              alt={previewFile.originalname}
+              sx={{ maxWidth: "100%", maxHeight: "75vh", objectFit: "contain" }}
+            />
+          )}
+          {previewFile && isPdf(previewFile) && (
+            <iframe
+              title={previewFile.originalname}
+              src={resolveFileUrl(previewFile)}
+              style={{ width: "100%", height: "75vh", border: 0 }}
+            />
+          )}
+        </DialogContent>
       </Dialog>
     </>
   );
