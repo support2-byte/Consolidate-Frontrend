@@ -91,6 +91,7 @@ export function SortableRow({
         </Tooltip>
       </TableCell>
       <TableCell sx={{ color: "#888" }}>{row.days_offset}</TableCell>
+      <TableCell>{row.grace_days ?? 0}</TableCell>
       <TableCell align="right">
         <Box
           sx={{

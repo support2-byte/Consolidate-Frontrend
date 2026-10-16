@@ -34,6 +34,17 @@ export function StatusFormFields({ form, onChange }) {
         value={form.days_offset}
         onChange={(e) => onChange("days_offset", Number(e.target.value))}
       />
+      <TextField
+        label="Grace Days"
+        type="number"
+        size="small"
+        fullWidth
+        margin="dense"
+        inputProps={{ min: 0 }}
+        value={form.grace_days ?? 0}
+        onChange={(e) => onChange("grace_days", e.target.value)}
+        helperText="Default days an admin can add to the ETA when an order is stuck in this status"
+      />
       <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
         <Typography variant="body2" sx={{ color: "#555" }}>
           Active

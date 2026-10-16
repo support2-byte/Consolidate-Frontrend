@@ -58,6 +58,8 @@ import DriversPage from "./pages/SystemData/DriversPage";
 import InvoicesPage from "./pages/InvoicesPage";
 import SystemRatesPage from "./pages/SystemData/SystemSettings";
 import ZohoInvoicesPage from "./pages/ZohoInvoicesPage";
+import ETAMonitoringPage from "./pages/ETAMonitoringPage";
+import AdminNotificationsPage from "./pages/AdminNotificationsPage";
 
 const router = createBrowserRouter([
   { path: "/login", element: <Login /> },
@@ -337,6 +339,26 @@ const router = createBrowserRouter([
             permission={{ module: "zoho-invoices", action: "view" }}
           >
             <ZohoInvoicesPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "eta-monitoring",
+        element: (
+          <ProtectedRoute
+            permission={{ module: "eta-monitoring", action: "view" }}
+          >
+            <ETAMonitoringPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "admin-notification",
+        element: (
+          <ProtectedRoute
+            permission={{ module: "admin-notification", action: "view" }}
+          >
+            <AdminNotificationsPage />
           </ProtectedRoute>
         ),
       },

@@ -6435,6 +6435,7 @@ const OrdersList = () => {
                       total_number: parseInt(detail.totalNumber || 0),
                       itemRef: detail.itemRef || "",
                       shippingDetailStatus: detail.status || "",
+                      isDelayed: !!detail.isDelayed,
                     };
                   }),
                 );
@@ -6446,6 +6447,9 @@ const OrdersList = () => {
                   (sum, p) => sum + p.weight,
                   0,
                 );
+                const delayedCount = productsSummary.filter(
+                  (p) => p.isDelayed,
+                ).length;
                 const categoryList = [
                   ...new Set(productsSummary.map((p) => p.category)),
                 ].join(", ");
@@ -6574,6 +6578,20 @@ const OrdersList = () => {
                         >
                           (+{leastStatusRemaining - 1})
                         </Typography>
+                      )}
+                      {delayedCount > 0 && (
+                        <Chip
+                          label={`Delayed${delayedCount > 1 ? ` (${delayedCount})` : ""}`}
+                          size="small"
+                          sx={{
+                            ml: 1,
+                            height: 24,
+                            fontSize: "0.65rem",
+                            fontWeight: 600,
+                            bgcolor: "#ffebee",
+                            color: "#c62828",
+                          }}
+                        />
                       )}
                     </StyledTableCell>
                     <StyledTableCell>
