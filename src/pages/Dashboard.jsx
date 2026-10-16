@@ -74,6 +74,8 @@ import {
   Truck,
   Receipt,
   Settings,
+  Megaphone,
+  Monitor,
 } from "lucide-react";
 
 const expandedWidth = 260;
@@ -218,6 +220,18 @@ export default function DashboardLayout() {
       path: "/zoho-invoices",
       icon: <Receipt />,
       module: "zoho-invoices",
+    },
+    {
+      label: "ETA Monitoring",
+      path: "/eta-monitoring",
+      icon: <Monitor />,
+      module: "eta-monitoring",
+    },
+    {
+      label: "Admin Notification",
+      path: "/admin-notification",
+      icon: <Megaphone />,
+      module: "admin-notification",
     },
   ].filter((item) => !item.module || can(item.module, "view"));
 

@@ -42,6 +42,7 @@ const EMPTY_FORM = {
   container_status: "",
   consignment_status: "",
   days_offset: 0,
+  grace_days: 0,
   status: true,
   send_email: false,
 };
@@ -70,6 +71,7 @@ const reducer = (state, action) => {
           container_status: action.payload.container_status ?? "",
           consignment_status: action.payload.consignment_status ?? "",
           days_offset: action.payload.days_offset,
+          grace_days: action.payload.grace_days ?? 0,
           status: action.payload.status,
         },
       };
@@ -176,6 +178,7 @@ export default function StatusesPage() {
           container_status: state.editForm.container_status || null,
           consignment_status: state.editForm.consignment_status || null,
           days_offset: state.editForm.days_offset,
+          grace_days: Number(state.editForm.grace_days) || 0,
           status: state.editForm.status,
         },
       );
@@ -215,6 +218,7 @@ export default function StatusesPage() {
         container_status: state.addForm.container_status || null,
         consignment_status: state.addForm.consignment_status || null,
         days_offset: state.addForm.days_offset,
+        grace_days: Number(state.addForm.grace_days) || 0,
         status: state.addForm.status,
         sorting_number: nextSortingNumber,
       });
@@ -337,6 +341,9 @@ export default function StatusesPage() {
                   </TableCell>
                   <TableCell sx={{ color: "white", fontWeight: 600 }}>
                     Days Offset
+                  </TableCell>
+                  <TableCell sx={{ color: "white", fontWeight: 600 }}>
+                    Grace Days
                   </TableCell>
                   <TableCell
                     sx={{ color: "white", fontWeight: 600 }}
