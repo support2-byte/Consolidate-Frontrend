@@ -19,7 +19,6 @@ import { toast } from "react-toastify";
 import { api } from "../../api";
 import { generateInvoicePDF } from "../../documents/invoiceGenerator";
 import { pdfDocToPngBlob } from "../../lib/pdfToPng";
-import { generateFormSeed } from "../../Utlis/idGenerator";
 import { AppContext } from "../../context/AppContext";
 
 const DEFAULT_BASE_RATE = 50;
@@ -69,7 +68,6 @@ const CreateInvoiceModal = ({
     }
   }, [open, itemRef]);
 
-  const invoiceId = `INV-${generateFormSeed()}`;
   const subtotal = (Number(baseRate) || 0) * (Number(overstayDays) || 0);
   const taxAmount = subtotal * ((Number(taxPercent) || 0) / 100);
   const total = subtotal + taxAmount - (Number(discount) || 0);
@@ -103,7 +101,7 @@ const CreateInvoiceModal = ({
     setPreviewLoading(true);
     try {
       const doc = await generateInvoicePDF({
-        invoiceId: createdInvoice?.invoiceId || invoiceId,
+        invoiceId: createdInvoice?.invoiceId || "Pending",
         orderFormNumber: order?.rgl_booking_number,
         receiverName,
         category,
@@ -162,7 +160,6 @@ const CreateInvoiceModal = ({
     setCreating(true);
     try {
       const { data } = await api.post(`/api/invoices/overstayed`, {
-        invoiceId,
         orderId: order.id,
         receiverId,
         itemRef,
@@ -189,7 +186,7 @@ const CreateInvoiceModal = ({
     if (!createdInvoice) return;
     try {
       await generateInvoicePDF({
-        invoiceId: createdInvoice.invoiceId || invoiceId,
+        invoiceId: createdInvoice.invoiceId,
         orderFormNumber: order?.rgl_booking_number,
         receiverName,
         category,
