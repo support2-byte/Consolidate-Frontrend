@@ -23,6 +23,7 @@ import {
   InputLabel,
   Select,
 } from "@mui/material";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import { toast } from "react-toastify";
 import { api } from "../api";
 import { getStatusColors } from "../Utlis/statusColors";
@@ -31,6 +32,46 @@ const TEAL = "#1a7a6e";
 const MAX_GRACE = 2;
 const FINAL = ["Shipment Delivered", "Rejected", "Cancelled"];
 const head = { color: "white", fontWeight: 600 };
+
+const HELP = {
+  inStatus: "Days since the item's status last changed.",
+  idle: "Days since the status changed or since the last grace was added, whichever is later. This is the number compared against Check After.",
+  checkAfter:
+    "Idle days allowed before the item is flagged. It is half of the status's Days Offset from ETA Setup, rounded up (5 days offset = 3). Shows - when the Days Offset is 0.",
+  grace:
+    "Grace extensions used for the current status, out of 2. Resets to 0 when the status changes.",
+  flag: (
+    <Box sx={{ lineHeight: 1.7 }}>
+      <div>
+        <b>Delayed:</b> marked by an admin, or automatically after 2 graces.
+      </div>
+      <div>
+        <b>Closed:</b> delivered, rejected or cancelled. Not monitored.
+      </div>
+      <div>
+        <b>Stale:</b> idle days reached Check After. Needs admin action.
+      </div>
+      <div>
+        <b>On track:</b> idle days are below Check After.
+      </div>
+    </Box>
+  ),
+};
+
+const HeadCell = ({ label, help }) => (
+  <TableCell sx={head}>
+    <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
+      {label}
+      {help && (
+        <Tooltip title={help} arrow placement="top" enterTouchDelay={0}>
+          <InfoOutlinedIcon
+            sx={{ fontSize: 16, opacity: 0.85, cursor: "help" }}
+          />
+        </Tooltip>
+      )}
+    </Box>
+  </TableCell>
+);
 
 const formatDate = (v) => {
   if (!v) return "-";
@@ -116,6 +157,12 @@ export default function ETAMonitoringPage() {
   useEffect(() => {
     loadStatusOptions();
   }, [loadStatusOptions]);
+
+  useEffect(() => {
+    const onFocus = () => load();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [load]);
 
   useEffect(() => {
     const t = setTimeout(load, 350);
@@ -243,12 +290,12 @@ export default function ETAMonitoringPage() {
                   <>
                     <TableCell sx={head}>Receiver</TableCell>
                     <TableCell sx={head}>Status</TableCell>
-                    <TableCell sx={head}>In Status</TableCell>
-                    <TableCell sx={head}>Idle</TableCell>
-                    <TableCell sx={head}>Check After</TableCell>
-                    <TableCell sx={head}>Grace Used</TableCell>
+                    <HeadCell label="In Status" help={HELP.inStatus} />
+                    <HeadCell label="Idle" help={HELP.idle} />
+                    <HeadCell label="Check After" help={HELP.checkAfter} />
+                    <HeadCell label="Grace Used" help={HELP.grace} />
                     <TableCell sx={head}>ETA</TableCell>
-                    <TableCell sx={head}>Flag</TableCell>
+                    <HeadCell label="Flag" help={HELP.flag} />
                   </>
                 ) : (
                   <>
