@@ -516,8 +516,9 @@ export default function AdminNotificationsPage() {
               the status changed, or since the last grace was added.
             </li>
             <li>
-              When idle time reaches half of the status's Days Offset and grace
-              used is under {MAX_GRACE}, admin is notified.
+              When idle time reaches half of the time between the status date
+              (or last grace date) and the ETA, and grace used is under{" "}
+              {MAX_GRACE}, admin is notified.
             </li>
             <li>
               <b>Add grace days</b> moves the ETA forward by the status's Grace

@@ -37,7 +37,7 @@ const HELP = {
   inStatus: "Days since the item's status last changed.",
   idle: "Days since the status changed or since the last grace was added, whichever is later. This is the number compared against Check After.",
   checkAfter:
-    "Idle days allowed before the item is flagged. It is half of the status's Days Offset from ETA Setup, rounded up (5 days offset = 3). Shows - when the Days Offset is 0.",
+    "Idle days allowed before the item is flagged. It is half of the time between the status date (or last grace date) and the ETA, rounded up, minimum 1 day. If no ETA is saved, the status's Days Offset is used instead.",
   grace:
     "Grace extensions used for the current status, out of 2. Resets to 0 when the status changes.",
   flag: (
@@ -100,12 +100,12 @@ const flagOf = (r) => {
     };
   if (FINAL.includes(r.status))
     return { label: "Closed", bg: "#e8f5e9", text: "#2e7d32" };
-  if (r.check_after_days > 0 && r.idle_days >= r.check_after_days)
+  if (r.idle_days >= r.check_after_days)
     return {
       label: "Stale",
       bg: "#fff3e0",
       text: "#e65100",
-      tip: `Past midpoint of ${r.days_offset}-day offset`,
+      tip: `No update for ${r.idle_days} days (check point: ${r.check_after_days} days)`,
     };
   return { label: "On track", bg: "#f5f5f5", text: "#616161" };
 };
@@ -157,12 +157,6 @@ export default function ETAMonitoringPage() {
   useEffect(() => {
     loadStatusOptions();
   }, [loadStatusOptions]);
-
-  useEffect(() => {
-    const onFocus = () => load();
-    window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
-  }, [load]);
 
   useEffect(() => {
     const t = setTimeout(load, 350);
@@ -253,8 +247,8 @@ export default function ETAMonitoringPage() {
             </Select>
           </FormControl>
           <Typography variant="body2" color="text.secondary">
-            Items are checked at the midpoint of each status's Days Offset
-            (rounded up).
+            Items are flagged when they stay in one status past the midpoint
+            between the status date and the ETA.
           </Typography>
         </Stack>
       </Paper>
@@ -342,9 +336,9 @@ export default function ETAMonitoringPage() {
                       <TableCell>{r.days_in_status}d</TableCell>
                       <TableCell>{r.idle_days}d</TableCell>
                       <TableCell>
-                        {r.check_after_days > 0
-                          ? `${r.check_after_days}d`
-                          : "-"}
+                        {FINAL.includes(r.status)
+                          ? "-"
+                          : `${r.check_after_days}d`}
                       </TableCell>
                       <TableCell>
                         {r.grace_used}/{MAX_GRACE}
