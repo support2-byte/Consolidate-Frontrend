@@ -21,6 +21,7 @@ import {
   FormControl,
   InputLabel,
   Select,
+  TablePagination,
 } from "@mui/material";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
@@ -128,6 +129,8 @@ export default function AdminNotificationsPage() {
   const [confirm, setConfirm] = useState(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -451,6 +454,20 @@ export default function AdminNotificationsPage() {
 
   const list = tab === "pending" ? filteredPending : filteredResolved;
 
+  useEffect(() => {
+    setPage(0);
+  }, [tab, search, statusFilter, rowsPerPage]);
+
+  useEffect(() => {
+    if (page > 0 && page * rowsPerPage >= list.length) {
+      setPage(Math.max(0, Math.ceil(list.length / rowsPerPage) - 1));
+    }
+  }, [list.length, page, rowsPerPage]);
+
+  const paged = useMemo(
+    () => list.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage),
+    [list, page, rowsPerPage],
+  );
   return (
     <Box sx={{ p: 3 }}>
       <Stack
@@ -663,10 +680,28 @@ export default function AdminNotificationsPage() {
               ? "No orders need attention right now."
               : "No resolved notifications yet."}
         </Paper>
-      ) : tab === "pending" ? (
-        filteredPending.map(renderPending)
       ) : (
-        filteredResolved.map(renderResolved)
+        <>
+          {tab === "pending"
+            ? paged.map(renderPending)
+            : paged.map(renderResolved)}
+
+          <TablePagination
+            component="div"
+            count={list.length}
+            page={page}
+            onPageChange={(_, p) => {
+              setPage(p);
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+            rowsPerPage={rowsPerPage}
+            onRowsPerPageChange={(e) =>
+              setRowsPerPage(parseInt(e.target.value, 10))
+            }
+            rowsPerPageOptions={[10, 25, 50]}
+            sx={{ borderTop: "1px solid", borderColor: "divider" }}
+          />
+        </>
       )}
 
       <Dialog
