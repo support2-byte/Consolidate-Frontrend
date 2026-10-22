@@ -87,6 +87,13 @@ const ACTIONS = {
   auto_delayed: { label: "Auto-delayed", bg: "#ffebee", text: "#c62828" },
 };
 
+const FLAG_OPTIONS = [
+  { value: "stale", label: "Stale" },
+  { value: "delayed", label: "Delayed" },
+  { value: "on_track", label: "On track" },
+  { value: "closed", label: "Closed" },
+];
+
 const flagOf = (r) => {
   if (r.is_delayed)
     return {
@@ -121,6 +128,7 @@ export default function ETAMonitoringPage() {
   const [running, setRunning] = useState(false);
   const [statusFilter, setStatusFilter] = useState("");
   const [statusOptions, setStatusOptions] = useState([]);
+  const [flagFilter, setFlagFilter] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -133,6 +141,7 @@ export default function ETAMonitoringPage() {
             limit: rowsPerPage,
             search,
             status: statusFilter,
+            ...(tab === 0 && flagFilter ? { flag: flagFilter } : {}),
           },
         },
       );
@@ -145,7 +154,7 @@ export default function ETAMonitoringPage() {
     } finally {
       setLoading(false);
     }
-  }, [tab, page, rowsPerPage, search, statusFilter]);
+  }, [tab, page, rowsPerPage, search, statusFilter, flagFilter]);
 
   const loadStatusOptions = useCallback(async () => {
     try {
@@ -246,6 +255,26 @@ export default function ETAMonitoringPage() {
               ))}
             </Select>
           </FormControl>
+          {tab === 0 && (
+            <FormControl size="small" sx={{ minWidth: 180 }}>
+              <InputLabel>Flag</InputLabel>
+              <Select
+                label="Flag"
+                value={flagFilter}
+                onChange={(e) => {
+                  setFlagFilter(e.target.value);
+                  setPage(0);
+                }}
+              >
+                <MenuItem value="">All</MenuItem>
+                {FLAG_OPTIONS.map((f) => (
+                  <MenuItem key={f.value} value={f.value}>
+                    {f.label}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
           <Typography variant="body2" color="text.secondary">
             Items are flagged when they stay in one status past the midpoint
             between the status date and the ETA.
