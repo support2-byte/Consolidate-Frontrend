@@ -25,6 +25,7 @@ import {
   DialogTitle,
   DialogContent,
   IconButton,
+  Divider,
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import EmailOutlinedIcon from "@mui/icons-material/EmailOutlined";
@@ -32,6 +33,13 @@ import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import VisibilityOutlinedIcon from "@mui/icons-material/VisibilityOutlined";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import CloseIcon from "@mui/icons-material/Close";
+import SendIcon from "@mui/icons-material/Send";
+import StopCircleOutlinedIcon from "@mui/icons-material/StopCircleOutlined";
+import DialogActions from "@mui/material/DialogActions";
+import DialogContentText from "@mui/material/DialogContentText";
+import ScheduleIcon from "@mui/icons-material/Schedule";
+import LayersOutlinedIcon from "@mui/icons-material/LayersOutlined";
+import MarkEmailUnreadOutlinedIcon from "@mui/icons-material/MarkEmailUnreadOutlined";
 import { toast } from "react-toastify";
 import { api } from "../../api";
 import {
@@ -41,17 +49,25 @@ import {
 } from "../../constants/emailTemplate";
 
 const TABS = [
-  { index: 0, key: "emails", label: "Emails", endpoint: "api/notifications" },
+  {
+    index: 0,
+    key: "emails",
+    label: "Emails",
+    batchKey: "emails",
+    endpoint: "api/notifications",
+  },
   {
     index: 1,
     key: "subscriptions",
     label: "Subscriptions",
+
     endpoint: "api/notifications/subscriptions",
   },
   {
     index: 2,
     key: "kyc",
     label: "KYC Emails",
+    batchKey: "kyc",
     endpoint: "api/kyc/emails",
     resendEndpoint: "api/kyc/emails",
     deleteEndpoint: "api/kyc/emails",
@@ -60,6 +76,7 @@ const TABS = [
     index: 3,
     key: "confirmation",
     label: "Confirmation Emails",
+    batchKey: "confirmation",
     endpoint: "api/notifications/confirmation-emails",
     resendEndpoint: "api/notifications/confirmation-emails",
     deleteEndpoint: "api/notifications/confirmation-emails",
@@ -68,6 +85,7 @@ const TABS = [
     index: 4,
     key: "invoice",
     label: "Invoice Emails",
+    batchKey: "invoice",
     endpoint: "api/notifications/invoice-emails",
     resendEndpoint: "api/notifications/invoice-emails",
     deleteEndpoint: "api/notifications/invoice-emails",
@@ -94,6 +112,8 @@ const EMAIL_STATUS_COLORS = {
   sent: { bg: "#e8f5e9", text: "#2e7d32" },
   pending: { bg: "#fff3e0", text: "#ef6c00" },
   failed: { bg: "#ffebee", text: "#c62828" },
+  processing: { bg: "#e3f2fd", text: "#1565c0" },
+  skipped: { bg: "#f5f5f5", text: "#757575" },
   default: { bg: "#f5f5f5", text: "#666" },
 };
 
@@ -308,6 +328,36 @@ const renderTemplate = (templateKey, data) => {
     );
 };
 
+const BATCH_SIZE = 20;
+const PAUSE_MINUTES = 15;
+
+const QUEUE_DESCRIPTIONS = {
+  emails: "Order and shipment status notifications",
+  kyc: "KYC form request emails to customers",
+  confirmation: "Booking confirmation emails with OTP",
+  invoice: "Invoice payment emails",
+};
+
+const formatDuration = (totalMinutes) => {
+  if (totalMinutes < 1) return "less than a minute";
+  const h = Math.floor(totalMinutes / 60);
+  const m = Math.round(totalMinutes % 60);
+  if (h === 0) return `${m} min`;
+  return m === 0 ? `${h} hr` : `${h} hr ${m} min`;
+};
+
+const DetailRow = ({ icon, label, value }) => (
+  <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, py: 1.25 }}>
+    <Box sx={{ color: "#f58220", display: "flex" }}>{icon}</Box>
+    <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
+      {label}
+    </Typography>
+    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+      {value}
+    </Typography>
+  </Box>
+);
+
 const NotificationSettings = () => {
   const [activeTab, setActiveTab] = useState(0);
   const [rows, setRows] = useState([]);
@@ -321,6 +371,9 @@ const NotificationSettings = () => {
   const [rowsPerPage, setRowsPerPage] = useState(25);
   const [previewRow, setPreviewRow] = useState(null);
   const [detailsRow, setDetailsRow] = useState(null);
+  const [batch, setBatch] = useState({ pending: 0, job: null });
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [batchBusy, setBatchBusy] = useState(false);
 
   const currentTab = TABS[activeTab];
   const isEmailsTab = currentTab.key === "emails";
@@ -329,6 +382,12 @@ const NotificationSettings = () => {
   const isInvoiceTab = currentTab.key === "invoice";
   const hasRowActions =
     isEmailsTab || isKycTab || isConfirmationTab || isInvoiceTab;
+
+  const batchKey = currentTab.batchKey;
+  const batchRunning = batch.job?.status === "running";
+  const totalBatches = Math.ceil(batch.pending / BATCH_SIZE);
+  const estimatedMinutes =
+    Math.max(totalBatches - 1, 0) * PAUSE_MINUTES + (batch.pending * 1) / 60;
 
   useEffect(() => {
     fetchData(currentTab);
@@ -398,6 +457,67 @@ const NotificationSettings = () => {
       );
     } finally {
       setSendingId(null);
+    }
+  };
+
+  const fetchBatchStatus = async (key, { refreshRows = false } = {}) => {
+    try {
+      const { data } = await api.get(`api/notifications/batch/${key}/status`);
+      if (data.success) {
+        setBatch({ pending: data.pending, job: data.job });
+        if (refreshRows) {
+          const res = await api.get(currentTab.endpoint);
+          if (res.data?.success) setRows(res.data.notifications || []);
+        }
+      }
+    } catch {
+      /* ignore polling errors */
+    }
+  };
+
+  useEffect(() => {
+    setBatch({ pending: 0, job: null });
+    if (!batchKey) return;
+    fetchBatchStatus(batchKey);
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (!batchKey || !batchRunning) return;
+    const t = setInterval(
+      () => fetchBatchStatus(batchKey, { refreshRows: true }),
+      15000,
+    );
+    return () => clearInterval(t);
+  }, [batchKey, batchRunning, activeTab]);
+
+  const handleStartBatch = async () => {
+    setBatchBusy(true);
+    try {
+      const { data } = await api.post(
+        `api/notifications/batch/${batchKey}/start`,
+      );
+      toast.success(data.message || "Batch sending started");
+      setConfirmOpen(false);
+      await fetchBatchStatus(batchKey);
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to start batch");
+    } finally {
+      setBatchBusy(false);
+    }
+  };
+
+  const handleStopBatch = async () => {
+    setBatchBusy(true);
+    try {
+      const { data } = await api.post(
+        `api/notifications/batch/${batchKey}/stop`,
+      );
+      toast.success(data.message);
+      await fetchBatchStatus(batchKey);
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to stop batch");
+    } finally {
+      setBatchBusy(false);
     }
   };
 
@@ -724,6 +844,40 @@ const NotificationSettings = () => {
             </Select>
           </FormControl>
         )}
+        {batchKey && (
+          <Box
+            sx={{ ml: "auto", display: "flex", alignItems: "center", gap: 2 }}
+          >
+            {batchRunning && (
+              <Typography variant="body2" color="text.secondary">
+                Running · {batch.pending} pending · batch #
+                {batch.job.batches_run + 1} · sent {batch.job.total_sent},
+                failed {batch.job.total_failed}
+              </Typography>
+            )}
+            {batchRunning ? (
+              <Button
+                variant="outlined"
+                color="error"
+                startIcon={<StopCircleOutlinedIcon />}
+                disabled={batchBusy}
+                onClick={handleStopBatch}
+              >
+                Stop Sending
+              </Button>
+            ) : (
+              <Button
+                variant="contained"
+                startIcon={<SendIcon />}
+                disabled={batchBusy || batch.pending === 0}
+                onClick={() => setConfirmOpen(true)}
+                sx={{ bgcolor: "#f58220", "&:hover": { bgcolor: "#d96f12" } }}
+              >
+                Send Batch Emails ({batch.pending})
+              </Button>
+            )}
+          </Box>
+        )}
       </Box>
 
       {loading ? (
@@ -1003,6 +1157,136 @@ const NotificationSettings = () => {
             </Box>
           )}
         </DialogContent>
+      </Dialog>
+      <Dialog
+        open={confirmOpen}
+        onClose={() => !batchBusy && setConfirmOpen(false)}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 3 } }}
+      >
+        <DialogTitle sx={{ pb: 1 }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+            <Box
+              sx={{
+                width: 44,
+                height: 44,
+                borderRadius: "50%",
+                bgcolor: "#fff3e0",
+                color: "#f58220",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <SendIcon />
+            </Box>
+            <Box>
+              <Typography
+                variant="h6"
+                sx={{ fontWeight: 700, lineHeight: 1.2 }}
+              >
+                Start batch sending?
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                This will run in the background
+              </Typography>
+            </Box>
+          </Box>
+        </DialogTitle>
+
+        <DialogContent>
+          <Box
+            sx={{
+              mt: 1,
+              p: 2,
+              borderRadius: 2,
+              bgcolor: "action.hover",
+              border: "1px solid",
+              borderColor: "divider",
+            }}
+          >
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ textTransform: "uppercase", letterSpacing: "0.05em" }}
+            >
+              Email queue
+            </Typography>
+            <Box
+              sx={{ display: "flex", alignItems: "center", gap: 1, mt: 0.5 }}
+            >
+              <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                {currentTab.label}
+              </Typography>
+              <Chip
+                label={`${batch.pending} pending`}
+                size="small"
+                sx={{ bgcolor: "#fff3e0", color: "#ef6c00", fontWeight: 600 }}
+              />
+            </Box>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+              {QUEUE_DESCRIPTIONS[batchKey]}
+            </Typography>
+          </Box>
+
+          <Box sx={{ mt: 1.5 }}>
+            <DetailRow
+              icon={<MarkEmailUnreadOutlinedIcon fontSize="small" />}
+              label="Emails per batch"
+              value={BATCH_SIZE}
+            />
+            <Divider />
+            <DetailRow
+              icon={<ScheduleIcon fontSize="small" />}
+              label="Pause between batches"
+              value={`${PAUSE_MINUTES} min`}
+            />
+            <Divider />
+            <DetailRow
+              icon={<LayersOutlinedIcon fontSize="small" />}
+              label="Total batches"
+              value={totalBatches}
+            />
+            <Divider />
+            <DetailRow
+              icon={<ScheduleIcon fontSize="small" />}
+              label="Estimated time"
+              value={`~${formatDuration(estimatedMinutes)}`}
+            />
+          </Box>
+
+          <Alert severity="info" sx={{ mt: 2, borderRadius: 2 }}>
+            Only <strong>pending</strong> emails are sent. Sent emails are never
+            resent, even if the server restarts. You can stop sending at any
+            time.
+          </Alert>
+        </DialogContent>
+
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <Button
+            onClick={() => setConfirmOpen(false)}
+            disabled={batchBusy}
+            color="inherit"
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleStartBatch}
+            disabled={batchBusy}
+            startIcon={
+              batchBusy ? (
+                <CircularProgress size={16} color="inherit" />
+              ) : (
+                <SendIcon />
+              )
+            }
+            sx={{ bgcolor: "#f58220", "&:hover": { bgcolor: "#d96f12" } }}
+          >
+            {batchBusy ? "Starting..." : `Send ${currentTab.label}`}
+          </Button>
+        </DialogActions>
       </Dialog>
     </Box>
   );
