@@ -274,6 +274,24 @@ const CustomDatePicker = ({
   </TooltipMui>
 );
 
+const LoadingBtn = ({
+  loading = false,
+  disabled = false,
+  startIcon,
+  children,
+  ...props
+}) => (
+  <Button
+    disabled={loading || disabled}
+    startIcon={
+      loading ? <CircularProgress size={16} color="inherit" /> : startIcon
+    }
+    {...props}
+  >
+    {children}
+  </Button>
+);
+
 const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
   const context = useAuth();
   const canViewJobDetails = context.isSuperAdmin() || context.isAdmin();
@@ -287,6 +305,17 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
   const [billingLoading, setBillingLoading] = useState(false);
   const [billingSyncing, setBillingSyncing] = useState(false);
   const [pdfLoadingId, setPdfLoadingId] = useState(null);
+  const [busyAction, setBusyAction] = useState(null);
+
+  const runAction = async (key, fn) => {
+    if (busyAction) return;
+    setBusyAction(key);
+    try {
+      await fn();
+    } finally {
+      setBusyAction(null);
+    }
+  };
   const user_id = context.user.id;
   const currentDate = dayjs();
   const { places, statuses } = useContext(AppContext);
@@ -1807,18 +1836,13 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
 
   const advanceStatus = async () => {
     try {
-      setLoading(true);
       const res = await api.put(
         `/api/consignments/${effectiveConsignmentId}/next`,
       );
       const { message } = res.data || {};
-      loadConsignment(effectiveConsignmentId);
-      setLoading(false);
-
+      await loadConsignment(effectiveConsignmentId);
       toast.success(message || "Status advanced successfully!");
     } catch (err) {
-      setLoading(false);
-
       console.error("Error advancing status:", err);
       toast.error("Failed to advance status.");
     }
@@ -2081,7 +2105,10 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     }
     setSaving(true);
     const submitData = await validateAndPrepare();
-    if (!submitData) return;
+    if (!submitData) {
+      setSaving(false);
+      return;
+    }
     submitData.id = values.id;
     try {
       const res = await api.put(`/api/consignments/${values.id}`, submitData);
@@ -2742,14 +2769,13 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         if (order.receivers && order.receivers.length > 0) {
           order.receivers.forEach((receiver) => {
             const items = receiver.shippingdetails || [];
-
             if (items.length > 0) {
               items.forEach((item) => {
                 receiverGroups.push({
                   orderId: order.id,
                   orderNumber: order.rgl_booking_number || `ORD-${order.id}`,
                   sender: order.sender_name || "N/A",
-                  receiver: receiver.receiver_name || "N/A",
+                  receiver: receiver.receivername || "N/A",
                   receiverData: receiver,
                   orderData: order,
                   shippingDetails: [item],
@@ -2760,7 +2786,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                 orderId: order.id,
                 orderNumber: order.rgl_booking_number || `ORD-${order.id}`,
                 sender: order.sender_name || "N/A",
-                receiver: receiver.receiver_name || "N/A",
+                receiver: receiver.receivername || "N/A",
                 receiverData: receiver,
                 orderData: order,
                 shippingDetails: [],
@@ -2824,6 +2850,8 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     const pdf = new jsPDF("p", "mm", "a4");
     const marginMm = 14;
     const contentWidthMm = 210 - 2 * marginMm;
+
+    console.log({ receiverGroups });
 
     for (let i = 0; i < receiverGroups.length; i++) {
       const receiverGroup = receiverGroups[i];
@@ -3108,7 +3136,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
             </ol>
 
             <p class="footer">
-              Receiver: ${receiverGroup.receiver} |
+              Receiver: ${receiverGroup.receiver || receiverGroup.receiverData.receivername} |
               Order: ${receiverGroup.orderNumber} |
               Container: ${containerInfo.containerNo} |
               Page ${i + 1} of ${receiverGroups.length}
@@ -4608,7 +4636,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         <p>Total Containers: ${data.containers ? data.containers.length : 0}</p>
         <p>POL: ${data.originName || "N/A"}</p>
         <p>POD: ${data.destinationName || "N/A"}</p>
-        <p>ETD: ${data.etd || "N/A"}</p>
+        <p>ETD: ${formatDate(data.eta) || "N/A"}</p>
         <p>ETA: ${formatDate(data.eta) || "N/A"}</p>
         <p>Generated: ${new Date().toLocaleString()}</p>
       </div>
@@ -5065,17 +5093,25 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                     )}
                   </Stack>
                 </Box>
-                <Button
+                <LoadingBtn
                   variant="outlined"
                   startIcon={<DescriptionIcon />}
+                  loading={busyAction === "note-pdf"}
                   onClick={() =>
-                    generateConsignmentNotePDFWithCanvas(values, includedOrders)
+                    runAction("note-pdf", () =>
+                      generateConsignmentNotePDFWithCanvas(
+                        values,
+                        includedOrders,
+                      ),
+                    )
                   }
-                  disabled={saving || !values.consignment_number}
+                  disabled={
+                    saving || !!busyAction || !values.consignment_number
+                  }
                   sx={outlineBtn}
                 >
                   Consignment Note PDF
-                </Button>
+                </LoadingBtn>
               </Box>
 
               <Tabs
@@ -5291,22 +5327,32 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                         />
                         {mode === "edit" && (
                           <>
-                            <Button
+                            <LoadingBtn
                               variant="outlined"
                               size="small"
-                              onClick={advanceStatus}
+                              loading={busyAction === "status-change"}
+                              disabled={!!busyAction}
+                              onClick={() =>
+                                runAction("status-change", advanceStatus)
+                              }
                               sx={{ ...outlineBtn, maxHeight: 56 }}
                             >
                               Change
-                            </Button>
-                            <Button
+                            </LoadingBtn>
+                            <LoadingBtn
                               variant="outlined"
                               size="small"
-                              onClick={updateStatusChange}
+                              loading={busyAction === "status-update"}
+                              disabled={!!busyAction}
+                              onClick={() =>
+                                runAction("status-update", () =>
+                                  updateStatusChange(),
+                                )
+                              }
                               sx={{ ...outlineBtn, maxHeight: 56 }}
                             >
                               Update
-                            </Button>
+                            </LoadingBtn>
                           </>
                         )}
                       </Box>
@@ -5706,12 +5752,12 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                         </TableBody>
                       </Table>
                     </TableContainer>
-                    <Button
+                    <LoadingBtn
                       fullWidth
                       startIcon={<AddIcon />}
                       onClick={() => setContainerModalOpen(true)}
                       variant="contained"
-                      disabled={containersLoading}
+                      loading={containersLoading}
                       sx={{
                         mt: 1.5,
                         backgroundColor: teal,
@@ -5720,7 +5766,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                       }}
                     >
                       {containersLoading ? "Loading..." : "Select from List"}
-                    </Button>
+                    </LoadingBtn>
                     {touched.containers && errors.containers && (
                       <Alert severity="error" sx={{ mt: 1 }}>
                         {errors.containers}
@@ -5910,22 +5956,17 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                             mb: 1.5,
                           }}
                         >
-                          <Button
+                          <LoadingBtn
                             size="small"
                             variant="outlined"
                             onClick={() => fetchBilling(true)}
-                            disabled={billingLoading || billingSyncing}
-                            startIcon={
-                              billingSyncing ? (
-                                <CircularProgress size={14} />
-                              ) : (
-                                <UpdateIcon />
-                              )
-                            }
+                            loading={billingSyncing}
+                            disabled={billingLoading}
+                            startIcon={<UpdateIcon />}
                             sx={outlineBtn}
                           >
                             Sync from Zoho
-                          </Button>
+                          </LoadingBtn>
                         </Box>
                         {billingRows.length > 0 && (
                           <>
@@ -6315,14 +6356,17 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                         >
                           {doc.text}
                         </Typography>
-                        <Button
+                        <LoadingBtn
                           variant="outlined"
-                          onClick={doc.run}
-                          disabled={saving || !values.consignment_number}
+                          loading={busyAction === doc.title}
+                          onClick={() => runAction(doc.title, doc.run)}
+                          disabled={
+                            saving || !!busyAction || !values.consignment_number
+                          }
                           sx={outlineBtn}
                         >
                           {doc.label}
-                        </Button>
+                        </LoadingBtn>
                       </Box>
                     ))}
                   </Box>
@@ -6357,10 +6401,11 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                 >
                   Reset
                 </Button>
-                <Button
+                <LoadingBtn
                   type="submit"
                   variant="contained"
-                  disabled={saving}
+                  loading={saving}
+                  disabled={!!busyAction}
                   sx={{
                     backgroundColor: orange,
                     color: "white",
@@ -6373,7 +6418,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                     : mode === "edit"
                       ? "Update Consignment"
                       : "Add Consignment"}
-                </Button>
+                </LoadingBtn>
               </Box>
 
               <Dialog
