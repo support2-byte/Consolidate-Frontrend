@@ -844,7 +844,7 @@ const NotificationSettings = () => {
             </Select>
           </FormControl>
         )}
-        {batchKey && (
+        {/* {batchKey && (
           <Box
             sx={{ ml: "auto", display: "flex", alignItems: "center", gap: 2 }}
           >
@@ -877,7 +877,7 @@ const NotificationSettings = () => {
               </Button>
             )}
           </Box>
-        )}
+        )} */}
       </Box>
 
       {loading ? (
