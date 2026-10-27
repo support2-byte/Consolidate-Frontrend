@@ -433,25 +433,30 @@ const NotificationSettings = () => {
     }
   };
 
+  const mergeRow = (rowId, updatedRow) => {
+    if (!updatedRow) return;
+    setRows((prev) =>
+      prev.map((r) => (r.id === rowId ? { ...r, ...updatedRow } : r)),
+    );
+  };
+
   const handleResend = async (rowId) => {
     setSendingId(rowId);
     try {
       const base = currentTab.resendEndpoint || currentTab.endpoint;
       const res = await api.post(`${base}/${rowId}/resend`);
       if (res.data?.success) {
-        const updatedRow = res.data.row;
-        setRows((prev) =>
-          prev.map((r) =>
-            r.id === rowId
-              ? { ...r, ...(updatedRow || { status: "sent" }) }
-              : r,
-          ),
+        mergeRow(
+          rowId,
+          res.data.row || { status: "sent", sent_at: new Date().toISOString() },
         );
         toast.success("Email sent");
       } else {
+        mergeRow(rowId, res.data?.row);
         throw new Error(res.data?.message || "Failed to send");
       }
     } catch (err) {
+      mergeRow(rowId, err.response?.data?.row);
       toast.error(
         err.response?.data?.message || err.message || "Failed to send email",
       );
