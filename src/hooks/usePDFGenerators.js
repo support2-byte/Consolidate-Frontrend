@@ -67,20 +67,12 @@ export const usePDFGenerators = ({
       margin,
     );
     doc.autoTable({
-      head: [
-        [
-          "ORDERS IN CONTAINER",
-          "TOTAL PACKAGES",
-          "TOTAL WEIGHT (KGS)",
-          "GROSS WEIGHT (APPROX.)",
-        ],
-      ],
+      head: [["ORDERS IN CONTAINER", "TOTAL PACKAGES", "TOTAL WEIGHT (KGS)"]],
       body: [
         [
           receiversData.length.toString(),
           totalPkgs.toString(),
           totalWt.toFixed(2),
-          (totalWt * 1.15).toFixed(2),
         ],
       ],
       startY: y,
