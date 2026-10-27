@@ -3628,7 +3628,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     <p class="header-consignment">Consignment ID: ${data.consignment_number || "N/A"}</p>
     <p>POL: ${data.originName || "N/A"}</p>
     <p>POD: ${data.destinationName || "N/A"}</p>
-    <p>ETD: ${data.eta}</p>
+    <p>ETA: ${data.eta}</p>
     <p>Vessel / Voyage: ${vesselName}, ${data.voyage}</p>
     <p>Generated: ${new Date().toLocaleString()}</p>
   </div>
@@ -4082,7 +4082,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
               receiver.shippingdetails.length > 0
             ) {
               receiver.shippingdetails.forEach((item) => {
-                // Use assign_total_box and assign_weight instead of totalNumber and weight
                 let packagesForItem = 0;
                 let weightForItem = 0;
 
@@ -4335,7 +4334,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                 <th style="border-right: #7e7e7e 1px solid;">ORDERS IN CONTAINER</th>
                 <th style="border-right: #7e7e7e 1px solid;">TOTAL PACKAGES</th>
                 <th style="border-right: #7e7e7e 1px solid;">TOTAL WEIGHT (KGS)</th>
-                <th>GROSS WEIGHT (APPROX.)</th>
               </tr>
             </thead>
             <tbody>
@@ -4343,7 +4341,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                 <td style="border-right: #7e7e7e 1px solid;">${containerStats.totalOrders}</td>
                 <td style="border-right: #7e7e7e 1px solid;">${containerStats.totalPackages}</td>
                 <td style="border-right: #7e7e7e 1px solid;">${containerStats.totalWeight.toFixed(2)}</td>
-                <td>${containerStats.grossWeight.toFixed(2)}</td>
               </tr>
             </tbody>
           </table>
