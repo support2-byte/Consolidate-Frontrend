@@ -16,6 +16,10 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
+  Autocomplete,
+  Chip,
+  ToggleButton,
+  ToggleButtonGroup,
 } from "@mui/material";
 import { toast } from "react-toastify";
 import CloseIcon from "@mui/icons-material/Close";
@@ -59,6 +63,72 @@ const parseEmailList = (value) =>
     .map((v) => v.trim())
     .filter(Boolean);
 
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const splitEmails = (raw) =>
+  String(raw)
+    .split(/[,;\s]+/)
+    .map((v) => v.trim().toLowerCase())
+    .filter(Boolean);
+
+const EmailChipInput = ({ label, value, onChange, blocked = [] }) => {
+  const [input, setInput] = useState("");
+
+  const commit = (raw) => {
+    const parts = splitEmails(raw);
+    if (parts.length) onChange([...new Set([...value, ...parts])]);
+    setInput("");
+  };
+
+  return (
+    <Autocomplete
+      multiple
+      freeSolo
+      options={[]}
+      value={value}
+      inputValue={input}
+      onChange={(_, next, reason) => {
+        if (reason === "blur") return;
+        onChange([...new Set(next.flatMap((v) => splitEmails(v)))]);
+        setInput("");
+      }}
+      onInputChange={(_, text, reason) => {
+        if (reason === "input" && /[,;\s]$/.test(text)) {
+          commit(text);
+          return;
+        }
+        setInput(text);
+      }}
+      onBlur={() => {
+        if (input.trim()) commit(input);
+      }}
+      renderTags={(tags, getTagProps) =>
+        tags.map((tag, index) => {
+          const { key, ...tagProps } = getTagProps({ index });
+          const invalid = !EMAIL_PATTERN.test(tag) || blocked.includes(tag);
+          return (
+            <Chip
+              key={key}
+              size="small"
+              label={tag}
+              color={invalid ? "error" : "default"}
+              {...tagProps}
+            />
+          );
+        })
+      }
+      renderInput={(params) => (
+        <TextField
+          {...params}
+          label={label}
+          size="small"
+          placeholder="Type an email, press Enter or comma"
+        />
+      )}
+    />
+  );
+};
+
 const SectionHeader = ({ icon, title }) => (
   <Stack direction="row" spacing={1} alignItems="center">
     {icon}
@@ -85,17 +155,17 @@ const OrderConfirmationEmailModal = ({
     setExpanded(isExpanded ? panel : false);
 
   const [selectedCompanyId, setSelectedCompanyId] = useState("");
-
-  const [toInput, setToInput] = useState("");
-  const [ccInput, setCcInput] = useState("");
-  const [bccInput, setBccInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const [ccEmails, setCcEmails] = useState([]);
+  const [bccEmails, setBccEmails] = useState([]);
   const [subject, setSubject] = useState(DEFAULT_SUBJECT);
   const [message, setMessage] = useState(DEFAULT_MESSAGE);
+
+  const [previewRole, setPreviewRole] = useState("receiver");
 
   const [senderForm, setSenderForm] = useState(emptyParty());
   const [receiverForm, setReceiverForm] = useState(emptyParty());
   const [receiverCompanyName, setReceiverCompanyName] = useState("");
-
   const [mode, setMode] = useState("");
   const [items, setItems] = useState([emptyItem()]);
   const [categories, setCategories] = useState([]);
@@ -201,8 +271,13 @@ const OrderConfirmationEmailModal = ({
 
   const previewHtml = useMemo(() => {
     if (!activeCompany || !previewOrderData) return "";
-    return OrderConfirmation(previewOrderData, activeCompany, getPlaceName);
-  }, [previewOrderData, activeCompany, getPlaceName]);
+    return OrderConfirmation(
+      previewOrderData,
+      activeCompany,
+      getPlaceName,
+      previewRole,
+    );
+  }, [previewOrderData, activeCompany, getPlaceName, previewRole]);
 
   const handleItemChange = (id, field) => (e) => {
     const value = e.target.value;
@@ -229,14 +304,15 @@ const OrderConfirmationEmailModal = ({
   };
 
   const handleSendEmail = async () => {
-    const toList = parseEmailList(toInput);
-    const ccList = parseEmailList(ccInput);
-    const bccList = parseEmailList(bccInput);
+    if (sending) return;
 
-    if (toList.length === 0) {
-      toast.warning("Add at least one recipient in To");
-      return;
+    const senderEmail = senderForm.email.trim().toLowerCase();
+    const receiverEmail = receiverForm.email.trim().toLowerCase();
+    const bccOnly = bccEmails.filter((e) => !ccEmails.includes(e));
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
     }
+
     if (!activeCompany) {
       toast.warning("Select a company to brand the document before sending");
       return;
@@ -245,12 +321,39 @@ const OrderConfirmationEmailModal = ({
       toast.warning("Fill in sender and receiver details before sending");
       return;
     }
-
-    const allRecipients = [
-      ...toList.map((email) => ({ email, role: "to" })),
-      ...ccList.map((email) => ({ email, role: "cc" })),
-      ...bccList.map((email) => ({ email, role: "bcc" })),
-    ];
+    const partyFields = ["name", "email", "phone", "address"];
+    if (
+      partyFields.some((k) => !senderForm[k].trim() || !receiverForm[k].trim())
+    ) {
+      toast.warning(
+        "Name, email, phone and address are required for both sender and receiver",
+      );
+      return;
+    }
+    if (
+      ![senderEmail, receiverEmail, ...ccEmails, ...bccOnly].every((e) =>
+        EMAIL_PATTERN.test(e),
+      )
+    ) {
+      toast.warning("One or more email addresses are invalid");
+      return;
+    }
+    if (senderEmail === receiverEmail) {
+      toast.warning("Sender and receiver must use different email addresses");
+      return;
+    }
+    if (
+      [...ccEmails, ...bccOnly].some(
+        (e) => e === senderEmail || e === receiverEmail,
+      )
+    ) {
+      toast.warning("Remove the sender/receiver email from Cc/Bcc");
+      return;
+    }
+    if (!mode.trim()) {
+      toast.warning("Enter the shipment mode");
+      return;
+    }
 
     const getCategoryName = (id) =>
       categories.find((c) => String(c.id) === String(id))?.name || "";
@@ -289,31 +392,34 @@ const OrderConfirmationEmailModal = ({
       }));
 
     try {
+      setSending(true);
       const { data } = await api.post("/api/booking/confirmation-email-queue", {
         companyId: activeCompany.id,
         subject,
         message,
         mode,
         sender: {
-          name: senderParty.name,
-          address: senderParty.address,
-          phone: senderParty.phone,
-          email: senderParty.email,
+          name: senderForm.name.trim(),
+          address: senderForm.address.trim(),
+          phone: senderForm.phone.trim(),
+          email: senderEmail,
         },
+        receiver: {
+          name: receiverForm.name.trim(),
+          address: receiverForm.address.trim(),
+          phone: receiverForm.phone.trim(),
+          email: receiverEmail,
+          company: receiverCompanyName.trim(),
+        },
+        cc: ccEmails,
+        bcc: bccOnly,
         items: payloadItems,
-        participants: allRecipients.map((p) => ({
-          name: receiverParty.name,
-          company: receiverCompanyName,
-          email: p.email,
-          phone: receiverParty.phone,
-          address: receiverParty.address,
-          role: p.role,
-        })),
       });
 
       const msg = `Queued ${data.queued} of ${data.total} email(s)`;
       if (data.queued === data.total) {
         toast.success(msg);
+        handleClose();
       } else {
         toast.warning(msg);
       }
@@ -322,13 +428,14 @@ const OrderConfirmationEmailModal = ({
       toast.error(
         err.response?.data?.message || "Failed to queue confirmation emails",
       );
+    } finally {
+      setSending(false);
     }
   };
 
   const handleClose = () => {
-    setToInput("");
-    setCcInput("");
-    setBccInput("");
+    setCcEmails([]);
+    setBccEmails([]);
     setSubject(DEFAULT_SUBJECT);
     setMessage(DEFAULT_MESSAGE);
     setSenderForm(emptyParty());
@@ -402,28 +509,36 @@ const OrderConfirmationEmailModal = ({
             <AccordionDetails>
               <Stack spacing={1.25}>
                 <TextField
-                  label="To"
-                  placeholder="name@example.com, name2@example.com"
+                  label="Receiver (To)"
                   size="small"
                   fullWidth
-                  value={toInput}
-                  onChange={(e) => setToInput(e.target.value)}
+                  disabled
+                  value={receiverForm.email}
                 />
                 <TextField
+                  label="Sender (To)"
+                  size="small"
+                  fullWidth
+                  disabled
+                  value={senderForm.email}
+                />
+                <EmailChipInput
                   label="Cc"
-                  placeholder="cc1@example.com, cc2@example.com"
-                  size="small"
-                  fullWidth
-                  value={ccInput}
-                  onChange={(e) => setCcInput(e.target.value)}
+                  value={ccEmails}
+                  onChange={setCcEmails}
+                  blocked={[
+                    senderForm.email.trim().toLowerCase(),
+                    receiverForm.email.trim().toLowerCase(),
+                  ]}
                 />
-                <TextField
+                <EmailChipInput
                   label="Bcc"
-                  placeholder="bcc1@example.com"
-                  size="small"
-                  fullWidth
-                  value={bccInput}
-                  onChange={(e) => setBccInput(e.target.value)}
+                  value={bccEmails}
+                  onChange={setBccEmails}
+                  blocked={[
+                    senderForm.email.trim().toLowerCase(),
+                    receiverForm.email.trim().toLowerCase(),
+                  ]}
                 />
                 <TextField
                   label="Subject"
@@ -873,9 +988,19 @@ const OrderConfirmationEmailModal = ({
               borderBottom: "1px solid #e0e0e0",
             }}
           >
-            <Typography variant="subtitle2">
-              {receiverParty ? `Preview for ${receiverParty.name}` : "Preview"}
-            </Typography>
+            <ToggleButtonGroup
+              size="small"
+              exclusive
+              value={previewRole}
+              onChange={(_, v) => v && setPreviewRole(v)}
+            >
+              <ToggleButton value="receiver">
+                Receiver's form{receiverParty ? ` — ${receiverParty.name}` : ""}
+              </ToggleButton>
+              <ToggleButton value="sender">
+                Sender's form{senderParty ? ` — ${senderParty.name}` : ""}
+              </ToggleButton>
+            </ToggleButtonGroup>
             <Button
               size="small"
               startIcon={<PrintIcon />}
@@ -933,6 +1058,7 @@ const OrderConfirmationEmailModal = ({
             backgroundColor: "#f58220",
             "&:hover": { backgroundColor: "#f58220" },
           }}
+          disabled={sending}
         >
           Send Email
         </Button>

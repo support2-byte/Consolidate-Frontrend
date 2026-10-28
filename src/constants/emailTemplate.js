@@ -528,7 +528,8 @@ export const EMAIL_TEMPLATES = {
       </div>
       <div class="content">
         <p class="greeting">Dear {{recipientName}},</p>
-        <p class="body-text">Please find your booking confirmation details below from {{senderName}} at {{companyName}}.</p>
+        <p class="body-text">{{introText}}</p>
+        {{messageSection}}
         <div class="btn-wrapper">
             <a class="btn" href="{{viewLink}}" style="display: inline-block; background: #097D76; color: #ffffff !important; text-decoration: none; padding: 14px 36px; border-radius: 40px; font-weight: 600; font-size: 16px;">
                 <i class="fas fa-file-invoice btn-icon"></i>
@@ -552,7 +553,7 @@ export const EMAIL_TEMPLATES = {
         <img src="{{companyLogo}}" alt="{{companyName}}" class="footer-logo">
         <div class="footer-text">
           {{companyName}}<br>
-          This document was sent by {{senderName}}. If the button above doesn't work, contact us directly.
+          This email was sent on behalf of {{companyName}}. If the button above doesn't work, contact us directly.
         </div>
         <div class="footer-divider"></div>
         <div class="footer-copyright">

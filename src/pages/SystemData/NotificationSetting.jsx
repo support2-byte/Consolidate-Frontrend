@@ -105,8 +105,14 @@ const HIDDEN_COLUMNS = new Set([
   "item_status",
   "recipient_id",
   "public_ref",
+  "party_uuid",
 ]);
-const DATE_COLUMNS = new Set(["created_at", "updated_at", "sent_at"]);
+const DATE_COLUMNS = new Set([
+  "created_at",
+  "updated_at",
+  "sent_at",
+  "booking_submitted_at",
+]);
 
 const EMAIL_STATUS_COLORS = {
   sent: { bg: "#e8f5e9", text: "#2e7d32" },
@@ -232,6 +238,7 @@ const buildTemplateData = (row) => {
 
   return {
     recipientName: row.recipient_name || "Customer",
+    recipientName: row.recipient_name || "Customer",
     statusLabel: label,
     statusMsg:
       "Sample message — the exact wording is generated when the email is sent.",
@@ -284,8 +291,15 @@ const buildItemsSectionHtml = (items) => {
 };
 
 const buildConfirmationTemplateData = (row) => ({
-  recipientName: row.receiver_name || row.recipient_name || "Customer",
-  senderName: row.sender_name || "—",
+  recipientName: row.recipient_name || "Customer",
+  introText: `${row.company || "Royal Gulf Shipping & Logistics"} has prepared a booking confirmation in which you are named as the ${row.party_type === "sender" ? "sender" : "receiver"}${
+    (row.party_type === "sender" ? row.receiver_name : row.sender_name)
+      ? `, ${row.party_type === "sender" ? "shipping to" : "receiving from"} ${row.party_type === "sender" ? row.receiver_name : row.sender_name}`
+      : ""
+  }. Please review the details below and complete your form using the button.`,
+  messageSection: row.message
+    ? `<div class="info-box" style="margin-top:0;margin-bottom:24px"><p style="margin:0;white-space:pre-line">${row.message}</p></div>`
+    : "",
   companyName:
     row.company || row.company_name || "Royal Gulf Shipping & Logistics",
   companyLogo:
@@ -622,7 +636,7 @@ const NotificationSettings = () => {
       );
     }
 
-    if (col === "recipient_type") {
+    if (col === "recipient_type" || col === "party_type") {
       const type = String(value || "").toLowerCase();
       const { bg, text } = getColors(RECIPIENT_TYPE_COLORS, type);
       return (
@@ -982,7 +996,7 @@ const NotificationSettings = () => {
                             sx={{ mr: 1 }}
                           >
                             {" "}
-                            Details{" "}
+                            Details
                           </Button>
                         )}
                         <Button
@@ -1004,7 +1018,11 @@ const NotificationSettings = () => {
                           onClick={() => handleResend(row.id)}
                           sx={{ mr: 1 }}
                         >
-                          {sendingId === row.id ? "Sending..." : "Resend"}
+                          {sendingId === row.id
+                            ? "Sending..."
+                            : String(row.status).toLowerCase() === "pending"
+                              ? "Send"
+                              : "Resend"}
                         </Button>
                         <Button
                           size="small"
