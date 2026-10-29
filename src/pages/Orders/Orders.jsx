@@ -37,6 +37,7 @@ import {
   Tabs,
   Tab,
 } from "@mui/material";
+import XLSX from "xlsx-js-style";
 import Avatar from "@mui/material/Avatar";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import EmojiEventsIcon from "@mui/icons-material/EmojiEvents";
@@ -92,7 +93,11 @@ const OrdersList = () => {
   const [assignmentError, setAssignmentError] = useState(null);
   const [selectedContainers, setSelectedContainers] = useState([]);
   const [assigning, setAssigning] = useState(false);
-  const [filterPlaces, setFilterPlaces] = useState([]);
+  const filterPlaces = useMemo(
+    () =>
+      (places || []).map((p) => ({ value: p.id.toString(), label: p.name })),
+    [places],
+  );
   const [filters, setFilters] = useState({
     status: "",
     search: "",
@@ -400,9 +405,6 @@ const OrdersList = () => {
   };
 
   useEffect(() => {
-    setFilterPlaces(
-      places.map((p) => ({ value: p.id.toString(), label: p.name })),
-    );
     fetchOrders();
   }, [page, rowsPerPage, filters.status]);
 
@@ -746,6 +748,7 @@ const OrdersList = () => {
       })),
     );
   };
+
   const exportOrders = async () => {
     if (total === 0) {
       setSnackbar({
@@ -757,28 +760,27 @@ const OrdersList = () => {
     }
     setExporting(true);
     try {
-      let allOrders = [];
+      // 1) Collect all orders matching current filters
+      const listed = [];
       let currentPage = 1;
       const pageSize = 100;
       let hasMore = true;
-      const exportFilters = { ...filters };
       while (hasMore) {
-        const params = {
-          page: currentPage,
-          limit: pageSize,
-          includeContainer: true,
-          ...exportFilters,
-        };
-        const response = await api.get(`/api/orders`, { params });
+        const response = await api.get("/api/orders", {
+          params: {
+            page: currentPage,
+            limit: pageSize,
+            status: filters.status?.trim() || "",
+            search: filters.search?.trim() || "",
+          },
+        });
         const pageOrders = response.data.data || [];
-        allOrders = [...allOrders, ...pageOrders];
-        if (pageOrders.length < pageSize) {
-          hasMore = false;
-        } else {
-          currentPage++;
-        }
+        listed.push(...pageOrders);
+        if (pageOrders.length < pageSize) hasMore = false;
+        else currentPage++;
       }
-      if (allOrders.length === 0) {
+
+      if (listed.length === 0) {
         setSnackbar({
           open: true,
           message: "No orders found to export",
@@ -786,49 +788,300 @@ const OrdersList = () => {
         });
         return;
       }
-      const headers = [
-        "Booking Ref",
-        "Status",
-        "Place of Loading",
-        "Final Destination",
-        "Sender",
-        "Receivers",
-        "Containers",
-        "Associated Container",
-        "Created At",
-      ];
-      const rows = allOrders.map((order) => [
-        order.booking_ref || "",
-        order.status || "",
-        order?.place_of_loading || "",
-        order.final_destination || "",
-        order.sender_name || "",
-        order.receiver_summary || "",
-        order.receiver_containers || "",
-        order.container_number || "",
-        order.created_by || "",
-        new Date(order.created_at).toLocaleDateString(),
-      ]);
-      const csvContent = [headers, ...rows]
-        .map((row) => row.map((cell) => `"${cell}"`).join(","))
-        .join("\n");
-      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-      const link = document.createElement("a");
-      const url = URL.createObjectURL(blob);
-      link.setAttribute("href", url);
-      link.setAttribute(
-        "download",
-        `orders-${new Date().toISOString().split("T")[0]}.csv`,
+
+      // Oldest -> latest
+      listed.sort(
+        (a, b) =>
+          new Date(a.created_at) - new Date(b.created_at) || a.id - b.id,
       );
-      link.style.visibility = "hidden";
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+
+      // 2) Load order details + pdf-data in batches of 5 orders
+      const loaded = [];
+      let failed = 0;
+      let partial = 0;
+      const batchSize = 5;
+      for (let i = 0; i < listed.length; i += batchSize) {
+        const chunk = listed.slice(i, i + batchSize);
+        const results = await Promise.all(
+          chunk.map(async (o) => {
+            const [detailRes, pdfRes] = await Promise.allSettled([
+              api.get(`/api/orders/${o.id}`),
+              api.get(`/api/orders/pdf-data/${o.id}`),
+            ]);
+            const detail =
+              detailRes.status === "fulfilled" ? detailRes.value.data : null;
+            const pdf =
+              pdfRes.status === "fulfilled" ? pdfRes.value.data : null;
+            if (!detail && !pdf) {
+              console.error(`Export: failed to load order ${o.id}`);
+              return null;
+            }
+            if (!detail || !pdf) partial++;
+            return { detail, pdf };
+          }),
+        );
+        results.forEach((r) => (r ? loaded.push(r) : failed++));
+      }
+
+      // 3) Build the three sheets
+      const ordersRows = [];
+      const itemsRows = [];
+      const assignmentRows = [];
+
+      const fmtDateTime = (d) => (d ? new Date(d).toLocaleString("en-GB") : "");
+      const num = (v) => Number(v) || 0;
+      const pick = (...vals) =>
+        vals.find((v) => v !== null && v !== undefined && v !== "") ?? "";
+
+      loaded.forEach(({ detail, pdf }) => {
+        const d = detail || {};
+        const p = pdf || {};
+        const sender = p.sender || {};
+
+        const consignments =
+          p.consignments || (p.consignment ? [p.consignment] : []);
+        const findConsignment = (containerNo) =>
+          consignments.find((c) =>
+            (c.containers || []).includes(containerNo),
+          ) || (consignments.length === 1 ? consignments[0] : null);
+
+        const detailRecs = d.receivers || [];
+        const pdfRecs = p.receivers || [];
+        const recIds = [
+          ...new Set([...detailRecs, ...pdfRecs].map((r) => r.id)),
+        ];
+
+        const orderConsignments = new Set();
+        let orderItemsCount = 0;
+        let orderQty = 0;
+        let orderWeight = 0;
+
+        recIds.forEach((recId) => {
+          const dRec = detailRecs.find((r) => r.id === recId) || {};
+          const pRec = pdfRecs.find((r) => r.id === recId) || {};
+
+          const dItems = dRec.shippingDetails || dRec.shippingdetails || [];
+          const pItems = pRec.shippingdetails || [];
+          const itemIds = [
+            ...new Set([...dItems, ...pItems].map((it) => it.id)),
+          ];
+
+          const recName = pick(pRec.receiverName, dRec.receiver_name);
+
+          itemIds.forEach((itemId) => {
+            const dItem = dItems.find((it) => it.id === itemId) || {};
+            const pItem = pItems.find((it) => it.id === itemId) || {};
+
+            const qty = num(pick(dItem.totalNumber, pItem.totalNumber));
+            const weight = num(
+              pick(dItem.totalWeight, dItem.weight, pItem.weight),
+            );
+            const category = pick(dItem.category, pItem.category);
+            const subcategory = pick(dItem.subcategory, pItem.subcategory);
+            const itemRef = pick(dItem.itemRef, pItem.itemRef);
+
+            orderItemsCount += 1;
+            orderQty += qty;
+            orderWeight += weight;
+
+            // Assignments: prefer history rows from pdf-data, fall back to order details
+            const dContainers = dItem.containerDetails || [];
+            const assignments = pItem.containerAssignments?.length
+              ? pItem.containerAssignments
+              : dContainers.map((cd) => ({
+                  container_number: cd.container?.container_number || "",
+                  assigned_qty: cd.assign_total_box,
+                  assigned_weight_kg: cd.assign_weight,
+                  status: cd.status,
+                  created_at: null,
+                }));
+
+            const itemConsignments = new Set();
+
+            assignments.forEach((a) => {
+              const containerNo = a.container_number || "";
+              const cons = findConsignment(containerNo);
+              const consNo = pick(
+                cons?.consignment_number,
+                dContainers.find(
+                  (cd) => cd.container?.container_number === containerNo,
+                )?.consignment_number,
+              );
+              if (consNo) {
+                itemConsignments.add(consNo);
+                orderConsignments.add(consNo);
+              }
+
+              assignmentRows.push({
+                "Order ID": d.id ?? p.id,
+                "Booking Ref": pick(d.booking_ref, p.booking_ref),
+                "Form No": pick(d.rgl_booking_number, p.rgl_booking_number),
+                "Receiver ID": recId,
+                "Receiver Name": recName,
+                "Item ID": itemId,
+                "Item Ref": itemRef,
+                Category: category,
+                Subcategory: subcategory,
+                "Container No": containerNo,
+                "Container Status": a.status || "",
+                "Assigned Qty": num(a.assigned_qty),
+                "Assigned Weight (kg)": num(a.assigned_weight_kg),
+                "Assigned At": fmtDateTime(a.created_at),
+                "Consignment No": consNo,
+                Vessel: cons?.vessel || "",
+                Voyage: cons?.voyage || "",
+                "Shipping Line": cons?.shipping_line_name || "",
+                "Seal No": cons?.seal_no || "",
+                "Customs CRN": cons?.customs_crn || "",
+                "Consignment Gross Weight": cons?.gross_weight ?? "",
+              });
+            });
+
+            itemsRows.push({
+              "Order ID": d.id ?? p.id,
+              "Booking Ref": pick(d.booking_ref, p.booking_ref),
+              "Form No": pick(d.rgl_booking_number, p.rgl_booking_number),
+              "Receiver ID": recId,
+              "Receiver Name": recName,
+              "Receiver Contact": pick(
+                pRec.receiverContact,
+                dRec.receiver_contact,
+              ),
+              "Receiver Email": pick(pRec.receiverEmail, dRec.receiver_email),
+              "Receiver Address": pick(
+                pRec.receiverAddress,
+                dRec.receiver_address,
+              ),
+              "Receiver Status": dRec.status || "",
+              "Item ID": itemId,
+              "Item Ref": itemRef,
+              Category: category,
+              Subcategory: subcategory,
+              Type: dItem.type || "",
+              "Total Qty": qty,
+              "Weight (kg)": num(pick(dItem.weight, pItem.weight)),
+              "Total Weight (kg)": weight,
+              "Item Status": pick(dItem.status, pItem.status),
+              ETA: pick(dItem.eta, pItem.trackingEta),
+              ETD: dItem.etd || "",
+              "Shipping Line": dItem.shippingLine || "",
+              "Delivered Qty": num(dItem.deliveredQty),
+              "Remaining Qty": num(dItem.remainingQty),
+              "Unassigned Qty": num(dItem.remainingItems),
+              "Containers Count": assignments.length,
+              Consignments: [...itemConsignments].join(", "),
+            });
+          });
+        });
+
+        ordersRows.push({
+          "Order ID": d.id ?? p.id,
+          "Booking Ref": pick(d.booking_ref, p.booking_ref),
+          "Form No": pick(d.rgl_booking_number, p.rgl_booking_number),
+          Status: pick(d.overall_status, d.status, p.status),
+          "Created At": fmtDateTime(pick(d.created_at, p.created_at)),
+          "Created By": d.created_by || "",
+          "Place of Loading": getPlaceName(
+            pick(d.place_of_loading, p.place_of_loading),
+          ),
+          "Place of Delivery": getPlaceName(
+            pick(d.place_of_delivery, p.place_of_delivery),
+          ),
+          "Final Destination": getPlaceName(
+            pick(d.final_destination, p.final_destination),
+          ),
+          "Sender Name": pick(sender.name, d.sender_name),
+          "Sender Type": d.sender_type || "",
+          "Sender Contact": pick(sender.contact, d.sender_contact),
+          "Sender Email": pick(sender.email, d.sender_email),
+          "Sender Address": pick(sender.address, d.sender_address),
+          "Sender Ref": pick(sender.ref, d.sender_ref),
+          "Sender KYC Approved": sender.kycApproved ? "Yes" : "No",
+          "Transport Type": pick(d.transport_type, p.transport_type),
+          "Truck No": pick(d.truck_number, p.truck_number),
+          "Driver Name": pick(d.driver_name, p.dropoff_name),
+          "Driver Contact": pick(d.driver_contact, p.drop_off_mobile),
+          ETA: d.eta || "",
+          "Consignment No(s)": [...orderConsignments].join(", "),
+          Receivers: recIds.length,
+          "Total Items": orderItemsCount,
+          "Total Qty": orderQty,
+          "Total Weight (kg)": orderWeight,
+        });
+      });
+
+      // 4) Build workbook (title row + dark header row)
+      const TITLE = "Royal Gulf Shipping and Logistics (Consolidate)";
+      const titleStyle = {
+        font: { bold: true, sz: 16, color: { rgb: "0D6C6A" } },
+        alignment: { horizontal: "left", vertical: "center" },
+      };
+      const headerStyle = {
+        font: { bold: true, color: { rgb: "FFFFFF" } },
+        fill: { patternType: "solid", fgColor: { rgb: "1F2937" } },
+        alignment: { horizontal: "center", vertical: "center", wrapText: true },
+      };
+
+      const wb = XLSX.utils.book_new();
+      const addSheet = (name, rows) => {
+        const headers = rows.length ? Object.keys(rows[0]) : ["No data"];
+        const ws = XLSX.utils.aoa_to_sheet([[TITLE], [], headers]);
+        if (rows.length) {
+          XLSX.utils.sheet_add_json(ws, rows, {
+            origin: "A4",
+            header: headers,
+            skipHeader: true,
+          });
+        }
+
+        const lastCol = headers.length - 1;
+        ws["A1"].s = titleStyle;
+        if (lastCol > 0) {
+          ws["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: lastCol } }];
+        }
+        headers.forEach((_, c) => {
+          ws[XLSX.utils.encode_cell({ r: 2, c })].s = headerStyle;
+        });
+
+        ws["!cols"] = headers.map((h) => ({
+          wch: Math.min(
+            45,
+            Math.max(
+              h.length + 2,
+              12,
+              ...rows.slice(0, 200).map((r) => String(r[h] ?? "").length + 2),
+            ),
+          ),
+        }));
+        ws["!rows"] = [{ hpt: 30 }, {}, { hpt: 24 }];
+        ws["!autofilter"] = {
+          ref: XLSX.utils.encode_range({
+            s: { r: 2, c: 0 },
+            e: { r: 2 + rows.length, c: lastCol },
+          }),
+        };
+
+        XLSX.utils.book_append_sheet(wb, ws, name);
+      };
+
+      addSheet("Orders", ordersRows);
+      addSheet("Order Items", itemsRows);
+      addSheet("Container Assignments", assignmentRows);
+
+      XLSX.writeFile(
+        wb,
+        `orders-${new Date().toISOString().split("T")[0]}.xlsx`,
+      );
+
+      const notes = [];
+      if (failed > 0) notes.push(`${failed} failed to load`);
+      if (partial > 0) notes.push(`${partial} had incomplete data`);
       setSnackbar({
         open: true,
-        message: `Successfully exported ${allOrders.length} orders`,
-        severity: "success",
+        message: notes.length
+          ? `Exported ${loaded.length} orders (${notes.join(", ")})`
+          : `Successfully exported ${loaded.length} orders`,
+        severity: notes.length ? "warning" : "success",
       });
     } catch (err) {
       console.error("Error exporting orders:", err);
@@ -5795,7 +6048,7 @@ const OrdersList = () => {
     }
     const generator = STATIC_DOCUMENT_GENERATORS[activeDocKey];
     return generator ? generator(activeOrderData) : "";
-  }, [activeDocKey, activeOrderData, activeCompany]);
+  }, [activeDocKey, activeOrderData, activeCompany, filterPlaces]);
 
   const handlePrintActiveDoc = () => {
     if (!activeDocHtml || !printFrameRef.current) return;

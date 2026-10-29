@@ -1965,7 +1965,10 @@ const OrderForm = () => {
 
   useEffect(() => {
     if (!isEditMode && !formData.transportType) {
-      setFormData((prev) => ({ ...prev, transportType: "Drop Off" }));
+      setFormData((prev) => ({
+        ...prev,
+        transportType: "Drop Off",
+      }));
     }
   }, [isEditMode]);
 
@@ -2226,6 +2229,7 @@ const OrderForm = () => {
       etd: formData.etd,
       sender_type: formData.senderType,
       selected_sender_owner: formData.selectedSenderOwner || "",
+      booking_confirmation_id: formData.importedBookingId || "",
     };
 
     Object.entries(coreFields).forEach(([key, value]) => {
@@ -2304,7 +2308,11 @@ const OrderForm = () => {
         const snakeItem = {};
 
         Object.keys(sd).forEach((key) => {
-          if (key !== "remainingItems" && key !== "containerDetails") {
+          if (
+            key !== "remainingItems" &&
+            key !== "containerDetails" &&
+            key !== "trackingId"
+          ) {
             snakeItem[camelToSnake(key)] = sd[key] || "";
           }
         });
@@ -2522,6 +2530,10 @@ const OrderForm = () => {
   const handleImportDetails = async () => {
     if (!selectedImportId) return;
     const form = importForms.find((f) => f.id.toString() === selectedImportId);
+    if (form?.imported_order_id) {
+      toast.error("This form has already been imported");
+      return;
+    }
     const senders = form?.senders || [];
     const receivers = form?.receivers || [];
     const senderOk =
@@ -2585,6 +2597,7 @@ const OrderForm = () => {
 
       setFormData((prev) => ({
         ...prev,
+        importedBookingId: form.id,
         senderType: "sender",
         senderName: firstSender.name || "",
         senderContact: firstSender.phone || "",
@@ -2620,11 +2633,7 @@ const OrderForm = () => {
         "[handleImportDetails] Error:",
         err.response?.data || err.message,
       );
-      toast.success(
-        isEditMode
-          ? "Order updated successfully"
-          : "Order created successfully",
-      );
+      toast.error(err.response?.data?.error || "Failed to import details");
     } finally {
       setImportLoading(false);
     }
@@ -4515,11 +4524,6 @@ const OrderForm = () => {
                                       `${recDisabledPrefix}.shippingDetails[0].deliveryAddress`,
                                     )}
                                   />
-                                  <CustomTextField
-                                    label="Ref Number"
-                                    value={emptySd.itemRef}
-                                    disabled={true}
-                                  />
                                 </Box>
                                 <Typography
                                   variant="body2"
@@ -4838,14 +4842,6 @@ const OrderForm = () => {
                                           </MenuItem>
                                         ))}
                                       </CustomSelect>
-                                      <CustomTextField
-                                        label="Ref Number"
-                                        value={
-                                          sd.itemRef ||
-                                          `ORDER-ITEM-REF-${i + 1}-${j + 1}-${Date.now()}`
-                                        }
-                                        disabled={true}
-                                      />
                                     </Box>
                                     {!hasContainers ? (
                                       <Typography
@@ -6366,8 +6362,14 @@ const OrderForm = () => {
                 else if (!receiverHasSignature)
                   missingParts.push("Receiver signature");
 
-                const canImport = missingParts.length === 0;
-                const anySubmitted = senderSubmitted || receiverSubmitted;
+                const alreadyImported = Boolean(form.imported_order_id);
+                const canImport = missingParts.length === 0 && !alreadyImported;
+                const senderDocUrl =
+                  senders.find((s) => s.form_url)?.form_url || null;
+                const receiverDocUrl =
+                  receivers.find((r) => r.form_url)?.form_url || null;
+                const doneCount =
+                  Number(senderSubmitted) + Number(receiverSubmitted);
                 return (
                   <Box
                     key={form.id}
@@ -6397,7 +6399,7 @@ const OrderForm = () => {
                             sender(s) · {(form.receivers || []).length}{" "}
                             receiver(s) · Qty {form.total_qty || 0}
                           </Typography>
-                          {!canImport && (
+                          {!alreadyImported && missingParts.length > 0 && (
                             <Typography
                               variant="caption"
                               color="error"
@@ -6412,14 +6414,52 @@ const OrderForm = () => {
                     <Stack direction="row" spacing={1} alignItems="center">
                       <Chip
                         size="small"
-                        label={anySubmitted ? "Submitted" : "Pending"}
-                        color={anySubmitted ? "success" : "default"}
+                        label={
+                          alreadyImported
+                            ? `Imported · ${form.imported_rgl_booking_number || "—"}`
+                            : doneCount === 2
+                              ? "Completed"
+                              : doneCount === 1
+                                ? "Partial"
+                                : "Pending"
+                        }
+                        color={
+                          alreadyImported
+                            ? "info"
+                            : doneCount === 2
+                              ? "success"
+                              : doneCount === 1
+                                ? "warning"
+                                : "default"
+                        }
                       />
                       <Button
                         size="small"
-                        onClick={() => handleViewImportDoc(form.id)}
+                        disabled={!senderDocUrl}
+                        onClick={() =>
+                          openPreview(
+                            senderDocUrl,
+                            `Sender Form — ${senders[0]?.name || ""}`,
+                            "",
+                            false,
+                          )
+                        }
                       >
-                        View Doc
+                        Sender Doc
+                      </Button>
+                      <Button
+                        size="small"
+                        disabled={!receiverDocUrl}
+                        onClick={() =>
+                          openPreview(
+                            receiverDocUrl,
+                            `Receiver Form — ${receivers[0]?.name || ""}`,
+                            "",
+                            false,
+                          )
+                        }
+                      >
+                        Receiver Doc
                       </Button>
                     </Stack>
                   </Box>

@@ -1,4 +1,10 @@
-export const OrderConfirmation = (orderData, company, getPlaceName) => {
+export const OrderConfirmation = (
+  orderData,
+  company,
+  getPlaceName,
+  role = "receiver",
+) => {
+  const isSender = role === "sender";
   const primary = company?.primary_color || "#e67e22";
   const secondary = company?.secondary_color || "#b8860b";
 
@@ -15,11 +21,15 @@ export const OrderConfirmation = (orderData, company, getPlaceName) => {
 
   const receiver =
     orderData.receivers && orderData.receivers[0] ? orderData.receivers[0] : {};
-  const receiverName = receiver.receiverName || "";
-  const receiverContact = receiver.receiverContact || "";
-  const receiverAddress = receiver.receiverAddress || "";
-  const receiverEmail = receiver.receiverEmail || "";
-  const receiverCompany = receiver.receiverCompany || "";
+  const toName = isSender ? senderName : receiver.receiverName || "";
+  const toContact = isSender ? senderContact : receiver.receiverContact || "";
+  const toAddress = isSender ? senderAddress : receiver.receiverAddress || "";
+  const toEmail = isSender ? senderEmail : receiver.receiverEmail || "";
+  const toCompany = isSender ? "" : receiver.receiverCompany || "";
+  const otherName = isSender ? receiver.receiverName || "" : senderName;
+  const otherContact = isSender
+    ? receiver.receiverContact || ""
+    : senderContact;
 
   const mode = orderData.mode || "_________";
   const expectedOrderDate = "_________";
@@ -181,15 +191,15 @@ export const OrderConfirmation = (orderData, company, getPlaceName) => {
                     E-Mail: ${company?.email || ""}
                 </td>
                 <td class="red-text" colspan="2" style="white-space: pre-line; border: 1px solid #aaa;">
-                    ${receiverName}<br>
-                    ${receiverCompany ? `Company: ${receiverCompany}<br>` : ""}
-                    Address: ${receiverAddress.replace(/, /g, ",<br>")}<br>
-                    Contact Person: ${receiverName}<br>
+                    ${toName}<br>
+                    ${toCompany ? `Company: ${toCompany}<br>` : ""}
+                    Address: ${toAddress.replace(/, /g, ",<br>")}<br>
+                    Contact Person: ${toName}<br>
                     Passport No: _________<br>
                     Emirates ID #: _________<br>
                     Trace License: _________<br>
-                    Tel: ${receiverContact || "_________"}<br>
-                    E-Mail: ${receiverEmail}
+                    Tel: ${toContact || "_________"}<br>
+                    E-Mail: ${toEmail}
                 </td>
             </tr>
         </table>
@@ -231,13 +241,13 @@ export const OrderConfirmation = (orderData, company, getPlaceName) => {
             <tr class="red-text">
                 <td style="border: 1px solid #aaa;">
                     Either of the Party from<br>sender or receiver paying the Invoice<br>
-                    <span style="color: black;">Attn: ${senderName || "_________"}</span><br>
-                    Tel: ${senderContact || "_________"}
+                    <span style="color: black;">Attn: ${(isSender ? toName : otherName) || "_________"}</span><br>
+                    Tel: ${(isSender ? toContact : otherContact) || "_________"}
                 </td>
                 <td style="border: 1px solid #aaa;">
                     Individual or company suppose to be the<br>recipient of the consignment<br>
-                    <span style="color: black;">Attn: ${receiverName || "_________"}</span><br>
-                    Tel: ${receiverContact || "_________"}
+                    <span style="color: black;">Attn: ${(isSender ? otherName : toName) || "_________"}</span><br>
+                    Tel: ${(isSender ? otherContact : toContact) || "_________"}
                 </td>
             </tr>
         </table>
