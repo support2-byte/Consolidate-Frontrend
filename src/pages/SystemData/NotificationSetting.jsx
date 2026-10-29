@@ -239,7 +239,6 @@ const buildTemplateData = (row) => {
 
   return {
     recipientName: row.recipient_name || "Customer",
-    recipientName: row.recipient_name || "Customer",
     statusLabel: label,
     statusMsg:
       "Sample message — the exact wording is generated when the email is sent.",
