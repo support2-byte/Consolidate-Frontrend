@@ -357,9 +357,7 @@ const OrderModalView = ({
     }
   };
 
-  const statusColor = getOrderStatusColor(
-    selectedOrder?.overall_status || selectedOrder?.status,
-  );
+  const statusColor = getOrderStatusColor(selectedOrder?.status);
 
   const handleEdit = (id) => {
     handleCloseModal();
@@ -1733,9 +1731,9 @@ const OrderModalView = ({
             <Typography variant="h6" fontWeight={700} noWrap>
               {selectedOrder?.booking_ref || "Order Details"}
             </Typography>
-            {selectedOrder?.overall_status && (
+            {selectedOrder?.status && (
               <Chip
-                label={selectedOrder.overall_status}
+                label={selectedOrder.status}
                 size="small"
                 sx={{
                   bgcolor: statusColor,
@@ -1852,8 +1850,7 @@ const OrderModalView = ({
                         "Tracking ID": selectedOrder.tracking_id,
                         "Booking Ref": selectedOrder.booking_ref,
                         "RGL Booking #": selectedOrder.rgl_booking_number,
-                        Status:
-                          selectedOrder.overall_status || selectedOrder.status,
+                        Status: selectedOrder.status,
                         "Place of Loading": getPlaceName(
                           selectedOrder.place_of_loading,
                         ),
