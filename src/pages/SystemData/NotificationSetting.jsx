@@ -106,6 +106,7 @@ const HIDDEN_COLUMNS = new Set([
   "recipient_id",
   "public_ref",
   "party_uuid",
+  "order_id",
 ]);
 const DATE_COLUMNS = new Set([
   "created_at",
@@ -242,16 +243,20 @@ const buildTemplateData = (row) => {
     statusLabel: label,
     statusMsg:
       "Sample message — the exact wording is generated when the email is sent.",
-    refId: row.item_ref || "—",
+    refId: row.tracking_id || "—",
     orderId: row.order_form_no || "—",
     route: "Sample Route (e.g. Dubai, UAE → Karachi, PK)",
     eta: "Sample ETA",
     lastUpdated: formatDate(row.created_at),
     year: new Date().getFullYear(),
-    trackLink: `https://trackorder.royalgulfshipping.com/?ref=${encodeURIComponent(row.item_ref || "")}`,
+    trackLink: `https://trackorder.royalgulfshipping.com/?ref=${encodeURIComponent(row.tracking_id || "")}`,
     actionLinks:
       isCreatedEmail === isCreatedLabel
-        ? buildActionLinksHtml(label, row.item_ref || "—", row.recipient_type)
+        ? buildActionLinksHtml(
+            label,
+            row.tracking_id || "—",
+            row.recipient_type,
+          )
         : "",
   };
 };

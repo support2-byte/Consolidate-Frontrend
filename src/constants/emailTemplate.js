@@ -69,7 +69,7 @@ export const EMAIL_TEMPLATES = {
             <div style="width: 10px; height: 10px; border-radius: 50%; background: #e5e7eb;"></div>
           </div>
           <table class="info" role="presentation">
-            <tr><td>Ref ID</td><td><strong>{{refId}}</strong></td></tr>
+            <tr><td>Tracking ID</td><td><strong>{{refId}}</strong></td></tr>
             <tr><td>Order ID</td><td>{{orderId}}</td></tr>
             <tr><td>ETA</td><td>{{eta}}</td></tr>
             <tr><td>Last Updated</td><td>{{lastUpdated}}</td></tr>
@@ -77,7 +77,7 @@ export const EMAIL_TEMPLATES = {
           <a class="cta" href="{{trackLink}}" target="_blank" rel="noopener noreferrer">View Live Tracking</a>
           <p class="muted" style="font-size: 10px">
             If the button above is not working, please visit the following link:
-            https://trackorder.royalgulfshipping.com/ and paste your reference ID to track your shipment.
+            https://trackorder.royalgulfshipping.com/ and tracking ID to track your shipment.
           </p>
           {{actionLinks}}
           <p class="muted">You’re receiving this because you subscribed to shipment notifications on our website.</p>

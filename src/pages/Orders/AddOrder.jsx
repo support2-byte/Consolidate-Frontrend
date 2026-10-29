@@ -2308,7 +2308,11 @@ const OrderForm = () => {
         const snakeItem = {};
 
         Object.keys(sd).forEach((key) => {
-          if (key !== "remainingItems" && key !== "containerDetails") {
+          if (
+            key !== "remainingItems" &&
+            key !== "containerDetails" &&
+            key !== "trackingId"
+          ) {
             snakeItem[camelToSnake(key)] = sd[key] || "";
           }
         });
@@ -4520,11 +4524,6 @@ const OrderForm = () => {
                                       `${recDisabledPrefix}.shippingDetails[0].deliveryAddress`,
                                     )}
                                   />
-                                  <CustomTextField
-                                    label="Ref Number"
-                                    value={emptySd.itemRef}
-                                    disabled={true}
-                                  />
                                 </Box>
                                 <Typography
                                   variant="body2"
@@ -4843,14 +4842,6 @@ const OrderForm = () => {
                                           </MenuItem>
                                         ))}
                                       </CustomSelect>
-                                      <CustomTextField
-                                        label="Ref Number"
-                                        value={
-                                          sd.itemRef ||
-                                          `ORDER-ITEM-REF-${i + 1}-${j + 1}-${Date.now()}`
-                                        }
-                                        disabled={true}
-                                      />
                                     </Box>
                                     {!hasContainers ? (
                                       <Typography
