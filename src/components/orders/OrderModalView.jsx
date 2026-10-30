@@ -357,9 +357,7 @@ const OrderModalView = ({
     }
   };
 
-  const statusColor = getOrderStatusColor(
-    selectedOrder?.overall_status || selectedOrder?.status,
-  );
+  const statusColor = getOrderStatusColor(selectedOrder?.status);
 
   const handleEdit = (id) => {
     handleCloseModal();
@@ -1074,6 +1072,7 @@ const OrderModalView = ({
               <CardContent sx={{ p: 2.5 }}>
                 <Grid container spacing={1.5}>
                   {[
+                    ["Tracking ID", item.trackingId],
                     ["Type", item.type],
                     ["Status", item.status],
                     ["ETA", item.eta],
@@ -1732,9 +1731,9 @@ const OrderModalView = ({
             <Typography variant="h6" fontWeight={700} noWrap>
               {selectedOrder?.booking_ref || "Order Details"}
             </Typography>
-            {selectedOrder?.overall_status && (
+            {selectedOrder?.status && (
               <Chip
-                label={selectedOrder.overall_status}
+                label={selectedOrder.status}
                 size="small"
                 sx={{
                   bgcolor: statusColor,
@@ -1848,10 +1847,10 @@ const OrderModalView = ({
                     <FieldGrid
                       cols={3}
                       data={{
+                        "Tracking ID": selectedOrder.tracking_id,
                         "Booking Ref": selectedOrder.booking_ref,
                         "RGL Booking #": selectedOrder.rgl_booking_number,
-                        Status:
-                          selectedOrder.overall_status || selectedOrder.status,
+                        Status: selectedOrder.status,
                         "Place of Loading": getPlaceName(
                           selectedOrder.place_of_loading,
                         ),
@@ -1869,8 +1868,6 @@ const OrderModalView = ({
                         "Transport Type": selectedOrder.transport_type,
                         "Total Assigned Qty": selectedOrder.total_assigned_qty,
                         "Order Remarks": selectedOrder.order_remarks,
-                        // "Consignment Remarks":
-                        //   selectedOrder.consignment_remarks,
                         "Created At": new Date(
                           selectedOrder.created_at,
                         ).toLocaleString("en-US", {

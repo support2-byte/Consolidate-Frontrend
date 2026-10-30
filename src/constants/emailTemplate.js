@@ -69,7 +69,7 @@ export const EMAIL_TEMPLATES = {
             <div style="width: 10px; height: 10px; border-radius: 50%; background: #e5e7eb;"></div>
           </div>
           <table class="info" role="presentation">
-            <tr><td>Ref ID</td><td><strong>{{refId}}</strong></td></tr>
+            <tr><td>Tracking ID</td><td><strong>{{refId}}</strong></td></tr>
             <tr><td>Order ID</td><td>{{orderId}}</td></tr>
             <tr><td>ETA</td><td>{{eta}}</td></tr>
             <tr><td>Last Updated</td><td>{{lastUpdated}}</td></tr>
@@ -77,7 +77,7 @@ export const EMAIL_TEMPLATES = {
           <a class="cta" href="{{trackLink}}" target="_blank" rel="noopener noreferrer">View Live Tracking</a>
           <p class="muted" style="font-size: 10px">
             If the button above is not working, please visit the following link:
-            https://trackorder.royalgulfshipping.com/ and paste your reference ID to track your shipment.
+            https://trackorder.royalgulfshipping.com/ and tracking ID to track your shipment.
           </p>
           {{actionLinks}}
           <p class="muted">You’re receiving this because you subscribed to shipment notifications on our website.</p>
@@ -528,7 +528,8 @@ export const EMAIL_TEMPLATES = {
       </div>
       <div class="content">
         <p class="greeting">Dear {{recipientName}},</p>
-        <p class="body-text">Please find your booking confirmation details below from {{senderName}} at {{companyName}}.</p>
+        <p class="body-text">{{introText}}</p>
+        {{messageSection}}
         <div class="btn-wrapper">
             <a class="btn" href="{{viewLink}}" style="display: inline-block; background: #097D76; color: #ffffff !important; text-decoration: none; padding: 14px 36px; border-radius: 40px; font-weight: 600; font-size: 16px;">
                 <i class="fas fa-file-invoice btn-icon"></i>
@@ -552,7 +553,7 @@ export const EMAIL_TEMPLATES = {
         <img src="{{companyLogo}}" alt="{{companyName}}" class="footer-logo">
         <div class="footer-text">
           {{companyName}}<br>
-          This document was sent by {{senderName}}. If the button above doesn't work, contact us directly.
+          This email was sent on behalf of {{companyName}}. If the button above doesn't work, contact us directly.
         </div>
         <div class="footer-divider"></div>
         <div class="footer-copyright">

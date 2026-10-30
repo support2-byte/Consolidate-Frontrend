@@ -22,6 +22,11 @@ import {
   TableRow,
   List,
   ListItem,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  Collapse,
+  IconButton,
 } from "@mui/material";
 import RadioButtonCheckedIcon from "@mui/icons-material/RadioButtonChecked";
 import RadioButtonUncheckedIcon from "@mui/icons-material/RadioButtonUnchecked";
@@ -29,6 +34,10 @@ import SearchIcon from "@mui/icons-material/Search";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import PhoneIcon from "@mui/icons-material/Phone";
 import NotificationsIcon from "@mui/icons-material/Notifications";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
+import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
+import DirectionsBoatFilledIcon from "@mui/icons-material/DirectionsBoatFilled";
 
 import { api } from "../../api";
 import ShipmentTimeline from "./shipmentTimeline";
@@ -41,7 +50,7 @@ const TrackingPage = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [trackingData, setTrackingData] = useState(null);
-  const [trackType, setTrackType] = useState("item_ref");
+  const [trackType, setTrackType] = useState("item_tracking");
 
   const EXCLUDED_TIMELINE_STATUSES = ["Rejected", "Canceled", "Cancelled"];
 
@@ -62,8 +71,8 @@ const TrackingPage = () => {
     const reference = value.trim().toUpperCase();
 
     const typeToEndpoint = {
-      item_ref: "item",
-      order_id: "order",
+      item_tracking: "item",
+      order_tracking: "order",
       rglBookingNo: "rgl",
       consignment_no: "consignment_no",
     };
@@ -103,6 +112,9 @@ const TrackingPage = () => {
         const mainOrder = rawData.orders?.[0] || rawData;
         trackingDataToSet = {
           order_id: mainOrder.order_id || rawData.order_id || "—",
+
+          tracking_id: mainOrder.tracking_id || rawData.tracking_id || null,
+
           booking_ref: mainOrder.booking_ref || rawData.booking_ref || "—",
           rgl_booking_number:
             mainOrder.rgl_booking_number || rawData.rgl_booking_number || "-",
@@ -124,6 +136,11 @@ const TrackingPage = () => {
           sender_email: mainOrder.sender_email || rawData.sender_email || null,
           sender_contact:
             mainOrder.sender_contact || rawData.sender_contact || null,
+          sender_name: mainOrder.sender_name || rawData.sender_name || null,
+          transport_type:
+            mainOrder.transport_type || rawData.transport_type || null,
+          collection_scope:
+            mainOrder.collection_scope || rawData.collection_scope || null,
           receivers: mainOrder.receivers || rawData.receivers || [],
           total_assigned_qty:
             mainOrder.total_assigned_qty || rawData.total_assigned_qty || 0,
@@ -184,8 +201,8 @@ const TrackingPage = () => {
     }
   };
 
-  const isItemRefLayout = trackType === "item_ref";
-  const isOrderLayout = ["order_id", "rglBookingNo"].includes(trackType);
+  const isItemTrackingLayout = trackType === "item_tracking";
+  const isOrderLayout = ["order_tracking", "rglBookingNo"].includes(trackType);
   const isConsignmentLayout = trackType === "consignment_no";
 
   const receiver = trackingData?.receivers?.[0];
@@ -215,7 +232,7 @@ const TrackingPage = () => {
         }}
       >
         <Typography variant="h3" fontWeight={800} sx={{ mt: 2 }}>
-          Track Your Shipment
+          Track Shipment
         </Typography>
 
         <Paper sx={{ p: 3, maxWidth: 800, mx: "auto", borderRadius: 3, mt: 4 }}>
@@ -234,8 +251,8 @@ const TrackingPage = () => {
                   onChange={(e) => setTrackType(e.target.value)}
                   disabled={loading}
                 >
-                  <MenuItem value="item_ref">Item Reference</MenuItem>
-                  <MenuItem value="order_id">Booking Ref Number</MenuItem>
+                  <MenuItem value="item_tracking">Item Tracking ID</MenuItem>
+                  <MenuItem value="order_tracking">Order Tracking ID</MenuItem>
                   <MenuItem value="rglBookingNo">Form No</MenuItem>
                   <MenuItem value="consignment_no">Consignment No</MenuItem>
                 </Select>
@@ -244,10 +261,10 @@ const TrackingPage = () => {
               <TextField
                 fullWidth
                 placeholder={
-                  trackType === "item_ref"
-                    ? "e.g. ORDER-ITEM-REF-1-1-1096xxxxx"
-                    : trackType === "order_id"
-                      ? "e.g. RGSL-178xx-xxx"
+                  trackType === "item_tracking"
+                    ? "e.g. RGSL-ORD-K7M4PX"
+                    : trackType === "order_tracking"
+                      ? "e.g. RGSL-ORD-XWS2LMV2"
                       : trackType === "consignment_no"
                         ? "e.g. 24xxxx"
                         : "e.g. 24xxxx"
@@ -309,7 +326,7 @@ const TrackingPage = () => {
 
       {trackingData && !loading && (
         <Box sx={{ maxWidth: 1400, mx: "auto", px: { xs: 2, md: 4 } }}>
-          {isItemRefLayout && (
+          {isItemTrackingLayout && (
             <ItemRefLayout
               trackingData={trackingData}
               progressPercent={progressPercent}
@@ -321,7 +338,7 @@ const TrackingPage = () => {
           {isOrderLayout && (
             <OrderDetailedLayout
               trackingData={trackingData}
-              currentStatus={currentStatus}
+              timelineSteps={orderedStatuses}
             />
           )}
           {isConsignmentLayout && (
@@ -380,16 +397,14 @@ const ItemRefLayout = ({ trackingData, places, timelineSteps }) => {
             mt: 3,
           }}
         >
-          Track Your Shipment
+          Track Shipment
         </Typography>
 
         <Typography variant="subtitle1" color="text.secondary">
           Last updated on: {new Date().toLocaleDateString("en-GB")}{" "}
-          {/* Replace with real timestamp */}
         </Typography>
       </Box>
 
-      {/* Main Summary Card */}
       <Paper
         elevation={4}
         sx={{
@@ -432,10 +447,11 @@ const ItemRefLayout = ({ trackingData, places, timelineSteps }) => {
                     fontWeight: "bold",
                   }}
                 >
-                  ITEM REF ID
+                  TRACKING ID
                 </Typography>
+
                 <Typography variant="body1" color="#000" fontWeight={600}>
-                  {item.item_ref || "—"}
+                  {item.tracking_id || "—"}
                 </Typography>
               </Box>
             }
@@ -522,9 +538,7 @@ const ItemRefLayout = ({ trackingData, places, timelineSteps }) => {
           />
         </Stack>
 
-        {/* Horizontal Timeline */}
-        <Box sx={{ position: "relative", my: 6 }}>
-          {/* Progress line */}
+        <Box sx={{ position: "relative", my: 3 }}>
           <Box
             sx={{
               position: "absolute",
@@ -535,7 +549,6 @@ const ItemRefLayout = ({ trackingData, places, timelineSteps }) => {
               bgcolor: "#e0e0e0",
               borderRadius: 4,
               transform: "translateY(-50%)",
-              marginTop: 3,
               marginBottom: 5,
             }}
           />
@@ -550,20 +563,18 @@ const ItemRefLayout = ({ trackingData, places, timelineSteps }) => {
               transform: "translateY(-50%)",
               width: `${progressPercent}%`,
               transition: "width 0.8s ease",
-              marginTop: 3,
               marginBottom: 5,
             }}
           />
 
-          {/* Steps */}
           <Stack
             direction="row"
             justifyContent="space-between"
             sx={{
               position: "relative",
               zIndex: 1,
-              pt: 2,
-              mt: 4,
+              pt: 1,
+              mt: 2,
             }}
           >
             {timelineSteps.map((step, idx) => {
@@ -580,13 +591,62 @@ const ItemRefLayout = ({ trackingData, places, timelineSteps }) => {
                       <Box
                         sx={{
                           position: "absolute",
-                          top: "50%",
+                          top: -2,
                           left: "50%",
-                          transform: "translate(50%, 17%) scaleX(-1)",
-                          fontSize: 28,
+                          transform: "translateX(-50%)",
+                          width: 38,
+                          height: 38,
+                          borderRadius: "50%",
+                          bgcolor: "#fff",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          border: "3px solid #f58220",
+                          zIndex: 3,
+
+                          boxShadow: "0 4px 14px rgba(245, 130, 32, 0.35)",
+
+                          "&::before": {
+                            content: '""',
+                            position: "absolute",
+                            inset: -3,
+                            borderRadius: "50%",
+                            border: "2px solid #f58220",
+                            animation: "shipPulse 2s ease-out infinite",
+                          },
+
+                          "@keyframes shipPulse": {
+                            "0%": {
+                              transform: "scale(1)",
+                              opacity: 0.7,
+                            },
+                            "70%": {
+                              transform: "scale(1.55)",
+                              opacity: 0,
+                            },
+                            "100%": {
+                              transform: "scale(1.55)",
+                              opacity: 0,
+                            },
+                          },
+
+                          "@keyframes shipFloat": {
+                            "0%, 100%": {
+                              transform: "translateY(0)",
+                            },
+                            "50%": {
+                              transform: "translateY(-3px)",
+                            },
+                          },
                         }}
                       >
-                        ⛴️
+                        <DirectionsBoatFilledIcon
+                          sx={{
+                            fontSize: 23,
+                            color: "#0d6c6a",
+                            animation: "shipFloat 2.2s ease-in-out infinite",
+                          }}
+                        />
                       </Box>
                     </Box>
                   ) : isCompleted ? (
@@ -601,7 +661,7 @@ const ItemRefLayout = ({ trackingData, places, timelineSteps }) => {
 
                   <Typography
                     variant="body2"
-                    fontWeight={isCurrent ? 400 : isCompleted ? 400 : 400}
+                    fontWeight={isCurrent ? 800 : isCompleted ? 600 : 400}
                     color={
                       isCurrent
                         ? "#FF8A00"
@@ -609,7 +669,7 @@ const ItemRefLayout = ({ trackingData, places, timelineSteps }) => {
                           ? "#FFFFFF"
                           : "rgba(255,255,255,0.65)"
                     }
-                    sx={{ fontSize: "14px", mt: 10 }}
+                    sx={{ fontSize: "14px", mt: 5 }}
                   >
                     {step}
                   </Typography>
@@ -619,7 +679,6 @@ const ItemRefLayout = ({ trackingData, places, timelineSteps }) => {
           </Stack>
         </Box>
 
-        {/* Status Message */}
         <Typography
           variant="h6"
           fontWeight={600}
@@ -632,7 +691,6 @@ const ItemRefLayout = ({ trackingData, places, timelineSteps }) => {
             : `Your order is being prepared for ${currentStatus.toLowerCase()}.`}
         </Typography>
 
-        {/* Issue / Reversal Note */}
         {hasIssue && (
           <Paper
             sx={{
@@ -651,7 +709,6 @@ const ItemRefLayout = ({ trackingData, places, timelineSteps }) => {
           </Paper>
         )}
 
-        {/* Notify Me Button */}
         <Button
           variant="contained"
           size="large"
@@ -675,107 +732,289 @@ const ItemRefLayout = ({ trackingData, places, timelineSteps }) => {
 
       {history.length > 0 && (
         <Paper
-          elevation={3}
+          elevation={0}
           sx={{
-            p: { xs: 3, md: 4 },
-            borderRadius: 3,
+            p: { xs: 3, md: 5 },
+            borderRadius: 4,
             position: "relative",
             overflow: "hidden",
-            bgcolor: "#f8fafc",
+            bgcolor: "#fff",
+            border: "1px solid #e2e8f0",
+            boxShadow: "0 10px 35px rgba(0,0,0,0.06)",
+
+            "@keyframes historyPulse": {
+              "0%": {
+                transform: "scale(1)",
+                opacity: 0.65,
+              },
+              "70%": {
+                transform: "scale(1.8)",
+                opacity: 0,
+              },
+              "100%": {
+                transform: "scale(1.8)",
+                opacity: 0,
+              },
+            },
+
+            "@keyframes historyFloat": {
+              "0%, 100%": {
+                transform: "translateY(0)",
+              },
+              "50%": {
+                transform: "translateY(-2px)",
+              },
+            },
           }}
         >
           <Box
             sx={{
-              position: "absolute",
-              left: { xs: 20, sm: 40 },
-              top: 40,
-              bottom: 40,
-              width: 6,
-              bgcolor: "#16a34a",
-              borderRadius: 3,
-              zIndex: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              mb: 4,
             }}
-          />
-
-          <Typography
-            variant="h6"
-            fontWeight={700}
-            gutterBottom
-            sx={{ mb: 4, pl: { xs: 4, sm: 6 } }}
           >
-            Shipment Status History
-          </Typography>
+            <Box>
+              <Typography
+                variant="h5"
+                fontWeight={800}
+                sx={{ color: "#0d6c6a" }}
+              >
+                Shipment Status History
+              </Typography>
 
-          <Box sx={{ pl: { xs: 4, sm: 6 }, position: "relative", zIndex: 1 }}>
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ mt: 0.5 }}
+              >
+                Follow your shipment's journey
+              </Typography>
+            </Box>
+
+            <Chip
+              label="Live Tracking"
+              size="small"
+              sx={{
+                bgcolor: "rgba(22,163,74,0.10)",
+                color: "#16a34a",
+                fontWeight: 700,
+                border: "1px solid rgba(22,163,74,0.25)",
+              }}
+            />
+          </Box>
+
+          <Box sx={{ position: "relative" }}>
+            <Box
+              sx={{
+                position: "absolute",
+                left: 17,
+                top: 20,
+                bottom: 20,
+                width: 3,
+                bgcolor: "#e2e8f0",
+                borderRadius: 10,
+              }}
+            />
+
             {history.map((entry, idx) => {
-              const isCurrent = idx - 0;
+              const isCurrent = idx === 0;
+              const isLast = idx === history.length - 1;
+
               return (
                 <Box
                   key={idx}
-                  sx={{ mb: 4, display: "flex", alignItems: "flex-start" }}
+                  sx={{
+                    position: "relative",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 3,
+                    pb: isLast ? 0 : 4,
+                  }}
                 >
                   <Box
                     sx={{
-                      width: 24,
-                      height: 24,
-                      borderRadius: "50%",
-                      bgcolor: isCurrent ? "#16a34a" : "#f58220",
-                      border: "4px solid white",
-                      boxShadow: "0 0 0 3px rgba(22,163,74,0.3)",
+                      position: "relative",
+                      width: 36,
+                      height: 36,
                       flexShrink: 0,
-                      mt: 0.5,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
                       zIndex: 2,
                     }}
-                  />
+                  >
+                    {isCurrent ? (
+                      <Box
+                        sx={{
+                          position: "relative",
+                          width: 35,
+                          height: 35,
+                          borderRadius: "50%",
+                          bgcolor: "#fff",
+                          border: "3px solid #f58220",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          boxShadow: "0 4px 14px rgba(245,130,32,0.30)",
 
-                  <Box sx={{ ml: 3, flex: 1 }}>
-                    <Typography
-                      variant="subtitle1"
-                      fontWeight={600}
-                      color={isCurrent ? "#16a34a" : "#f58220"}
+                          "&::before": {
+                            content: '""',
+                            position: "absolute",
+                            inset: -4,
+                            borderRadius: "50%",
+                            border: "2px solid #f58220",
+                            animation: "historyPulse 2s ease-out infinite",
+                          },
+                        }}
+                      >
+                        <DirectionsBoatFilledIcon
+                          sx={{
+                            fontSize: 20,
+                            color: "#0d6c6a",
+                            animation: "historyFloat 2.2s ease-in-out infinite",
+                          }}
+                        />
+                      </Box>
+                    ) : (
+                      <Box
+                        sx={{
+                          width: 30,
+                          height: 30,
+                          borderRadius: "50%",
+                          bgcolor: "#16a34a",
+                          border: "4px solid #fff",
+                          boxShadow: "0 0 0 2px rgba(22,163,74,0.20)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <CheckCircleIcon
+                          sx={{
+                            fontSize: 14,
+                            color: "#fff",
+                          }}
+                        />
+                      </Box>
+                    )}
+                  </Box>
+
+                  <Box
+                    sx={{
+                      flex: 1,
+                      p: 2,
+                      mt: 0,
+                      borderRadius: 3,
+
+                      bgcolor: isCurrent
+                        ? "rgba(245,130,32,0.06)"
+                        : "transparent",
+
+                      border: isCurrent
+                        ? "1px solid rgba(245,130,32,0.20)"
+                        : "1px solid transparent",
+
+                      transition: "all 0.25s ease",
+
+                      "&:hover": {
+                        bgcolor: isCurrent
+                          ? "rgba(245,130,32,0.09)"
+                          : "#f8fafc",
+                        transform: "translateX(4px)",
+                      },
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        display: "flex",
+                        alignItems: {
+                          xs: "flex-start",
+                          sm: "center",
+                        },
+                        justifyContent: "space-between",
+                        flexDirection: {
+                          xs: "column",
+                          sm: "row",
+                        },
+                        gap: 1,
+                      }}
                     >
-                      {entry.status}
-                    </Typography>
-                    <Typography
-                      variant="body2"
-                      color="text.secondary"
-                      sx={{ mt: 0.5 }}
-                    >
-                      {entry.time}
-                      {/* {entry.notes && ` • ${entry.notes}`} */}
-                    </Typography>
+                      <Box>
+                        <Typography
+                          variant="subtitle1"
+                          fontWeight={700}
+                          sx={{
+                            color: isCurrent ? "#f58220" : "#1e293b",
+                          }}
+                        >
+                          {entry.status}
+                        </Typography>
+
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ mt: 0.4 }}
+                        >
+                          {entry.time}
+                        </Typography>
+                      </Box>
+
+                      {isCurrent && (
+                        <Chip
+                          label="Current"
+                          size="small"
+                          sx={{
+                            bgcolor: "#f58220",
+                            color: "#fff",
+                            fontWeight: 700,
+                            fontSize: "0.7rem",
+                          }}
+                        />
+                      )}
+                    </Box>
                   </Box>
                 </Box>
               );
             })}
           </Box>
 
-          {/* Expected Arrival */}
+          {/* ETA */}
           {receiver.eta && (
-            <Box sx={{ mt: 5, textAlign: "center" }}>
-              <Chip
-                label={`Expected Arrival: ${new Date(
-                  receiver.eta,
-                ).toLocaleDateString("en-GB", {
+            <Box
+              sx={{
+                mt: 5,
+                p: 2.5,
+                borderRadius: 3,
+                bgcolor: "rgba(13,108,106,0.06)",
+                border: "1px solid rgba(13,108,106,0.15)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 1,
+              }}
+            >
+              <Typography variant="body2" color="text.secondary">
+                Expected Arrival
+              </Typography>
+
+              <Typography
+                variant="body1"
+                fontWeight={700}
+                sx={{ color: "#0d6c6a" }}
+              >
+                {new Date(receiver.eta).toLocaleDateString("en-GB", {
                   day: "numeric",
                   month: "short",
                   year: "numeric",
-                })}`}
-                color="success"
-                size="large"
-                sx={{
-                  fontSize: "1.1rem",
-                  py: 2.5,
-                  px: 4,
-                  fontWeight: 600,
-                }}
-              />
+                })}
+              </Typography>
             </Box>
           )}
         </Paper>
       )}
 
-      {/* Final CTA */}
       <Paper
         elevation={4}
         sx={{
@@ -817,45 +1056,230 @@ const ItemRefLayout = ({ trackingData, places, timelineSteps }) => {
   );
 };
 
-const OrderDetailedLayout = ({ trackingData }) => {
+const fmtDate = (d) =>
+  d
+    ? new Date(d).toLocaleDateString("en-GB", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      })
+    : "—";
+
+const fmtDateTime = (d) =>
+  d
+    ? new Date(d).toLocaleString("en-GB", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      })
+    : "—";
+
+const ReceiverProgress = ({ steps, currentIndex }) => (
+  <Box sx={{ overflowX: "auto", py: 2 }}>
+    <Stack direction="row" sx={{ minWidth: steps.length * 110 }}>
+      {steps.map((step, idx) => {
+        const done = idx < currentIndex;
+        const current = idx === currentIndex;
+        return (
+          <Box
+            key={step}
+            sx={{ flex: 1, textAlign: "center", position: "relative" }}
+          >
+            {idx > 0 && (
+              <Box
+                sx={{
+                  position: "absolute",
+                  top: 14,
+                  left: "-50%",
+                  width: "100%",
+                  height: 4,
+                  bgcolor: idx <= currentIndex ? "#16a34a" : "#e0e0e0",
+                  zIndex: 0,
+                }}
+              />
+            )}
+            <Box
+              sx={{
+                position: "relative",
+                zIndex: 1,
+                bgcolor: "#fff",
+                display: "inline-flex",
+                borderRadius: "50%",
+              }}
+            >
+              {done ? (
+                <CheckCircleIcon sx={{ color: "#16a34a", fontSize: 30 }} />
+              ) : current ? (
+                <RadioButtonCheckedIcon
+                  sx={{ color: "#f58220", fontSize: 30 }}
+                />
+              ) : (
+                <RadioButtonUncheckedIcon
+                  sx={{ color: "#bdbdbd", fontSize: 30 }}
+                />
+              )}
+            </Box>
+            <Typography
+              variant="caption"
+              display="block"
+              sx={{
+                mt: 0.5,
+                px: 0.5,
+                fontWeight: current ? 700 : 400,
+                color: current
+                  ? "#f58220"
+                  : done
+                    ? "#16a34a"
+                    : "text.secondary",
+              }}
+            >
+              {step}
+            </Typography>
+          </Box>
+        );
+      })}
+    </Stack>
+  </Box>
+);
+
+const ItemRow = ({ item }) => {
+  const [open, setOpen] = useState(false);
+  const containers = (item.containerDetails || []).filter(
+    (c) =>
+      c.container?.container_number &&
+      c.container.container_number !== "Unknown",
+  );
+  const history = item.status_history || [];
+
+  return (
+    <>
+      <TableRow hover>
+        <TableCell sx={{ width: 40 }}>
+          <IconButton size="small" onClick={() => setOpen((o) => !o)}>
+            {open ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
+          </IconButton>
+        </TableCell>
+        <TableCell>{item.trackingId || "—"}</TableCell>
+        <TableCell>
+          {item.category}
+          {item.subcategory && ` • ${item.subcategory}`}
+          {item.type && ` (${item.type})`}
+        </TableCell>
+        <TableCell align="right">
+          {Number(item.totalNumber || 0).toLocaleString()}
+        </TableCell>
+        <TableCell align="right">
+          {Number(item.weight || 0).toLocaleString()} kg
+        </TableCell>
+        <TableCell>
+          <Chip
+            label={item.status || "Created"}
+            size="small"
+            sx={{ bgcolor: "#f58220", color: "#fff", fontWeight: 600 }}
+          />
+        </TableCell>
+        <TableCell>{fmtDate(item.eta)}</TableCell>
+        <TableCell>
+          {containers.length ? (
+            containers.map((c, i) => (
+              <Typography key={i} variant="body2">
+                {c.container.container_number}
+                <Typography
+                  component="span"
+                  variant="caption"
+                  color="text.secondary"
+                >
+                  {" "}
+                  • {Number(c.assign_total_box || 0).toLocaleString()} pkgs
+                </Typography>
+              </Typography>
+            ))
+          ) : (
+            <Typography variant="body2" color="text.secondary">
+              Not Assigned
+            </Typography>
+          )}
+        </TableCell>
+        <TableCell>
+          {(item.consignments || []).length
+            ? item.consignments.map((c, i) => (
+                <Typography key={i} variant="body2">
+                  {c.number}
+                  <Typography
+                    component="span"
+                    variant="caption"
+                    color="text.secondary"
+                  >
+                    {" "}
+                    • {c.status || "—"}
+                  </Typography>
+                </Typography>
+              ))
+            : "—"}
+        </TableCell>
+      </TableRow>
+
+      <TableRow>
+        <TableCell colSpan={9} sx={{ py: 0, border: open ? undefined : 0 }}>
+          <Collapse in={open} timeout="auto" unmountOnExit>
+            <Box sx={{ py: 2, pl: 6 }}>
+              <Typography variant="subtitle2" fontWeight={700} gutterBottom>
+                Tracking history
+              </Typography>
+              {history.length === 0 ? (
+                <Typography variant="body2" color="text.secondary">
+                  No tracking updates yet.
+                </Typography>
+              ) : (
+                history.map((h, i) => (
+                  <Box key={i} sx={{ display: "flex", gap: 2, mb: 1 }}>
+                    <Box
+                      sx={{
+                        width: 12,
+                        height: 12,
+                        borderRadius: "50%",
+                        mt: 0.7,
+                        bgcolor: i === 0 ? "#16a34a" : "#f58220",
+                        flexShrink: 0,
+                      }}
+                    />
+                    <Box>
+                      <Typography variant="body2" fontWeight={600}>
+                        {h.status}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {fmtDateTime(h.time)}
+                        {h.container_number && ` • ${h.container_number}`}
+                        {h.consignment_number && ` • ${h.consignment_number}`}
+                        {h.eta && ` • ETA ${fmtDate(h.eta)}`}
+                      </Typography>
+                    </Box>
+                  </Box>
+                ))
+              )}
+            </Box>
+          </Collapse>
+        </TableCell>
+      </TableRow>
+    </>
+  );
+};
+
+const OrderDetailedLayout = ({ trackingData, timelineSteps = [] }) => {
   const {
-    id: order_id,
+    tracking_id,
     booking_ref,
     rgl_booking_number,
     created_at,
-    overall_status,
-    eta: orderEta,
-    total_assigned_qty,
-    sender_name: senderName,
-    sender_contact: senderContact,
-    sender_email: senderEmail,
-    transport_type: transportType,
-    collection_scope,
     receivers = [],
   } = trackingData;
 
-  const formatDate = (dateStr) =>
-    dateStr
-      ? new Date(dateStr).toLocaleDateString("en-GB", {
-          day: "numeric",
-          month: "short",
-          year: "numeric",
-        })
-      : "—";
+  const senderName = trackingData.sender_name || trackingData.sender || "—";
+  const finalStep = timelineSteps[timelineSteps.length - 1];
+  const rankOf = (status) => Math.max(timelineSteps.indexOf(status), 0);
 
-  const sender = {
-    name: trackingData.sender || "—",
-    contact: trackingData.sender_contact || "—",
-    email: senderEmail || "—",
-  };
-
-  const transport = {
-    type: transportType || "—",
-    collection_scope: collection_scope || "Partial",
-  };
   return (
     <Box sx={{ maxWidth: 1400, mx: "auto", px: 2 }}>
-      {/* Order Summary Header */}
+      {/* Order header */}
       <Paper
         elevation={4}
         sx={{
@@ -864,317 +1288,211 @@ const OrderDetailedLayout = ({ trackingData }) => {
           borderRadius: 3,
           background: "linear-gradient(135deg, #0d6c6a 0%, #1b263b 100%)",
           color: "#fff",
+          textAlign: "center",
         }}
       >
-        <Box sx={{ textAlign: "center" }}>
-          <Typography variant="h4" fontWeight={800} gutterBottom>
-            Form No #{rgl_booking_number}
+        <Typography variant="h4" fontWeight={800} gutterBottom>
+          Tracking ID: {tracking_id || "—"}
+        </Typography>
+        <Stack
+          direction={{ xs: "column", sm: "row" }}
+          spacing={3}
+          justifyContent="center"
+          sx={{ mt: 2, opacity: 0.95 }}
+        >
+          <Typography>
+            Form No: <strong>{rgl_booking_number || "—"}</strong>
           </Typography>
-
-          <Typography
-            variant="subtitle1"
-            fontWeight="bold"
-            gutterBottom
-            sx={{ mb: 3 }}
-          >
-            Booking Ref: <strong>{booking_ref || "—"}</strong>
+          <Typography>
+            Sender: <strong>{senderName}</strong>
           </Typography>
-        </Box>
+          <Typography>
+            Created: <strong>{fmtDate(created_at)}</strong>
+          </Typography>
+          {trackingData.transport_type && (
+            <Typography>
+              Mode: <strong>{trackingData.transport_type}</strong>
+            </Typography>
+          )}
+        </Stack>
       </Paper>
 
-      {/* Receivers */}
       <Typography
         variant="h5"
         fontWeight={700}
-        gutterBottom
-        sx={{ mb: 4, textAlign: "center" }}
+        sx={{ mb: 3, textAlign: "center" }}
       >
         Delivery Destinations ({receivers.length})
       </Typography>
 
-      <Stack spacing={5}>
-        {receivers.map((receiver, idx) => {
-          const shippingDetails = receiver.shippingDetails || [];
-          const totalPackages = shippingDetails.reduce(
-            (sum, item) => sum + (Number(item.totalNumber) || 0),
-            0,
-          );
-          const totalRemaining = shippingDetails.reduce(
-            (sum, item) => sum + (Number(item.remainingItems) || 0),
-            0,
-          );
+      {receivers.map((receiver, idx) => {
+        const items = receiver.shippingDetails || [];
 
-          return (
-            <Paper
-              key={receiver.id}
-              elevation={3}
+        const leastItem = items.reduce(
+          (min, it) =>
+            !min || rankOf(it.status) < rankOf(min.status) ? it : min,
+          null,
+        );
+        const currentIndex = leastItem ? rankOf(leastItem.status) : 0;
+        const deliveredCount = items.filter(
+          (i) => i.status === finalStep,
+        ).length;
+
+        return (
+          <Accordion
+            key={receiver.id}
+            defaultExpanded={idx === 0}
+            sx={{
+              mb: 2,
+              borderRadius: 2,
+              overflow: "hidden",
+              "&:before": { display: "none" },
+            }}
+          >
+            <AccordionSummary
+              expandIcon={<ExpandMoreIcon sx={{ color: "#fff" }} />}
               sx={{
-                borderRadius: 3,
-                overflow: "hidden",
-                border: "1px solid #e2e8f0",
-                transition: "all 0.2s",
-                "&:hover": {
-                  boxShadow: "0 12px 40px rgba(0,0,0,0.1)",
-                  transform: "translateY(-4px)",
-                },
+                color: "#fff",
+                background: "linear-gradient(135deg, #1b263b 0%, #0d6c6a 100%)",
               }}
             >
-              {/* Receiver Header */}
-              <Box
-                sx={{
-                  background:
-                    "linear-gradient(135deg, #1b263b 0%, #0d6c6a 100%)",
-                  color: "white",
-                  p: { xs: 3, md: 4 },
-                }}
-              >
-                <Typography variant="h5" fontWeight={700}>
+              <Box sx={{ width: "100%" }}>
+                <Typography variant="h6" fontWeight={700}>
                   Receiver {idx + 1}: {receiver.receiverName || "—"}
                 </Typography>
-
-                <Typography variant="body1" sx={{ mt: 1, opacity: 0.95 }}>
-                  {receiver.receiverAddress || "—"} - Email{" "}
-                  {receiver.receiverEmail || "—"}
+                <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                  {receiver.receiverAddress || "—"}
+                  {receiver.receiverEmail && ` • ${receiver.receiverEmail}`}
                 </Typography>
-                <Box>
-                  <Typography variant="body2" color="#ffff"></Typography>
-                </Box>
                 <Stack
                   direction="row"
-                  spacing={2}
-                  sx={{ mt: 2.5, flexWrap: "wrap" }}
+                  spacing={1}
+                  sx={{ mt: 1, flexWrap: "wrap" }}
                 >
                   <Chip
-                    label={receiver.status || "Pending"}
-                    size="medium"
-                    sx={{ bgcolor: "#f58220", color: "white", fontWeight: 600 }}
+                    size="small"
+                    label={`${items.length} item${items.length === 1 ? "" : "s"}`}
+                    sx={{ bgcolor: "#1976d2", color: "#fff", fontWeight: 600 }}
                   />
                   <Chip
-                    label={`ETA: ${formatDate(receiver.eta) || "TBD"}`}
-                    size="medium"
-                    sx={{ bgcolor: "#16a34a", color: "white", fontWeight: 600 }}
+                    size="small"
+                    label={`${deliveredCount}/${items.length} delivered`}
+                    sx={{ bgcolor: "#16a34a", color: "#fff", fontWeight: 600 }}
                   />
-                  {receiver.containers?.length > 0 && (
+                  {leastItem && (
                     <Chip
-                      label={`Container${receiver.containers.length > 1 ? "s" : ""}: ${receiver.containers.join(" • ")}`}
-                      size="medium"
+                      size="small"
+                      label={`Current: ${leastItem.status}`}
                       sx={{
-                        bgcolor: "#1976d2",
-                        color: "white",
+                        bgcolor: "#f58220",
+                        color: "#fff",
                         fontWeight: 600,
                       }}
                     />
                   )}
                 </Stack>
               </Box>
+            </AccordionSummary>
 
-              {/* Content */}
-              <Box sx={{ p: { xs: 3, md: 4 }, bgcolor: "#fff" }}>
-                <Grid container justifyContent={"space-between"} spacing={4}>
-                  {/* Left column - Contact + Summary */}
-                  <Grid
-                    sx={{
-                      p: 3,
-                      bgcolor: "#fffbeb",
-                      border: "1px solid #fde68a",
-                      width: 400,
-                      borderRadius: 2,
-                    }}
-                  >
-                    <Stack spacing={4}>
-                      {/* Sender */}
-                      <Box sx={{ mt: 3, mb: 4 }}>
-                        <Typography variant="subtitle1" fontWeight={600}>
-                          Sender
-                        </Typography>
-                        <Typography variant="body1" sx={{ mt: 1 }}>
-                          {sender.name}
+            <AccordionDetails sx={{ p: { xs: 2, md: 3 }, bgcolor: "#fff" }}>
+              {timelineSteps.length > 0 && items.length > 0 && (
+                <>
+                  <Typography variant="subtitle2" color="text.secondary">
+                    Overall progress (based on the least advanced item
+                    {leastItem?.trackingId ? `: ${leastItem.trackingId}` : ""})
+                  </Typography>
+                  <ReceiverProgress
+                    steps={timelineSteps}
+                    currentIndex={currentIndex}
+                  />
+                </>
+              )}
+
+              <TableContainer
+                component={Paper}
+                sx={{ border: "1px solid #e2e8f0", borderRadius: 2, mt: 1 }}
+              >
+                <Table size="medium">
+                  <TableHead>
+                    <TableRow sx={{ bgcolor: "#f8fafc" }}>
+                      <TableCell />
+                      <TableCell>
+                        <strong>Tracking ID</strong>
+                      </TableCell>
+                      <TableCell>
+                        <strong>Description</strong>
+                      </TableCell>
+                      <TableCell align="right">
+                        <strong>Qty</strong>
+                      </TableCell>
+                      <TableCell align="right">
+                        <strong>Weight</strong>
+                      </TableCell>
+                      <TableCell>
+                        <strong>Status</strong>
+                      </TableCell>
+                      <TableCell>
+                        <strong>ETA</strong>
+                      </TableCell>
+                      <TableCell>
+                        <strong>Container</strong>
+                      </TableCell>
+                      <TableCell>
+                        <strong>Consignment</strong>
+                      </TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {items.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={9} align="center">
+                          No items found for this receiver.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      items.map((item) => <ItemRow key={item.id} item={item} />)
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+
+              {receiver.dropOffDetails?.length > 0 && (
+                <Paper
+                  variant="outlined"
+                  sx={{
+                    p: 3,
+                    mt: 3,
+                    bgcolor: "#fffbeb",
+                    border: "1px solid #fde68a",
+                    borderRadius: 2,
+                  }}
+                >
+                  <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                    Pickup / Drop-off Schedule
+                  </Typography>
+                  <Stack spacing={2}>
+                    {receiver.dropOffDetails.map((d, i) => (
+                      <Box key={i}>
+                        <Typography variant="subtitle2" fontWeight={600}>
+                          {d.drop_method || "—"}
                         </Typography>
                         <Typography variant="body2">
-                          Contact: {sender.contact} • Email: {sender.email}
-                        </Typography>
-                      </Box>
-                      <Box>
-                        <Typography
-                          variant="subtitle2"
-                          color="text.secondary"
-                          gutterBottom
-                        >
-                          Shipment Summary
-                        </Typography>
-                        <Typography fontWeight={500}>
-                          {totalPackages.toLocaleString()} packages
+                          {d.dropoff_name} • {d.drop_off_mobile || "—"}
+                          {d.plate_no && ` • Vehicle: ${d.plate_no}`}
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
-                          Remaining: {totalRemaining.toLocaleString()} pcs
+                          Date: {fmtDate(d.drop_date)}
                         </Typography>
                       </Box>
-                    </Stack>
-                  </Grid>
+                    ))}
+                  </Stack>
+                </Paper>
+              )}
+            </AccordionDetails>
+          </Accordion>
+        );
+      })}
 
-                  {/* Drop-off / Pickup Schedule */}
-                  {receiver.dropOffDetails?.length > 0 && (
-                    <Grid>
-                      <Paper
-                        variant="outlined"
-                        sx={{
-                          p: 3,
-                          bgcolor: "#fffbeb",
-                          border: "1px solid #fde68a",
-                          width: 400,
-                          borderRadius: 2,
-                        }}
-                      >
-                        <Typography
-                          variant="subtitle1"
-                          fontWeight={600}
-                          gutterBottom
-                          color="amber.dark"
-                        >
-                          Pickup / Drop-off Schedule
-                        </Typography>
-                        <Stack spacing={2.5}>
-                          {receiver.dropOffDetails.map((d, i) => (
-                            <Box key={i}>
-                              <Typography variant="subtitle2" fontWeight={600}>
-                                {d.drop_method || "—"}
-                              </Typography>
-                              <Typography variant="body2">
-                                {d.dropoff_name} • {d.drop_off_mobile || "—"}
-                              </Typography>
-                              {d.plate_no && (
-                                <Typography variant="body2">
-                                  Vehicle: {d.plate_no}
-                                </Typography>
-                              )}
-                              <Typography
-                                variant="body2"
-                                color="text.secondary"
-                              >
-                                Date: {formatDate(d.drop_date) || "—"}
-                              </Typography>
-                            </Box>
-                          ))}
-                        </Stack>
-                      </Paper>
-                    </Grid>
-                  )}
-                </Grid>
-
-                {/* Cargo / Items Table */}
-                {shippingDetails.length > 0 && (
-                  <Box sx={{ mt: 5 }}>
-                    <Typography variant="h6" fontWeight={600} gutterBottom>
-                      Cargo Details
-                    </Typography>
-
-                    {shippingDetails.map((item) => {
-                      const containerInfo = item.containerDetails?.[0] || {};
-                      const cont = containerInfo.container || {};
-                      const status =
-                        containerInfo.status || receiver.status || "—";
-
-                      return (
-                        <Box flex={1}>
-                          <TableContainer
-                            component={Paper}
-                            sx={{
-                              border: "1px solid #e2e8f0",
-                              borderRadius: 2,
-                              overflow: "hidden",
-                            }}
-                          >
-                            <Table size="medium">
-                              <TableHead>
-                                <TableRow sx={{ bgcolor: "#f8fafc" }}>
-                                  <TableCell>
-                                    <strong>Ref</strong>
-                                  </TableCell>
-                                  <TableCell>
-                                    <strong>Description</strong>
-                                  </TableCell>
-                                  <TableCell align="right">
-                                    <strong>Total Qty</strong>
-                                  </TableCell>
-                                  <TableCell align="right">
-                                    <strong>Total Weight</strong>
-                                  </TableCell>
-                                  <TableCell align="right">
-                                    <strong>Remaining</strong>
-                                  </TableCell>
-                                  <TableCell>
-                                    <strong>Container / Status</strong>
-                                  </TableCell>
-                                </TableRow>
-                              </TableHead>
-                              <TableBody>
-                                <TableRow key={item.id} hover>
-                                  <TableCell>{item.itemRef || "—"}</TableCell>
-                                  <TableCell>
-                                    {item.category}
-                                    {item.subcategory &&
-                                      ` • ${item.subcategory}`}
-                                    {item.type && ` (${item.type})`}
-                                  </TableCell>
-                                  <TableCell align="right">
-                                    {Number(
-                                      item.totalNumber,
-                                    )?.toLocaleString() || "—"}
-                                  </TableCell>
-
-                                  <TableCell align="right">
-                                    {Number(item.weight)?.toLocaleString() ||
-                                      "—"}
-                                  </TableCell>
-                                  <TableCell align="right">
-                                    {Number(
-                                      item.remainingItems,
-                                    )?.toLocaleString() || "—"}
-                                  </TableCell>
-                                  <TableCell>
-                                    {cont.container_number ? (
-                                      <>
-                                        {cont.container_number}
-                                        <br />
-                                        <Typography
-                                          variant="caption"
-                                          color="text.secondary"
-                                        >
-                                          {status} •{" "}
-                                          {Number(
-                                            containerInfo.assign_total_box || 0,
-                                          ).toLocaleString()}{" "}
-                                          {item.type && ` (${item.type})`}•{" "}
-                                          {Number(
-                                            containerInfo.assign_weight || 0,
-                                          ).toLocaleString()}{" "}
-                                          Kg
-                                        </Typography>
-                                      </>
-                                    ) : (
-                                      "Not Assigned"
-                                    )}
-                                  </TableCell>
-                                </TableRow>
-                              </TableBody>
-                            </Table>
-                          </TableContainer>
-                          <ShipmentTimeline
-                            currentStatus={receiver.status}
-                            statusHistory={receiver.status_history || []}
-                          />
-                        </Box>
-                      );
-                    })}
-                  </Box>
-                )}
-              </Box>
-            </Paper>
-          );
-        })}
-      </Stack>
-
-      {/* CTA */}
       <Paper
         elevation={4}
         sx={{
@@ -1307,7 +1625,6 @@ const ConsignmentLayout = ({ trackingData }) => {
         </Grid>
       </Paper>
 
-      {/* Consignment Overview - NOW WITH PAPER WRAPPER */}
       <Paper
         elevation={2}
         sx={{
@@ -1392,7 +1709,6 @@ const ConsignmentLayout = ({ trackingData }) => {
         )}
       </Paper>
 
-      {/* Associated Orders */}
       {orders.length > 0 && (
         <>
           <Typography
@@ -1465,7 +1781,6 @@ const ConsignmentLayout = ({ trackingData }) => {
                             },
                           }}
                         >
-                          {/* Receiver Header */}
                           <Box
                             sx={{
                               background:
@@ -1537,7 +1852,6 @@ const ConsignmentLayout = ({ trackingData }) => {
                               justifyContent={"space-between"}
                               spacing={4}
                             >
-                              {/* Left column - Contact + Summary */}
                               <Grid
                                 sx={{
                                   p: 3,
@@ -1590,7 +1904,6 @@ const ConsignmentLayout = ({ trackingData }) => {
                                 </Stack>
                               </Grid>
 
-                              {/* Drop-off / Pickup Schedule */}
                               {receiver.dropOffDetails?.length > 0 && (
                                 <Grid>
                                   <Paper
@@ -1644,7 +1957,6 @@ const ConsignmentLayout = ({ trackingData }) => {
                               )}
                             </Grid>
 
-                            {/* Cargo / Items Table */}
                             {shippingDetails.length > 0 && (
                               <Box sx={{ mt: 5 }}>
                                 <Typography
@@ -1785,7 +2097,6 @@ const ConsignmentLayout = ({ trackingData }) => {
         </>
       )}
 
-      {/* CTA */}
       <Paper
         sx={{
           mt: 8,

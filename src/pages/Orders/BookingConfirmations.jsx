@@ -19,6 +19,8 @@ import {
   Divider,
   Stack,
   useMediaQuery,
+  ToggleButton,
+  ToggleButtonGroup,
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
@@ -96,6 +98,9 @@ export default function BookingConfirmationsPage() {
   const [detailError, setDetailError] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
 
+  const [docRole, setDocRole] = useState("receiver");
+  const [docData, setDocData] = useState(null);
+
   const loadBookings = useCallback(async () => {
     setLoading(true);
     try {
@@ -129,12 +134,24 @@ export default function BookingConfirmationsPage() {
     setDetailLoading(true);
     try {
       const { data } = await api.get(`/api/booking/${id}`);
-      setDocHtml(OrderConfirmation(data.orderData, data.company, () => ""));
+      setDocData(data);
+      setDocRole("receiver");
+      setDocHtml(
+        OrderConfirmation(data.orderData, data.company, () => "", "receiver"),
+      );
     } catch (err) {
       setDetailError("Failed to load booking document.");
     } finally {
       setDetailLoading(false);
     }
+  };
+
+  const switchDocRole = (role) => {
+    if (!role || !docData) return;
+    setDocRole(role);
+    setDocHtml(
+      OrderConfirmation(docData.orderData, docData.company, () => "", role),
+    );
   };
 
   const openSubmissionDoc = async (submissionId) => {
@@ -162,10 +179,12 @@ export default function BookingConfirmationsPage() {
     setDetailError(null);
   };
 
-  if (loading) {
-    <Box sx={{ justifyContent: "center", alignItems: "center" }}>
-      <CircularProgress />
-    </Box>;
+  {
+    loading && (
+      <Box sx={{ display: "flex", justifyContent: "center", py: 6 }}>
+        <CircularProgress />
+      </Box>
+    );
   }
 
   return (
@@ -194,14 +213,19 @@ export default function BookingConfirmationsPage() {
                 <TableCell>Total Weight</TableCell>
                 <TableCell>Created</TableCell>
                 <TableCell>Status</TableCell>
+                <TableCell>Imported</TableCell>
                 <TableCell align="right">Doc</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {bookings.map((b) => {
-                const anySubmitted =
-                  (b.senders || []).some((s) => s.booking_submitted_at) ||
-                  (b.receivers || []).some((r) => r.booking_submitted_at);
+                const doneCount =
+                  Number(
+                    (b.senders || []).some((s) => s.booking_submitted_at),
+                  ) +
+                  Number(
+                    (b.receivers || []).some((r) => r.booking_submitted_at),
+                  );
                 return (
                   <TableRow key={b.id}>
                     <TableCell>{b.form_id}</TableCell>
@@ -216,9 +240,32 @@ export default function BookingConfirmationsPage() {
                     <TableCell>
                       <Chip
                         size="small"
-                        label={anySubmitted ? "Submitted" : "Pending"}
-                        color={anySubmitted ? "success" : "default"}
+                        label={
+                          doneCount === 2
+                            ? "Completed"
+                            : doneCount === 1
+                              ? "Partial"
+                              : "Pending"
+                        }
+                        color={
+                          doneCount === 2
+                            ? "success"
+                            : doneCount === 1
+                              ? "warning"
+                              : "default"
+                        }
                       />
+                    </TableCell>
+                    <TableCell>
+                      {b.imported_order_id ? (
+                        <Chip
+                          size="small"
+                          color="info"
+                          label={`Imported · ${b.imported_rgl_booking_number || b.imported_order_id}`}
+                        />
+                      ) : (
+                        "—"
+                      )}
                     </TableCell>
                     <TableCell align="right">
                       <Button size="small" onClick={() => openBookingDoc(b.id)}>
@@ -341,7 +388,21 @@ export default function BookingConfirmationsPage() {
               </Typography>
             </Box>
           )}
-
+          {!detailLoading && !detailError && docHtml && docData && (
+            <Box
+              sx={{ p: 1.5, borderBottom: "1px solid", borderColor: "divider" }}
+            >
+              <ToggleButtonGroup
+                size="small"
+                exclusive
+                value={docRole}
+                onChange={(_, v) => switchDocRole(v)}
+              >
+                <ToggleButton value="receiver">Receiver's form</ToggleButton>
+                <ToggleButton value="sender">Sender's form</ToggleButton>
+              </ToggleButtonGroup>
+            </Box>
+          )}
           {!detailLoading && !detailError && docHtml && (
             <iframe
               title="document-preview"
