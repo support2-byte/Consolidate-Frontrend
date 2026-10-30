@@ -33,6 +33,7 @@ export async function generateGatepassPDF({
   qty,
   weight,
   commodity,
+  items,
   gateDate,
   collectionMethod,
   download = true,
@@ -172,31 +173,45 @@ export async function generateGatepassPDF({
   doc.line(margin, y, pageWidth - margin, y);
   y += 6;
 
-  doc.setFont("helvetica", "normal").setFontSize(8.5).setTextColor(192, 57, 43);
-  doc.text("1", margin + 2, y);
+  const rows = items && items.length ? items : [{ commodity, qty, weight }];
 
-  doc.setFont("helvetica", "bold").setFontSize(9).setTextColor(41, 128, 185);
-  doc.text(commodity || "ITEM", margin + idxColW + 2, y);
+  rows.forEach((row, i) => {
+    doc
+      .setFont("helvetica", "normal")
+      .setFontSize(8.5)
+      .setTextColor(192, 57, 43);
+    doc.text(String(i + 1), margin + 2, y);
 
-  doc
-    .setFont("helvetica", "normal")
-    .setFontSize(7.5)
-    .setTextColor(41, 128, 185);
-  doc.text(`TRUCK # ${plateNo || "N/A"}`, margin + idxColW + 2, y + 4.2);
-  doc.text(`DRIVER # ${driverName || "N/A"}`, margin + idxColW + 2, y + 8.4);
-  doc.text(`ID # ${orderBookingRef || "N/A"}`, margin + idxColW + 2, y + 12.6);
-  if (weight) {
-    doc.text(`WEIGHT # ${weight} KGS`, margin + idxColW + 2, y + 16.8);
-  }
+    doc.setFont("helvetica", "bold").setFontSize(9).setTextColor(41, 128, 185);
+    doc.text(row.commodity || "ITEM", margin + idxColW + 2, y);
 
-  doc.setFont("helvetica", "bold").setFontSize(9).setTextColor(192, 57, 43);
-  doc.text(qty ? Number(qty).toFixed(2) : "0.00", pageWidth - margin - 2, y, {
-    align: "right",
+    doc
+      .setFont("helvetica", "normal")
+      .setFontSize(7.5)
+      .setTextColor(41, 128, 185);
+    doc.text(`TRUCK # ${plateNo || "N/A"}`, margin + idxColW + 2, y + 4.2);
+    doc.text(`DRIVER # ${driverName || "N/A"}`, margin + idxColW + 2, y + 8.4);
+    doc.text(
+      `ID # ${orderBookingRef || "N/A"}`,
+      margin + idxColW + 2,
+      y + 12.6,
+    );
+    if (row.weight) {
+      doc.text(`WEIGHT # ${row.weight} KGS`, margin + idxColW + 2, y + 16.8);
+    }
+
+    doc.setFont("helvetica", "bold").setFontSize(9).setTextColor(192, 57, 43);
+    doc.text(
+      row.qty ? Number(row.qty).toFixed(2) : "0.00",
+      pageWidth - margin - 2,
+      y,
+      { align: "right" },
+    );
+
+    y += row.weight ? 23 : 19;
+    doc.setDrawColor(230, 230, 230).setLineWidth(0.15);
+    doc.line(margin, y - 3, pageWidth - margin, y - 3);
   });
-
-  y += weight ? 23 : 19;
-  doc.setDrawColor(230, 230, 230).setLineWidth(0.15);
-  doc.line(margin, y - 3, pageWidth - margin, y - 3);
 
   y += 4;
   doc.setDrawColor(200, 200, 200).setLineWidth(0.2);
