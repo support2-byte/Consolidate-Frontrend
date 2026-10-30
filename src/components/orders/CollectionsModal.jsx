@@ -338,6 +338,7 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
           qty: cargoDefaults.qty,
           weight: cargoDefaults.weight,
           commodity: cargoDefaults.commodity,
+          items: cargoDefaults.items,
           gateDate: c.deliveryDate,
           collectionMethod: c.collectionMethod,
           download: false,
@@ -407,6 +408,7 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
     let totalQty = 0;
     let totalWeight = 0;
     const commodities = new Set();
+    const lines = [];
 
     selectedList.forEach(({ itemRef, qtyDelivered }) => {
       const qty = Number(qtyDelivered) || 0;
@@ -424,12 +426,19 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
 
       const label = item.subcategory || item.category;
       if (label) commodities.add(label);
+
+      lines.push({
+        commodity: label || item.itemRef,
+        qty,
+        weight: Number((perUnitWeight * qty).toFixed(2)),
+      });
     });
 
     return {
       qty: totalQty || "",
       weight: totalWeight ? Number(totalWeight.toFixed(2)) : "",
       commodity: [...commodities].join(", "),
+      items: lines,
     };
   };
 
