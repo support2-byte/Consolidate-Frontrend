@@ -57,7 +57,10 @@ const addDays = (v, days) => {
 
 const OUTCOME = {
   grace_added: {
-    label: (r) => `Grace +${r.grace_days_added} days`,
+    label: (r) =>
+      Number(r.grace_days_added) > 0
+        ? `Grace +${r.grace_days_added} days`
+        : "ETA changed manually",
     color: "#2e7d32",
     bg: "#e8f5e9",
   },
@@ -131,6 +134,32 @@ export default function AdminNotificationsPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [newEta, setNewEta] = useState("");
+
+  const toLocalISO = (v) => {
+    if (!v) return "";
+    const d = v instanceof Date ? v : new Date(v);
+    if (isNaN(d.getTime())) return "";
+    const p = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  };
+
+  const etaBounds = (currentEta, minIsToday = false) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    let base = today;
+    if (currentEta) {
+      const c = new Date(currentEta);
+      c.setHours(0, 0, 0, 0);
+      if (!isNaN(c.getTime()) && c > today) base = c;
+    }
+    const max = new Date(base);
+    max.setDate(max.getDate() + 30);
+    return {
+      min: toLocalISO(minIsToday ? today : base),
+      max: toLocalISO(max),
+    };
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -191,14 +220,26 @@ export default function AdminNotificationsPage() {
   );
   const filtersActive = !!(search.trim() || statusFilter);
 
-  const act = (row, kind) => setConfirm({ row, kind });
+  const act = (row, kind) => {
+    const def =
+      kind === "grace" && row.grace_days > 0
+        ? toLocalISO(addDays(row.eta, row.grace_days))
+        : "";
+    setNewEta(def);
+    setConfirm({ row, kind, defaultEta: def });
+  };
 
   const handleConfirm = async () => {
-    const { row, kind } = confirm;
+    const { row, kind, defaultEta } = confirm;
     setBusyId(row.id);
     try {
+      const body =
+        kind === "grace" && newEta && newEta !== defaultEta
+          ? { eta: newEta }
+          : {};
       const { data } = await api.post(
         `/api/eta-monitor/notifications/${row.id}/${kind === "grace" ? "grace" : "delay"}`,
+        body,
       );
       toast.success(data.message);
     } catch (e) {
@@ -222,7 +263,7 @@ export default function AdminNotificationsPage() {
   };
 
   const renderPending = (r) => {
-    const newEta = r.grace_days > 0 ? addDays(r.eta, r.grace_days) : null;
+    const previewEta = r.grace_days > 0 ? addDays(r.eta, r.grace_days) : null;
     const limitReached = (r.grace_used ?? 0) >= MAX_GRACE;
 
     return (
@@ -279,10 +320,10 @@ export default function AdminNotificationsPage() {
             <Label>ETA</Label>
             <Typography variant="body2" fontWeight={600}>
               {formatDate(r.eta)}
-              {newEta && (
+              {previewEta && (
                 <Box component="span" sx={{ color: TEAL }}>
                   {" → "}
-                  {formatDate(newEta)}
+                  {formatDate(previewEta)}
                 </Box>
               )}
             </Typography>
@@ -713,10 +754,9 @@ export default function AdminNotificationsPage() {
       >
         {confirm &&
           (() => {
-            const { row, kind } = confirm;
+            const { row, kind, defaultEta } = confirm;
             const isGrace = kind === "grace";
             const accent = isGrace ? TEAL : "#c62828";
-            const newEta = isGrace ? addDays(row.eta, row.grace_days) : null;
 
             return (
               <>
@@ -745,35 +785,44 @@ export default function AdminNotificationsPage() {
 
                   {isGrace ? (
                     <>
-                      <Typography variant="body2" sx={{ mb: 1 }}>
-                        The ETA will move forward by{" "}
-                        <b>
-                          {row.grace_days} day{row.grace_days > 1 ? "s" : ""}
-                        </b>
-                        .
+                      <Typography variant="body2" sx={{ mb: 1.5 }}>
+                        {row.grace_days > 0 ? (
+                          <>
+                            Grace days: <b>{row.grace_days}</b>. Change the new
+                            ETA to override them.
+                          </>
+                        ) : (
+                          "No grace days configured. Pick a new ETA."
+                        )}
                       </Typography>
-                      <Stack direction="row" spacing={1} alignItems="center">
-                        <Typography variant="body2" color="text.secondary">
-                          {formatDate(row.eta)}
-                        </Typography>
+                      <Stack direction="row" spacing={2} alignItems="center">
+                        <Box>
+                          <Label>Current ETA</Label>
+                          <Typography variant="body2" fontWeight={600}>
+                            {formatDate(row.eta)}
+                          </Typography>
+                        </Box>
                         <Typography variant="body2" sx={{ color: TEAL }}>
                           →
                         </Typography>
-                        <Typography
-                          variant="body2"
-                          fontWeight={700}
-                          sx={{ color: TEAL }}
-                        >
-                          {formatDate(newEta)}
-                        </Typography>
+                        <TextField
+                          size="small"
+                          type="date"
+                          label="New ETA"
+                          value={newEta}
+                          onChange={(e) => setNewEta(e.target.value)}
+                          InputLabelProps={{ shrink: true }}
+                          inputProps={etaBounds(row.eta)}
+                        />
                       </Stack>
                       <Typography
                         variant="caption"
                         color="text.secondary"
                         sx={{ display: "block", mt: 1.5 }}
                       >
-                        Grace used: {(row.grace_used ?? 0) + 1} of {MAX_GRACE}{" "}
-                        after this.
+                        {newEta && newEta !== defaultEta
+                          ? "This exact date will be used. No grace days are added."
+                          : `Grace used: ${(row.grace_used ?? 0) + 1} of ${MAX_GRACE} after this.`}
                       </Typography>
                     </>
                   ) : (
@@ -796,7 +845,7 @@ export default function AdminNotificationsPage() {
                     variant="contained"
                     disableElevation
                     onClick={handleConfirm}
-                    disabled={busyId != null}
+                    disabled={busyId != null || (isGrace && !newEta)}
                     sx={{
                       bgcolor: accent,
                       "&:hover": { bgcolor: isGrace ? "#155f55" : "#a52121" },
@@ -809,7 +858,11 @@ export default function AdminNotificationsPage() {
                     {busyId != null ? (
                       <CircularProgress size={18} sx={{ color: "#fff" }} />
                     ) : isGrace ? (
-                      "Add grace days"
+                      newEta !== defaultEta ? (
+                        "Save ETA"
+                      ) : (
+                        "Add grace days"
+                      )
                     ) : (
                       "Mark as Delayed"
                     )}
