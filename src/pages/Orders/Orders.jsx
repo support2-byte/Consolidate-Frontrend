@@ -133,6 +133,8 @@ const OrdersList = () => {
   ] = useState(null);
 
   const [selectedStatus, setSelectedStatus] = useState("");
+  const [selectedEta, setSelectedEta] = useState("");
+  const [etaSaving, setEtaSaving] = useState(false);
 
   const [openCollectionsModal, setOpenCollectionsModal] = useState(false);
   const [collectionsOrder, setCollectionsOrder] = useState(null);
@@ -147,6 +149,47 @@ const OrdersList = () => {
   const [activeOrderData, setActiveOrderData] = useState(null);
   const [openOrderConfirmEmail, setOpenOrderConfirmEmail] = useState(false);
   const printFrameRef = useRef(null);
+
+  const toLocalISO = (v) => {
+    if (!v) return "";
+    const d = v instanceof Date ? v : new Date(v);
+    if (isNaN(d.getTime())) return "";
+    const p = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  };
+
+  const etaBounds = (currentEta, minIsToday = false) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    let base = today;
+    if (currentEta) {
+      const c = new Date(currentEta);
+      c.setHours(0, 0, 0, 0);
+      if (!isNaN(c.getTime()) && c > today) base = c;
+    }
+    const max = new Date(base);
+    max.setDate(max.getDate() + 30);
+    return {
+      min: toLocalISO(minIsToday ? today : base),
+      max: toLocalISO(max),
+    };
+  };
+
+  const toDateInput = (v) => toLocalISO(v);
+
+  const calcEtaForStatus = (statusName) => {
+    const matched = (statuses || []).find((s) => s.order_status === statusName);
+    if (matched?.days_offset == null) return "";
+    const d = new Date();
+    d.setDate(d.getDate() + matched.days_offset);
+    const calc = toLocalISO(d);
+    const { max } = etaBounds(
+      selectedReceiverForUpdateDetails?.trackingEta ||
+        selectedReceiverForUpdateDetails?.eta,
+      true,
+    );
+    return calc > max ? max : calc;
+  };
 
   const handleOpenActionMenu = (e, order) => {
     e.preventDefault();
@@ -166,13 +209,13 @@ const OrdersList = () => {
 
   const handleStatusUpdate = (orderId, order) => {
     setSelectedOrderForUpdate(orderId);
+    setSelectedReceiverForUpdateDetails(null);
+    setSelectedEta("");
     if (orderId && orderId.length) {
       const firstRec = orderId[0];
-
       setSelectedReceiverForUpdate(firstRec);
       setSelectedStatus(firstRec.status || "Received for Shipment");
     }
-
     setOpenStatusDialog(true);
   };
 
@@ -180,16 +223,35 @@ const OrdersList = () => {
     setOpenStatusDialog(false);
     setSelectedOrderForUpdate(null);
     setSelectedReceiverForUpdate(null);
+    setSelectedReceiverForUpdateDetails(null);
     setSelectedStatus("");
+    setSelectedEta("");
   };
+
   const handleStatusChange = (event) => {
-    setSelectedStatus(event.target.value);
+    const value = event.target.value;
+    setSelectedStatus(value);
+    const calculated = calcEtaForStatus(value);
+    if (calculated) setSelectedEta(calculated);
   };
+
   const handleReceiverChange = (event) => {
     const recId = event.target.value;
     const rec = selectedOrderForUpdate?.receivers?.find((r) => r.id === recId);
     setSelectedReceiverForUpdate(rec);
+    setSelectedReceiverForUpdateDetails(null);
     setSelectedStatus(rec?.status || "Received for Shipment");
+    setSelectedEta("");
+  };
+
+  const handleShippingChange = (event) => {
+    const recId = event.target.value;
+    const rec = selectedReceiverForUpdate?.shippingdetails?.find(
+      (r) => r.itemRef === recId,
+    );
+    setSelectedReceiverForUpdateDetails(rec);
+    if (rec?.status) setSelectedStatus(rec.status);
+    setSelectedEta(toDateInput(rec?.trackingEta || rec?.eta));
   };
 
   const handleCopyContainer = async (containerNumber) => {
@@ -204,15 +266,6 @@ const OrdersList = () => {
     } catch (err) {
       console.error("Copy failed:", err);
     }
-  };
-
-  const handleShippingChange = (event) => {
-    const recId = event.target.value;
-    const rec = selectedReceiverForUpdate?.shippingdetails?.find(
-      (r) => r.itemRef === recId,
-    );
-
-    setSelectedReceiverForUpdateDetails(rec);
   };
 
   const handleConfirmStatusUpdate = async () => {
@@ -251,6 +304,46 @@ const OrdersList = () => {
     } finally {
       setIsLoading(false);
       handleCloseStatusDialog();
+    }
+  };
+
+  const handleUpdateEta = async () => {
+    if (
+      !selectedOrderForUpdate ||
+      !selectedReceiverForUpdateDetails?.itemRef ||
+      !selectedEta
+    ) {
+      setSnackbar({
+        open: true,
+        message: "Select an item and an ETA first",
+        severity: "warning",
+      });
+      return;
+    }
+    setEtaSaving(true);
+    try {
+      await api.put(
+        `/api/orders/${selectedOrderForUpdate.id}/items/${selectedReceiverForUpdateDetails.itemRef}/eta`,
+        { eta: selectedEta },
+      );
+      setSnackbar({
+        open: true,
+        message: "ETA updated successfully!",
+        severity: "success",
+      });
+      handleCloseStatusDialog();
+      fetchOrders();
+    } catch (err) {
+      setSnackbar({
+        open: true,
+        message:
+          err.response?.data?.details ||
+          err.response?.data?.message ||
+          "Failed to update ETA",
+        severity: "error",
+      });
+    } finally {
+      setEtaSaving(false);
     }
   };
 
@@ -7089,20 +7182,37 @@ const OrdersList = () => {
                 ))}
               </Select>
             </FormControl>
-            <FormControl fullWidth margin="dense">
-              <InputLabel>Status</InputLabel>
-              <Select
-                value={selectedStatus}
-                label="Status"
-                onChange={handleStatusChange}
-              >
-                {statuses.map((status) => (
-                  <MenuItem key={status.id} value={status.order_status}>
-                    {status.order_status}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+            <Box sx={{ display: "flex", gap: 2, alignItems: "flex-start" }}>
+              <FormControl fullWidth margin="dense" sx={{ flex: 1 }}>
+                <InputLabel>Status</InputLabel>
+                <Select
+                  value={selectedStatus}
+                  label="Status"
+                  onChange={handleStatusChange}
+                >
+                  {statuses.map((status) => (
+                    <MenuItem key={status.id} value={status.order_status}>
+                      {status.order_status}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <TextField
+                label="ETA"
+                type="date"
+                margin="dense"
+                value={selectedEta}
+                onChange={(e) => setSelectedEta(e.target.value)}
+                InputLabelProps={{ shrink: true }}
+                sx={{ flex: 1 }}
+                disabled={!selectedReceiverForUpdateDetails}
+                inputProps={etaBounds(
+                  selectedReceiverForUpdateDetails?.trackingEta ||
+                    selectedReceiverForUpdateDetails?.eta,
+                  true,
+                )}
+              />
+            </Box>
           </DialogContent>
           <DialogActions>
             <Button onClick={handleCloseStatusDialog}>Cancel</Button>
@@ -7119,6 +7229,19 @@ const OrdersList = () => {
               variant="contained"
             >
               Notify
+            </Button>
+            <Button
+              onClick={handleUpdateEta}
+              disabled={
+                isLoading ||
+                etaSaving ||
+                !selectedReceiverForUpdateDetails ||
+                !selectedEta
+              }
+              variant="outlined"
+              sx={{ borderColor: "#f58220", color: "#f58220" }}
+            >
+              {etaSaving ? "Updating..." : "Update ETA"}
             </Button>
           </DialogActions>
         </Dialog>

@@ -1781,7 +1781,15 @@ const OrderForm = () => {
               ...r,
               shippingDetails: [
                 ...r.shippingDetails.slice(0, j + 1),
-                { ...toDuplicate },
+                {
+                  ...toDuplicate,
+                  id: undefined,
+                  itemRef: undefined,
+                  item_ref: undefined,
+                  trackingId: undefined,
+                  containerDetails: [],
+                },
+                ,
                 ...r.shippingDetails.slice(j + 1),
               ],
             }
