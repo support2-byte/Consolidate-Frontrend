@@ -196,7 +196,6 @@ const ContainerFormModal = ({
             name="size"
             value={formData.size}
             onChange={onChange}
-            disabled={isEditing}
           >
             {sizes.map((s) => (
               <MenuItem key={s.value} value={s.value}>
@@ -209,7 +208,6 @@ const ContainerFormModal = ({
             name="type"
             value={formData.type}
             onChange={onChange}
-            disabled={isEditing}
           >
             {types.map((t) => (
               <MenuItem key={t.value} value={t.value}>

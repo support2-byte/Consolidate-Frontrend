@@ -364,6 +364,8 @@ const OrderModalView = ({
     navigate(`/orders/${id}/edit/`, { state: { orderId: id } });
   };
 
+  const isMulti = (item) => (item?.containerDetails?.length || 0) > 1;
+
   const normalizeContainers = (c) => {
     if (!c || !Array.isArray(c)) return [];
     return c
@@ -1075,14 +1077,22 @@ const OrderModalView = ({
                     ["Tracking ID", item.trackingId],
                     ["Type", item.type],
                     ["Status", item.status],
-                    ["ETA", item.eta],
+                    [
+                      "ETA",
+                      isMulti(item) ? "See container assignments" : item.eta,
+                    ],
                     ["ETD", item.etd],
                     ["Total Number", item.totalNumber],
                     ["Weight", item.weight ? `${item.weight} kg` : null],
                     ["Pickup Location", item.pickupLocation],
                     ["Delivery Address", item.deliveryAddress],
                     ["Item Ref", item.itemRef],
-                    ["Remaining Items", item.remainingItems],
+                    [
+                      "Remaining Items",
+                      item.remainingItems != null
+                        ? String(item.remainingItems)
+                        : null,
+                    ],
                     ...(paymentOf(rec.id)
                       ? [["Payment", paymentOf(rec.id)]]
                       : []),
@@ -1122,6 +1132,7 @@ const OrderModalView = ({
                               "Consignment #",
                               "Assigned Weight",
                               "Assigned Boxes",
+                              ...(isMulti(item) ? ["ETA"] : []),
                               "Remaining",
                             ].map((h) => (
                               <TableCell
@@ -1145,7 +1156,7 @@ const OrderModalView = ({
                             >
                               <TableCell>
                                 <Chip
-                                  label={cd.status}
+                                  label={cd.item_status || cd.status}
                                   size="small"
                                   sx={{
                                     bgcolor:
@@ -1175,6 +1186,11 @@ const OrderModalView = ({
                               <TableCell>
                                 {cd.assign_total_box || "N/A"}
                               </TableCell>
+                              {isMulti(item) && (
+                                <TableCell>
+                                  {cd.eta ? formatDate(cd.eta) : "N/A"}
+                                </TableCell>
+                              )}
                               <TableCell>
                                 {cd.remaining_items ?? "N/A"}
                               </TableCell>
