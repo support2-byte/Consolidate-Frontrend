@@ -134,6 +134,7 @@ const OrdersList = () => {
 
   const [selectedStatus, setSelectedStatus] = useState("");
   const [selectedEta, setSelectedEta] = useState("");
+  const [selectedCid, setSelectedCid] = useState("");
   const [etaSaving, setEtaSaving] = useState(false);
 
   const [openCollectionsModal, setOpenCollectionsModal] = useState(false);
@@ -208,6 +209,7 @@ const OrdersList = () => {
   };
 
   const handleStatusUpdate = (orderId, order) => {
+    setSelectedCid("");
     setSelectedOrderForUpdate(orderId);
     setSelectedReceiverForUpdateDetails(null);
     setSelectedEta("");
@@ -220,6 +222,7 @@ const OrdersList = () => {
   };
 
   const handleCloseStatusDialog = () => {
+    setSelectedCid("");
     setOpenStatusDialog(false);
     setSelectedOrderForUpdate(null);
     setSelectedReceiverForUpdate(null);
@@ -236,6 +239,7 @@ const OrdersList = () => {
   };
 
   const handleReceiverChange = (event) => {
+    setSelectedCid("");
     const recId = event.target.value;
     const rec = selectedOrderForUpdate?.receivers?.find((r) => r.id === recId);
     setSelectedReceiverForUpdate(rec);
@@ -250,8 +254,28 @@ const OrdersList = () => {
       (r) => r.itemRef === recId,
     );
     setSelectedReceiverForUpdateDetails(rec);
+    const cds = rec?.containerDetails || [];
+    if (cds.length === 1) {
+      setSelectedCid(cds[0].container.cid);
+      setSelectedStatus(cds[0].item_status || rec?.status || selectedStatus);
+      setSelectedEta(toDateInput(cds[0].eta || rec?.trackingEta || rec?.eta));
+      return;
+    }
+    setSelectedCid("");
     if (rec?.status) setSelectedStatus(rec.status);
     setSelectedEta(toDateInput(rec?.trackingEta || rec?.eta));
+  };
+
+  const handleContainerChange = (event) => {
+    const cid = event.target.value;
+    setSelectedCid(cid);
+    const cd = selectedReceiverForUpdateDetails?.containerDetails?.find(
+      (c) => c.container.cid === cid,
+    );
+    if (cd?.item_status) setSelectedStatus(cd.item_status);
+    setSelectedEta(
+      toDateInput(cd?.eta || selectedReceiverForUpdateDetails?.eta),
+    );
   };
 
   const handleCopyContainer = async (containerNumber) => {
@@ -283,6 +307,7 @@ const OrdersList = () => {
         {
           status: selectedStatus,
           itemRefs: [selectedReceiverForUpdateDetails.itemRef],
+          cid: selectedCid || null,
         },
       );
       setSnackbar({
@@ -324,7 +349,7 @@ const OrdersList = () => {
     try {
       await api.put(
         `/api/orders/${selectedOrderForUpdate.id}/items/${selectedReceiverForUpdateDetails.itemRef}/eta`,
-        { eta: selectedEta },
+        { eta: selectedEta, cid: selectedCid || null },
       );
       setSnackbar({
         open: true,
@@ -1718,7 +1743,7 @@ const OrdersList = () => {
                                   </Tooltip>
                                 </Box>
                                 <Chip
-                                  label={`ETA: ${item.trackingEta ? new Date(item.trackingEta).toLocaleDateString() : "N/A"}`}
+                                  label={`ETA: ${c.eta || item.trackingEta ? new Date(c.eta || item.trackingEta).toLocaleDateString() : "N/A"}`}
                                   size="small"
                                   sx={{
                                     height: 18,
@@ -6154,6 +6179,10 @@ const OrdersList = () => {
     frame.contentWindow.print();
   };
 
+  const needsCid =
+    (selectedReceiverForUpdateDetails?.containerDetails?.length || 0) > 1 &&
+    !selectedCid;
+
   if (isLoading) {
     return (
       <Paper sx={{ p: 3, borderRadius: 3, boxShadow: 3, bgcolor: "#fafafa" }}>
@@ -7182,6 +7211,26 @@ const OrdersList = () => {
                 ))}
               </Select>
             </FormControl>
+            {(selectedReceiverForUpdateDetails?.containerDetails?.length || 0) >
+              1 && (
+              <FormControl fullWidth margin="dense">
+                <InputLabel>Container</InputLabel>
+                <Select
+                  value={selectedCid}
+                  label="Container"
+                  onChange={handleContainerChange}
+                >
+                  {selectedReceiverForUpdateDetails.containerDetails.map(
+                    (cd) => (
+                      <MenuItem key={cd.container.cid} value={cd.container.cid}>
+                        {cd.container.container_number} ({cd.assign_total_box}{" "}
+                        boxes)
+                      </MenuItem>
+                    ),
+                  )}
+                </Select>
+              </FormControl>
+            )}
             <Box sx={{ display: "flex", gap: 2, alignItems: "flex-start" }}>
               <FormControl fullWidth margin="dense" sx={{ flex: 1 }}>
                 <InputLabel>Status</InputLabel>
@@ -7218,14 +7267,14 @@ const OrdersList = () => {
             <Button onClick={handleCloseStatusDialog}>Cancel</Button>
             <Button
               onClick={handleConfirmStatusUpdate}
-              disabled={isLoading}
+              disabled={isLoading || needsCid}
               variant="contained"
             >
               Update Status
             </Button>
             <Button
               onClick={handleNotify}
-              disabled={isLoading}
+              disabled={isLoading || needsCid}
               variant="contained"
             >
               Notify
