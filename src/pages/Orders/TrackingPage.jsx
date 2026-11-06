@@ -44,6 +44,170 @@ import ShipmentTimeline from "./shipmentTimeline";
 import { useContext } from "react";
 import { AppContext } from "../../context/AppContext";
 
+const normalizeShipments = (item, steps) => {
+  const last = steps.length - 1;
+  return (item?.shipments || []).map((sh) => {
+    const idx = Math.max(steps.indexOf(sh.status), 0);
+    return {
+      qty: Number(sh.qty) || 0,
+      weight: Number(sh.weight) || 0,
+      container: sh.container || null,
+      status: sh.status || steps[0],
+      idx,
+      delivered: idx === last,
+      eta: sh.eta || null,
+      history: (sh.history || [])
+        .filter((h) => h.status)
+        .sort((a, b) => new Date(a.time) - new Date(b.time)),
+    };
+  });
+};
+
+const earliestEta = (shipments) =>
+  shipments
+    .filter((s) => !s.delivered && s.eta)
+    .map((s) => s.eta)
+    .sort((a, b) => new Date(a) - new Date(b))[0] || null;
+
+const StepBar = ({ steps, idx, delivered }) => (
+  <Box
+    sx={{
+      display: "grid",
+      gridAutoFlow: "column",
+      gridAutoColumns: "1fr",
+      gap: 0.5,
+      my: 1.5,
+    }}
+  >
+    {steps.map((s, k) => (
+      <Box
+        key={s}
+        title={s}
+        sx={{
+          height: 8,
+          borderRadius: 4,
+          bgcolor:
+            k < idx || (delivered && k === idx)
+              ? "#16a34a"
+              : k === idx
+                ? "#f58220"
+                : "#e0e0e0",
+        }}
+      />
+    ))}
+  </Box>
+);
+
+const ShipmentBlock = ({ sh, n, total, steps }) => {
+  const [open, setOpen] = useState(false);
+  const next = sh.delivered ? null : steps[sh.idx + 1];
+
+  return (
+    <Paper
+      variant="outlined"
+      sx={{ p: 2, borderRadius: 2, bgcolor: "#fff", textAlign: "left" }}
+    >
+      <Stack
+        direction={{ xs: "column", sm: "row" }}
+        justifyContent="space-between"
+        alignItems={{ xs: "flex-start", sm: "center" }}
+        spacing={1}
+      >
+        <Box>
+          <Typography fontWeight={700} sx={{ color: "#1e293b" }}>
+            Shipment {n + 1} of {total}
+            {sh.container && (
+              <Typography
+                component="span"
+                fontWeight={600}
+                sx={{ color: "#0d6c6a" }}
+              >
+                {" "}
+                · {sh.container}
+              </Typography>
+            )}
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            {sh.qty.toLocaleString()} pkgs
+            {sh.weight > 0 && ` · ${sh.weight.toLocaleString()} kg`}
+            {!sh.delivered && sh.eta && ` · ETA ${fmtDate(sh.eta)}`}
+          </Typography>
+        </Box>
+        <Chip
+          size="small"
+          label={sh.status}
+          sx={{
+            bgcolor: sh.delivered ? "#16a34a" : "#f58220",
+            color: "#fff",
+            fontWeight: 600,
+          }}
+        />
+      </Stack>
+
+      <StepBar steps={steps} idx={sh.idx} delivered={sh.delivered} />
+
+      <Stack
+        direction={{ xs: "column", sm: "row" }}
+        justifyContent="space-between"
+        spacing={0.5}
+      >
+        <Typography variant="body2" color="text.secondary">
+          <strong>
+            Step {sh.idx + 1} of {steps.length}
+          </strong>{" "}
+          · {sh.status}
+        </Typography>
+        {next && (
+          <Typography variant="body2" color="text.secondary">
+            Next: {next}
+          </Typography>
+        )}
+      </Stack>
+
+      {sh.history.length > 0 && (
+        <>
+          <Button
+            size="small"
+            onClick={() => setOpen((o) => !o)}
+            sx={{ mt: 1, color: "#f58220", fontWeight: 700, p: 0 }}
+            endIcon={open ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
+          >
+            {open ? "Hide" : "Show"} updates ({sh.history.length})
+          </Button>
+          <Collapse in={open} unmountOnExit>
+            <Box sx={{ mt: 1 }}>
+              {sh.history.map((h, i) => (
+                <Box key={i} sx={{ display: "flex", gap: 2, mb: 1 }}>
+                  <Box
+                    sx={{
+                      width: 12,
+                      height: 12,
+                      borderRadius: "50%",
+                      mt: 0.7,
+                      flexShrink: 0,
+                      bgcolor:
+                        i === sh.history.length - 1 ? "#f58220" : "#16a34a",
+                    }}
+                  />
+                  <Box>
+                    <Typography variant="body2" fontWeight={600}>
+                      {h.status}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {fmtDateTime(h.time)}
+                      {h.eta && ` • ETA ${fmtDate(h.eta)}`}
+                    </Typography>
+                  </Box>
+                </Box>
+              ))}
+            </Box>
+          </Collapse>
+        </>
+      )}
+    </Paper>
+  );
+};
+
 const TrackingPage = () => {
   const { places, statuses } = useContext(AppContext);
   const [value, setValue] = useState("");
@@ -354,6 +518,10 @@ const ItemRefLayout = ({ trackingData, places, timelineSteps }) => {
   const receiver = trackingData.receivers?.[0] || {};
   const item = receiver.items?.[0] || {};
 
+  const shipments = normalizeShipments(item, timelineSteps);
+  const partial = shipments.length > 1;
+  const etaValue = (partial ? earliestEta(shipments) : null) || receiver.eta;
+
   const pol = trackingData.place_of_loading;
   const pod = trackingData.place_of_delivery;
 
@@ -523,8 +691,8 @@ const ItemRefLayout = ({ trackingData, places, timelineSteps }) => {
                   ETA
                 </Typography>
                 <Typography variant="body1" fontWeight={600}>
-                  {receiver.eta
-                    ? new Date(receiver.eta).toLocaleDateString("en-GB", {
+                  {etaValue
+                    ? new Date(etaValue).toLocaleDateString("en-GB", {
                         day: "numeric",
                         month: "short",
                         year: "numeric",
@@ -537,159 +705,176 @@ const ItemRefLayout = ({ trackingData, places, timelineSteps }) => {
             sx={{ width: 180, background: "#fff", height: "auto", py: 1.5 }}
           />
         </Stack>
-
-        <Box sx={{ position: "relative", my: 3 }}>
-          <Box
-            sx={{
-              position: "absolute",
-              top: "50%",
-              left: 0,
-              right: 0,
-              height: 8,
-              bgcolor: "#e0e0e0",
-              borderRadius: 4,
-              transform: "translateY(-50%)",
-              marginBottom: 5,
-            }}
-          />
-          <Box
-            sx={{
-              position: "absolute",
-              top: "50%",
-              left: 0,
-              height: 8,
-              background: "linear-gradient(90deg, #16a34a 0%, #f58220 100%)",
-              borderRadius: 4,
-              transform: "translateY(-50%)",
-              width: `${progressPercent}%`,
-              transition: "width 0.8s ease",
-              marginBottom: 5,
-            }}
-          />
-
-          <Stack
-            direction="row"
-            justifyContent="space-between"
-            sx={{
-              position: "relative",
-              zIndex: 1,
-              pt: 1,
-              mt: 2,
-            }}
-          >
-            {timelineSteps.map((step, idx) => {
-              const isCompleted = idx < currentIndex;
-              const isCurrent = idx === currentIndex;
-
-              return (
-                <Box key={step} sx={{ textAlign: "center", flex: 1 }}>
-                  {isCurrent ? (
-                    <Box sx={{ position: "relative" }}>
-                      <RadioButtonCheckedIcon
-                        sx={{ color: "#f58220", fontSize: 30, mb: 1 }}
-                      />
-                      <Box
-                        sx={{
-                          position: "absolute",
-                          top: -2,
-                          left: "50%",
-                          transform: "translateX(-50%)",
-                          width: 38,
-                          height: 38,
-                          borderRadius: "50%",
-                          bgcolor: "#fff",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          border: "3px solid #f58220",
-                          zIndex: 3,
-
-                          boxShadow: "0 4px 14px rgba(245, 130, 32, 0.35)",
-
-                          "&::before": {
-                            content: '""',
-                            position: "absolute",
-                            inset: -3,
-                            borderRadius: "50%",
-                            border: "2px solid #f58220",
-                            animation: "shipPulse 2s ease-out infinite",
-                          },
-
-                          "@keyframes shipPulse": {
-                            "0%": {
-                              transform: "scale(1)",
-                              opacity: 0.7,
-                            },
-                            "70%": {
-                              transform: "scale(1.55)",
-                              opacity: 0,
-                            },
-                            "100%": {
-                              transform: "scale(1.55)",
-                              opacity: 0,
-                            },
-                          },
-
-                          "@keyframes shipFloat": {
-                            "0%, 100%": {
-                              transform: "translateY(0)",
-                            },
-                            "50%": {
-                              transform: "translateY(-3px)",
-                            },
-                          },
-                        }}
-                      >
-                        <DirectionsBoatFilledIcon
-                          sx={{
-                            fontSize: 23,
-                            color: "#0d6c6a",
-                            animation: "shipFloat 2.2s ease-in-out infinite",
-                          }}
-                        />
-                      </Box>
-                    </Box>
-                  ) : isCompleted ? (
-                    <CheckCircleIcon
-                      sx={{ color: "#16a34a", fontSize: 30, mb: 1 }}
-                    />
-                  ) : (
-                    <RadioButtonUncheckedIcon
-                      sx={{ color: "#bdbdbd", fontSize: 30, mb: 1 }}
-                    />
-                  )}
-
-                  <Typography
-                    variant="body2"
-                    fontWeight={isCurrent ? 800 : isCompleted ? 600 : 400}
-                    color={
-                      isCurrent
-                        ? "#FF8A00"
-                        : isCompleted
-                          ? "#FFFFFF"
-                          : "rgba(255,255,255,0.65)"
-                    }
-                    sx={{ fontSize: "14px", mt: 5 }}
-                  >
-                    {step}
-                  </Typography>
-                </Box>
-              );
-            })}
+        {partial ? (
+          <Stack spacing={2} sx={{ my: 3 }}>
+            {shipments.map((sh, n) => (
+              <ShipmentBlock
+                key={n}
+                sh={sh}
+                n={n}
+                total={shipments.length}
+                steps={timelineSteps}
+              />
+            ))}
           </Stack>
-        </Box>
+        ) : (
+          <>
+            <Box sx={{ position: "relative", my: 3 }}>
+              <Box
+                sx={{
+                  position: "absolute",
+                  top: "50%",
+                  left: 0,
+                  right: 0,
+                  height: 8,
+                  bgcolor: "#e0e0e0",
+                  borderRadius: 4,
+                  transform: "translateY(-50%)",
+                  marginBottom: 5,
+                }}
+              />
+              <Box
+                sx={{
+                  position: "absolute",
+                  top: "50%",
+                  left: 0,
+                  height: 8,
+                  background:
+                    "linear-gradient(90deg, #16a34a 0%, #f58220 100%)",
+                  borderRadius: 4,
+                  transform: "translateY(-50%)",
+                  width: `${progressPercent}%`,
+                  transition: "width 0.8s ease",
+                  marginBottom: 5,
+                }}
+              />
 
-        <Typography
-          variant="h6"
-          fontWeight={600}
-          color="#fff"
-          textAlign={"center"}
-          sx={{ mt: 3, mb: 2 }}
-        >
-          {currentStatus === "Shipment Delivered"
-            ? "Shipment Delivered Successfully!"
-            : `Your order is being prepared for ${currentStatus.toLowerCase()}.`}
-        </Typography>
+              <Stack
+                direction="row"
+                justifyContent="space-between"
+                sx={{
+                  position: "relative",
+                  zIndex: 1,
+                  pt: 1,
+                  mt: 2,
+                }}
+              >
+                {timelineSteps.map((step, idx) => {
+                  const isCompleted = idx < currentIndex;
+                  const isCurrent = idx === currentIndex;
+
+                  return (
+                    <Box key={step} sx={{ textAlign: "center", flex: 1 }}>
+                      {isCurrent ? (
+                        <Box sx={{ position: "relative" }}>
+                          <RadioButtonCheckedIcon
+                            sx={{ color: "#f58220", fontSize: 30, mb: 1 }}
+                          />
+                          <Box
+                            sx={{
+                              position: "absolute",
+                              top: -2,
+                              left: "50%",
+                              transform: "translateX(-50%)",
+                              width: 38,
+                              height: 38,
+                              borderRadius: "50%",
+                              bgcolor: "#fff",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              border: "3px solid #f58220",
+                              zIndex: 3,
+
+                              boxShadow: "0 4px 14px rgba(245, 130, 32, 0.35)",
+
+                              "&::before": {
+                                content: '""',
+                                position: "absolute",
+                                inset: -3,
+                                borderRadius: "50%",
+                                border: "2px solid #f58220",
+                                animation: "shipPulse 2s ease-out infinite",
+                              },
+
+                              "@keyframes shipPulse": {
+                                "0%": {
+                                  transform: "scale(1)",
+                                  opacity: 0.7,
+                                },
+                                "70%": {
+                                  transform: "scale(1.55)",
+                                  opacity: 0,
+                                },
+                                "100%": {
+                                  transform: "scale(1.55)",
+                                  opacity: 0,
+                                },
+                              },
+
+                              "@keyframes shipFloat": {
+                                "0%, 100%": {
+                                  transform: "translateY(0)",
+                                },
+                                "50%": {
+                                  transform: "translateY(-3px)",
+                                },
+                              },
+                            }}
+                          >
+                            <DirectionsBoatFilledIcon
+                              sx={{
+                                fontSize: 23,
+                                color: "#0d6c6a",
+                                animation:
+                                  "shipFloat 2.2s ease-in-out infinite",
+                              }}
+                            />
+                          </Box>
+                        </Box>
+                      ) : isCompleted ? (
+                        <CheckCircleIcon
+                          sx={{ color: "#16a34a", fontSize: 30, mb: 1 }}
+                        />
+                      ) : (
+                        <RadioButtonUncheckedIcon
+                          sx={{ color: "#bdbdbd", fontSize: 30, mb: 1 }}
+                        />
+                      )}
+
+                      <Typography
+                        variant="body2"
+                        fontWeight={isCurrent ? 800 : isCompleted ? 600 : 400}
+                        color={
+                          isCurrent
+                            ? "#FF8A00"
+                            : isCompleted
+                              ? "#FFFFFF"
+                              : "rgba(255,255,255,0.65)"
+                        }
+                        sx={{ fontSize: "14px", mt: 5 }}
+                      >
+                        {step}
+                      </Typography>
+                    </Box>
+                  );
+                })}
+              </Stack>
+            </Box>
+
+            <Typography
+              variant="h6"
+              fontWeight={600}
+              color="#fff"
+              textAlign={"center"}
+              sx={{ mt: 3, mb: 2 }}
+            >
+              {currentStatus === "Shipment Delivered"
+                ? "Shipment Delivered Successfully!"
+                : `Your order is being prepared for ${currentStatus.toLowerCase()}.`}
+            </Typography>
+          </>
+        )}
 
         {hasIssue && (
           <Paper
@@ -709,7 +894,7 @@ const ItemRefLayout = ({ trackingData, places, timelineSteps }) => {
           </Paper>
         )}
 
-        <Button
+        {/* <Button
           variant="contained"
           size="large"
           startIcon={<NotificationsIcon />}
@@ -727,10 +912,10 @@ const ItemRefLayout = ({ trackingData, places, timelineSteps }) => {
           }}
         >
           Notify Me
-        </Button>
+        </Button> */}
       </Paper>
 
-      {history.length > 0 && (
+      {!partial && history.length > 0 && (
         <Paper
           elevation={0}
           sx={{
@@ -1141,8 +1326,11 @@ const ReceiverProgress = ({ steps, currentIndex }) => (
   </Box>
 );
 
-const ItemRow = ({ item }) => {
+const ItemRow = ({ item, steps = [] }) => {
   const [open, setOpen] = useState(false);
+  const shipments = normalizeShipments(item, steps);
+  const partial = shipments.length > 1;
+  const etaValue = (partial ? earliestEta(shipments) : null) || item.eta;
   const containers = (item.containerDetails || []).filter(
     (c) =>
       c.container?.container_number &&
@@ -1177,7 +1365,7 @@ const ItemRow = ({ item }) => {
             sx={{ bgcolor: "#f58220", color: "#fff", fontWeight: 600 }}
           />
         </TableCell>
-        <TableCell>{fmtDate(item.eta)}</TableCell>
+        <TableCell>{fmtDate(etaValue)}</TableCell>
         <TableCell>
           {containers.length ? (
             containers.map((c, i) => (
@@ -1222,39 +1410,56 @@ const ItemRow = ({ item }) => {
         <TableCell colSpan={9} sx={{ py: 0, border: open ? undefined : 0 }}>
           <Collapse in={open} timeout="auto" unmountOnExit>
             <Box sx={{ py: 2, pl: 6 }}>
-              <Typography variant="subtitle2" fontWeight={700} gutterBottom>
-                Tracking history
-              </Typography>
-              {history.length === 0 ? (
-                <Typography variant="body2" color="text.secondary">
-                  No tracking updates yet.
-                </Typography>
-              ) : (
-                history.map((h, i) => (
-                  <Box key={i} sx={{ display: "flex", gap: 2, mb: 1 }}>
-                    <Box
-                      sx={{
-                        width: 12,
-                        height: 12,
-                        borderRadius: "50%",
-                        mt: 0.7,
-                        bgcolor: i === 0 ? "#16a34a" : "#f58220",
-                        flexShrink: 0,
-                      }}
+              {partial ? (
+                <Stack spacing={1.5}>
+                  {shipments.map((sh, n) => (
+                    <ShipmentBlock
+                      key={n}
+                      sh={sh}
+                      n={n}
+                      total={shipments.length}
+                      steps={steps}
                     />
-                    <Box>
-                      <Typography variant="body2" fontWeight={600}>
-                        {h.status}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {fmtDateTime(h.time)}
-                        {h.container_number && ` • ${h.container_number}`}
-                        {h.consignment_number && ` • ${h.consignment_number}`}
-                        {h.eta && ` • ETA ${fmtDate(h.eta)}`}
-                      </Typography>
-                    </Box>
-                  </Box>
-                ))
+                  ))}
+                </Stack>
+              ) : (
+                <>
+                  <Typography variant="subtitle2" fontWeight={700} gutterBottom>
+                    Tracking history
+                  </Typography>
+                  {history.length === 0 ? (
+                    <Typography variant="body2" color="text.secondary">
+                      No tracking updates yet.
+                    </Typography>
+                  ) : (
+                    history.map((h, i) => (
+                      <Box key={i} sx={{ display: "flex", gap: 2, mb: 1 }}>
+                        <Box
+                          sx={{
+                            width: 12,
+                            height: 12,
+                            borderRadius: "50%",
+                            mt: 0.7,
+                            bgcolor: i === 0 ? "#16a34a" : "#f58220",
+                            flexShrink: 0,
+                          }}
+                        />
+                        <Box>
+                          <Typography variant="body2" fontWeight={600}>
+                            {h.status}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {fmtDateTime(h.time)}
+                            {h.container_number && ` • ${h.container_number}`}
+                            {h.consignment_number &&
+                              ` • ${h.consignment_number}`}
+                            {h.eta && ` • ETA ${fmtDate(h.eta)}`}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    ))
+                  )}
+                </>
               )}
             </Box>
           </Collapse>
@@ -1450,7 +1655,13 @@ const OrderDetailedLayout = ({ trackingData, timelineSteps = [] }) => {
                         </TableCell>
                       </TableRow>
                     ) : (
-                      items.map((item) => <ItemRow key={item.id} item={item} />)
+                      items.map((item) => (
+                        <ItemRow
+                          key={item.id}
+                          item={item}
+                          steps={timelineSteps}
+                        />
+                      ))
                     )}
                   </TableBody>
                 </Table>
