@@ -450,7 +450,7 @@ export default function Consignments() {
                     {row.gross_weight || 0} kg
                   </TableCell>
                   <TableCell sx={{ fontSize: 12 }}>
-                    {row.orders?.length || 0}
+                    {row.total_orders ?? 0}
                   </TableCell>
                   <TableCell sx={{ fontSize: 12 }}>
                     {row.delivered_items ?? 0}/{row.total_items ?? 0}

@@ -35,6 +35,7 @@ const HistoryModal = ({
   open,
   onClose,
   selectedContainerNo,
+  containerSize,
   usageHistory,
   unassignedOrders,
   activeHistoryTab,
@@ -52,6 +53,12 @@ const HistoryModal = ({
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
 
+  const sizeLabel = containerSize
+    ? /^\d+$/.test(String(containerSize))
+      ? `${containerSize}ft`
+      : String(containerSize)
+    : null;
+
   return (
     <Modal open={open} onClose={onClose}>
       <Box sx={modalStyle}>
@@ -66,6 +73,7 @@ const HistoryModal = ({
           }}
         >
           <Typography
+            component="div"
             variant="h5"
             sx={{
               fontWeight: "bold",
@@ -75,6 +83,18 @@ const HistoryModal = ({
             }}
           >
             Usage History for Container {selectedContainerNo || "N/A"}
+            {sizeLabel && (
+              <Chip
+                label={sizeLabel}
+                size="small"
+                sx={{
+                  ml: 1.5,
+                  bgcolor: "#e6f4f3",
+                  color: "#0d6c6a",
+                  fontWeight: 700,
+                }}
+              />
+            )}
           </Typography>
 
           <Box
