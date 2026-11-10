@@ -138,6 +138,123 @@ const getSafeSliceEnd = (rowBoundaries, startY, desiredEnd) => {
   return safeEnd > startY ? safeEnd : desiredEnd;
 };
 
+const MF_THEMES = {
+  print: {
+    outer: "#ddd",
+    border: "#ddd",
+    headBg: "#ffffff",
+    headText: "#000",
+    grpBg: "#f8f9fa",
+    subBg: "#f5f5f5",
+    totalBg: "#f5f5f5",
+    totalText: "#000",
+    catText: "#666",
+  },
+  container: {
+    outer: "#e0e0e0",
+    border: "#e0e0e0",
+    headBg: "#f8f9fa",
+    headText: "#000",
+    grpBg: "#f8f9fa",
+    subBg: "#e8f5e8",
+    totalBg: "#e8f5e8",
+    totalText: "#000",
+    catText: "#666",
+  },
+};
+
+const mfStyles = (t) => {
+  const cell = `border:1px solid ${t.border};padding:6px 8px;vertical-align:top;word-wrap:break-word;text-align:left;font-weight:normal;background:#fff;`;
+  return {
+    cell,
+    num: `${cell}text-align:right;white-space:nowrap;`,
+    grp: `${cell}background:${t.grpBg};font-weight:600;`,
+    sub: `${cell}background:${t.subBg};font-weight:600;`,
+    top: "",
+    th: `border:1px solid ${t.outer};padding:6px 8px;background:${t.headBg};color:${t.headText};font-weight:bold;text-align:left;white-space:nowrap;text-transform:uppercase;`,
+    total: `border:1px solid ${t.outer};padding:6px 8px;background:${t.totalBg};color:${t.totalText};font-weight:700;`,
+  };
+};
+
+const mfFmt = (n) =>
+  Number(n || 0).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+
+const MANIFEST_COLGROUP = `
+  <colgroup>
+    <col style="width:5%"><col style="width:9%"><col style="width:15%"><col style="width:15%">
+    <col style="width:9%"><col style="width:25%"><col style="width:10%"><col style="width:12%">
+  </colgroup>`;
+
+const manifestHead = (t) => {
+  const s = mfStyles(t);
+  return `<thead><tr>${[
+    "S.NO",
+    "ORDER NO",
+    "SENDER",
+    "RECEIVER",
+    "MARKS & NOS",
+    "COMMODITY",
+    "PKGS",
+    "WEIGHT (KG)",
+  ]
+    .map((h) => `<th style="${s.th}">${h}</th>`)
+    .join("")}</tr></thead>`;
+};
+
+const buildGroupedManifestRows = (items = []) => {
+  const groups = [];
+  const map = new Map();
+  items.forEach((it) => {
+    if (!map.has(it.groupKey)) {
+      const g = { ...it, items: [], totalPkgs: 0, totalWeight: 0 };
+      map.set(it.groupKey, g);
+      groups.push(g);
+    }
+    const g = map.get(it.groupKey);
+    g.items.push(it);
+    g.totalPkgs += Number(it.pkgs) || 0;
+    g.totalWeight += Number(it.weight) || 0;
+  });
+  return groups.map((g, i) => ({ ...g, sno: i + 1 }));
+};
+
+const renderGroupedManifestRows = (groups, t) => {
+  const s = mfStyles(t);
+  return groups
+    .map((g) => {
+      const multi = g.items.length > 1;
+      const span = g.items.length + (multi ? 1 : 0);
+      const itemCells = (it, top = "") => `
+        <td style="${s.cell}${top}"><span style="display:block;color:${t.catText};font-size:8px;">${it.subcategory ? it.category : ""}</span>${it.subcategory || it.category}</td>
+        <td style="${s.num}${top}">${Number(it.pkgs || 0).toLocaleString()}</td>
+        <td style="${s.num}${top}">${mfFmt(it.weight)}</td>`;
+
+      let html = `<tr>
+        <td style="${s.grp}${s.top}text-align:center;" rowspan="${span}">${g.sno}</td>
+        <td style="${s.grp}${s.top}" rowspan="${span}">${g.orderNo}</td>
+        <td style="${s.grp}${s.top}" rowspan="${span}">${g.sender}</td>
+        <td style="${s.grp}${s.top}" rowspan="${span}">${g.receiver}</td>
+        <td style="${s.grp}${s.top}" rowspan="${span}">${g.marksAndNumber || "N/A"}</td>
+        ${itemCells(g.items[0], s.top)}
+      </tr>`;
+      g.items.slice(1).forEach((it) => {
+        html += `<tr>${itemCells(it)}</tr>`;
+      });
+      if (multi) {
+        html += `<tr>
+          <td style="${s.sub}">Subtotal</td>
+          <td style="${s.sub}text-align:right;">${g.totalPkgs.toLocaleString()}</td>
+          <td style="${s.sub}text-align:right;">${mfFmt(g.totalWeight)}</td>
+        </tr>`;
+      }
+      return html;
+    })
+    .join("");
+};
+
 const CustomTextField = ({
   name,
   value,
@@ -299,6 +416,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
   const [tab, setTab] = useState("details");
   const [shipmentSearch, setShipmentSearch] = useState("");
   const [shipmentStatus, setShipmentStatus] = useState("");
+  const [shipmentView, setShipmentView] = useState("orders");
   const [selectedBilling, setSelectedBilling] = useState(null);
   const [previewDoc, setPreviewDoc] = useState(null);
   const [billingRows, setBillingRows] = useState([]);
@@ -1121,7 +1239,14 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
 
       return containerDetails.filter((detail) => {
         const cid = detail?.container?.cid;
-        return cid && selectedCidsSet.has(Number(cid));
+        if (!cid || !selectedCidsSet.has(Number(cid))) return false;
+        if (mode === "edit" && effectiveConsignmentId) {
+          return (
+            detail.consignment_id == null ||
+            Number(detail.consignment_id) === Number(effectiveConsignmentId)
+          );
+        }
+        return true;
       });
     };
 
@@ -1253,37 +1378,47 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
   ]);
 
   const flatShipments = React.useMemo(() => {
-    return orders.flatMap((order) =>
-      (order.receivers || []).flatMap((receiver) =>
-        (receiver.shippingdetails || []).flatMap((detail) =>
-          (detail.containerDetails || []).map((containerDetail) => ({
-            orderId: order.id,
-            receiverId: receiver.id,
-            shippingDetailId: detail.id,
-            containerCid: containerDetail.container?.cid,
-            bookingRef: order.booking_ref || "-",
-            formNo: order.rgl_booking_number || "-",
-            pol: String(getPlaceName?.(order.place_of_loading) ?? "-"),
-            pod: String(getPlaceName?.(order.place_of_delivery) ?? "-"),
-            sender: String(order.sender_name ?? "-"),
-            receiverName: String(receiver.receivername ?? "-"),
-            category: detail.category || "Unknown",
-            subcategory: detail.subcategory || "",
-            type: detail.type || "Package",
-            totalItems: Number(detail.totalNumber || detail.total_number || 0),
-            weight: Number(detail.weight || 0),
-            itemRef: detail.itemRef || "",
-            remainingItems: Number(detail.remainingItems || 0),
-            receiverStatus: detail.status,
-            containerNumber:
-              containerDetail.container?.container_number?.trim() || "-",
-            containerStatus: containerDetail.status || "-",
-            assignWeight: containerDetail.assign_weight || "-",
-            assignBoxes: containerDetail.assign_total_box || "-",
-          })),
+    const seen = new Set();
+    return orders
+      .flatMap((order) =>
+        (order.receivers || []).flatMap((receiver) =>
+          (receiver.shippingdetails || []).flatMap((detail) =>
+            (detail.containerDetails || []).map((containerDetail) => ({
+              orderId: order.id,
+              receiverId: receiver.id,
+              shippingDetailId: detail.id,
+              containerCid: containerDetail.container?.cid,
+              bookingRef: order.booking_ref || "-",
+              formNo: order.rgl_booking_number || "-",
+              pol: String(getPlaceName?.(order.place_of_loading) ?? "-"),
+              pod: String(getPlaceName?.(order.place_of_delivery) ?? "-"),
+              sender: String(order.sender_name ?? "-"),
+              receiverName: String(receiver.receivername ?? "-"),
+              category: detail.category || "Unknown",
+              subcategory: detail.subcategory || "",
+              type: detail.type || "Package",
+              totalItems: Number(
+                detail.totalNumber || detail.total_number || 0,
+              ),
+              weight: Number(detail.weight || 0),
+              itemRef: detail.itemRef || "",
+              remainingItems: Number(detail.remainingItems || 0),
+              receiverStatus: detail.status,
+              containerNumber:
+                containerDetail.container?.container_number?.trim() || "-",
+              containerStatus: containerDetail.status || "-",
+              assignWeight: containerDetail.assign_weight || "-",
+              assignBoxes: containerDetail.assign_total_box || "-",
+            })),
+          ),
         ),
-      ),
-    );
+      )
+      .filter((s) => {
+        const key = `${s.shippingDetailId}-${s.containerCid}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
   }, [orders]);
 
   const shipmentStatusOptions = useMemo(
@@ -1306,6 +1441,38 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       );
     });
   }, [flatShipments, shipmentSearch, shipmentStatus]);
+
+  const orderRows = useMemo(() => {
+    const map = new Map();
+    filteredShipments.forEach((s) => {
+      if (!map.has(s.orderId)) {
+        map.set(s.orderId, {
+          orderId: s.orderId,
+          bookingRef: s.bookingRef,
+          formNo: s.formNo,
+          pol: s.pol,
+          pod: s.pod,
+          sender: s.sender,
+          receivers: new Set(),
+          items: new Set(),
+          containers: new Set(),
+          statuses: new Set(),
+          weight: 0,
+          boxes: 0,
+          shipments: [],
+        });
+      }
+      const g = map.get(s.orderId);
+      g.receivers.add(s.receiverName);
+      g.items.add(s.shippingDetailId);
+      g.containers.add(s.containerNumber);
+      g.statuses.add(s.receiverStatus);
+      g.weight += Number(s.assignWeight) || 0;
+      g.boxes += Number(s.assignBoxes) || 0;
+      g.shipments.push(s);
+    });
+    return [...map.values()];
+  }, [filteredShipments]);
 
   const hasDeliveredShipment = useMemo(() => {
     return orders.some((order) =>
@@ -3382,6 +3549,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
 
           containerGroups[containerNo].data.push({
             sno: serialNo++,
+            groupKey: `${order.id}-${receiver.id}`,
             orderNo: order.rgl_booking_number || "N/A",
             containerNo: containerNo,
             sender: order.sender_name || "N/A",
@@ -3390,7 +3558,9 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
             pkgs: pkgs,
             weight: assignWeight,
             commodity: fullCommodity,
-            marksAndNumber: receiver.marksandnumber,
+            category: detail.category || "Unknown",
+            subcategory: detail.subcategory || "",
+            marksAndNumber: receiver.marksandnumber || "N/A",
           });
         });
       });
@@ -3724,54 +3894,15 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                     <h2><span>Container: ${container.containerNumber}</span>
                     <span>Size: ${container.containerSize}${container.containerType}</span></h2>
                 </div>
-                
-                <table>
-                    <thead>
-                        <tr>
-                            <th style="text-align: center; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 5%;">S.NO</th>
-                            <th style="text-align: center; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 10%;">ORDER NO</th>
-                            <th style="text-align: center; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 10%;">Tracking ID</th>
-                            <th style="text-align: center; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 14%;">SENDER</th>
-                            <th style="text-align: center; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 14%;">RECEIVER</th>
-                            <th style="text-align: center; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 14%;">RECEIVER MARKS & NUMBER</th>
-                            <th style="text-align: right; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 7%;"; text-align: right;">PKGS</th>
-                            <th style="text-align: right; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 8%;"; text-align: right;">WEIGHT (KGS)</th>
-                            <th style="text-align: center; padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 12%;">COMMODITY</th>
-                        </tr>
-                    </thead>
+                <table style="width:100%;border-collapse:collapse;table-layout:fixed;font-size:9px;">
+                    ${MANIFEST_COLGROUP}
+                    ${manifestHead(MF_THEMES.print)}
                     <tbody>
-                        ${container.data
-                          .map(
-                            (item) => `
-                            <tr>
-                                <td style="text-align: center; padding: 8px; border: 1px solid #ddd;">${item.sno}</td>
-                                <td style="font-weight: normal; padding: 8px; border: 1px solid #ddd;">${item.orderNo}</td>
-                                <td style="font-weight: normal; padding: 8px; border: 1px solid #ddd;">${item.trackingId}</td>
-                                <td style="font-weight: normal; padding: 8px; border: 1px solid #ddd;">${item.sender}</td>
-                                <td style="font-weight: normal; padding: 8px; border: 1px solid #ddd;">${item.receiver}</td>
-                                <td style="font-weight: normal; padding: 8px; border: 1px solid #ddd;">${item.marksAndNumber}</td>
-                                <td style="font-weight: normal; text-align: right; padding: 8px; border: 1px solid #ddd;">${item.pkgs.toLocaleString()}</td>
-                                <td style="font-weight: normal; text-align: right; padding: 8px; border: 1px solid #ddd;">${Number(
-                                  item.weight,
-                                ).toLocaleString(undefined, {
-                                  minimumFractionDigits: 2,
-                                  maximumFractionDigits: 2,
-                                })}</td>
-                                <td style="font-weight: normal;padding: 8px; border: 1px solid #ddd;">${item.commodity}</td>
-                            </tr>
-                        `,
-                          )
-                          .join("")}
-                        <tr style="background-color: #f5f5f5; font-weight: bold;">
-                            <td colspan="6" style="text-align: right; padding: 10px; border: 1px solid #ddd;">Container Total:</td>
-                            <td style="text-align: right; padding: 10px; border: 1px solid #ddd;">${container.containerTotal.totalPkgs.toLocaleString()}</td>
-                            <td style="text-align: right; padding: 10px; border: 1px solid #ddd;">${Number(
-                              container.containerTotal.totalWeight,
-                            ).toLocaleString(undefined, {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            })}</td>
-                            <td style="padding: 10px; border: 1px solid #ddd;"></td>
+                        ${renderGroupedManifestRows(buildGroupedManifestRows(container.data), MF_THEMES.print)}
+                        <tr>
+                            <td colspan="6" style="${mfStyles(MF_THEMES.print).total}text-align:right;">Container Total:</td>
+                            <td style="${mfStyles(MF_THEMES.print).total}text-align:right;">${container.containerTotal.totalPkgs.toLocaleString()}</td>
+                            <td style="${mfStyles(MF_THEMES.print).total}text-align:right;">${mfFmt(container.containerTotal.totalWeight)}</td>
                         </tr>
                     </tbody>
                 </table>
@@ -3779,20 +3910,13 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         `,
           )
           .join("")}
-        
-        <!-- Grand Total Row -->
-        <table style="margin-top: 4mm;">
+        <table style="margin-top:4mm;width:100%;border-collapse:collapse;table-layout:fixed;font-size:9px;">
+            ${MANIFEST_COLGROUP}
             <tbody>
-                <tr class="grand-total">
-                    <td colspan="5" style="text-align: right; padding: 8px; font-size: 10px;">GRAND TOTAL (All Containers):</td>
-                    <td style="text-align: right; padding: 8px; font-size: 10px;">${manifestTotals.totalPkgs.toLocaleString()}</td>
-                    <td style="text-align: right; padding: 8px; font-size: 10px;">${Number(
-                      manifestTotals.totalWeight,
-                    ).toLocaleString(undefined, {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}</td>
-                    <td style="padding: 8px;"></td>
+                <tr>
+                    <td colspan="6" style="${mfStyles(MF_THEMES.print).total}text-align:right;">GRAND TOTAL (All Containers):</td>
+                    <td style="${mfStyles(MF_THEMES.print).total}text-align:right;">${manifestTotals.totalPkgs.toLocaleString()}</td>
+                    <td style="${mfStyles(MF_THEMES.print).total}text-align:right;">${mfFmt(manifestTotals.totalWeight)}</td>
                 </tr>
             </tbody>
         </table>
@@ -4215,12 +4339,18 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         });
       }
 
-      return Object.values(commodityMap).map((item) => ({
-        commodity: item.commodity,
-        totalOrders: item.totalOrders.size,
-        totalPackages: item.totalPackages,
-        totalWeight: item.totalWeight,
-      }));
+      return Object.values(commodityMap)
+        .map((item) => ({
+          commodity: item.commodity,
+          totalOrders: item.totalOrders.size,
+          totalPackages: item.totalPackages,
+          totalWeight: item.totalWeight,
+        }))
+        .sort((a, b) =>
+          a.commodity.localeCompare(b.commodity, undefined, {
+            sensitivity: "base",
+          }),
+        );
     };
 
     const getDetailedManifestData = (orders) => {
@@ -4260,13 +4390,19 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
 
                   detailedData.push({
                     sno: serialNumber++,
+                    groupKey: `${order.id}-${receiver.id}`,
                     orderNumber: order.rgl_booking_number || `ORD-${order.id}`,
+                    orderNo: order.rgl_booking_number || `ORD-${order.id}`,
                     sender: order.sender_name || "N/A",
                     receiver: receiver.receivername || "N/A",
                     marksNos: receiver.marksandnumber || "N/A",
+                    marksAndNumber: receiver.marksandnumber || "N/A",
                     packages: packages,
+                    pkgs: packages,
                     weight: weight,
                     commodity: fullCommodity,
+                    category: commodity,
+                    subcategory: subcategory,
                   });
                 });
               }
@@ -4403,46 +4539,19 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
           
           ${
             orders.length > 0
-              ? `
-<div class="section-title">DETAILED MANIFEST - ${containerNo} (${containerData.container.size || "N/A"}${containerData.container.containerType || "N/A"})</div>
+              ? `<div class="section-title">DETAILED MANIFEST - ${containerNo} (${containerData.container.size || "N/A"}${containerData.container.containerType || "N/A"})</div>
           ${
             detailedData.length > 0
               ? `
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>S.NO</th>
-                <th>ORDER NO</th>
-                <th>SENDER</th>
-                <th>RECEIVER</th>
-                <th>MARKS & NOS</th>
-                <th>PKGS</th>
-                <th>WEIGHT (KGS)</th>
-                <th>COMMODITY</th>
-              </tr>
-            </thead>
+          <table style="width:100%;border-collapse:collapse;table-layout:fixed;font-size:10px;margin-bottom:25px;">
+            ${MANIFEST_COLGROUP}
+            ${manifestHead(MF_THEMES.container)}
             <tbody>
-              ${detailedData
-                .map(
-                  (item) => `
+              ${renderGroupedManifestRows(buildGroupedManifestRows(detailedData), MF_THEMES.container)}
               <tr>
-                <td>${item.sno}</td>
-                <td>${item.orderNumber}</td>
-                <td>${item.sender}</td>
-                <td>${item.receiver}</td>
-                <td>${item.marksNos}</td>
-                <td>${item.packages}</td>
-                <td>${item.weight.toFixed(2)}</td>
-                <td>${item.commodity}</td>
-              </tr>
-              `,
-                )
-                .join("")}
-              <tr class="total-row">
-                <td colspan="5" class="text-align:right; bold text-right">TOTAL:</td>
-                <td class="bold">${detailedData.reduce((sum, item) => sum + item.packages, 0)}</td>
-                <td class="bold">${detailedData.reduce((sum, item) => sum + item.weight, 0).toFixed(2)}</td>
-                <td></td>
+                <td colspan="6" style="${mfStyles(MF_THEMES.container).total}text-align:right;">TOTAL:</td>
+                <td style="${mfStyles(MF_THEMES.container).total}text-align:right;">${detailedData.reduce((sum, item) => sum + item.packages, 0).toLocaleString()}</td>
+                <td style="${mfStyles(MF_THEMES.container).total}text-align:right;">${mfFmt(detailedData.reduce((sum, item) => sum + item.weight, 0))}</td>
               </tr>
             </tbody>
           </table>
@@ -4456,7 +4565,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       `;
     });
 
-    // Create the complete HTML
     tempElement.innerHTML = `
     <style>
       * {
@@ -4830,6 +4938,21 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     "Status",
     "Actions",
   ];
+
+  const orderHeaders = [
+    "Booking Ref",
+    "Form No",
+    "POL",
+    "POD",
+    "Sender",
+    "Receivers",
+    "Items",
+    "Containers",
+    "Assign Weight & Boxes",
+    "Status",
+    "Actions",
+  ];
+
   const documents = [
     {
       icon: "📄",
@@ -5150,7 +5273,10 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                 />
                 <Tab
                   value="shipments"
-                  label={tabLabel("🛒 Shipments", flatShipments.length)}
+                  label={tabLabel(
+                    "🛒 Shipments",
+                    new Set(flatShipments.map((s) => s.shippingDetailId)).size,
+                  )}
                 />
                 {canViewJobDetails && (
                   <Tab value="billing" label={tabLabel("💰 Job Details")} />
@@ -5814,127 +5940,283 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                           ))}
                         </Select>
                       </FormControl>
-                    </Box>
-                    <TableContainer
-                      sx={{
-                        border: 1,
-                        borderColor: "divider",
-                        borderRadius: 2,
-                        maxHeight: 580,
-                      }}
-                    >
-                      <Table
-                        stickyHeader
-                        sx={{ minWidth: 760 }}
-                        aria-label="shipments-by-container-table"
+                      <Button
+                        variant="outlined"
+                        onClick={() =>
+                          setShipmentView((v) =>
+                            v === "orders" ? "items" : "orders",
+                          )
+                        }
+                        sx={{ ...outlineBtn, whiteSpace: "nowrap" }}
                       >
-                        <TableHead>
-                          <TableRow>
-                            {shipmentHeaders.map((h) => (
-                              <TableCell key={h} sx={headCellSx}>
-                                {h}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          {filteredShipments.length === 0 ? (
+                        {shipmentView === "orders"
+                          ? "View Item-wise"
+                          : "View Order-wise"}
+                      </Button>
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        sx={{ alignSelf: "center", whiteSpace: "nowrap" }}
+                      >
+                        {orderRows.length} orders ·{" "}
+                        {
+                          new Set(
+                            filteredShipments.map((s) => s.shippingDetailId),
+                          ).size
+                        }{" "}
+                        items
+                      </Typography>
+                    </Box>
+                    {shipmentView === "items" ? (
+                      <TableContainer
+                        sx={{
+                          border: 1,
+                          borderColor: "divider",
+                          borderRadius: 2,
+                          maxHeight: 580,
+                        }}
+                      >
+                        <Table
+                          stickyHeader
+                          sx={{ minWidth: 760 }}
+                          aria-label="shipments-by-container-table"
+                        >
+                          <TableHead>
                             <TableRow>
-                              <TableCell
-                                colSpan={12}
-                                align="center"
-                                sx={{ py: 6 }}
-                              >
-                                <Typography
-                                  variant="body1"
-                                  color="text.secondary"
-                                >
-                                  {flatShipments.length === 0
-                                    ? "No shipments with container assignments found"
-                                    : "No shipments match your search or filter"}
-                                </Typography>
-                              </TableCell>
+                              {shipmentHeaders.map((h) => (
+                                <TableCell key={h} sx={headCellSx}>
+                                  {h}
+                                </TableCell>
+                              ))}
                             </TableRow>
-                          ) : (
-                            filteredShipments.map((shipment, index) => (
-                              <TableRow
-                                hover
-                                key={`${shipment.orderId}-${shipment.containerNumber}-${index}`}
-                              >
-                                <TableCell>{shipment.itemRef}</TableCell>
-                                <TableCell>{shipment.bookingRef}</TableCell>
-                                <TableCell>{shipment.formNo}</TableCell>
-                                <TableCell>
+                          </TableHead>
+                          <TableBody>
+                            {filteredShipments.length === 0 ? (
+                              <TableRow>
+                                <TableCell
+                                  colSpan={12}
+                                  align="center"
+                                  sx={{ py: 6 }}
+                                >
                                   <Typography
-                                    variant="body2"
-                                    fontWeight="medium"
-                                  >
-                                    {shipment.category}
-                                  </Typography>
-                                  <Typography
-                                    variant="caption"
+                                    variant="body1"
                                     color="text.secondary"
                                   >
-                                    {shipment.subcategory}
+                                    {flatShipments.length === 0
+                                      ? "No shipments with container assignments found"
+                                      : "No shipments match your search or filter"}
                                   </Typography>
                                 </TableCell>
-                                <TableCell>
-                                  {String(shipment.pol ?? "-").substring(0, 15)}
+                              </TableRow>
+                            ) : (
+                              filteredShipments.map((shipment, index) => (
+                                <TableRow
+                                  hover
+                                  key={`${shipment.orderId}-${shipment.containerNumber}-${index}`}
+                                >
+                                  <TableCell>{shipment.itemRef}</TableCell>
+                                  <TableCell>{shipment.bookingRef}</TableCell>
+                                  <TableCell>{shipment.formNo}</TableCell>
+                                  <TableCell>
+                                    <Typography
+                                      variant="body2"
+                                      fontWeight="medium"
+                                    >
+                                      {shipment.category}
+                                    </Typography>
+                                    <Typography
+                                      variant="caption"
+                                      color="text.secondary"
+                                    >
+                                      {shipment.subcategory}
+                                    </Typography>
+                                  </TableCell>
+                                  <TableCell>
+                                    {String(shipment.pol ?? "-").substring(
+                                      0,
+                                      15,
+                                    )}
+                                  </TableCell>
+                                  <TableCell>
+                                    {String(shipment.pod ?? "-").substring(
+                                      0,
+                                      15,
+                                    )}
+                                  </TableCell>
+                                  <TableCell>
+                                    {String(shipment.sender ?? "-").substring(
+                                      0,
+                                      15,
+                                    )}
+                                  </TableCell>
+                                  <TableCell>
+                                    {String(
+                                      shipment.receiverName ?? "-",
+                                    ).substring(0, 15)}
+                                  </TableCell>
+                                  <TableCell>
+                                    <Chip
+                                      label={shipment.containerNumber}
+                                      size="small"
+                                      variant="outlined"
+                                      sx={{
+                                        borderColor: orange,
+                                        color: orange,
+                                      }}
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    {shipment.assignWeight > 0
+                                      ? `${shipment.assignWeight.toLocaleString()} kg`
+                                      : "-"}{" "}
+                                    {shipment.assignBoxes > 0
+                                      ? `${shipment.assignBoxes.toLocaleString()} ${shipment.type}`
+                                      : "-"}
+                                  </TableCell>
+                                  <TableCell>
+                                    <StatusChip
+                                      status={shipment.receiverStatus}
+                                      size="small"
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <Button
+                                      color="error"
+                                      variant="contained"
+                                      size="small"
+                                      onClick={() =>
+                                        handleRemoveShipment(shipment)
+                                      }
+                                    >
+                                      Remove
+                                    </Button>
+                                  </TableCell>
+                                </TableRow>
+                              ))
+                            )}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    ) : (
+                      <TableContainer
+                        sx={{
+                          border: 1,
+                          borderColor: "divider",
+                          borderRadius: 2,
+                          maxHeight: 580,
+                        }}
+                      >
+                        <Table
+                          stickyHeader
+                          sx={{ minWidth: 760 }}
+                          aria-label="shipments-by-order-table"
+                        >
+                          <TableHead>
+                            <TableRow>
+                              {orderHeaders.map((h) => (
+                                <TableCell key={h} sx={headCellSx}>
+                                  {h}
                                 </TableCell>
-                                <TableCell>
-                                  {String(shipment.pod ?? "-").substring(0, 15)}
-                                </TableCell>
-                                <TableCell>
-                                  {String(shipment.sender ?? "-").substring(
-                                    0,
-                                    15,
-                                  )}
-                                </TableCell>
-                                <TableCell>
-                                  {String(
-                                    shipment.receiverName ?? "-",
-                                  ).substring(0, 15)}
-                                </TableCell>
-                                <TableCell>
-                                  <Chip
-                                    label={shipment.containerNumber}
-                                    size="small"
-                                    variant="outlined"
-                                    sx={{ borderColor: orange, color: orange }}
-                                  />
-                                </TableCell>
-                                <TableCell>
-                                  {shipment.assignWeight > 0
-                                    ? `${shipment.assignWeight.toLocaleString()} kg`
-                                    : "-"}{" "}
-                                  {shipment.assignBoxes > 0
-                                    ? `${shipment.assignBoxes.toLocaleString()} ${shipment.type}`
-                                    : "-"}
-                                </TableCell>
-                                <TableCell>
-                                  <StatusChip
-                                    status={shipment.receiverStatus}
-                                    size="small"
-                                  />
-                                </TableCell>
-                                <TableCell>
-                                  <Button
-                                    color="error"
-                                    variant="contained"
-                                    size="small"
-                                    onClick={() =>
-                                      handleRemoveShipment(shipment)
-                                    }
+                              ))}
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {orderRows.length === 0 ? (
+                              <TableRow>
+                                <TableCell
+                                  colSpan={11}
+                                  align="center"
+                                  sx={{ py: 6 }}
+                                >
+                                  <Typography
+                                    variant="body1"
+                                    color="text.secondary"
                                   >
-                                    Remove
-                                  </Button>
+                                    {flatShipments.length === 0
+                                      ? "No shipments with container assignments found"
+                                      : "No orders match your search or filter"}
+                                  </Typography>
                                 </TableCell>
                               </TableRow>
-                            ))
-                          )}
-                        </TableBody>
-                      </Table>
-                    </TableContainer>
+                            ) : (
+                              orderRows.map((row) => (
+                                <TableRow hover key={row.orderId}>
+                                  <TableCell>{row.bookingRef}</TableCell>
+                                  <TableCell>{row.formNo}</TableCell>
+                                  <TableCell>
+                                    {String(row.pol).substring(0, 15)}
+                                  </TableCell>
+                                  <TableCell>
+                                    {String(row.pod).substring(0, 15)}
+                                  </TableCell>
+                                  <TableCell>
+                                    {String(row.sender).substring(0, 15)}
+                                  </TableCell>
+                                  <TableCell>
+                                    {[...row.receivers]
+                                      .join(", ")
+                                      .substring(0, 30)}
+                                  </TableCell>
+                                  <TableCell>{row.items.size}</TableCell>
+                                  <TableCell>
+                                    <Stack
+                                      direction="row"
+                                      spacing={0.5}
+                                      flexWrap="wrap"
+                                      useFlexGap
+                                    >
+                                      {[...row.containers].map((c) => (
+                                        <Chip
+                                          key={c}
+                                          label={c}
+                                          size="small"
+                                          variant="outlined"
+                                          sx={{
+                                            borderColor: orange,
+                                            color: orange,
+                                          }}
+                                        />
+                                      ))}
+                                    </Stack>
+                                  </TableCell>
+                                  <TableCell>
+                                    {row.weight > 0
+                                      ? `${row.weight.toLocaleString()} kg`
+                                      : "-"}{" "}
+                                    {row.boxes > 0
+                                      ? `${row.boxes.toLocaleString()} boxes`
+                                      : "-"}
+                                  </TableCell>
+                                  <TableCell>
+                                    {[...row.statuses].map((st) => (
+                                      <StatusChip
+                                        key={st}
+                                        status={st}
+                                        size="small"
+                                      />
+                                    ))}
+                                  </TableCell>
+                                  <TableCell>
+                                    <Button
+                                      color="error"
+                                      variant="contained"
+                                      size="small"
+                                      onClick={() =>
+                                        row.shipments.forEach(
+                                          handleRemoveShipment,
+                                        )
+                                      }
+                                    >
+                                      Remove
+                                    </Button>
+                                  </TableCell>
+                                </TableRow>
+                              ))
+                            )}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    )}
                   </>
                 )}
                 {tab === "billing" && canViewJobDetails && (

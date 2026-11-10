@@ -98,6 +98,8 @@ const ContainerModule = ({ propContainers = [] }) => {
     removeExistingAttachment,
   } = state;
 
+  const historyContainer = containers.find((c) => c.cid === state.historyCid);
+
   return (
     <Box
       sx={{
@@ -295,6 +297,7 @@ const ContainerModule = ({ propContainers = [] }) => {
           open={openHistoryModal}
           onClose={() => setOpenHistoryModal(false)}
           selectedContainerNo={selectedContainerNo}
+          containerSize={historyContainer?.container_size}
           usageHistory={usageHistory}
           unassignedOrders={unassignedOrders}
           activeHistoryTab={activeHistoryTab}

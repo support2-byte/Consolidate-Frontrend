@@ -95,7 +95,15 @@ export const usePDFGenerators = ({
     doc.text("Commodity-wise breakdown for this container", margin, y + 1);
     y += 6;
 
-    const { rows: catRows } = buildCategoryRows(receiversData);
+    const { rows: catRows } = buildCategoryRows(
+      [...receiversData].sort((a, b) =>
+        `${a.category} ${a.subcategory}`.localeCompare(
+          `${b.category} ${b.subcategory}`,
+          undefined,
+          { sensitivity: "base" },
+        ),
+      ),
+    );
     doc.autoTable({
       head: [["COMMODITY", "TOTAL ORDERS", "TOTAL PKGS", "TOTAL WEIGHT (KGS)"]],
       body: catRows,
@@ -112,26 +120,82 @@ export const usePDFGenerators = ({
       margin,
     );
 
-    const detailRows = receiversData.map((r, i) => [
-      (i + 1).toString(),
-      r.formNo,
-      r.senderName,
-      r.receiverName,
-      r.marksAndNumber || "N/A",
-      r.totalNumber.toString(),
-      r.weight.toFixed(2),
-      r.category + (r.subcategory !== "N/A" ? ` - ${r.subcategory}` : ""),
-    ]);
+    const groups = [];
+    const gmap = new Map();
+    receiversData.forEach((r) => {
+      const key = `${r.formNo}|${r.senderName}|${r.receiverName}`;
+      if (!gmap.has(key)) {
+        const g = { ...r, items: [] };
+        gmap.set(key, g);
+        groups.push(g);
+      }
+      gmap.get(key).items.push(r);
+    });
+
+    const GRP_FILL = BRAND.lightGrey;
+    const SUB_FILL = [220, 245, 243];
+    const detailRows = [];
+
+    groups.forEach((g, gi) => {
+      const multi = g.items.length > 1;
+      const span = g.items.length + (multi ? 1 : 0);
+      const grp = (content, extra = {}) => ({
+        content,
+        rowSpan: span,
+        styles: {
+          fillColor: GRP_FILL,
+          fontStyle: "bold",
+          valign: "top",
+          ...extra,
+        },
+      });
+
+      g.items.forEach((it, ii) => {
+        const row = [];
+        if (ii === 0) {
+          row.push(
+            grp((gi + 1).toString(), { halign: "center" }),
+            grp(g.formNo),
+            grp(g.senderName),
+            grp(g.receiverName),
+            grp(g.marksAndNumber || "N/A", { halign: "center" }),
+          );
+        }
+        row.push(
+          it.category +
+            (it.subcategory !== "N/A" ? ` - ${it.subcategory}` : ""),
+          { content: it.totalNumber.toString(), styles: { halign: "right" } },
+          { content: it.weight.toFixed(2), styles: { halign: "right" } },
+        );
+        detailRows.push(row);
+      });
+
+      if (multi) {
+        const subPkgs = g.items.reduce((s, i) => s + i.totalNumber, 0);
+        const subWt = g.items.reduce((s, i) => s + i.weight, 0);
+        const sub = { fillColor: SUB_FILL, fontStyle: "bold" };
+        detailRows.push([
+          { content: "Subtotal", styles: sub },
+          { content: subPkgs.toString(), styles: { ...sub, halign: "right" } },
+          { content: subWt.toFixed(2), styles: { ...sub, halign: "right" } },
+        ]);
+      }
+    });
 
     detailRows.push([
       {
         content: "TOTAL",
-        colSpan: 5,
+        colSpan: 6,
         styles: { halign: "right", fontStyle: "bold" },
       },
-      { content: totalPkgs.toString(), styles: { fontStyle: "bold" } },
-      { content: totalWt.toFixed(2), styles: { fontStyle: "bold" } },
-      { content: "" },
+      {
+        content: totalPkgs.toString(),
+        styles: { fontStyle: "bold", halign: "right" },
+      },
+      {
+        content: totalWt.toFixed(2),
+        styles: { fontStyle: "bold", halign: "right" },
+      },
     ]);
 
     doc.autoTable({
@@ -142,9 +206,9 @@ export const usePDFGenerators = ({
           "SENDER",
           "RECEIVER",
           "MARKS & NOS",
+          "COMMODITY",
           "PKGS",
           "WEIGHT\n(KG)",
-          "COMMODITY",
         ],
       ],
       body: detailRows,
@@ -159,20 +223,16 @@ export const usePDFGenerators = ({
       },
       bodyStyles: { fillColor: [255, 255, 255], textColor: [30, 30, 30] },
       columnStyles: {
-        0: { cellWidth: 14, halign: "center" },
-        1: { cellWidth: 28 },
+        0: { cellWidth: 12, halign: "center" },
+        1: { cellWidth: 24 },
         2: { cellWidth: 30 },
         3: { cellWidth: 30 },
         4: { cellWidth: 18, halign: "center" },
-        5: { cellWidth: 14, halign: "center" },
-        6: { cellWidth: 16, halign: "center" },
-        7: { cellWidth: 32 },
+        5: { cellWidth: 38 },
+        6: { cellWidth: 14, halign: "right" },
+        7: { cellWidth: 16, halign: "right" },
       },
       margin: { left: margin, right: margin },
-      didParseCell(data) {
-        if (data.section === "body" && data.row.index % 2 === 1)
-          data.cell.styles.fillColor = BRAND.lightGrey;
-      },
     });
 
     return doc.lastAutoTable.finalY + 10;
@@ -416,14 +476,11 @@ export const usePDFGenerators = ({
 
     setGeneratingPDF(true);
     try {
-      const orderIdArray = (
-        typeof linkedOrders === "string"
-          ? linkedOrders.split(",").map((id) => id.trim())
-          : linkedOrders
-      ).map((id) => {
-        const s = id.toString();
-        return s.includes("-") ? s.split("-").slice(1).join("-") : s;
-      });
+      const orderIdArray = [
+        ...new Set(
+          (jobEvents || []).map((e) => e.orderId?.toString()).filter(Boolean),
+        ),
+      ];
 
       if (!orderIdArray.length) {
         showToast("No valid order IDs found", "warning");
@@ -519,28 +576,10 @@ export const usePDFGenerators = ({
               .filter(Boolean),
           ),
         ];
-        const consignmentReceivers = allReceivers.filter(
-          (r) =>
-            !consignmentOrderIds.length ||
-            consignmentOrderIds.includes(r.sourceOrderId?.toString()),
+        const receiversData = buildReceiversData(
+          consignmentOrderIds,
+          allOrdersMap,
         );
-        const receiversData = [];
-        consignmentReceivers.forEach((receiver) => {
-          (receiver.shippingDetails || []).forEach((detail) => {
-            const od = receiver.sourceOrderData || {};
-            receiversData.push({
-              receiverName: receiver.receiver_name || "N/A",
-              category: detail.category || "N/A",
-              subcategory: detail.subcategory || "N/A",
-              totalNumber: Number(detail.totalNumber || 0),
-              weight: Number(detail.weight || 0),
-              bookingRef: od.booking_ref || "N/A",
-              formNo: od.rgl_booking_number || "N/A",
-              senderName: od.sender_name || "N/A",
-              marksAndNumber: receiver.marksAndNumber || "N/A",
-            });
-          });
-        });
 
         if (y > 220) {
           doc.addPage();
