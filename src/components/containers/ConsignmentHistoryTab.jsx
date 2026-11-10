@@ -1,5 +1,27 @@
-import { Box, CircularProgress, Typography } from "@mui/material";
+import {
+  Box,
+  CircularProgress,
+  Paper,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Typography,
+} from "@mui/material";
 import { ConsignmentCard } from "./ConsignmentCard";
+
+const SUMMARY_HEADERS = [
+  "#",
+  "Consignment",
+  "Date",
+  "Orders",
+  "Items",
+  "Trip",
+  "Status",
+  "Actions",
+];
 
 const ConsignmentHistoryTab = ({
   usageHistory,
@@ -39,20 +61,42 @@ const ConsignmentHistoryTab = ({
   }
 
   return (
-    <>
-      {visibleConsignments.map((consignment, groupIndex) => (
-        <ConsignmentCard
-          key={consignment.consignmentNo || `group-${groupIndex}`}
-          consignment={consignment}
-          groupIndex={groupIndex}
-          getPlaceName={getPlaceName}
-          selectedContainerNo={selectedContainerNo}
-          generatingPDF={generatingPDF}
-          onSinglePDF={onSinglePDF}
-          onDetailManifest={onDetailManifest}
-        />
-      ))}
-    </>
+    <TableContainer component={Paper} sx={{ boxShadow: 1, borderRadius: 1 }}>
+      <Table size="small">
+        <TableHead>
+          <TableRow>
+            {SUMMARY_HEADERS.map((h) => (
+              <TableCell
+                key={h}
+                sx={{
+                  bgcolor: "#0d6c6a",
+                  color: "#fff",
+                  fontWeight: 600,
+                  py: 1,
+                  borderBottom: "none",
+                }}
+              >
+                {h}
+              </TableCell>
+            ))}
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {visibleConsignments.map((consignment, groupIndex) => (
+            <ConsignmentCard
+              key={consignment.consignmentNo || `group-${groupIndex}`}
+              consignment={consignment}
+              groupIndex={groupIndex}
+              getPlaceName={getPlaceName}
+              selectedContainerNo={selectedContainerNo}
+              generatingPDF={generatingPDF}
+              onSinglePDF={onSinglePDF}
+              onDetailManifest={onDetailManifest}
+            />
+          ))}
+        </TableBody>
+      </Table>
+    </TableContainer>
   );
 };
 
