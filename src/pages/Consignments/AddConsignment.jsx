@@ -138,6 +138,66 @@ const getSafeSliceEnd = (rowBoundaries, startY, desiredEnd) => {
   return safeEnd > startY ? safeEnd : desiredEnd;
 };
 
+const collectTextItems = (container) => {
+  const cRect = container.getBoundingClientRect();
+  const items = [];
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  const range = document.createRange();
+  let node;
+  while ((node = walker.nextNode())) {
+    const parent = node.parentElement;
+    if (!parent || /^(STYLE|SCRIPT)$/.test(parent.tagName)) continue;
+    const fs = parseFloat(getComputedStyle(parent).fontSize) || 10;
+    const re = /\S+/g;
+    let m;
+    let line = null;
+    while ((m = re.exec(node.nodeValue))) {
+      const word = m[0].replace(/[^\x20-\x7E\u00A0-\u00FF]/g, "");
+      if (!word) continue;
+      range.setStart(node, m.index);
+      range.setEnd(node, m.index + m[0].length);
+      const r = range.getBoundingClientRect();
+      if (!r.width || !r.height) continue;
+      const top = r.top - cRect.top;
+      const left = r.left - cRect.left;
+      if (line && Math.abs(line.top - top) < 2 && left >= line.left) {
+        line.text += " " + word;
+        line.width = left + r.width - line.left;
+      } else {
+        line = { text: word, left, top, width: r.width, height: r.height, fs };
+        items.push(line);
+      }
+    }
+  }
+  return items;
+};
+
+const addTextLayer = (
+  pdf,
+  items,
+  { scale, pxPerMm, startY, sliceHeightPx, marginMm },
+) => {
+  pdf.setFont("helvetica", "normal");
+  items.forEach((it) => {
+    const topPx = it.top * scale;
+    const midPx = topPx + (it.height * scale) / 2;
+    if (midPx < startY || midPx >= startY + sliceHeightPx) return; // belongs to another page
+    pdf.setFontSize(((it.fs * scale) / pxPerMm) * (72 / 25.4));
+    const x = marginMm + (it.left * scale) / pxPerMm;
+    const y = marginMm + (topPx - startY) / pxPerMm;
+    const targetW = (it.width * scale) / pxPerMm;
+    const charSpace =
+      it.text.length > 1
+        ? (targetW - pdf.getTextWidth(it.text)) / it.text.length
+        : 0;
+    pdf.text(it.text, x, y, {
+      baseline: "top",
+      renderingMode: "invisible",
+      charSpace,
+    });
+  });
+};
+
 const MF_THEMES = {
   print: {
     outer: "#ddd",
@@ -2852,7 +2912,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         });
       },
     });
-
+    const textItems = collectTextItems(tempElement);
     document.body.removeChild(tempElement);
 
     const canvasDataURL = canvas.toDataURL("image/png", 0.85);
@@ -2867,7 +2927,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     const contentHeightPerPageMm = 297 - 2 * 14 - extraBottomSpaceMm;
     const contentHeightPerPagePx = contentHeightPerPageMm * pxPerMm;
 
-    const pdf = new jsPDF("p", "mm", "a4");
+    const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "p" });
     const marginMm = 14;
     const contentWidthMm = innerWidthMm;
 
@@ -2912,6 +2972,14 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       );
 
       startY += sliceHeightPx;
+
+      addTextLayer(pdf, textItems, {
+        scale,
+        pxPerMm,
+        startY,
+        sliceHeightPx,
+        marginMm,
+      });
     }
 
     pdf.save(`Manifest_${data.consignment_number}_Detailed_${Date.now()}.pdf`);
@@ -3014,11 +3082,9 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       voyage: data.voyage || "N/A",
     };
 
-    const pdf = new jsPDF("p", "mm", "a4");
+    const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "p" });
     const marginMm = 14;
     const contentWidthMm = 210 - 2 * marginMm;
-
-    console.log({ receiverGroups });
 
     for (let i = 0; i < receiverGroups.length; i++) {
       const receiverGroup = receiverGroups[i];
@@ -3339,6 +3405,8 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         removeContainer: true,
       });
 
+      const textItems = collectTextItems(tempElement);
+
       document.body.removeChild(tempElement);
 
       const pxPerMm = canvas.width / contentWidthMm;
@@ -3359,6 +3427,14 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         undefined,
         "FAST",
       );
+
+      addTextLayer(pdf, textItems, {
+        scale: 1.5,
+        pxPerMm,
+        startY: 0,
+        sliceHeightPx: canvas.height,
+        marginMm,
+      });
     }
     pdf.save(`HBL_${data.consignment_number}_${Date.now()}.pdf`);
   };
@@ -3971,6 +4047,8 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
 
     const rowBoundaries = getRowBoundaries(tempElement, scale);
 
+    const textItems = collectTextItems(tempElement);
+
     document.body.removeChild(tempElement);
 
     const canvasDataURL = canvas.toDataURL("image/png", 0.85);
@@ -3979,7 +4057,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     canvasLink.href = canvasDataURL;
     canvasLink.click();
 
-    const pdf = new jsPDF("p", "mm", "a4");
+    const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "p" });
     const marginMm = 14;
     const contentWidthMm = 210 - 2 * marginMm;
 
@@ -4071,6 +4149,14 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         undefined,
         "FAST",
       );
+
+      addTextLayer(pdf, textItems, {
+        scale,
+        pxPerMm,
+        startY: currentY,
+        sliceHeightPx,
+        marginMm,
+      });
 
       pdf.setFontSize(9);
       pdf.setTextColor(128, 128, 128);
@@ -4792,6 +4878,8 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
 
     const rowBoundaries = getRowBoundaries(tempElement, scale);
 
+    const textItems = collectTextItems(tempElement);
+
     document.body.removeChild(tempElement);
 
     const canvasDataURL = canvas.toDataURL("image/png", 0.85);
@@ -4800,14 +4888,13 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     canvasLink.href = canvasDataURL;
     canvasLink.click();
 
-    // Create PDF
     const innerWidthMm = 210 - 2 * 14;
     const pxPerMm = canvas.width / innerWidthMm;
     const extraBottomSpaceMm = 8;
     const contentHeightPerPageMm = 297 - 2 * 14 - extraBottomSpaceMm;
     const contentHeightPerPagePx = contentHeightPerPageMm * pxPerMm;
 
-    const pdf = new jsPDF("p", "mm", "a4");
+    const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "p" });
     const marginMm = 14;
     const contentWidthMm = innerWidthMm;
 
@@ -4850,6 +4937,14 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         undefined,
         "FAST",
       );
+
+      addTextLayer(pdf, textItems, {
+        scale,
+        pxPerMm,
+        startY,
+        sliceHeightPx,
+        marginMm,
+      });
 
       croppedCanvas.remove();
       startY += sliceHeightPx;
