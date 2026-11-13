@@ -23,6 +23,13 @@ import {
   Typography,
   useMediaQuery,
   useTheme,
+  Alert,
+  Avatar,
+  CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
 } from "@mui/material";
 import {
   MoreVert as MoreVertIcon,
@@ -32,6 +39,169 @@ import {
 import { toast } from "react-toastify";
 import { api } from "../../api";
 import { AppContext } from "../../context/AppContext";
+
+const ROLE_OPTIONS = [
+  { value: "receiver", label: "Receiver", description: "Receives shipments" },
+  { value: "sender", label: "Sender", description: "Sends shipments" },
+  { value: "both", label: "Both", description: "Sender and receiver" },
+];
+
+function AuthorizeDialog({
+  open,
+  rows,
+  authorize,
+  loading,
+  onClose,
+  onConfirm,
+}) {
+  const [role, setRole] = useState("receiver");
+
+  // Pre-select the role if every selected customer shares the same one
+  useEffect(() => {
+    if (!open) return;
+    const roles = [...new Set(rows.map((r) => r.role))];
+    setRole(
+      roles.length === 1 && roles[0] !== "unknown" ? roles[0] : "receiver",
+    );
+  }, [open, rows]);
+
+  const withEmail = rows.filter((r) => r.email);
+  const skipped = rows.length - withEmail.length;
+  const accent = authorize ? "success" : "error";
+  const PREVIEW_LIMIT = 5;
+
+  return (
+    <Dialog
+      open={open}
+      onClose={loading ? undefined : onClose}
+      fullWidth
+      maxWidth="xs"
+      PaperProps={{ sx: { borderRadius: 3 } }}
+    >
+      <DialogTitle sx={{ pb: 1 }}>
+        <Stack direction="row" spacing={2} alignItems="center">
+          <Avatar sx={{ bgcolor: `${accent}.main`, width: 44, height: 44 }}>
+            {authorize ? <LockOpenIcon /> : <LockIcon />}
+          </Avatar>
+          <Box>
+            <Typography variant="h6" fontWeight="bold">
+              {authorize ? "Authorize mobile access" : "Revoke mobile access"}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {withEmail.length} customer{withEmail.length !== 1 ? "s" : ""}{" "}
+              selected
+            </Typography>
+          </Box>
+        </Stack>
+      </DialogTitle>
+
+      <DialogContent>
+        <Stack spacing={2.5} sx={{ pt: 1 }}>
+          {skipped > 0 && (
+            <Alert severity="warning" sx={{ borderRadius: 2 }}>
+              {skipped} customer{skipped > 1 ? "s have" : " has"} no email on
+              file and will be skipped.
+            </Alert>
+          )}
+
+          <Paper
+            variant="outlined"
+            sx={{ borderRadius: 2, overflow: "hidden" }}
+          >
+            {withEmail.slice(0, PREVIEW_LIMIT).map((row, i) => (
+              <Box key={row.id}>
+                {i > 0 && <Divider />}
+                <Stack
+                  direction="row"
+                  alignItems="center"
+                  spacing={1.5}
+                  sx={{ px: 2, py: 1 }}
+                >
+                  <Avatar sx={{ width: 30, height: 30, fontSize: 14 }}>
+                    {row.company.charAt(0).toUpperCase()}
+                  </Avatar>
+                  <Box minWidth={0}>
+                    <Typography variant="body2" fontWeight={600} noWrap>
+                      {row.company}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" noWrap>
+                      {row.email}
+                    </Typography>
+                  </Box>
+                </Stack>
+              </Box>
+            ))}
+            {withEmail.length > PREVIEW_LIMIT && (
+              <>
+                <Divider />
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{
+                    display: "block",
+                    px: 2,
+                    py: 1,
+                    bgcolor: "action.hover",
+                  }}
+                >
+                  + {withEmail.length - PREVIEW_LIMIT} more
+                </Typography>
+              </>
+            )}
+          </Paper>
+
+          {authorize ? (
+            <TextField
+              select
+              fullWidth
+              size="small"
+              label="Account role"
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              helperText="This role will be applied to all selected customers."
+              disabled={loading}
+            >
+              {ROLE_OPTIONS.map((opt) => (
+                <MenuItem key={opt.value} value={opt.value}>
+                  <Box>
+                    <Typography variant="body2" fontWeight={600}>
+                      {opt.label}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {opt.description}
+                    </Typography>
+                  </Box>
+                </MenuItem>
+              ))}
+            </TextField>
+          ) : (
+            <Typography variant="body2" color="text.secondary">
+              These customers will no longer be able to access the mobile app.
+              You can re-authorize them at any time.
+            </Typography>
+          )}
+        </Stack>
+      </DialogContent>
+
+      <DialogActions sx={{ px: 3, pb: 2.5 }}>
+        <Button onClick={onClose} disabled={loading} color="inherit">
+          Cancel
+        </Button>
+        <Button
+          variant="contained"
+          color={accent}
+          disabled={loading || !withEmail.length}
+          onClick={() => onConfirm(role)}
+          startIcon={
+            loading ? <CircularProgress size={16} color="inherit" /> : null
+          }
+        >
+          {authorize ? "Authorize" : "Unauthorize"}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
 
 const getRole = (customer) => {
   const raw = (customer.type || "").toLowerCase();
@@ -59,6 +229,22 @@ export default function AuthorizeCustomers() {
   const [menuAnchor, setMenuAnchor] = useState(null);
   const [menuRow, setMenuRow] = useState(null);
   const [activeFilter, setActiveFilter] = useState(null);
+  const [confirmDialog, setConfirmDialog] = useState({
+    open: false,
+    rows: [],
+    authorize: true,
+  });
+
+  const openConfirm = (rowsToUpdate, authorize) => {
+    if (!rowsToUpdate.length) {
+      toast.warning("Select at least one customer first.");
+      return;
+    }
+    setConfirmDialog({ open: true, rows: rowsToUpdate, authorize });
+  };
+
+  const closeConfirm = () =>
+    setConfirmDialog((prev) => ({ ...prev, open: false }));
 
   const toggleFilter = (filter) => {
     setActiveFilter((prev) => (prev === filter ? null : filter));
@@ -187,7 +373,7 @@ export default function AuthorizeCustomers() {
     setMenuRow(null);
   };
 
-  const handleSetAuthorization = async (rowsToUpdate, authorize) => {
+  const handleSetAuthorization = async (rowsToUpdate, authorize, role) => {
     if (!rowsToUpdate.length) {
       toast.warning("Select at least one customer first.");
       return;
@@ -213,7 +399,7 @@ export default function AuthorizeCustomers() {
             customerId: r.id,
             fullName: r.name,
             email: r.email,
-            accountType: r.role === "unknown" ? "receiver" : r.role,
+            accountType: role || (r.role === "unknown" ? "receiver" : r.role),
           })),
           authorize,
         },
@@ -235,6 +421,7 @@ export default function AuthorizeCustomers() {
       toast.error("Unable to update authorization.");
     } finally {
       setProcessingIds([]);
+      closeConfirm();
     }
   };
 
@@ -268,7 +455,7 @@ export default function AuthorizeCustomers() {
               startIcon={<LockOpenIcon />}
               fullWidth={isMobile}
               disabled={!selectedRows.length}
-              onClick={() => handleSetAuthorization(selectedRows, true)}
+              onClick={() => openConfirm(selectedRows, true)}
             >
               Authorize ({selectedRows.length})
             </Button>
@@ -278,7 +465,7 @@ export default function AuthorizeCustomers() {
               startIcon={<LockIcon />}
               fullWidth={isMobile}
               disabled={!selectedRows.length}
-              onClick={() => handleSetAuthorization(selectedRows, false)}
+              onClick={() => openConfirm(selectedRows, false)}
             >
               Unauthorize ({selectedRows.length})
             </Button>
@@ -587,7 +774,7 @@ export default function AuthorizeCustomers() {
           onClick={() => {
             const row = menuRow;
             closeMenu();
-            handleSetAuthorization([row], true);
+            openConfirm([row], true);
           }}
           disabled={menuRow?.authorized}
         >
@@ -597,7 +784,7 @@ export default function AuthorizeCustomers() {
           onClick={() => {
             const row = menuRow;
             closeMenu();
-            handleSetAuthorization([row], false);
+            openConfirm([row], false);
           }}
           disabled={!menuRow?.authorized}
         >
@@ -612,6 +799,20 @@ export default function AuthorizeCustomers() {
           View Details
         </MenuItem>
       </Menu>
+      <AuthorizeDialog
+        open={confirmDialog.open}
+        rows={confirmDialog.rows}
+        authorize={confirmDialog.authorize}
+        loading={processingIds.length > 0}
+        onClose={closeConfirm}
+        onConfirm={(role) =>
+          handleSetAuthorization(
+            confirmDialog.rows,
+            confirmDialog.authorize,
+            role,
+          )
+        }
+      />
     </Box>
   );
 }

@@ -277,7 +277,7 @@ export default function StatusesPage() {
           gutterBottom
           sx={{ color: "#0d6c6a" }}
         >
-          Shipment Statuses
+          ETA Setup
         </Typography>
         <Button
           variant="contained"

@@ -135,6 +135,7 @@ export default function AdminNotificationsPage() {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [newEta, setNewEta] = useState("");
+  const [openGroups, setOpenGroups] = useState({});
 
   const toLocalISO = (v) => {
     if (!v) return "";
@@ -262,7 +263,7 @@ export default function AdminNotificationsPage() {
     );
   };
 
-  const renderPending = (r) => {
+  const renderPending = (r, nested = false) => {
     const previewEta = r.grace_days > 0 ? addDays(r.eta, r.grace_days) : null;
     const limitReached = (r.grace_used ?? 0) >= MAX_GRACE;
 
@@ -390,7 +391,7 @@ export default function AdminNotificationsPage() {
     );
   };
 
-  const renderResolved = (r) => {
+  const renderResolved = (r, nested = false) => {
     const o = OUTCOME[r.state] || {
       label: () => r.state,
       color: "#616161",
@@ -409,7 +410,6 @@ export default function AdminNotificationsPage() {
           },
         }}
       >
-        {/* Order details */}
         <Box sx={{ minWidth: 0 }}>
           <Stack
             direction="row"
@@ -418,30 +418,42 @@ export default function AdminNotificationsPage() {
             flexWrap="wrap"
             useFlexGap
           >
-            <Typography fontWeight={700}>
-              {r.rgl_booking_number || "-"}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              {r.booking_ref}
-            </Typography>
+            {nested ? (
+              <Typography fontWeight={700} sx={{ wordBreak: "break-all" }}>
+                {r.item_ref || "-"}
+              </Typography>
+            ) : (
+              <>
+                <Typography fontWeight={700}>
+                  {r.rgl_booking_number || "-"}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {r.booking_ref}
+                </Typography>
+              </>
+            )}
             {statusChip(r.status)}
           </Stack>
-          <Typography variant="body2" sx={{ mt: 0.75, fontWeight: 500 }}>
-            {r.receiver_name || "-"}
-          </Typography>
+          {!nested && (
+            <Typography variant="body2" sx={{ mt: 0.75, fontWeight: 500 }}>
+              {r.receiver_name || "-"}
+            </Typography>
+          )}
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
             Was stuck for{" "}
             <b>
               {r.idle_days} {r.idle_days === 1 ? "day" : "days"}
             </b>
           </Typography>
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            sx={{ display: "block", mt: 0.25, wordBreak: "break-all" }}
-          >
-            {r.item_ref}
-          </Typography>
+          {!nested && (
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ display: "block", mt: 0.25, wordBreak: "break-all" }}
+            >
+              {r.item_ref}
+            </Typography>
+          )}
         </Box>
 
         {/* ETA + outcome */}
@@ -495,20 +507,145 @@ export default function AdminNotificationsPage() {
 
   const list = tab === "pending" ? filteredPending : filteredResolved;
 
+  const groups = useMemo(() => {
+    const map = new Map();
+    list.forEach((r) => {
+      const key = `${r.rgl_booking_number || ""}|${r.booking_ref || ""}`;
+      if (!map.has(key)) {
+        map.set(key, {
+          key,
+          formNo: r.rgl_booking_number,
+          bookingRef: r.booking_ref,
+          receiver: r.receiver_name,
+          items: [],
+        });
+      }
+      map.get(key).items.push(r);
+    });
+    return [...map.values()];
+  }, [list]);
+
   useEffect(() => {
     setPage(0);
   }, [tab, search, statusFilter, rowsPerPage]);
 
   useEffect(() => {
-    if (page > 0 && page * rowsPerPage >= list.length) {
-      setPage(Math.max(0, Math.ceil(list.length / rowsPerPage) - 1));
+    if (page > 0 && page * rowsPerPage >= groups.length) {
+      setPage(Math.max(0, Math.ceil(groups.length / rowsPerPage) - 1));
     }
-  }, [list.length, page, rowsPerPage]);
+  }, [groups.length, page, rowsPerPage]);
 
   const paged = useMemo(
-    () => list.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage),
-    [list, page, rowsPerPage],
+    () => groups.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage),
+    [groups, page, rowsPerPage],
   );
+
+  const renderGroup = (g) => {
+    const isOpen = !!openGroups[g.key];
+    const isPending = tab === "pending";
+    const n = g.items.length;
+    const maxIdle = Math.max(...g.items.map((i) => Number(i.idle_days) || 0));
+
+    return (
+      <Box key={g.key} sx={{ mb: 1.5 }}>
+        <Paper
+          elevation={0}
+          onClick={() => setOpenGroups((p) => ({ ...p, [g.key]: !p[g.key] }))}
+          sx={{
+            p: { xs: 1.5, sm: 2 },
+            border: "1px solid",
+            borderColor: isOpen ? TEAL : "divider",
+            borderLeft: `4px solid ${TEAL}`,
+            borderRadius: 2.5,
+            bgcolor: isOpen ? "#d9eeec" : "background.paper",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: 1.5,
+            transition: "box-shadow .2s",
+            "&:hover": { boxShadow: "0 4px 14px rgba(0,0,0,0.08)" },
+          }}
+        >
+          <IconButton size="small" sx={{ color: ORANGE }}>
+            <ExpandMoreIcon
+              sx={{
+                transform: isOpen ? "none" : "rotate(-90deg)",
+                transition: "transform .2s",
+              }}
+            />
+          </IconButton>
+
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Stack
+              direction="row"
+              spacing={1}
+              alignItems="center"
+              flexWrap="wrap"
+              useFlexGap
+            >
+              <Typography fontWeight={700} sx={{ color: TEAL }}>
+                {g.formNo || "-"}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {g.bookingRef}
+              </Typography>
+            </Stack>
+            <Typography variant="body2" sx={{ mt: 0.5, fontWeight: 500 }}>
+              {g.receiver || "-"}
+            </Typography>
+          </Box>
+
+          <Stack direction="row" spacing={1.5} alignItems="center">
+            {isPending && (
+              <Typography variant="caption" color="text.secondary">
+                Longest idle: <b>{maxIdle}d</b>
+              </Typography>
+            )}
+            <Chip
+              label={`${n} item${n > 1 ? "s" : ""}`}
+              size="small"
+              sx={{
+                bgcolor: isPending ? ORANGE : "#e0e0e0",
+                color: isPending ? "#fff" : "#616161",
+                fontWeight: 700,
+              }}
+            />
+          </Stack>
+        </Paper>
+
+        <Collapse in={isOpen} timeout="auto" unmountOnExit>
+          <Box
+            sx={{
+              mt: 1,
+              ml: { xs: 1, sm: 3 },
+              p: { xs: 1.5, sm: 2 },
+              pb: 0.5,
+              borderLeft: `4px solid ${ORANGE}`,
+              bgcolor: "#fff8f1",
+              borderRadius: 2,
+            }}
+          >
+            <Typography
+              variant="caption"
+              sx={{
+                display: "block",
+                mb: 1,
+                fontWeight: 700,
+                color: "#8a4b0f",
+                textTransform: "uppercase",
+                letterSpacing: 0.5,
+              }}
+            >
+              Items in this order ({n})
+            </Typography>
+            {g.items.map((r) =>
+              isPending ? renderPending(r, true) : renderResolved(r, true),
+            )}
+          </Box>
+        </Collapse>
+      </Box>
+    );
+  };
   return (
     <Box sx={{ p: 3 }}>
       <Stack
@@ -723,13 +860,12 @@ export default function AdminNotificationsPage() {
         </Paper>
       ) : (
         <>
-          {tab === "pending"
-            ? paged.map(renderPending)
-            : paged.map(renderResolved)}
+          {paged.map((g) => renderGroup(g))}
 
           <TablePagination
             component="div"
-            count={list.length}
+            count={groups.length}
+            labelRowsPerPage="Orders per page"
             page={page}
             onPageChange={(_, p) => {
               setPage(p);

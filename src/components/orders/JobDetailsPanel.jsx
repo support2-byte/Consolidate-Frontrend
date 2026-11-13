@@ -207,7 +207,7 @@ export default function JobDetailsPanel({ row, loading }) {
   if (!row || (!row.invoices.length && !row.vendorBills.length)) {
     return (
       <Alert severity="info" sx={{ borderRadius: 2 }}>
-        No invoices or Job Details found for this order
+        No invoices or Finance found for this order
       </Alert>
     );
   }
@@ -245,7 +245,7 @@ export default function JobDetailsPanel({ row, loading }) {
             value={fmtMoney(row.invoiceTotal, row.currency)}
           />
           <Stat
-            label="Total Job Details (Cost)"
+            label="Total Finance (Cost)"
             value={fmtMoney(row.vendorTotal, row.currency)}
           />
           <Stat
@@ -265,7 +265,7 @@ export default function JobDetailsPanel({ row, loading }) {
       )}
 
       <DocTable
-        title="Job Details"
+        title="Finance"
         docs={row.vendorBills}
         partyLabel="Vendor"
         partyKey="vendor"

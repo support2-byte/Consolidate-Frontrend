@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import {
   Box,
   Typography,
@@ -22,8 +22,11 @@ import {
   FormControl,
   InputLabel,
   Select,
+  IconButton,
 } from "@mui/material";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
+import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
+import KeyboardArrowRightIcon from "@mui/icons-material/KeyboardArrowRight";
 import { toast } from "react-toastify";
 import { api } from "../api";
 import { getStatusColors } from "../Utlis/statusColors";
@@ -129,6 +132,26 @@ export default function ETAMonitoringPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [statusOptions, setStatusOptions] = useState([]);
   const [flagFilter, setFlagFilter] = useState("");
+
+  const [openGroups, setOpenGroups] = useState({});
+
+  const groups = useMemo(() => {
+    const map = new Map();
+    rows.forEach((r) => {
+      const key = `${r.rgl_booking_number || ""}|${r.booking_ref || ""}`;
+      if (!map.has(key)) {
+        map.set(key, {
+          key,
+          formNo: r.rgl_booking_number,
+          bookingRef: r.booking_ref,
+          receiver: r.receiver_name,
+          items: [],
+        });
+      }
+      map.get(key).items.push(r);
+    });
+    return [...map.values()];
+  }, [rows]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -306,6 +329,7 @@ export default function ETAMonitoringPage() {
           <Table size="small">
             <TableHead>
               <TableRow sx={{ bgcolor: TEAL }}>
+                {tab === 0 && <TableCell sx={{ ...head, width: 40, px: 1 }} />}
                 <TableCell sx={{ ...head, py: 1.5 }}>Form Number</TableCell>
                 <TableCell sx={head}>Booking Ref</TableCell>
                 <TableCell sx={head}>Item Ref</TableCell>
@@ -335,14 +359,14 @@ export default function ETAMonitoringPage() {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={10} align="center" sx={{ py: 6 }}>
+                  <TableCell colSpan={12} align="center" sx={{ py: 6 }}>
                     <CircularProgress size={28} sx={{ color: TEAL }} />
                   </TableCell>
                 </TableRow>
               ) : rows.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={10}
+                    colSpan={12}
                     align="center"
                     sx={{ py: 6, color: "#aaa" }}
                   >
@@ -352,33 +376,185 @@ export default function ETAMonitoringPage() {
                   </TableCell>
                 </TableRow>
               ) : tab === 0 ? (
-                rows.map((r, i) => {
-                  const st = getStatusColors(r.status);
-                  const f = flagOf(r);
+                groups.map((g) => {
+                  const isOpen = !!openGroups[g.key];
+
+                  const counts = {};
+                  g.items.forEach((it) => {
+                    const f = flagOf(it);
+                    counts[f.label] = counts[f.label]
+                      ? { ...counts[f.label], n: counts[f.label].n + 1 }
+                      : { ...f, n: 1 };
+                  });
+
                   return (
-                    <TableRow key={`${r.item_ref}-${i}`} hover>
-                      <TableCell>{r.rgl_booking_number || "-"}</TableCell>
-                      <TableCell>{r.booking_ref || "-"}</TableCell>
-                      <TableCell>{r.item_ref || "-"}</TableCell>
-                      <TableCell>{r.receiver_name || "-"}</TableCell>
-                      <TableCell>{chip(r.status, st.bg, st.text)}</TableCell>
-                      <TableCell>{r.days_in_status}d</TableCell>
-                      <TableCell>{r.idle_days}d</TableCell>
-                      <TableCell>
-                        {FINAL.includes(r.status)
-                          ? "-"
-                          : `${r.check_after_days}d`}
-                      </TableCell>
-                      <TableCell>
-                        {r.grace_used}/{MAX_GRACE}
-                      </TableCell>
-                      <TableCell>{formatDate(r.eta)}</TableCell>
-                      <TableCell>
-                        <Tooltip title={f.tip || ""}>
-                          <span>{chip(f.label, f.bg, f.text)}</span>
-                        </Tooltip>
-                      </TableCell>
-                    </TableRow>
+                    <Fragment key={g.key}>
+                      <TableRow
+                        hover
+                        onClick={() =>
+                          setOpenGroups((p) => ({ ...p, [g.key]: !p[g.key] }))
+                        }
+                        sx={{
+                          cursor: "pointer",
+                          bgcolor: isOpen ? "#d9eeec" : undefined,
+                          "& > td": {
+                            borderBottom: isOpen ? "none" : undefined,
+                          },
+                          "& > td:first-of-type": {
+                            borderLeft: `4px solid ${isOpen ? TEAL : "transparent"}`,
+                          },
+                        }}
+                      >
+                        <TableCell sx={{ width: 40, px: 1 }}>
+                          <IconButton size="small" sx={{ color: "#f58220" }}>
+                            {isOpen ? (
+                              <KeyboardArrowDownIcon />
+                            ) : (
+                              <KeyboardArrowRightIcon />
+                            )}
+                          </IconButton>
+                        </TableCell>
+                        <TableCell sx={{ fontWeight: 600, color: TEAL }}>
+                          {g.formNo || "-"}
+                        </TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>
+                          {g.bookingRef || "-"}
+                        </TableCell>
+                        <TableCell>
+                          {g.items.length} item{g.items.length > 1 ? "s" : ""}
+                        </TableCell>
+                        <TableCell>{g.receiver || "-"}</TableCell>
+                        <TableCell colSpan={6} />
+                        <TableCell>
+                          <Stack
+                            direction="row"
+                            spacing={0.5}
+                            flexWrap="wrap"
+                            useFlexGap
+                          >
+                            {Object.values(counts).map((c) => (
+                              <Fragment key={c.label}>
+                                {chip(`${c.n} ${c.label}`, c.bg, c.text)}
+                              </Fragment>
+                            ))}
+                          </Stack>
+                        </TableCell>
+                      </TableRow>
+
+                      {isOpen && (
+                        <>
+                          <TableRow sx={{ bgcolor: "#ffe9d2" }}>
+                            <TableCell
+                              colSpan={3}
+                              sx={{
+                                borderLeft: "4px solid #f58220",
+                                fontSize: 11,
+                                fontWeight: 700,
+                                color: "#8a4b0f",
+                                textTransform: "uppercase",
+                                letterSpacing: 0.5,
+                                py: 0.75,
+                              }}
+                            >
+                              Items in this order ({g.items.length})
+                            </TableCell>
+                            {[
+                              "Item Ref",
+                              "Receiver",
+                              "Status",
+                              "In Status",
+                              "Idle",
+                              "Check After",
+                              "Grace",
+                              "ETA",
+                              "Flag",
+                            ].map((h) => (
+                              <TableCell
+                                key={h}
+                                sx={{
+                                  fontSize: 11,
+                                  fontWeight: 700,
+                                  color: "#8a4b0f",
+                                  textTransform: "uppercase",
+                                  letterSpacing: 0.5,
+                                  py: 0.75,
+                                }}
+                              >
+                                {h}
+                              </TableCell>
+                            ))}
+                          </TableRow>
+
+                          {g.items.map((r, i) => {
+                            const st = getStatusColors(r.status);
+                            const f = flagOf(r);
+                            const last = i === g.items.length - 1;
+                            return (
+                              <TableRow
+                                key={`${r.item_ref}-${i}`}
+                                hover
+                                sx={{
+                                  bgcolor: "#fff8f1",
+                                  "&:hover": { bgcolor: "#fff0e0 !important" },
+                                  "& > td": {
+                                    borderBottom: last
+                                      ? `2px solid ${TEAL}`
+                                      : "1px dashed #f0d9c2",
+                                  },
+                                }}
+                              >
+                                <TableCell
+                                  colSpan={3}
+                                  sx={{
+                                    borderLeft: "4px solid #f58220",
+                                    pl: 4,
+                                    color: "text.secondary",
+                                    fontSize: 12,
+                                  }}
+                                >
+                                  ↳ Item {i + 1}
+                                </TableCell>
+                                <TableCell
+                                  sx={{ fontSize: 13, fontWeight: 500 }}
+                                >
+                                  {r.item_ref || "-"}
+                                </TableCell>
+                                <TableCell
+                                  sx={{ fontSize: 12, color: "text.secondary" }}
+                                >
+                                  {r.receiver_name || "-"}
+                                </TableCell>
+                                <TableCell>
+                                  {chip(r.status, st.bg, st.text)}
+                                </TableCell>
+                                <TableCell sx={{ fontSize: 13 }}>
+                                  {r.days_in_status}d
+                                </TableCell>
+                                <TableCell sx={{ fontSize: 13 }}>
+                                  {r.idle_days}d
+                                </TableCell>
+                                <TableCell sx={{ fontSize: 13 }}>
+                                  {FINAL.includes(r.status)
+                                    ? "-"
+                                    : `${r.check_after_days}d`}
+                                </TableCell>
+                                <TableCell sx={{ fontSize: 13 }}>
+                                  {r.grace_used}/{MAX_GRACE}
+                                </TableCell>
+                                <TableCell sx={{ fontSize: 13 }}>
+                                  {formatDate(r.eta)}
+                                </TableCell>
+                                <TableCell>
+                                  <Tooltip title={f.tip || ""}>
+                                    <span>{chip(f.label, f.bg, f.text)}</span>
+                                  </Tooltip>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </>
+                      )}
+                    </Fragment>
                   );
                 })
               ) : (

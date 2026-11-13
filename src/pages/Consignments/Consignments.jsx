@@ -46,6 +46,7 @@ import {
   Add as AddIcon,
   Update as UpdateIcon,
   Edit as EditIcon,
+  Visibility as VisibilityIcon,
 } from "@mui/icons-material";
 import { TimerReset } from "lucide-react";
 import dayjs from "dayjs";
@@ -223,9 +224,7 @@ export default function Consignments() {
   };
 
   const handleView = (id) => {
-    navigate(`/consignments/${id}/edit`, {
-      state: { mode: "edit", consignmentId: id },
-    });
+    navigate(`/consignments/${id}/view`);
   };
 
   const handleEdit = (id) => {
@@ -403,7 +402,7 @@ export default function Consignments() {
               <StyledTableHeadCell sx={{ width: 130 }}>
                 Status
               </StyledTableHeadCell>
-              <StyledTableHeadCell sx={{ width: 100 }}>
+              <StyledTableHeadCell sx={{ width: 130 }}>
                 Actions
               </StyledTableHeadCell>
             </TableRow>
@@ -458,6 +457,14 @@ export default function Consignments() {
                   <TableCell>{renderStatus(row.status)}</TableCell>
                   <TableCell>
                     <Stack direction="row" spacing={1}>
+                      <Tooltip title="View">
+                        <IconButton
+                          size="small"
+                          onClick={() => handleView(row.id)}
+                        >
+                          <VisibilityIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
                       <Tooltip title="Edit">
                         <IconButton
                           size="small"
