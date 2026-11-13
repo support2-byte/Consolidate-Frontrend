@@ -75,9 +75,9 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  const fetchStatuses = async () => {
+  const fetchStatuses = async ({ silent = false } = {}) => {
     try {
-      setStatusLoading(true);
+      if (!silent) setStatusLoading(true);
       const response = await api.get(`/api/options/allStatus`);
 
       if (response.status === 200) {
@@ -89,7 +89,7 @@ export const AppProvider = ({ children }) => {
       console.error("Status Fetch Error:", error);
       toast.error("An error occurred while fetching statuses.");
     } finally {
-      setStatusLoading(false);
+      if (!silent) setStatusLoading(false);
     }
   };
 
