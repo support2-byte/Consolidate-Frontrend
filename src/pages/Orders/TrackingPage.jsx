@@ -44,10 +44,22 @@ import ShipmentTimeline from "./shipmentTimeline";
 import { useContext } from "react";
 import { AppContext } from "../../context/AppContext";
 
+const stepKey = (s) =>
+  (s || "")
+    .toString()
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/^(order|shipment) /, "")
+    .replace(/^loaded into container$/, "loaded");
+
+const stepIndex = (steps, status) =>
+  steps.findIndex((s) => stepKey(s) === stepKey(status));
+
 const normalizeShipments = (item, steps) => {
   const last = steps.length - 1;
   return (item?.shipments || []).map((sh) => {
-    const idx = Math.max(steps.indexOf(sh.status), 0);
+    const idx = Math.max(stepIndex(steps, sh.status), 0);
     return {
       qty: Number(sh.qty) || 0,
       weight: Number(sh.weight) || 0,
@@ -378,7 +390,7 @@ const TrackingPage = () => {
     trackingData?.status ||
     orderedStatuses[0];
 
-  const currentStepIndex = orderedStatuses.indexOf(currentStatus);
+  const currentStepIndex = stepIndex(orderedStatuses, currentStatus);
   const completedSteps = currentStepIndex >= 0 ? currentStepIndex + 1 : 1;
   const progressPercent = (completedSteps / orderedStatuses.length) * 100;
 
@@ -527,7 +539,7 @@ const ItemRefLayout = ({ trackingData, places, timelineSteps }) => {
 
   const currentStatus = receiver.status || timelineSteps[0];
 
-  let currentIndex = timelineSteps.indexOf(currentStatus);
+  let currentIndex = stepIndex(timelineSteps, currentStatus);
 
   if (currentIndex === -1) currentIndex = 0;
 
@@ -539,12 +551,10 @@ const ItemRefLayout = ({ trackingData, places, timelineSteps }) => {
     .filter((h) => h.status)
     .map((h) => ({
       status: h.status,
-      time: new Date(h.time).toLocaleString("en-GB", {
-        dateStyle: "medium",
-        timeStyle: "short",
-      }),
+      time: fmtDateTime(h.time),
       notes: h.notes?.trim() || "",
-    }));
+    }))
+    .reverse();
 
   const hasIssue = history.some(
     (h) =>
@@ -893,26 +903,6 @@ const ItemRefLayout = ({ trackingData, places, timelineSteps }) => {
             </Typography>
           </Paper>
         )}
-
-        {/* <Button
-          variant="contained"
-          size="large"
-          startIcon={<NotificationsIcon />}
-          sx={{
-            mt: 4,
-            bgcolor: "#f58220",
-            "&:hover": { bgcolor: "#e66918" },
-            px: 8,
-            py: 1.8,
-            fontSize: "16px",
-            color: "#fff",
-            borderRadius: 50,
-            margin: "0 auto",
-            display: "flex",
-          }}
-        >
-          Notify Me
-        </Button> */}
       </Paper>
 
       {!partial && history.length > 0 && (
@@ -1004,7 +994,7 @@ const ItemRefLayout = ({ trackingData, places, timelineSteps }) => {
             />
 
             {history.map((entry, idx) => {
-              const isCurrent = idx === 0;
+              const isCurrent = idx === history.length - 1;
               const isLast = idx === history.length - 1;
 
               return (
@@ -1241,9 +1231,17 @@ const ItemRefLayout = ({ trackingData, places, timelineSteps }) => {
   );
 };
 
+const toDate = (d) => {
+  if (d instanceof Date) return d;
+  const s = String(d);
+  return new Date(
+    /[zZ]|[+-]\d{2}:?\d{2}$/.test(s) ? s : s.replace(" ", "T") + "Z",
+  );
+};
+
 const fmtDate = (d) =>
   d
-    ? new Date(d).toLocaleDateString("en-GB", {
+    ? toDate(d).toLocaleDateString("en-GB", {
         day: "numeric",
         month: "short",
         year: "numeric",
@@ -1252,7 +1250,7 @@ const fmtDate = (d) =>
 
 const fmtDateTime = (d) =>
   d
-    ? new Date(d).toLocaleString("en-GB", {
+    ? toDate(d).toLocaleString("en-GB", {
         dateStyle: "medium",
         timeStyle: "short",
       })
@@ -1336,7 +1334,7 @@ const ItemRow = ({ item, steps = [] }) => {
       c.container?.container_number &&
       c.container.container_number !== "Unknown",
   );
-  const history = item.status_history || [];
+  const history = [...(item.status_history || [])].reverse();
 
   return (
     <>
@@ -1440,7 +1438,8 @@ const ItemRow = ({ item, steps = [] }) => {
                             height: 12,
                             borderRadius: "50%",
                             mt: 0.7,
-                            bgcolor: i === 0 ? "#16a34a" : "#f58220",
+                            bgcolor:
+                              i === history.length - 1 ? "#f58220" : "#16a34a",
                             flexShrink: 0,
                           }}
                         />
@@ -1479,12 +1478,11 @@ const OrderDetailedLayout = ({ trackingData, timelineSteps = [] }) => {
   } = trackingData;
 
   const senderName = trackingData.sender_name || trackingData.sender || "—";
-  const finalStep = timelineSteps[timelineSteps.length - 1];
-  const rankOf = (status) => Math.max(timelineSteps.indexOf(status), 0);
+  const lastIdx = timelineSteps.length - 1;
+  const rankOf = (status) => Math.max(stepIndex(timelineSteps, status), 0);
 
   return (
     <Box sx={{ maxWidth: 1400, mx: "auto", px: 2 }}>
-      {/* Order header */}
       <Paper
         elevation={4}
         sx={{
@@ -1540,7 +1538,7 @@ const OrderDetailedLayout = ({ trackingData, timelineSteps = [] }) => {
         );
         const currentIndex = leastItem ? rankOf(leastItem.status) : 0;
         const deliveredCount = items.filter(
-          (i) => i.status === finalStep,
+          (i) => rankOf(i.status) === lastIdx,
         ).length;
 
         return (

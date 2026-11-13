@@ -60,6 +60,7 @@ import SystemRatesPage from "./pages/SystemData/SystemSettings";
 import ZohoInvoicesPage from "./pages/ZohoInvoicesPage";
 import ETAMonitoringPage from "./pages/ETAMonitoringPage";
 import AdminNotificationsPage from "./pages/AdminNotificationsPage";
+import ViewConsignmentPage from "./pages/Consignments/ViewConsignment";
 
 const router = createBrowserRouter([
   { path: "/login", element: <Login /> },
@@ -199,6 +200,16 @@ const router = createBrowserRouter([
             permission={{ module: "consignments", action: "edit" }}
           >
             <AddConsignment mode="edit" />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "consignments/:consignmentId/view",
+        element: (
+          <ProtectedRoute
+            permission={{ module: "view-consignment", action: "view" }}
+          >
+            <ViewConsignmentPage />
           </ProtectedRoute>
         ),
       },
