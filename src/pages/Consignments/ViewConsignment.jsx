@@ -90,6 +90,8 @@ import AccountBalanceWalletOutlinedIcon from "@mui/icons-material/AccountBalance
 import CreditCardOutlinedIcon from "@mui/icons-material/CreditCardOutlined";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import PieChartOutlineIcon from "@mui/icons-material/PieChartOutline";
+import InsertDriveFileOutlinedIcon from "@mui/icons-material/InsertDriveFileOutlined";
+import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import { api } from "../../api";
 import { useNavigate } from "react-router-dom";
 import ContainersTabs from "../Containers/Containers";
@@ -106,6 +108,62 @@ import { AppContext } from "../../context/AppContext";
 import { getStatusColors } from "../../Utlis/statusColors";
 
 applyPlugin(jsPDF);
+
+const printHtml = (
+  html,
+  { title = "Document", pageMargin = "10mm", extraCss = "" } = {},
+) =>
+  new Promise((resolve) => {
+    const iframe = document.createElement("iframe");
+    Object.assign(iframe.style, {
+      position: "fixed",
+      right: "0",
+      bottom: "0",
+      width: "0",
+      height: "0",
+      border: "0",
+    });
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentDocument;
+    doc.open();
+    doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title>
+      <style>
+        @page { size: A4; margin: ${pageMargin}; }
+        html, body { margin: 0; padding: 0; background: #fff;
+          -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        tr { page-break-inside: avoid; break-inside: avoid; }
+        thead { display: table-header-group; }
+        .section { page-break-inside: auto !important; }
+        ${extraCss}
+      </style></head><body>${html}</body></html>`);
+    doc.close();
+
+    const cleanup = () => {
+      iframe.remove();
+      resolve();
+    };
+
+    setTimeout(async () => {
+      await Promise.all(
+        Array.from(doc.images).map((img) =>
+          img.complete
+            ? null
+            : new Promise((r) => {
+                img.onload = img.onerror = r;
+              }),
+        ),
+      );
+      const win = iframe.contentWindow;
+      win.onafterprint = cleanup;
+      win.focus();
+      win.print();
+      setTimeout(cleanup, 60000);
+    }, 300);
+  });
+
+const fileDisplayName = (a) =>
+  a.original_name || (a.public_id || "").split("/").pop();
 
 const docStatusColor = (s) =>
   s === "paid"
@@ -545,6 +603,11 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
   const [financeView, setFinanceView] = useState("invoices");
   const [expandedForms, setExpandedForms] = useState({});
 
+  const [attachments, setAttachments] = useState([]);
+  const [hblModalOpen, setHblModalOpen] = useState(false);
+  const [hblOrderId, setHblOrderId] = useState("");
+  const [hblItemId, setHblItemId] = useState("all");
+
   const runAction = async (key, fn) => {
     if (busyAction) return;
     setBusyAction(key);
@@ -902,6 +965,7 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       };
 
       setValues(mappedData);
+      setAttachments(data?.attachments || []);
       if (data?.orders && data.orders.length > 0) {
         setSelectedOrders(data.orders.map((o) => o.id));
       }
@@ -1563,6 +1627,30 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       ),
     );
   }, [orders]);
+
+  const hblOrderOptions = useMemo(
+    () =>
+      orders.map((o) => ({
+        value: o.id,
+        label: o.rgl_booking_number || `ORD-${o.id}`,
+      })),
+    [orders],
+  );
+
+  const hblItemOptions = useMemo(() => {
+    const order = orders.find((o) => o.id === hblOrderId);
+    if (!order) return [];
+    const seen = new Set();
+    return (order.receivers || [])
+      .flatMap((r) => r.shippingdetails || [])
+      .filter((d) => !seen.has(d.id) && seen.add(d.id))
+      .map((d) => ({
+        value: d.id,
+        label: d.subcategory
+          ? `${d.category || "Unknown"} - ${d.subcategory}`
+          : d.category || "Unknown",
+      }));
+  }, [orders, hblOrderId]);
 
   const fetchBilling = useCallback(
     async (sync = false) => {
@@ -2665,105 +2753,205 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         </div>
     </div>`;
 
-    document.body.appendChild(tempElement);
-
-    const scale = 1.5;
-    const canvas = await html2canvas(tempElement, {
-      scale: scale,
-      useCORS: true,
-      allowTaint: true,
-      logging: false,
-      width: tempElement.scrollWidth,
-      height: tempElement.scrollHeight,
-      windowWidth: tempElement.scrollWidth,
-      windowHeight: tempElement.scrollHeight,
-      backgroundColor: "#ffffff",
-      imageTimeout: 0,
-      removeContainer: true,
-      onclone: function (clonedDoc) {
-        clonedDoc.querySelectorAll("img").forEach((img) => {
-          img.style.maxWidth = "100%";
-          img.style.height = "auto";
-        });
-      },
+    await printHtml(tempElement.innerHTML, {
+      title: `Consignment_Note_${data.consignment_number}`,
     });
-    const textItems = collectTextItems(tempElement);
-    document.body.removeChild(tempElement);
+  };
 
-    const canvasDataURL = canvas.toDataURL("image/png", 0.85);
-    const canvasLink = document.createElement("a");
-    canvasLink.download = `Consignment_Note_${data.consignment_number}_Canvas_${Date.now()}.png`;
-    canvasLink.href = canvasDataURL;
-    canvasLink.click();
+  const maerskCss = (primary, secondary) => {
+    const tintBg = (hex, op = 0.1) => {
+      const c = (hex || "#cccccc").replace("#", "");
+      return `rgba(${parseInt(c.substring(0, 2), 16)}, ${parseInt(c.substring(2, 4), 16)}, ${parseInt(c.substring(4, 6), 16)}, ${op})`;
+    };
+    return `
+    .mk-page { width: 794px; min-height: 1123px; padding: 24px; background: #fff; box-sizing: border-box; font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #111; position: relative; }
+    .mk-page * { box-sizing: border-box; }
+    .mk-frame { border: 1.5px solid #000; border-top-left-radius: 26px; border-bottom-right-radius: 26px; overflow: hidden; }
+    .mk-label { display: block; font-size: 9px; color: #555; margin-bottom: 3px; line-height: 1.2; }
+    .mk-content { font-size: 12px; font-weight: bold; text-transform: uppercase; line-height: 1.35; word-break: break-word; }
+    .mk-cell { border-bottom: 1px solid #000; border-right: 1px solid #000; padding: 5px 7px; }
+    .mk-head { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px 10px 22px; border-bottom: 1px solid #000; border-top: 6px solid ${primary}; }
+    .mk-brand { display: flex; align-items: center; gap: 12px; }
+    .mk-brand-name { font-size: 15px; font-weight: bold; color: ${primary}; }
+    .mk-head-right { text-align: right; }
+    .mk-title { font-size: 20px; font-weight: bold; color: ${primary}; letter-spacing: .5px; }
+    .mk-sub { font-size: 10px; font-weight: bold; color: ${secondary}; letter-spacing: 1px; }
+    .mk-no { font-size: 12px; margin-top: 3px; }
+    .mk-no span { font-size: 9px; color: #555; }
+    .mk-upper { display: grid; grid-template-columns: 1.1fr 1fr; }
+    .mk-upper > div:last-child .mk-cell { border-right: none; }
+    .mk-two { display: grid; grid-template-columns: 1fr 1fr; }
+    .mk-two .mk-cell:last-child { border-right: none; }
+    .mk-small { font-size: 10px; line-height: 1.45; color: #333; text-align: justify; }
+    .mk-route { display: grid; grid-template-columns: 1.3fr .7fr 1fr; }
+    .mk-route .mk-cell { min-height: 40px; }
+    .mk-route .mk-cell:nth-child(3n) { border-right: none; }
+    .mk-band { text-align: center; font-weight: bold; font-size: 12px; padding: 5px; letter-spacing: .6px; background: ${tintBg(primary)}; border-bottom: 1px solid #000; }
+    .mk-desc { display: grid; grid-template-columns: 1fr 150px 120px; min-height: 340px; border-bottom: 1px solid #000; }
+    .mk-dcol { padding: 6px 8px; border-right: 1px solid #000; }
+    .mk-dcol.mk-last { border-right: none; }
+    .mk-dtext { text-transform: none; }
+    .mk-line { display: grid; grid-template-columns: 1fr 1.6fr .6fr .9fr; gap: 6px; font-size: 11px; font-weight: bold; padding: 4px 0; border-bottom: 1px dotted #bbb; }
+    .mk-cont { margin-top: 10px; font-size: 10px; color: ${secondary}; font-weight: bold; }
+    .mk-frow { display: grid; grid-template-columns: 2.2fr 1fr 1fr .8fr 1fr 1fr; }
+    .mk-frow > div { border-right: 1px solid #000; padding: 4px 6px; }
+    .mk-frow > div:last-child { border-right: none; }
+    .mk-fhead { font-size: 9px; color: #555; border-bottom: 1px solid #000; }
+    .mk-fbody { border-bottom: 1px solid #000; }
+    .mk-foot { display: grid; grid-template-columns: 1fr 1fr; }
+    .mk-foot > div:last-child .mk-cell { border-right: none; }
+    .mk-sign { padding: 8px 10px; }
+    .mk-signname { font-size: 12px; font-weight: bold; color: ${primary}; margin: 24px 0 4px; }
+    .mk-line-sig { border-top: 1px solid #000; margin-bottom: 3px; }
+    .mk-p2head { display: flex; justify-content: space-between; padding: 10px 18px; font-size: 12px; border-bottom: 1px solid #000; border-top: 6px solid ${primary}; }
+    .mk-terms { padding: 14px 18px; min-height: 640px; font-size: 11px; line-height: 1.55; border-bottom: 1px solid #000; }
+    .mk-terms ol { margin: 8px 0; padding-left: 18px; }
+    .mk-terms li { margin-bottom: 6px; }
+    .mk-pgno { font-size: 9px; color: #555; margin-top: 6px; }
+  `;
+  };
 
-    const innerWidthMm = 210 - 2 * 14;
-    const pxPerMm = canvas.width / innerWidthMm;
-    const extraBottomSpaceMm = 8;
-    const contentHeightPerPageMm = 297 - 2 * 14 - extraBottomSpaceMm;
-    const contentHeightPerPagePx = contentHeightPerPageMm * pxPerMm;
+  const buildMaerskHBLPages = (o) => {
+    const e = (v) => (v === undefined || v === null || v === "" ? "" : v);
+    const addr = (a) =>
+      e(a) && a !== "N/A" ? String(a).replace(/, /g, ",<br>") : "";
+    const ROWS_P1 = 10;
+    const rows = o.rows || [];
+    const p1Rows = rows.slice(0, ROWS_P1);
+    const overflow = rows.slice(ROWS_P1);
+    const totalPages = 2;
 
-    const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "p" });
-    const marginMm = 14;
-    const contentWidthMm = innerWidthMm;
+    const rowHtml = (r) =>
+      `<div class="mk-line"><span>${r.marks}</span><span>${r.desc}</span><span>${r.pkgs} PKG</span><span>${Number(r.weight).toFixed(3)} KGS</span></div>`;
 
-    let startY = 0;
-    while (startY < canvas.height) {
-      const sliceHeightPx = Math.min(
-        contentHeightPerPagePx,
-        canvas.height - startY,
-      );
+    const freight = (h) => `
+      <div class="mk-frow mk-fhead"><div>Freight &amp; Charges</div><div>Rate</div><div>Unit</div><div>Currency</div><div>Prepaid</div><div>Collect</div></div>
+      <div class="mk-frow mk-fbody" style="min-height:${h}px;"><div></div><div></div><div></div><div></div><div></div><div></div></div>`;
 
-      const croppedCanvas = document.createElement("canvas");
-      croppedCanvas.width = canvas.width;
-      croppedCanvas.height = sliceHeightPx;
-      const ctx = croppedCanvas.getContext("2d");
-      ctx.drawImage(
-        canvas,
-        0,
-        startY,
-        canvas.width,
-        sliceHeightPx,
-        0,
-        0,
-        canvas.width,
-        sliceHeightPx,
-      );
+    const logo = o.logoSrc
+      ? `<img src="${o.logoSrc}" alt="${o.companyName}" style="max-height:48px;max-width:170px;object-fit:contain;">`
+      : "";
 
-      const croppedDataURL = croppedCanvas.toDataURL("image/jpeg", 0.85);
-      const drawHeightMm = sliceHeightPx / pxPerMm;
+    const page1 = `
+    <div class="mk-page">
+      <div class="mk-frame">
+        <div class="mk-head">
+          <div class="mk-brand">${logo}<span class="mk-brand-name">${o.companyName}</span></div>
+          <div class="mk-head-right">
+            <div class="mk-title">${o.title}</div>
+            <div class="mk-sub">NON-NEGOTIABLE COPY</div>
+            <div class="mk-no"><span>Consignment</span> <b>${e(o.consignmentNo)}</b></div>
+          </div>
+        </div>
 
-      if (startY > 0) {
-        pdf.addPage();
-      }
-      pdf.addImage(
-        croppedDataURL,
-        "JPEG",
-        marginMm,
-        marginMm,
-        contentWidthMm,
-        drawHeightMm,
-        undefined,
-        "FAST",
-      );
+        <div class="mk-upper">
+          <div>
+            <div class="mk-cell" style="min-height:92px;"><span class="mk-label">Shipper</span>
+              <div class="mk-content">${e(o.shipperName)}<br>${addr(o.shipperAddress)}</div></div>
+            <div class="mk-cell" style="min-height:92px;"><span class="mk-label">Consignee</span>
+              <div class="mk-content">${e(o.consigneeName)}<br>${addr(o.consigneeAddress)}</div></div>
+            <div class="mk-cell" style="min-height:60px;"><span class="mk-label">Notify Party</span>
+              <div class="mk-content">Same as Consignee</div></div>
+          </div>
+          <div>
+            <div class="mk-two">
+              <div class="mk-cell" style="min-height:44px;"><span class="mk-label">Order Reference</span><div class="mk-content">${e(o.orderNumber)}</div></div>
+              <div class="mk-cell" style="min-height:44px;"><span class="mk-label">HBL No.</span><div class="mk-content">${e(o.orderNumber)}</div></div>
+            </div>
+         <div class="mk-cell" style="min-height:44px;"><span class="mk-label">Issue Date</span><div class="mk-content" style="font-size:11px;">${e(o.issueDate)}</div></div>
+            <div class="mk-cell" style="min-height:118px;"><div class="mk-small">
+              This contract is subject to the standard terms, conditions and exceptions of ${o.companyName}, including the limitation of liability and the law and jurisdiction clauses. Full terms are printed on page 2.
+              <br><br>${e(o.contactLine)}
+            </div></div>
+            <div class="mk-cell" style="min-height:44px;"><span class="mk-label">Receiver</span><div class="mk-content" style="font-size:11px;">${e(o.receiverName)}</div></div>
+          </div>
+        </div>
 
-      startY += sliceHeightPx;
+        <div class="mk-route">
+          <div class="mk-cell"><span class="mk-label">Vessel</span><div class="mk-content">${e(o.vessel)}</div></div>
+          <div class="mk-cell"><span class="mk-label">Voyage No.</span><div class="mk-content">${e(o.voyage)}</div></div>
+          <div class="mk-cell"><span class="mk-label">Incoterms / Mode</span><div class="mk-content">SEAFREIGHT</div></div>
+          <div class="mk-cell"><span class="mk-label">Port of Loading</span><div class="mk-content">${e(o.pol)}</div></div>
+          <div class="mk-cell"><span class="mk-label">Port of Discharge</span><div class="mk-content">${e(o.pod)}</div></div>
+          <div class="mk-cell"><span class="mk-label">Final Destination</span><div class="mk-content">${e(o.pdel)}</div></div>
+        </div>
 
-      addTextLayer(pdf, textItems, {
-        scale,
-        pxPerMm,
-        startY,
-        sliceHeightPx,
-        marginMm,
-      });
-    }
+        <div class="mk-band">PARTICULARS FURNISHED BY SHIPPER</div>
 
-    pdf.save(`Manifest_${data.consignment_number}_Detailed_${Date.now()}.pdf`);
+        <div class="mk-desc">
+          <div class="mk-dcol">
+            <span class="mk-label">Kind of Packages; Description of Goods; Marks and Numbers; Container No./Seal No.</span>
+            <div class="mk-content mk-dtext">
+              1 CONTAINER SAID TO CONTAIN ${o.totalPkgs} PACKAGES<br><br>
+              ${e(o.containerNo)}${o.containerSize ? " | " + o.containerSize : ""} &nbsp; Seal: ${e(o.sealNo) || "-"}<br><br>
+              ${p1Rows.map(rowHtml).join("")}
+              ${overflow.length ? `<div class="mk-cont">CONTINUED ON PAGE 2 ...</div>` : ""}
+            </div>
+          </div>
+          <div class="mk-dcol"><span class="mk-label">Weight</span><div class="mk-content" style="margin-top:14px;">${Number(o.totalWeight).toFixed(3)} KGS</div></div>
+          <div class="mk-dcol mk-last"><span class="mk-label">Measurement</span><div class="mk-content" style="margin-top:14px;">0.000 CBM</div></div>
+        </div>
+
+        ${freight(90)}
+
+        <div class="mk-foot">
+          <div>
+            <div class="mk-cell"><span class="mk-label">Carrier's Receipt. Total number of containers or packages received</span><div class="mk-content">1 container / ${o.totalPkgs} packages</div></div>
+            <div class="mk-two">
+              <div class="mk-cell"><span class="mk-label">Place of Issue</span><div class="mk-content">${e(o.pol)}</div></div>
+              <div class="mk-cell"><span class="mk-label">Date of Issue</span><div class="mk-content" style="font-size:11px;">${e(o.issueDate)}</div></div>
+            </div>
+          </div>
+          <div>
+            <div class="mk-cell" style="min-height:58px;"><div class="mk-small">Shipped, as far as ascertained by reasonable means of checking, in apparent good order and condition unless otherwise stated herein.</div></div>
+            <div class="mk-sign">
+              <span class="mk-label">Signed for the Carrier</span>
+              <div class="mk-signname">${o.companyName}</div>
+              <div class="mk-line-sig"></div>
+              <span class="mk-label">Authorised Signature &nbsp;|&nbsp; Generated: ${e(o.generated)}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="mk-pgno">This transport document has ${totalPages} numbered pages &nbsp;|&nbsp; Page 1 of ${totalPages}</div>
+    </div>`;
+
+    const cn = o.companyName;
+    const page2 = `
+    <div class="mk-page">
+      <div class="mk-frame">
+        <div class="mk-p2head"><span>HBL: <b>${e(o.orderNumber)}</b></span><span>Page: 2</span></div>
+        <div class="mk-terms">
+          ${overflow.length ? overflow.map(rowHtml).join("") + "<br>" : ""}
+          <strong>By confirming this order for shipment, the Shipper/Consignee agrees to the following terms:</strong>
+          <ol>
+            <li>Carriage is performed under ${cn}'s standard terms and applicable international conventions. All cargo details supplied must be true and complete.</li>
+            <li>Transit times are estimates only. Delays may occur due to weather, customs, port congestion, operational issues or carrier schedules.</li>
+            <li>Customs scanning, inspections, dog checks, or port delays may incur extra charges payable by the Merchant.</li>
+            <li>In case of loss/damage, liability shall not exceed the freight value or USD 50 per package unless a higher value is declared and agreed in writing beforehand.</li>
+            <li>The Merchant confirms lawful ownership of goods and accepts full responsibility for any illegal, prohibited or undeclared items shipped.</li>
+            <li>${cn} is not liable for any damage during customs/port inspections at origin, transit or destination.</li>
+            <li>Cargo is carried at Merchant's risk unless the Merchant arranges separate insurance. ${cn} is not liable for indirect or consequential losses.</li>
+            <li>Claims must be notified immediately in writing and within legal time limits. Late claims may be void.</li>
+            <li>${cn} may use third-party carriers or subcontractors; all their protections and liability limits apply equally to ${cn}.</li>
+            <li>This HBL applies only to order ref ${e(o.orderNumber)}.</li>
+            <li>Governed by UAE law; disputes fall under Dubai courts unless agreed otherwise.</li>
+          </ol>
+          <strong>SHIPPER'S LOAD, STOW, WEIGHT AND COUNT</strong>
+        </div>
+        ${freight(150)}
+      </div>
+      <div class="mk-pgno">Page 2 of ${totalPages}</div>
+    </div>`;
+
+    return [page1, page2];
   };
 
   const generateshipmentsAndOrdersPDFWithCanvas = async (
     data,
     allReceivers,
     selectedOrderObjects = includedOrders,
+    hblFilter = null,
   ) => {
     if (!data.consignment_number) {
       toast.warning(
@@ -2772,7 +2960,7 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       return;
     }
 
-    const receiverGroups = [];
+    let receiverGroups = [];
 
     if (allReceivers && allReceivers.length > 0) {
       allReceivers.forEach((order) => {
@@ -2805,6 +2993,18 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
           });
         }
       });
+    }
+
+    if (hblFilter?.orderId) {
+      receiverGroups = receiverGroups.filter(
+        (g) =>
+          g.orderId === hblFilter.orderId &&
+          (!hblFilter.itemId || g.shippingDetails[0]?.id === hblFilter.itemId),
+      );
+    }
+    if (receiverGroups.length === 0) {
+      toast.warning("No items found for the selected order/item.");
+      return;
     }
 
     const formatDateForPDF = (dateStr) => {
@@ -2857,10 +3057,7 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       voyage: data.voyage || "N/A",
     };
 
-    const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "p" });
-    const marginMm = 14;
-    const contentWidthMm = 210 - 2 * marginMm;
-
+    const allPagesHtml = [];
     for (let i = 0; i < receiverGroups.length; i++) {
       const receiverGroup = receiverGroups[i];
       const receiver = receiverGroup.receiverData;
@@ -2897,321 +3094,77 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
           ? data.containers[0]
           : { containerNo: "N/A", seal_no: "N/A" };
 
-      const tempElement = document.createElement("div");
-      tempElement.style.width = "780px";
-      tempElement.style.padding = "25px";
-      tempElement.style.backgroundColor = "white";
-      tempElement.style.fontFamily = "Arial, sans-serif";
-      tempElement.style.boxSizing = "border-box";
-      tempElement.style.borderTop = "8px solid #f37021";
-      tempElement.style.margin = "0 auto";
-      tempElement.style.fontSize = "10px";
-      tempElement.style.color = "#333";
-
-      tempElement.innerHTML = `
-      <style>
-        .terms {
-          font-size: 10px;
-          line-height: 1.4;
+      const rows = shippingDetails.map((item) => {
+        let pkgs = 0;
+        let wt = 0;
+        if (item.containerDetails && item.containerDetails.length > 0) {
+          item.containerDetails.forEach((cd) => {
+            pkgs += Number(cd.assign_total_box) || 0;
+            wt += Number(cd.assign_weight) || 0;
+          });
+        } else {
+          pkgs = parseInt(item.totalNumber) || 0;
+          wt = parseFloat(item.weight) || 0;
         }
-
-        .terms ol {
-          margin: 6px 0;
-          padding-left: 0;
-          list-style-position: inside; /* 🔥 MAIN FIX */
-        }
-
-        .terms li {
-          margin-bottom: 4px;
-        }
-
-        .terms .footer {
-          font-size: 7px;
-          margin-top: 10px;
-        }
-      </style>
-      <div style="width: 780px; margin: 0 auto; background: white;">
-        <!-- HBL Design Header -->
-        <div class="header" style="display: flex; justify-content: space-between; margin-bottom: 10px;">
-          <div class="logo-area">
-            <img src="${logoBase64 || ""}" alt="RoyalGulf Logo" style="width: 150px; height: auto;">
-          </div>
-          <div class="company-info" style="text-align: left; flex-grow: 1; margin-left: 20px;">
-            <p class="company-name" style="color: #f37021; font-size: 16px; font-weight: bold; margin: 0;">ROYAL GULF SHIPPING & LOGISTICS LLC</p>
-            <p class="locations" style="color: #008a45; font-weight: bold; margin: 2px 0;">DUBAI • LONDON • KARACHI • SHENZHEN</p>
-            <p style="font-size: 8px;">Ph: +971-4-3331785 | www.royalgulfshipping.com</p>
-          </div>
-          <div class="title-area" style="text-align: right;">
-            <p class="hbl-title" style="color: #f37021; font-size: 20px; font-weight: bold; margin: 0;">HOUSE BILL OF LADING</p>
-            <p style="font-size: 8px;">Non-negotiable copy</p>
-            <p style="font-size: 8px;">Consignment: ${commonData.consignment_number}</p>
-          </div>
-        </div>
-        
-        <!-- First Row - Basic Info -->
-        <div class="grid-row" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 8px;">
-          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
-            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">HBL NO.</span>
-            <span class="placeholder" style="font-weight: bold; font-size: 9px;">--</span>
-          </div>
-          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
-            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">ORDER REFERENCE</span>
-            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${receiverGroup.orderNumber}</span>
-          </div>
-          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
-            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">Item REFERENCE</span>
-            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${itemRef}</span>
-          </div>
-          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
-            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">ISSUE DATE</span>
-            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${new Date(commonData.created_at).toLocaleString("en-US", { month: "numeric", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true })}</span>
-          </div>
-          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
-            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">PLACE OF ISSUE</span>
-            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${commonData.originName}</span>
-          </div>
-          
-        </div>
-        
-        <!-- Shipment Parties Section -->
-        <div class="section-header" style="color: #008a45; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid #008a45; margin-bottom: 5px; grid-column: span 4;">SHIPMENT PARTIES</div>
-        
-        <div class="parties-row" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 8px;">
-          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 70px;">
-            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">SHIPPER</span>
-            <div class="placeholder" style="font-weight: bold; font-size: 9px;">${commonData.shipperName}</div>
-            <div class="placeholder" style="font-size: 8px; color: #666;">${commonData.shipperName}</div>
-          </div>
-          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 70px;">
-            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">CONSIGNEE</span>
-            <div class="placeholder" style="font-weight: bold; font-size: 9px;">${commonData.consigneeName}</div>
-            <div class="placeholder" style="font-size: 8px; color: #666;">${commonData.consigneeAddress || "N/A"}</div>
-          </div>
-          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 70px;">
-            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">NOTIFY PARTY</span>
-            <div class="placeholder" style="font-weight: bold; font-size: 9px;">SAME AS CONSIGNEE</div>
-          </div>
-        </div>
-        
-        <!-- Voyage & Routing Section -->
-        <div class="section-header" style="color: #008a45; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid #008a45; margin-bottom: 5px; grid-column: span 4;">VOYAGE & ROUTING DETAILS</div>
-        
-        <div class="grid-row" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 8px;">
-          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
-            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">PORT OF LOADING (POL)</span>
-            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${commonData.originName}</span>
-          </div>
-          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
-            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">PORT OF DISCHARGE (POD)</span>
-            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${commonData.destinationName}</span>
-          </div>
-          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
-            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">FINAL DESTINATION</span>
-            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${commonData.destinationName}</span>
-          </div>
-          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
-            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">VESSEL NAME</span>
-            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${vesselName}</span>
-          </div>
-          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
-            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">VOYAGE / SAILING</span>
-            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${commonData.voyage}</span>
-          </div>
-          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
-            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">INCOTERMS</span>
-            <span class="placeholder" style="font-weight: bold; font-size: 9px;">SEAFREIGHT</span>
-          </div>
-        </div>
-        
-        <!-- Container Info -->
-        <div class="section-header" style="color: #008a45; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid #008a45; margin-bottom: 5px; grid-column: span 4;">CONTAINER & PACKAGE INFO</div>
-        
-        <div class="grid-row" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 8px;">
-          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
-            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">CONTAINER NO.</span>
-            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${containerInfo.containerNo} | ${containerInfo.size}ft</span>
-          </div>
-          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
-            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">SEAL NO.</span>
-            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${commonData.sealNo || "N/A"}</span>
-          </div>
-          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
-            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">TOTAL PACKAGES</span>
-            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${receiverPackages}</span>
-          </div>
-          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
-            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">TOTAL WEIGHT (KGS)</span>
-            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${receiverWeight.toFixed(2)}</span>
-          </div>
-        </div>
-        
-        <!-- Cargo Description Table -->
-        <div class="section-header" style="color: #008a45; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid #008a45; margin-bottom: 5px; grid-column: span 4;">CARGO DESCRIPTION</div>
-        
-        ${
-          shippingDetails.length > 0
-            ? `
-        <table class="cargo-table" style="width: 100%; border-collapse: collapse; margin-top: 5px;">
-          <thead>
-            <tr>
-              <th style="border: 1px solid #ccc; background-color: #f9f9f9; padding: 4px; font-size: 8px; width: 20%;">MARKS & NUMBERS</th>
-              <th style="border: 1px solid #ccc; background-color: #f9f9f9; padding: 4px; font-size: 8px; width: 40%;">DESCRIPTION OF GOODS</th>
-              <th style="border: 1px solid #ccc; background-color: #f9f9f9; padding: 4px; font-size: 8px; width: 10%;">PKGS</th>
-              <th style="border: 1px solid #ccc; background-color: #f9f9f9; padding: 4px; font-size: 8px; width: 15%;">WEIGHT (KGS)</th>
-              <th style="border: 1px solid #ccc; background-color: #f9f9f9; padding: 4px; font-size: 8px; width: 15%;">VOLUME (CBM)</th>
-            </tr>
-          </thead>
-          <tbody>
-  ${shippingDetails
-    .map((item, idx) => {
-      // Calculate packages and weight from containerDetails
-      let packagesForItem = 0;
-      let weightForItem = 0;
-
-      if (item.containerDetails && item.containerDetails.length > 0) {
-        item.containerDetails.forEach((containerDetail) => {
-          packagesForItem += Number(containerDetail.assign_total_box) || 0;
-          weightForItem += Number(containerDetail.assign_weight) || 0;
-        });
-      } else {
-        packagesForItem = parseInt(item.totalNumber) || 0;
-        weightForItem = parseFloat(item.weight) || 0;
-      }
-
-      const category = item.category || "N/A";
-      const subcategory = item.subcategory || "";
-      const description = subcategory
-        ? `${category} - ${subcategory}`
-        : category;
-
-      return `
-            <tr>
-              <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">${item.type || "N/A"}</td>
-              <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">${description}</td>
-              <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">${packagesForItem}</td>
-              <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">${weightForItem.toFixed(2)}</td>
-              <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">0.00</td>
-            </tr>
-            `;
-    })
-    .join("")}
-          <tr style="font-weight: bold; background-color: #e8f5e8;">
-            <td colspan="2" style="border: 1px solid #ccc; padding: 8px 4px; text-align: right;">TOTAL:</td>
-            <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">${receiverPackages}</td>
-            <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">${receiverWeight.toFixed(2)}</td>
-            <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">0.00</td>
-          </tr>
-        </tbody>
-        </table>
-        `
-            : `
-        <div style="text-align: center; padding: 30px; background: #f9f9f9; border: 1px dashed #ccc; margin-bottom: 20px;">
-          <h4 style="color: #666; font-style: italic;">NO CARGO DETAILS FOUND</h4>
-          <p style="color: #999;">No shipping details available for this receiver.</p>
-        </div>
-        `
-        }
-        
-        <!-- Terms and Footer -->
-        <div class="bottom-section" style="display: grid; grid-template-columns: 2fr 1fr; gap: 15px; margin-top: 10px; border-top: 1px solid #000; padding-top: 8px;">
-          <div class="terms">
-            <strong>
-              By confirming this order for shipment, the Shipper/Consignee agrees to the following terms:
-            </strong>
-
-            <ol style="margin-left: 4px;">
-              <li>Carriage is performed under Royal Gulf Shipping & Logistics LLC’s standard terms and applicable international conventions. All cargo details supplied must be true and complete.</li>
-
-              <li>Transit times are estimates only. Delays may occur due to weather, customs, port congestion, operational issues or carrier schedules.</li>
-
-              <li>Customs scanning, inspections, dog checks, or port delays may incur extra charges payable by the Merchant.</li>
-
-              <li>In case of loss/damage, liability shall not exceed the freight value or USD 50 per package unless a higher value is declared and agreed in writing beforehand.</li>
-
-              <li>The Merchant confirms lawful ownership of goods and accepts full responsibility for any illegal, prohibited or undeclared items shipped.</li>
-
-              <li>Royal Gulf is not liable for any damage during customs/port inspections at origin, transit or destination.</li>
-
-              <li>Cargo is carried at Merchant’s risk unless the Merchant arranges separate insurance. Royal Gulf is not liable for indirect or consequential losses.</li>
-
-              <li>Claims must be notified immediately in writing and within legal time limits. Late claims may be void.</li>
-
-              <li>Royal Gulf may use third-party carriers or subcontractors; all their protections and liability limits apply equally to Royal Gulf.</li>
-
-              <li>This HBL applies only to order ref ${receiverGroup.orderNumber}.</li>
-
-              <li>Governed by UAE law; disputes fall under Dubai courts unless agreed otherwise.</li>
-            </ol>
-
-            <p class="footer">
-              Receiver: ${receiverGroup.receiver || receiverGroup.receiverData.receivername} |
-              Order: ${receiverGroup.orderNumber} |
-              Container: ${containerInfo.containerNo} |
-              Page ${i + 1} of ${receiverGroups.length}
-            </p>
-          </div>
-
-          <div class="signature-box" style="border-left: 1px solid #ccc; padding-left: 10px;">
-          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #000;">For and on behalf of</span>
-            <p style="color: #f37021; font-weight: bold; margin: 0; font-size:12px;">Royal Gulf Shipping & Logistics LLC</p>
-          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #000;">Generated: ${commonData.generated_date} ${commonData.generated_time}</span>
-
-            <div style="margin-top: 35px; border-top: 1px solid #000;">
-              <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">Authorised Signature</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-
-      document.body.appendChild(tempElement);
-
-      const canvas = await html2canvas(tempElement, {
-        scale: 1.5,
-        useCORS: true,
-        allowTaint: true,
-        logging: false,
-        width: tempElement.scrollWidth,
-        height: tempElement.scrollHeight,
-        windowWidth: tempElement.scrollWidth,
-        windowHeight: tempElement.scrollHeight,
-        backgroundColor: "#ffffff",
-        imageTimeout: 0,
-        removeContainer: true,
+        return {
+          marks: item.type || "N/A",
+          desc: item.subcategory
+            ? `${item.category || "N/A"} - ${item.subcategory}`
+            : item.category || "N/A",
+          pkgs,
+          weight: wt,
+        };
       });
 
-      const textItems = collectTextItems(tempElement);
-
-      document.body.removeChild(tempElement);
-
-      const pxPerMm = canvas.width / contentWidthMm;
-      const canvasHeightMm = canvas.height / pxPerMm;
-
-      if (i > 0) {
-        pdf.addPage();
-      }
-
-      const imgData = canvas.toDataURL("image/jpeg", 0.85);
-      pdf.addImage(
-        imgData,
-        "JPEG",
-        marginMm,
-        marginMm,
-        contentWidthMm,
-        canvasHeightMm,
-        undefined,
-        "FAST",
-      );
-
-      addTextLayer(pdf, textItems, {
-        scale: 1.5,
-        pxPerMm,
-        startY: 0,
-        sliceHeightPx: canvas.height,
-        marginMm,
+      const pages = buildMaerskHBLPages({
+        companyName: "ROYAL GULF SHIPPING & LOGISTICS LLC",
+        logoSrc: logoBase64 || "",
+        title: "HOUSE BILL OF LADING",
+        consignmentNo: commonData.consignment_number,
+        contactLine: "Ph: +971-4-3331785 | www.royalgulfshipping.com",
+        orderNumber: receiverGroup.orderNumber,
+        blNo: "",
+        itemRef,
+        issueDate: new Date(commonData.created_at).toLocaleString("en-US", {
+          month: "numeric",
+          day: "numeric",
+          year: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+          hour12: true,
+        }),
+        shipperName: commonData.shipperName,
+        shipperAddress: commonData.shipperAddress,
+        consigneeName: commonData.consigneeName,
+        consigneeAddress: commonData.consigneeAddress,
+        receiverName: receiverGroup.receiver,
+        vessel: vesselName,
+        voyage: commonData.voyage,
+        pol: commonData.originName,
+        pod: commonData.destinationName,
+        pdel: commonData.destinationName,
+        containerNo: containerInfo.containerNo,
+        containerSize: containerInfo.size ? `${containerInfo.size}ft` : "",
+        sealNo: commonData.sealNo,
+        totalPkgs: receiverPackages,
+        totalWeight: receiverWeight,
+        rows,
+        generated: `${commonData.generated_date} ${commonData.generated_time}`,
+        primary: "#f37021",
+        secondary: "#008a45",
       });
+
+      allPagesHtml.push(...pages);
     }
-    pdf.save(`HBL_${data.consignment_number}_${Date.now()}.pdf`);
+    await printHtml(allPagesHtml.join(""), {
+      title: `HBL_${data.consignment_number}`,
+      pageMargin: "0",
+      extraCss: `
+    ${maerskCss("#f37021", "#008a45")}
+    .mk-page { height: 1122px; min-height: 0; page-break-after: always; break-after: page; }
+    .mk-page:last-child { page-break-after: auto; break-after: auto; }
+  `,
+    });
   };
 
   const generateManifestPDFWithCanvas = async (
@@ -3779,171 +3732,9 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     </div>
 </div>`;
 
-    document.body.appendChild(tempElement);
-
-    // Improved PDF generation with better page break handling
-    const scale = 1.5;
-    const canvas = await html2canvas(tempElement, {
-      scale: scale,
-      useCORS: true,
-      allowTaint: true,
-      logging: false,
-      width: tempElement.scrollWidth,
-      height: tempElement.scrollHeight,
-      windowWidth: tempElement.scrollWidth,
-      windowHeight: tempElement.scrollHeight,
-      backgroundColor: "#ffffff",
-      imageTimeout: 0,
-      removeContainer: true,
-      onclone: function (clonedDoc) {
-        // Add page break logic for better PDF rendering
-        const tables = clonedDoc.querySelectorAll("table");
-        tables.forEach((table, index) => {
-          if (index > 0) {
-            // Add page break before each container table except first
-            const parentDiv = table.closest("div");
-            if (
-              parentDiv &&
-              parentDiv.previousElementSibling &&
-              parentDiv.previousElementSibling.className === "container-header"
-            ) {
-              const containerDiv = parentDiv.parentElement;
-              containerDiv.style.breakInside = "avoid";
-            }
-          }
-        });
-
-        clonedDoc.querySelectorAll("img").forEach((img) => {
-          img.style.maxWidth = "100%";
-          img.style.height = "auto";
-        });
-      },
+    await printHtml(tempElement.innerHTML, {
+      title: `Manifest_${data.consignment_number}_ContainerWise`,
     });
-
-    const rowBoundaries = getRowBoundaries(tempElement, scale);
-
-    const textItems = collectTextItems(tempElement);
-
-    document.body.removeChild(tempElement);
-
-    const canvasDataURL = canvas.toDataURL("image/png", 0.85);
-    const canvasLink = document.createElement("a");
-    canvasLink.download = `Manifest_${data.consignment_number}_Canvas_${Date.now()}.png`;
-    canvasLink.href = canvasDataURL;
-    canvasLink.click();
-
-    const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "p" });
-    const marginMm = 14;
-    const contentWidthMm = 210 - 2 * marginMm;
-
-    // Calculate dimensions
-    const pxPerMm = canvas.width / contentWidthMm;
-    const maxPageHeightMm = 297 - 2 * marginMm;
-    const maxPageHeightPx = maxPageHeightMm * pxPerMm;
-
-    let currentY = 0;
-    let pageNum = 1;
-
-    const needsContainerBreak = (
-      containerStartY,
-      containerHeightPx,
-      currentPageY,
-    ) => {
-      const remainingSpace = maxPageHeightPx - currentPageY;
-      return containerHeightPx > remainingSpace;
-    };
-
-    while (currentY < canvas.height) {
-      let sliceHeightPx = maxPageHeightPx;
-      let shouldBreak = false;
-
-      const containerDivs = tempElement.querySelectorAll(".container-header");
-      containerDivs.forEach((containerDiv) => {
-        const rect = containerDiv.getBoundingClientRect();
-        const containerStartY = rect.top * scale;
-        const containerEndY = containerStartY + rect.height * scale;
-
-        if (
-          containerStartY >= currentY &&
-          containerStartY < currentY + maxPageHeightPx
-        ) {
-          const containerSection = containerDiv.parentElement;
-          const containerRect = containerSection.getBoundingClientRect();
-          const containerHeightPx = containerRect.height * scale;
-
-          if (
-            needsContainerBreak(
-              containerStartY - currentY,
-              containerHeightPx,
-              currentY,
-            )
-          ) {
-            sliceHeightPx = containerStartY - currentY - 10;
-            shouldBreak = true;
-          }
-        }
-      });
-
-      sliceHeightPx = Math.min(sliceHeightPx, canvas.height - currentY);
-
-      const desiredEnd = currentY + sliceHeightPx;
-      const safeEnd = getSafeSliceEnd(rowBoundaries, currentY, desiredEnd);
-      sliceHeightPx = safeEnd - currentY;
-
-      const croppedCanvas = document.createElement("canvas");
-      croppedCanvas.width = canvas.width;
-      croppedCanvas.height = sliceHeightPx;
-      const ctx = croppedCanvas.getContext("2d");
-      ctx.drawImage(
-        canvas,
-        0,
-        currentY,
-        canvas.width,
-        sliceHeightPx,
-        0,
-        0,
-        canvas.width,
-        sliceHeightPx,
-      );
-
-      const croppedDataURL = croppedCanvas.toDataURL("image/jpeg", 0.85);
-      const drawHeightMm = sliceHeightPx / pxPerMm;
-
-      if (currentY > 0) {
-        pdf.addPage();
-        pageNum++;
-      }
-
-      pdf.addImage(
-        croppedDataURL,
-        "JPEG",
-        marginMm,
-        marginMm,
-        contentWidthMm,
-        drawHeightMm,
-        undefined,
-        "FAST",
-      );
-
-      addTextLayer(pdf, textItems, {
-        scale,
-        pxPerMm,
-        startY: currentY,
-        sliceHeightPx,
-        marginMm,
-      });
-
-      pdf.setFontSize(9);
-      pdf.setTextColor(128, 128, 128);
-      pdf.text(`Page ${pageNum}`, 210 / 2, 297 - 10, { align: "center" });
-
-      croppedCanvas.remove();
-      currentY += sliceHeightPx;
-    }
-
-    pdf.save(
-      `Manifest_${data.consignment_number}_ContainerWise_${Date.now()}.pdf`,
-    );
   };
 
   const generateContainersAndOrdersPDFWithCanvas = async (
@@ -4628,106 +4419,9 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     </div>
     `;
 
-    document.body.appendChild(tempElement);
-
-    const scale = 1.5;
-    const canvas = await html2canvas(tempElement, {
-      scale: scale,
-      useCORS: true,
-      allowTaint: true,
-      logging: false,
-      width: tempElement.scrollWidth,
-      height: tempElement.scrollHeight,
-      windowWidth: tempElement.scrollWidth,
-      windowHeight: tempElement.scrollHeight,
-      backgroundColor: "#ffffff",
-      imageTimeout: 0,
-      removeContainer: true,
-      onclone: function (clonedDoc) {
-        clonedDoc.querySelectorAll("img").forEach((img) => {
-          img.style.maxWidth = "100%";
-          img.style.height = "auto";
-        });
-      },
+    await printHtml(tempElement.innerHTML, {
+      title: `Manifest_${data.consignment_number}_Containers`,
     });
-
-    const rowBoundaries = getRowBoundaries(tempElement, scale);
-
-    const textItems = collectTextItems(tempElement);
-
-    document.body.removeChild(tempElement);
-
-    const canvasDataURL = canvas.toDataURL("image/png", 0.85);
-    const canvasLink = document.createElement("a");
-    canvasLink.download = `Manifest_${data.consignment_number}_${Date.now()}.png`;
-    canvasLink.href = canvasDataURL;
-    canvasLink.click();
-
-    const innerWidthMm = 210 - 2 * 14;
-    const pxPerMm = canvas.width / innerWidthMm;
-    const extraBottomSpaceMm = 8;
-    const contentHeightPerPageMm = 297 - 2 * 14 - extraBottomSpaceMm;
-    const contentHeightPerPagePx = contentHeightPerPageMm * pxPerMm;
-
-    const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "p" });
-    const marginMm = 14;
-    const contentWidthMm = innerWidthMm;
-
-    let startY = 0;
-    while (startY < canvas.height) {
-      const desiredEnd = Math.min(
-        startY + contentHeightPerPagePx,
-        canvas.height,
-      );
-      const safeEnd = getSafeSliceEnd(rowBoundaries, startY, desiredEnd);
-      const sliceHeightPx = safeEnd - startY;
-
-      const croppedCanvas = document.createElement("canvas");
-      croppedCanvas.width = canvas.width;
-      croppedCanvas.height = sliceHeightPx;
-      const ctx = croppedCanvas.getContext("2d");
-      ctx.drawImage(
-        canvas,
-        0,
-        startY,
-        canvas.width,
-        sliceHeightPx,
-        0,
-        0,
-        canvas.width,
-        sliceHeightPx,
-      );
-
-      const croppedDataURL = croppedCanvas.toDataURL("image/jpeg", 0.85);
-      const drawHeightMm = sliceHeightPx / pxPerMm;
-
-      if (startY > 0) pdf.addPage();
-      pdf.addImage(
-        croppedDataURL,
-        "JPEG",
-        marginMm,
-        marginMm,
-        contentWidthMm,
-        drawHeightMm,
-        undefined,
-        "FAST",
-      );
-
-      addTextLayer(pdf, textItems, {
-        scale,
-        pxPerMm,
-        startY,
-        sliceHeightPx,
-        marginMm,
-      });
-
-      croppedCanvas.remove();
-      startY += sliceHeightPx;
-    }
-
-    pdf.save(
-      `Manifest_${data.consignment_number}_Containers_${Date.now()}.pdf`,
-    );
   };
   const isDark = theme.palette.mode === "dark";
   const teal = "#0d6c6a";
@@ -4828,8 +4522,9 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       text: "House bill of lading with all shipments and orders in this consignment.",
       label: "Download PDF",
       run: async () => {
-        await generateshipmentsAndOrdersPDFWithCanvas(values, orders);
-        logPrint("HBL (Shipments & Orders)");
+        setHblOrderId("");
+        setHblItemId("all");
+        setHblModalOpen(true);
       },
     },
     {
@@ -4905,12 +4600,22 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       formNumber: d.formNumber || r.formNo,
     })),
   );
+
   const allBills = billingRows.flatMap((r) =>
     (r.vendorBills || []).map((d) => ({
       ...d,
       formNumber: d.formNumber || r.formNo,
     })),
   );
+
+  const lastSyncedAt = (() => {
+    const times = [...allInvoices, ...allBills]
+      .map((d) => d.synced_at)
+      .filter(Boolean)
+      .map((d) => new Date(d).getTime())
+      .filter(Number.isFinite);
+    return times.length ? new Date(Math.max(...times)) : null;
+  })();
 
   const financeTable = (docs, partyLabel, partyKey, kind) => {
     const groups = Object.values(
@@ -5052,7 +4757,9 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                               />
                             </TableCell>
                             <TableCell align="right">
-                              {fmtMoney(d.total, d.currency)}
+                              {d.currency === "AED"
+                                ? "-"
+                                : fmtMoney(d.total, d.currency)}
                             </TableCell>
                             <TableCell align="right">
                               {d.totalAed == null || d.balanceAed == null
@@ -5216,7 +4923,7 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                     />
                   </TableCell>
                   <TableCell align="right">
-                    {fmtMoney(d.total, d.currency)}
+                    {d.currency === "AED" ? "-" : fmtMoney(d.total, d.currency)}
                   </TableCell>
                   <TableCell align="right">
                     {fmtMoney(d.balance, d.currency)}
@@ -5313,6 +5020,23 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       </Box>
     );
   };
+
+  const printHbl = (all = false) =>
+    runAction(all ? "hbl-all" : "hbl-one", async () => {
+      await generateshipmentsAndOrdersPDFWithCanvas(
+        values,
+        orders,
+        includedOrders,
+        all
+          ? null
+          : {
+              orderId: hblOrderId,
+              itemId: hblItemId === "all" ? null : hblItemId,
+            },
+      );
+      logPrint("HBL (Shipments & Orders)");
+      setHblModalOpen(false);
+    });
 
   const statusColors = getStatusColors(values.status);
 
@@ -5454,6 +5178,10 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                 <Tab
                   value="documents"
                   label={tabLabel("📄 Documents", documents.length)}
+                />
+                <Tab
+                  value="attachments"
+                  label={tabLabel("📎 Attachments", attachments.length)}
                 />
                 {canViewJobDetails && (
                   <Tab value="audit" label={tabLabel("🕵️ Audit")} />
@@ -6335,17 +6063,35 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                               Finance
                             </Typography>
                           </Box>
-                          <LoadingBtn
-                            size="small"
-                            variant="outlined"
-                            onClick={() => fetchBilling(true)}
-                            loading={billingSyncing}
-                            disabled={billingLoading}
-                            startIcon={<UpdateIcon />}
-                            sx={{ borderColor: teal, color: teal }}
+                          <Box
+                            sx={{
+                              display: "flex",
+                              flexDirection: "column",
+                              alignItems: "flex-end",
+                              gap: 0.5,
+                            }}
                           >
-                            Sync Zoho
-                          </LoadingBtn>
+                            <LoadingBtn
+                              size="small"
+                              variant="outlined"
+                              onClick={() => fetchBilling(true)}
+                              loading={billingSyncing}
+                              disabled={billingLoading}
+                              startIcon={<UpdateIcon />}
+                              sx={{ borderColor: teal, color: teal }}
+                            >
+                              Sync Zoho
+                            </LoadingBtn>
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                            >
+                              Last synced:{" "}
+                              {lastSyncedAt
+                                ? dayjs(lastSyncedAt).format("MMM DD, YYYY")
+                                : "N/A"}
+                            </Typography>
+                          </Box>
                         </Box>
 
                         {billingRows.length === 0 ? (
@@ -6580,6 +6326,87 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                     ))}
                   </Box>
                 )}
+                {tab === "attachments" && (
+                  <TableContainer
+                    sx={{
+                      border: 1,
+                      borderColor: "divider",
+                      borderRadius: 2,
+                    }}
+                  >
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          {[
+                            "File",
+                            "Uploaded By",
+                            "Uploaded At",
+                            "Actions",
+                          ].map((h) => (
+                            <TableCell key={h} sx={headCellSx}>
+                              {h}
+                            </TableCell>
+                          ))}
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {attachments.length === 0 ? (
+                          <TableRow>
+                            <TableCell
+                              colSpan={4}
+                              align="center"
+                              sx={{ py: 4 }}
+                            >
+                              <Typography
+                                variant="body2"
+                                color="text.secondary"
+                              >
+                                No attachments uploaded yet.
+                              </Typography>
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          attachments.map((a) => (
+                            <TableRow hover key={a.id}>
+                              <TableCell>
+                                <Box
+                                  sx={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 1,
+                                  }}
+                                >
+                                  <InsertDriveFileOutlinedIcon
+                                    fontSize="small"
+                                    sx={{ color: orange }}
+                                  />
+                                  {fileDisplayName(a)}
+                                </Box>
+                              </TableCell>
+                              <TableCell>{a.created_by}</TableCell>
+                              <TableCell>
+                                {dayjs(a.created_at).format(
+                                  "MMM DD, YYYY HH:mm",
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <Button
+                                  size="small"
+                                  startIcon={<OpenInNewIcon />}
+                                  onClick={() =>
+                                    window.open(a.view_url, "_blank")
+                                  }
+                                >
+                                  View
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                )}
               </Box>
               <Dialog
                 open={Boolean(previewDoc)}
@@ -6604,6 +6431,84 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                     </DialogActions>
                   </>
                 )}
+              </Dialog>
+              <Dialog
+                open={hblModalOpen}
+                onClose={() => !busyAction && setHblModalOpen(false)}
+                maxWidth="xs"
+                fullWidth
+              >
+                <DialogTitle>Print HBL</DialogTitle>
+                <DialogContent>
+                  <Stack spacing={2} sx={{ mt: 1 }}>
+                    <FormControl fullWidth>
+                      <InputLabel id="hbl-order-label">
+                        Order Form Number
+                      </InputLabel>
+                      <Select
+                        labelId="hbl-order-label"
+                        label="Order Form Number"
+                        value={hblOrderId}
+                        onChange={(e) => {
+                          setHblOrderId(e.target.value);
+                          setHblItemId("all");
+                        }}
+                      >
+                        {hblOrderOptions.map((o) => (
+                          <MenuItem key={o.value} value={o.value}>
+                            {o.label}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+
+                    <FormControl fullWidth disabled={!hblOrderId}>
+                      <InputLabel id="hbl-item-label">Order Item</InputLabel>
+                      <Select
+                        labelId="hbl-item-label"
+                        label="Order Item"
+                        value={hblItemId}
+                        onChange={(e) => setHblItemId(e.target.value)}
+                      >
+                        <MenuItem value="all">All Items</MenuItem>
+                        {hblItemOptions.map((o) => (
+                          <MenuItem key={o.value} value={o.value}>
+                            {o.label}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Stack>
+                </DialogContent>
+                <DialogActions>
+                  <Button
+                    onClick={() => setHblModalOpen(false)}
+                    disabled={!!busyAction}
+                  >
+                    Cancel
+                  </Button>
+                  <LoadingBtn
+                    variant="outlined"
+                    onClick={() => printHbl(true)}
+                    disabled={!!busyAction}
+                    loading={busyAction === "hbl-all"}
+                    sx={outlineBtn}
+                  >
+                    Print All
+                  </LoadingBtn>
+                  <LoadingBtn
+                    variant="contained"
+                    onClick={() => printHbl(false)}
+                    disabled={!hblOrderId || !!busyAction}
+                    loading={busyAction === "hbl-one"}
+                    sx={{
+                      backgroundColor: orange,
+                      "&:hover": { backgroundColor: "#e65100" },
+                    }}
+                  >
+                    Print
+                  </LoadingBtn>
+                </DialogActions>
               </Dialog>
             </form>
           </Box>

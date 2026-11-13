@@ -5078,7 +5078,7 @@ const OrdersList = () => {
       <div class="grid-row" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 8px;">
         <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
           <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">HBL NO.</span>
-          <span style="font-weight: bold; font-size: 9px;">--</span>
+          <span style="font-weight: bold; font-size: 9px;">${receiverGroup.orderNumber}</span>
         </div>
         <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
           <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">ORDER REFERENCE</span>
