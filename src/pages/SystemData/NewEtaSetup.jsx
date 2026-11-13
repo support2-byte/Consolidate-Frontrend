@@ -120,7 +120,7 @@ export default function StatusesPage() {
   const [state, dispatch] = useReducer(reducer, initialState);
 
   useEffect(() => {
-    if (contextStatuses?.length) {
+    if (contextStatuses) {
       dispatch({
         type: "SET_ROWS",
         payload: [...contextStatuses].sort(
@@ -160,12 +160,13 @@ export default function StatusesPage() {
             sorting_number: r.sorting_number,
           })),
         });
+        fetchStatuses({ silent: true });
       } catch (error) {
         dispatch({ type: "SET_ROWS", payload: state.rows });
         toast.error("Failed to reorder statuses. Please try again.");
       }
     },
-    [state.rows],
+    [state.rows, fetchStatuses],
   );
 
   const handleSave = async () => {
@@ -184,6 +185,7 @@ export default function StatusesPage() {
       );
       dispatch({ type: "UPDATE_ROW", payload: data.status });
       dispatch({ type: "CLOSE_EDIT" });
+      fetchStatuses({ silent: true });
       toast.success("Status updated successfully!");
     } catch (error) {
       toast.error(error.response?.data?.error || "Failed to update status.");
@@ -193,14 +195,15 @@ export default function StatusesPage() {
   };
 
   const handleToggleField = async (row, field) => {
-    const updatedRow = { ...row, [field]: !row[field] };
-    dispatch({ type: "UPDATE_ROW", payload: updatedRow });
+    const newValue = !row[field];
+    dispatch({ type: "UPDATE_ROW", payload: { ...row, [field]: newValue } });
     try {
       const { data } = await api.put(`/api/options/toggleSendEmail/${row.id}`, {
-        [field]: !row[field],
+        [field]: newValue,
       });
       dispatch({ type: "UPDATE_ROW", payload: data.status });
-      toast.success("Email notifications Enabled");
+      fetchStatuses({ silent: true });
+      toast.success(`Email notifications ${newValue ? "enabled" : "disabled"}`);
     } catch (error) {
       dispatch({ type: "UPDATE_ROW", payload: row });
       toast.error(`Failed to toggle ${field}.`);
@@ -224,6 +227,7 @@ export default function StatusesPage() {
       });
       dispatch({ type: "ADD_ROW", payload: data.status });
       dispatch({ type: "CLOSE_ADD" });
+      fetchStatuses({ silent: true });
       toast.success("Status added successfully!");
     } catch (error) {
       toast.error(error.response?.data?.error || "Failed to add status.");
@@ -239,9 +243,9 @@ export default function StatusesPage() {
         status: !row.status,
       });
       dispatch({ type: "UPDATE_ROW", payload: data.status });
+      fetchStatuses({ silent: true });
       toast.success(`Status ${!row.status ? "enabled" : "disabled"}.`);
     } catch (error) {
-      // Revert optimistic update
       dispatch({ type: "UPDATE_ROW", payload: row });
       toast.error("Failed to toggle status.");
     }
@@ -253,6 +257,7 @@ export default function StatusesPage() {
       await api.delete(`/api/options/deleteStatus/${state.deleteRow.id}`);
       dispatch({ type: "REMOVE_ROW", payload: state.deleteRow.id });
       dispatch({ type: "SET_DELETE_ROW", payload: null });
+      fetchStatuses({ silent: true });
       toast.success("Status deleted successfully!");
     } catch (error) {
       toast.error(error.response?.data?.error || "Failed to delete status.");
@@ -383,7 +388,7 @@ export default function StatusesPage() {
                         onEdit={(r) =>
                           dispatch({ type: "OPEN_EDIT", payload: r })
                         }
-                        onToggle={(r) => handleToggleField(r, "status")}
+                        onToggle={handleToggle}
                         onToggleSendEmail={(r) =>
                           handleToggleField(r, "send_email")
                         }
