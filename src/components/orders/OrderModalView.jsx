@@ -72,7 +72,6 @@ import { getOrderStatusColor } from "../../pages/Orders/Utlis";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../api";
 import { useAuth } from "../../context/AuthContext";
-import { PAYMENT_STATUS } from "./JobDetailsPanel";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { applyPlugin } from "jspdf-autotable";
@@ -84,6 +83,13 @@ import {
   pdfDrawSectionHeader,
 } from "../../Utlis/containerBuilder";
 applyPlugin(jsPDF);
+
+const PAYMENT_STATUS = {
+  paid: { label: "Paid", color: "success" },
+  partially_paid: { label: "Partially Paid", color: "warning" },
+  unpaid: { label: "Unpaid", color: "error" },
+  no_invoice: { label: "No Invoice", color: "default" },
+};
 
 const T = {
   teal: "#0d6c6a",
@@ -2107,7 +2113,9 @@ const OrderModalView = ({
                               />
                             </TableCell>
                             <TableCell align="right">
-                              {fmtMoney(d.total, d.currency)}
+                              {d.currency === "AED"
+                                ? "-"
+                                : fmtMoney(d.total, d.currency)}
                             </TableCell>
                             <TableCell align="right">
                               {d.totalAed == null || d.balanceAed == null
