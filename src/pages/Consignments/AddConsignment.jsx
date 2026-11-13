@@ -55,6 +55,9 @@ import {
   Tabs,
   Tab,
   InputAdornment,
+  Collapse,
+  ToggleButton,
+  ToggleButtonGroup,
 } from "@mui/material";
 import { toast } from "react-toastify";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
@@ -75,6 +78,12 @@ import DirectionsBoatIcon from "@mui/icons-material/DirectionsBoat";
 import BusinessIcon from "@mui/icons-material/Business";
 import LocalPrintshopIcon from "@mui/icons-material/LocalPrintshop";
 import LocalShippingIcon from "@mui/icons-material/LocalShipping";
+import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
+import ReceiptLongOutlinedIcon from "@mui/icons-material/ReceiptLongOutlined";
+import AccountBalanceWalletOutlinedIcon from "@mui/icons-material/AccountBalanceWalletOutlined";
+import CreditCardOutlinedIcon from "@mui/icons-material/CreditCardOutlined";
+import TrendingUpIcon from "@mui/icons-material/TrendingUp";
+import PieChartOutlineIcon from "@mui/icons-material/PieChartOutline";
 import { useBlocker } from "react-router-dom";
 import UpdateIcon from "@mui/icons-material/Update";
 import VisibilityIcon from "@mui/icons-material/Visibility";
@@ -115,6 +124,56 @@ const fmtMoney = (n, cur) =>
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
+
+const FIN = {
+  teal: "#0d6c6a",
+  tealDark: "#0a5250",
+  tealLight: "#e8f5f4",
+  tealMid: "#b2dfdb",
+  grey100: "#f5f5f5",
+};
+
+const sumBy = (rows, fn) => rows.reduce((s, r) => s + Number(fn(r) || 0), 0);
+
+const docBalanceAed = (d) =>
+  d.currency === "AED"
+    ? Number(d.balance || 0)
+    : Number(d.balance || 0) * Number(d.exchangeRate || 0);
+
+const docTotalAed = (d) =>
+  d.totalAed != null
+    ? Number(d.totalAed)
+    : d.currency === "AED"
+      ? Number(d.total || 0)
+      : 0;
+
+const fmtAed = (n) => (n == null ? "-" : fmtMoney(n, "AED"));
+
+const docPaidAed = (d) => docTotalAed(d) - docBalanceAed(d);
+
+const FinStatCard = ({ icon, value, label, sub, color }) => (
+  <Box
+    sx={{
+      bgcolor: alpha(color, 0.1),
+      borderRadius: 2.5,
+      px: 1.75,
+      py: 1.5,
+    }}
+  >
+    <Box sx={{ color, display: "flex", mb: 0.5, "& svg": { fontSize: 18 } }}>
+      {icon}
+    </Box>
+    <Typography sx={{ color, fontWeight: 700, fontSize: 20, lineHeight: 1.2 }}>
+      {value}
+    </Typography>
+    <Typography
+      sx={{ fontWeight: 600, fontSize: 13, color: "text.primary", mt: 0.25 }}
+    >
+      {label}
+    </Typography>
+    <Typography sx={{ color, fontWeight: 600, fontSize: 12 }}>{sub}</Typography>
+  </Box>
+);
 
 const getRowBoundaries = (container, scale) => {
   const containerRect = container.getBoundingClientRect();
@@ -181,7 +240,7 @@ const addTextLayer = (
   items.forEach((it) => {
     const topPx = it.top * scale;
     const midPx = topPx + (it.height * scale) / 2;
-    if (midPx < startY || midPx >= startY + sliceHeightPx) return; // belongs to another page
+    if (midPx < startY || midPx >= startY + sliceHeightPx) return;
     pdf.setFontSize(((it.fs * scale) / pxPerMm) * (72 / 25.4));
     const x = marginMm + (it.left * scale) / pxPerMm;
     const y = marginMm + (topPx - startY) / pxPerMm;
@@ -476,14 +535,15 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
   const [tab, setTab] = useState("details");
   const [shipmentSearch, setShipmentSearch] = useState("");
   const [shipmentStatus, setShipmentStatus] = useState("");
-  const [shipmentView, setShipmentView] = useState("orders");
-  const [selectedBilling, setSelectedBilling] = useState(null);
+  const [expandedOrders, setExpandedOrders] = useState(new Set());
   const [previewDoc, setPreviewDoc] = useState(null);
   const [billingRows, setBillingRows] = useState([]);
   const [billingLoading, setBillingLoading] = useState(false);
   const [billingSyncing, setBillingSyncing] = useState(false);
   const [pdfLoadingId, setPdfLoadingId] = useState(null);
   const [busyAction, setBusyAction] = useState(null);
+  const [financeView, setFinanceView] = useState("invoices");
+  const [expandedForms, setExpandedForms] = useState({});
 
   const runAction = async (key, fn) => {
     if (busyAction) return;
@@ -494,6 +554,23 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       setBusyAction(null);
     }
   };
+
+  const toggleOrder = (orderId) =>
+    setExpandedOrders((prev) => {
+      const next = new Set(prev);
+      next.has(orderId) ? next.delete(orderId) : next.add(orderId);
+      return next;
+    });
+
+  const logPrint = (documentType) => {
+    if (!effectiveConsignmentId) return;
+    api
+      .post(`/api/consignments/${effectiveConsignmentId}/manifest-prints`, {
+        document_type: documentType,
+      })
+      .catch(() => {});
+  };
+
   const user_id = context.user.id;
   const currentDate = dayjs();
   const { places, statuses } = useContext(AppContext);
@@ -4006,7 +4083,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
 
     document.body.appendChild(tempElement);
 
-    // Improved PDF generation with better page break handling
     const scale = 1.5;
     const canvas = await html2canvas(tempElement, {
       scale: scale,
@@ -4021,11 +4097,9 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       imageTimeout: 0,
       removeContainer: true,
       onclone: function (clonedDoc) {
-        // Add page break logic for better PDF rendering
         const tables = clonedDoc.querySelectorAll("table");
         tables.forEach((table, index) => {
           if (index > 0) {
-            // Add page break before each container table except first
             const parentDiv = table.closest("div");
             if (
               parentDiv &&
@@ -5019,14 +5093,10 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       )}
     </Box>
   );
-  const shipmentHeaders = [
+
+  const itemHeaders = [
     "Item Ref No",
-    "Booking Ref",
-    "Form No",
     "Product",
-    "POL",
-    "POD",
-    "Sender",
     "Receiver",
     "Container",
     "Assign Weight & Items",
@@ -5035,6 +5105,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
   ];
 
   const orderHeaders = [
+    "",
     "Booking Ref",
     "Form No",
     "POL",
@@ -5045,7 +5116,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     "Containers",
     "Assign Weight & Boxes",
     "Status",
-    "Actions",
   ];
 
   const documents = [
@@ -5054,33 +5124,47 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       title: "HBL (Shipments & Orders)",
       text: "House bill of lading with all shipments and orders in this consignment.",
       label: "Download PDF",
-      run: () => generateshipmentsAndOrdersPDFWithCanvas(values, orders),
+      run: async () => {
+        await generateshipmentsAndOrdersPDFWithCanvas(values, orders);
+        logPrint("HBL (Shipments & Orders)");
+      },
     },
     {
       icon: "🖨️",
       title: "Print Manifest",
       text: "Cargo manifest listing every shipment.",
       label: "Print",
-      run: () => generateManifestPDFWithCanvas(values, orders),
+      run: async () => {
+        await generateManifestPDFWithCanvas(values, orders);
+        logPrint("Manifest");
+      },
     },
     {
       icon: "🖨️",
       title: "Print Manifest with Subcategory",
       text: "Manifest with items grouped by product subcategory.",
       label: "Print",
-      run: () =>
-        generateManifestPDFWithCanvas(values, orders, includedOrders, true),
+      run: async () => {
+        await generateManifestPDFWithCanvas(
+          values,
+          orders,
+          includedOrders,
+          true,
+        );
+        logPrint("Manifest with Subcategory");
+      },
     },
     {
       icon: "📄",
       title: "Container & Orders PDF",
       text: "Each container with the orders loaded in it.",
       label: "Download PDF",
-      run: () => generateContainersAndOrdersPDFWithCanvas(values, orders),
+      run: async () => {
+        await generateContainersAndOrdersPDFWithCanvas(values, orders);
+        logPrint("Container & Orders PDF");
+      },
     },
   ];
-
-  const selectedBill = billingRows.find((r) => r.orderId === selectedBilling);
 
   const billingTotals = billingRows.reduce(
     (t, r) => {
@@ -5111,6 +5195,213 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     billingTotals.revenue > 0
       ? (netProfit / billingTotals.revenue) * 100
       : null;
+
+  const allInvoices = billingRows.flatMap((r) =>
+    (r.invoices || []).map((d) => ({
+      ...d,
+      formNumber: d.formNumber || r.formNo,
+    })),
+  );
+  const allBills = billingRows.flatMap((r) =>
+    (r.vendorBills || []).map((d) => ({
+      ...d,
+      formNumber: d.formNumber || r.formNo,
+    })),
+  );
+
+  const financeTable = (docs, partyLabel, partyKey, kind) => {
+    const groups = Object.values(
+      docs.reduce((m, d) => {
+        const k = d.formNumber || "N/A";
+        (m[k] ||= { key: k, docs: [] }).docs.push(d);
+        return m;
+      }, {}),
+    );
+    const live = docs.filter((d) => d.status !== "void");
+    const grandTotal = sumBy(live, docTotalAed);
+    const grandBalance = sumBy(live, docBalanceAed);
+    const grandPaid = sumBy(live, docPaidAed);
+    const headCell = { bgcolor: FIN.teal, color: "#fff", fontWeight: "bold" };
+
+    return (
+      <TableContainer
+        sx={{
+          border: 1,
+          borderColor: "divider",
+          borderRadius: 2,
+          bgcolor: "background.paper",
+        }}
+      >
+        <Table size="small" sx={{ minWidth: 1100 }}>
+          <TableHead>
+            <TableRow>
+              {[
+                `Form No / ${kind} No`,
+                partyLabel,
+                "Date",
+                "Due Date",
+                "Status",
+              ].map((h) => (
+                <TableCell key={h} sx={headCell}>
+                  {h}
+                </TableCell>
+              ))}
+              <TableCell align="right" sx={headCell}>
+                Total (FCA)
+              </TableCell>
+              <TableCell align="right" sx={headCell}>
+                Paid (AED)
+              </TableCell>
+              <TableCell align="right" sx={headCell}>
+                Balance (AED)
+              </TableCell>
+              <TableCell align="right" sx={headCell}>
+                Total (AED)
+              </TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {groups.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={9} align="center" sx={{ py: 4 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    No {kind.toLowerCase()}s found
+                  </Typography>
+                </TableCell>
+              </TableRow>
+            ) : (
+              <>
+                {groups.map((g) => {
+                  const k = `f-${kind}-${g.key}`;
+                  const open = expandedForms[k] ?? true;
+                  const gl = g.docs.filter((d) => d.status !== "void");
+                  return [
+                    <TableRow
+                      key={k}
+                      hover
+                      onClick={() =>
+                        setExpandedForms((p) => ({ ...p, [k]: !open }))
+                      }
+                      sx={{ cursor: "pointer", bgcolor: FIN.grey100 }}
+                    >
+                      <TableCell sx={{ fontWeight: 700, color: FIN.tealDark }}>
+                        <Box
+                          sx={{ display: "flex", alignItems: "center", gap: 1 }}
+                        >
+                          <ExpandMoreIcon
+                            fontSize="small"
+                            sx={{
+                              color: FIN.teal,
+                              transition: "transform 0.2s",
+                              transform: open
+                                ? "rotate(0deg)"
+                                : "rotate(-90deg)",
+                            }}
+                          />
+                          {g.key}
+                        </Box>
+                      </TableCell>
+                      <TableCell colSpan={4}>
+                        <Chip
+                          size="small"
+                          label={`${g.docs.length} ${kind.toLowerCase()}${g.docs.length > 1 ? "s" : ""}`}
+                          sx={{
+                            bgcolor: FIN.tealMid,
+                            color: FIN.tealDark,
+                            fontWeight: 700,
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell />
+                      <TableCell align="right" sx={{ fontWeight: 700 }}>
+                        {fmtMoney(sumBy(gl, docPaidAed), "AED")}
+                      </TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700 }}>
+                        {fmtMoney(sumBy(gl, docBalanceAed), "AED")}
+                      </TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700 }}>
+                        {fmtMoney(sumBy(gl, docTotalAed), "AED")}
+                      </TableCell>
+                    </TableRow>,
+                    ...(open
+                      ? g.docs.map((d) => (
+                          <TableRow hover key={d.id}>
+                            <TableCell sx={{ pl: 7, fontWeight: 600 }}>
+                              {d.number}
+                            </TableCell>
+                            <TableCell>{d[partyKey]}</TableCell>
+                            <TableCell>
+                              {d.date
+                                ? dayjs(d.date).format("MMM DD, YYYY")
+                                : "-"}
+                            </TableCell>
+                            <TableCell>
+                              {d.dueDate
+                                ? dayjs(d.dueDate).format("MMM DD, YYYY")
+                                : "-"}
+                            </TableCell>
+                            <TableCell>
+                              <Chip
+                                label={fmtStatus(d.status)}
+                                size="small"
+                                variant="outlined"
+                                color={docStatusColor(d.status)}
+                              />
+                            </TableCell>
+                            <TableCell align="right">
+                              {fmtMoney(d.total, d.currency)}
+                            </TableCell>
+                            <TableCell align="right">
+                              {d.totalAed == null || d.balanceAed == null
+                                ? "-"
+                                : fmtAed(d.totalAed - d.balanceAed)}
+                            </TableCell>
+                            <TableCell align="right">
+                              {fmtAed(d.balanceAed)}
+                            </TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 600 }}>
+                              {fmtAed(d.totalAed)}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      : []),
+                  ];
+                })}
+                <TableRow sx={{ bgcolor: FIN.tealLight }}>
+                  <TableCell
+                    colSpan={5}
+                    align="right"
+                    sx={{ fontWeight: 700, color: FIN.tealDark }}
+                  >
+                    Grand Total (AED)
+                  </TableCell>
+                  <TableCell />
+                  <TableCell
+                    align="right"
+                    sx={{ fontWeight: 700, color: FIN.tealDark }}
+                  >
+                    {fmtMoney(grandPaid, "AED")}
+                  </TableCell>
+                  <TableCell
+                    align="right"
+                    sx={{ fontWeight: 700, color: FIN.tealDark }}
+                  >
+                    {fmtMoney(grandBalance, "AED")}
+                  </TableCell>
+                  <TableCell
+                    align="right"
+                    sx={{ fontWeight: 700, color: FIN.tealDark }}
+                  >
+                    {fmtMoney(grandTotal, "AED")}
+                  </TableCell>
+                </TableRow>
+              </>
+            )}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    );
+  };
 
   const openDocPdf = async (kind, doc) => {
     setPdfLoadingId(doc.id);
@@ -5158,102 +5449,70 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     </Box>
   );
 
-  const billingTable = (title, docs, partyLabel, partyKey, kind) => (
-    <Box sx={{ mt: 2 }}>
-      <Typography sx={{ fontWeight: 600, color: tealText, mb: 1 }}>
-        {title} ({docs.length})
-      </Typography>
-      <TableContainer
-        sx={{ border: 1, borderColor: "divider", borderRadius: 2 }}
+  const financeCards = () => {
+    const liveInv = allInvoices.filter((d) => d.status !== "void");
+    const liveBills = allBills.filter((d) => d.status !== "void");
+    const receipts = liveInv.filter((d) => docPaidAed(d) > 0).length;
+    const payments = liveBills.filter((d) => docPaidAed(d) > 0).length;
+    const marginTxt = netMargin === null ? "-" : `${netMargin.toFixed(1)}%`;
+
+    return (
+      <Box
+        sx={{
+          display: "grid",
+          gridTemplateColumns: {
+            xs: "repeat(2, 1fr)",
+            sm: "repeat(3, 1fr)",
+            lg: "repeat(6, 1fr)",
+          },
+          gap: 1.5,
+        }}
       >
-        <Table size="small" sx={{ minWidth: 800 }}>
-          <TableHead>
-            <TableRow>
-              {[`${kind} No`, partyLabel, "Date", "Due Date", "Status"].map(
-                (h) => (
-                  <TableCell key={h} sx={headCellSx}>
-                    {h}
-                  </TableCell>
-                ),
-              )}
-              <TableCell sx={headCellSx} align="right">
-                Amount
-              </TableCell>
-              <TableCell sx={headCellSx} align="right">
-                Balance
-              </TableCell>
-              <TableCell sx={headCellSx} align="right">
-                Rate
-              </TableCell>
-              <TableCell sx={headCellSx} align="right">
-                Amount (AED)
-              </TableCell>
-              <TableCell sx={headCellSx} align="center">
-                Preview
-              </TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {docs.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={10} align="center" sx={{ py: 3 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    No {title.toLowerCase()} found
-                  </Typography>
-                </TableCell>
-              </TableRow>
-            ) : (
-              docs.map((d) => (
-                <TableRow hover key={d.id}>
-                  <TableCell>{d.number}</TableCell>
-                  <TableCell>{d[partyKey]}</TableCell>
-                  <TableCell>
-                    {d.date ? dayjs(d.date).format("DD MMM YYYY") : "-"}
-                  </TableCell>
-                  <TableCell>
-                    {d.dueDate ? dayjs(d.dueDate).format("DD MMM YYYY") : "-"}
-                  </TableCell>
-                  <TableCell>
-                    <Chip
-                      label={fmtStatus(d.status)}
-                      size="small"
-                      variant="outlined"
-                      color={docStatusColor(d.status)}
-                    />
-                  </TableCell>
-                  <TableCell align="right">
-                    {fmtMoney(d.total, d.currency)}
-                  </TableCell>
-                  <TableCell align="right">
-                    {fmtMoney(d.balance, d.currency)}
-                  </TableCell>
-                  <TableCell align="right">
-                    {d.currency === "AED" ? "-" : (d.exchangeRate ?? "N/A")}
-                  </TableCell>
-                  <TableCell align="right">
-                    {d.totalAed == null ? "N/A" : fmtMoney(d.totalAed, "AED")}
-                  </TableCell>
-                  <TableCell align="center">
-                    <IconButton
-                      size="small"
-                      disabled={pdfLoadingId === d.id}
-                      onClick={() => openDocPdf(kind, d)}
-                    >
-                      {pdfLoadingId === d.id ? (
-                        <CircularProgress size={18} />
-                      ) : (
-                        <VisibilityIcon fontSize="small" />
-                      )}
-                    </IconButton>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </TableContainer>
-    </Box>
-  );
+        <FinStatCard
+          color="#2563eb"
+          icon={<DescriptionOutlinedIcon />}
+          value={fmtMoney(billingTotals.revenue, "AED")}
+          label="Total Invoice"
+          sub={`${liveInv.length} Invoices`}
+        />
+        <FinStatCard
+          color="#d97706"
+          icon={<ReceiptLongOutlinedIcon />}
+          value={fmtMoney(billingTotals.cost, "AED")}
+          label="Total Bills"
+          sub={`${liveBills.length} Bills`}
+        />
+        <FinStatCard
+          color="#16a34a"
+          icon={<AccountBalanceWalletOutlinedIcon />}
+          value={fmtMoney(billingTotals.received, "AED")}
+          label="Total Received"
+          sub={`${receipts} Receipts`}
+        />
+        <FinStatCard
+          color="#7c3aed"
+          icon={<CreditCardOutlinedIcon />}
+          value={fmtMoney(billingTotals.paidOut, "AED")}
+          label="Total Paid"
+          sub={`${payments} Payments`}
+        />
+        <FinStatCard
+          color="#059669"
+          icon={<TrendingUpIcon />}
+          value={fmtMoney(netProfit, "AED")}
+          label="Net Profit"
+          sub={`${marginTxt} Margin`}
+        />
+        <FinStatCard
+          color="#e11d48"
+          icon={<PieChartOutlineIcon />}
+          value={marginTxt}
+          label="Profit Margin"
+          sub={`${fmtMoney(netProfit, "AED")} Profit`}
+        />
+      </Box>
+    );
+  };
 
   const statusColors = getStatusColors(values.status);
 
@@ -5313,12 +5572,13 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                   startIcon={<DescriptionIcon />}
                   loading={busyAction === "note-pdf"}
                   onClick={() =>
-                    runAction("note-pdf", () =>
-                      generateConsignmentNotePDFWithCanvas(
+                    runAction("note-pdf", async () => {
+                      await generateConsignmentNotePDFWithCanvas(
                         values,
                         includedOrders,
-                      ),
-                    )
+                      );
+                      logPrint("Consignment Note");
+                    })
                   }
                   disabled={
                     saving || !!busyAction || !values.consignment_number
@@ -5374,7 +5634,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                   )}
                 />
                 {canViewJobDetails && (
-                  <Tab value="billing" label={tabLabel("💰 Job Details")} />
+                  <Tab value="billing" label={tabLabel("💰 Finance")} />
                 )}
                 <Tab
                   value="documents"
@@ -6035,19 +6295,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                           ))}
                         </Select>
                       </FormControl>
-                      <Button
-                        variant="outlined"
-                        onClick={() =>
-                          setShipmentView((v) =>
-                            v === "orders" ? "items" : "orders",
-                          )
-                        }
-                        sx={{ ...outlineBtn, whiteSpace: "nowrap" }}
-                      >
-                        {shipmentView === "orders"
-                          ? "View Item-wise"
-                          : "View Order-wise"}
-                      </Button>
                       <Typography
                         variant="body2"
                         color="text.secondary"
@@ -6062,274 +6309,290 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                         items
                       </Typography>
                     </Box>
-                    {shipmentView === "items" ? (
-                      <TableContainer
-                        sx={{
-                          border: 1,
-                          borderColor: "divider",
-                          borderRadius: 2,
-                          maxHeight: 580,
-                        }}
+                    <TableContainer
+                      sx={{
+                        border: 1,
+                        borderColor: "divider",
+                        borderRadius: 2,
+                        maxHeight: 580,
+                      }}
+                    >
+                      <Table
+                        stickyHeader
+                        sx={{ minWidth: 760 }}
+                        aria-label="shipments-by-order-table"
                       >
-                        <Table
-                          stickyHeader
-                          sx={{ minWidth: 760 }}
-                          aria-label="shipments-by-container-table"
-                        >
-                          <TableHead>
+                        <TableHead>
+                          <TableRow>
+                            {orderHeaders.map((h, i) => (
+                              <TableCell key={i} sx={headCellSx}>
+                                {h}
+                              </TableCell>
+                            ))}
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {orderRows.length === 0 ? (
                             <TableRow>
-                              {shipmentHeaders.map((h) => (
-                                <TableCell key={h} sx={headCellSx}>
-                                  {h}
-                                </TableCell>
-                              ))}
+                              <TableCell
+                                colSpan={orderHeaders.length}
+                                align="center"
+                                sx={{ py: 6 }}
+                              >
+                                <Typography
+                                  variant="body1"
+                                  color="text.secondary"
+                                >
+                                  {flatShipments.length === 0
+                                    ? "No shipments with container assignments found"
+                                    : "No orders match your search or filter"}
+                                </Typography>
+                              </TableCell>
                             </TableRow>
-                          </TableHead>
-                          <TableBody>
-                            {filteredShipments.length === 0 ? (
-                              <TableRow>
-                                <TableCell
-                                  colSpan={12}
-                                  align="center"
-                                  sx={{ py: 6 }}
-                                >
-                                  <Typography
-                                    variant="body1"
-                                    color="text.secondary"
+                          ) : (
+                            orderRows.map((row) => {
+                              const open =
+                                expandedOrders.has(row.orderId) ||
+                                !!shipmentSearch.trim();
+                              return (
+                                <React.Fragment key={row.orderId}>
+                                  <TableRow
+                                    hover
+                                    onClick={() => toggleOrder(row.orderId)}
+                                    sx={{ cursor: "pointer" }}
                                   >
-                                    {flatShipments.length === 0
-                                      ? "No shipments with container assignments found"
-                                      : "No shipments match your search or filter"}
-                                  </Typography>
-                                </TableCell>
-                              </TableRow>
-                            ) : (
-                              filteredShipments.map((shipment, index) => (
-                                <TableRow
-                                  hover
-                                  key={`${shipment.orderId}-${shipment.containerNumber}-${index}`}
-                                >
-                                  <TableCell>{shipment.itemRef}</TableCell>
-                                  <TableCell>{shipment.bookingRef}</TableCell>
-                                  <TableCell>{shipment.formNo}</TableCell>
-                                  <TableCell>
-                                    <Typography
-                                      variant="body2"
-                                      fontWeight="medium"
-                                    >
-                                      {shipment.category}
-                                    </Typography>
-                                    <Typography
-                                      variant="caption"
-                                      color="text.secondary"
-                                    >
-                                      {shipment.subcategory}
-                                    </Typography>
-                                  </TableCell>
-                                  <TableCell>
-                                    {String(shipment.pol ?? "-").substring(
-                                      0,
-                                      15,
-                                    )}
-                                  </TableCell>
-                                  <TableCell>
-                                    {String(shipment.pod ?? "-").substring(
-                                      0,
-                                      15,
-                                    )}
-                                  </TableCell>
-                                  <TableCell>
-                                    {String(shipment.sender ?? "-").substring(
-                                      0,
-                                      15,
-                                    )}
-                                  </TableCell>
-                                  <TableCell>
-                                    {String(
-                                      shipment.receiverName ?? "-",
-                                    ).substring(0, 15)}
-                                  </TableCell>
-                                  <TableCell>
-                                    <Chip
-                                      label={shipment.containerNumber}
-                                      size="small"
-                                      variant="outlined"
-                                      sx={{
-                                        borderColor: orange,
-                                        color: orange,
-                                      }}
-                                    />
-                                  </TableCell>
-                                  <TableCell>
-                                    {shipment.assignWeight > 0
-                                      ? `${shipment.assignWeight.toLocaleString()} kg`
-                                      : "-"}{" "}
-                                    {shipment.assignBoxes > 0
-                                      ? `${shipment.assignBoxes.toLocaleString()} ${shipment.type}`
-                                      : "-"}
-                                  </TableCell>
-                                  <TableCell>
-                                    <StatusChip
-                                      status={shipment.receiverStatus}
-                                      size="small"
-                                    />
-                                  </TableCell>
-                                  <TableCell>
-                                    <Button
-                                      color="error"
-                                      variant="contained"
-                                      size="small"
-                                      onClick={() =>
-                                        handleRemoveShipment(shipment)
-                                      }
-                                    >
-                                      Remove
-                                    </Button>
-                                  </TableCell>
-                                </TableRow>
-                              ))
-                            )}
-                          </TableBody>
-                        </Table>
-                      </TableContainer>
-                    ) : (
-                      <TableContainer
-                        sx={{
-                          border: 1,
-                          borderColor: "divider",
-                          borderRadius: 2,
-                          maxHeight: 580,
-                        }}
-                      >
-                        <Table
-                          stickyHeader
-                          sx={{ minWidth: 760 }}
-                          aria-label="shipments-by-order-table"
-                        >
-                          <TableHead>
-                            <TableRow>
-                              {orderHeaders.map((h) => (
-                                <TableCell key={h} sx={headCellSx}>
-                                  {h}
-                                </TableCell>
-                              ))}
-                            </TableRow>
-                          </TableHead>
-                          <TableBody>
-                            {orderRows.length === 0 ? (
-                              <TableRow>
-                                <TableCell
-                                  colSpan={11}
-                                  align="center"
-                                  sx={{ py: 6 }}
-                                >
-                                  <Typography
-                                    variant="body1"
-                                    color="text.secondary"
-                                  >
-                                    {flatShipments.length === 0
-                                      ? "No shipments with container assignments found"
-                                      : "No orders match your search or filter"}
-                                  </Typography>
-                                </TableCell>
-                              </TableRow>
-                            ) : (
-                              orderRows.map((row) => (
-                                <TableRow hover key={row.orderId}>
-                                  <TableCell>{row.bookingRef}</TableCell>
-                                  <TableCell>{row.formNo}</TableCell>
-                                  <TableCell>
-                                    {String(row.pol).substring(0, 15)}
-                                  </TableCell>
-                                  <TableCell>
-                                    {String(row.pod).substring(0, 15)}
-                                  </TableCell>
-                                  <TableCell>
-                                    {String(row.sender).substring(0, 15)}
-                                  </TableCell>
-                                  <TableCell>
-                                    {[...row.receivers]
-                                      .join(", ")
-                                      .substring(0, 30)}
-                                  </TableCell>
-                                  <TableCell>{row.items.size}</TableCell>
-                                  <TableCell>
-                                    <Stack
-                                      direction="row"
-                                      spacing={0.5}
-                                      flexWrap="wrap"
-                                      useFlexGap
-                                    >
-                                      {[...row.containers].map((c) => (
-                                        <Chip
-                                          key={c}
-                                          label={c}
-                                          size="small"
-                                          variant="outlined"
+                                    <TableCell padding="checkbox">
+                                      <IconButton size="small">
+                                        <ExpandMoreIcon
+                                          fontSize="small"
                                           sx={{
-                                            borderColor: orange,
-                                            color: orange,
+                                            transform: open
+                                              ? "rotate(180deg)"
+                                              : "none",
+                                            transition: "transform .2s",
                                           }}
                                         />
+                                      </IconButton>
+                                    </TableCell>
+                                    <TableCell>{row.bookingRef}</TableCell>
+                                    <TableCell>{row.formNo}</TableCell>
+                                    <TableCell>
+                                      {String(row.pol).substring(0, 15)}
+                                    </TableCell>
+                                    <TableCell>
+                                      {String(row.pod).substring(0, 15)}
+                                    </TableCell>
+                                    <TableCell>
+                                      {String(row.sender).substring(0, 15)}
+                                    </TableCell>
+                                    <TableCell>
+                                      {[...row.receivers]
+                                        .join(", ")
+                                        .substring(0, 30)}
+                                    </TableCell>
+                                    <TableCell>{row.items.size}</TableCell>
+                                    <TableCell>
+                                      <Stack
+                                        direction="row"
+                                        spacing={0.5}
+                                        flexWrap="wrap"
+                                        useFlexGap
+                                      >
+                                        {[...row.containers].map((c) => (
+                                          <Chip
+                                            key={c}
+                                            label={c}
+                                            size="small"
+                                            variant="outlined"
+                                            sx={{
+                                              borderColor: orange,
+                                              color: orange,
+                                            }}
+                                          />
+                                        ))}
+                                      </Stack>
+                                    </TableCell>
+                                    <TableCell>
+                                      {row.weight > 0
+                                        ? `${row.weight.toLocaleString()} kg`
+                                        : "-"}{" "}
+                                      {row.boxes > 0
+                                        ? `${row.boxes.toLocaleString()} boxes`
+                                        : "-"}
+                                    </TableCell>
+                                    <TableCell>
+                                      {[...row.statuses].map((st) => (
+                                        <StatusChip
+                                          key={st}
+                                          status={st}
+                                          size="small"
+                                        />
                                       ))}
-                                    </Stack>
-                                  </TableCell>
-                                  <TableCell>
-                                    {row.weight > 0
-                                      ? `${row.weight.toLocaleString()} kg`
-                                      : "-"}{" "}
-                                    {row.boxes > 0
-                                      ? `${row.boxes.toLocaleString()} boxes`
-                                      : "-"}
-                                  </TableCell>
-                                  <TableCell>
-                                    {[...row.statuses].map((st) => (
-                                      <StatusChip
-                                        key={st}
-                                        status={st}
-                                        size="small"
-                                      />
-                                    ))}
-                                  </TableCell>
-                                  <TableCell>
-                                    <Button
-                                      color="error"
-                                      variant="contained"
-                                      size="small"
-                                      onClick={() =>
-                                        row.shipments.forEach(
-                                          handleRemoveShipment,
-                                        )
-                                      }
+                                    </TableCell>
+                                  </TableRow>
+                                  <TableRow>
+                                    <TableCell
+                                      colSpan={orderHeaders.length}
+                                      sx={{
+                                        p: 0,
+                                        borderBottom: open ? undefined : 0,
+                                      }}
                                     >
-                                      Remove
-                                    </Button>
-                                  </TableCell>
-                                </TableRow>
-                              ))
-                            )}
-                          </TableBody>
-                        </Table>
-                      </TableContainer>
-                    )}
+                                      <Collapse
+                                        in={open}
+                                        timeout="auto"
+                                        unmountOnExit
+                                      >
+                                        <Box
+                                          sx={{
+                                            p: 1.5,
+                                            bgcolor: "action.hover",
+                                          }}
+                                        >
+                                          <Table size="small">
+                                            <TableHead>
+                                              <TableRow>
+                                                {itemHeaders.map((h) => (
+                                                  <TableCell
+                                                    key={h}
+                                                    sx={headCellSx}
+                                                  >
+                                                    {h}
+                                                  </TableCell>
+                                                ))}
+                                              </TableRow>
+                                            </TableHead>
+                                            <TableBody>
+                                              {row.shipments.map((shipment) => (
+                                                <TableRow
+                                                  key={`${shipment.shippingDetailId}-${shipment.containerCid}`}
+                                                >
+                                                  <TableCell>
+                                                    {shipment.itemRef}
+                                                  </TableCell>
+                                                  <TableCell>
+                                                    <Typography
+                                                      variant="body2"
+                                                      fontWeight="medium"
+                                                    >
+                                                      {shipment.category}
+                                                    </Typography>
+                                                    <Typography
+                                                      variant="caption"
+                                                      color="text.secondary"
+                                                    >
+                                                      {shipment.subcategory}
+                                                    </Typography>
+                                                  </TableCell>
+                                                  <TableCell>
+                                                    {String(
+                                                      shipment.receiverName ??
+                                                        "-",
+                                                    ).substring(0, 15)}
+                                                  </TableCell>
+                                                  <TableCell>
+                                                    <Chip
+                                                      label={
+                                                        shipment.containerNumber
+                                                      }
+                                                      size="small"
+                                                      variant="outlined"
+                                                      sx={{
+                                                        borderColor: orange,
+                                                        color: orange,
+                                                      }}
+                                                    />
+                                                  </TableCell>
+                                                  <TableCell>
+                                                    {shipment.assignWeight > 0
+                                                      ? `${shipment.assignWeight.toLocaleString()} kg`
+                                                      : "-"}{" "}
+                                                    {shipment.assignBoxes > 0
+                                                      ? `${shipment.assignBoxes.toLocaleString()} ${shipment.type}`
+                                                      : "-"}
+                                                  </TableCell>
+                                                  <TableCell>
+                                                    <StatusChip
+                                                      status={
+                                                        shipment.receiverStatus
+                                                      }
+                                                      size="small"
+                                                    />
+                                                  </TableCell>
+                                                  <TableCell>
+                                                    <Button
+                                                      color="error"
+                                                      variant="contained"
+                                                      size="small"
+                                                      onClick={() =>
+                                                        handleRemoveShipment(
+                                                          shipment,
+                                                        )
+                                                      }
+                                                    >
+                                                      Remove
+                                                    </Button>
+                                                  </TableCell>
+                                                </TableRow>
+                                              ))}
+                                            </TableBody>
+                                          </Table>
+                                        </Box>
+                                      </Collapse>
+                                    </TableCell>
+                                  </TableRow>
+                                </React.Fragment>
+                              );
+                            })
+                          )}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
                   </>
                 )}
                 {tab === "billing" && canViewJobDetails && (
                   <>
                     {mode !== "edit" ? (
                       <Typography color="text.secondary">
-                        Save the consignment first to see its job details and
+                        Save the consignment first to see its Finance and
                         invoices.
                       </Typography>
                     ) : (
-                      <>
+                      <Stack spacing={3}>
                         <Box
                           sx={{
                             display: "flex",
-                            justifyContent: "flex-end",
-                            mb: 1.5,
+                            justifyContent: "space-between",
+                            alignItems: "center",
                           }}
                         >
+                          <Box
+                            sx={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 1.5,
+                            }}
+                          >
+                            <Box
+                              sx={{
+                                width: 36,
+                                height: 36,
+                                borderRadius: "50%",
+                                bgcolor: FIN.tealLight,
+                                display: "grid",
+                                placeItems: "center",
+                              }}
+                            >
+                              💰
+                            </Box>
+                            <Typography
+                              variant="h6"
+                              fontWeight={700}
+                              color={tealText}
+                            >
+                              Finance
+                            </Typography>
+                          </Box>
                           <LoadingBtn
                             size="small"
                             variant="outlined"
@@ -6337,223 +6600,32 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                             loading={billingSyncing}
                             disabled={billingLoading}
                             startIcon={<UpdateIcon />}
-                            sx={outlineBtn}
+                            sx={{ borderColor: teal, color: teal }}
                           >
-                            Sync from Zoho
+                            Sync Zoho
                           </LoadingBtn>
                         </Box>
-                        {billingRows.length > 0 && (
+
+                        {billingRows.length === 0 ? (
+                          <Typography variant="body2" color="text.secondary">
+                            {billingLoading || billingSyncing
+                              ? "Loading billing data..."
+                              : "No invoices or bills found for this consignment. Click Sync Zoho to fetch them."}
+                          </Typography>
+                        ) : (
                           <>
-                            <Typography
-                              sx={{
-                                fontWeight: 600,
-                                color: tealText,
-                                mt: 3,
-                                mb: 1,
-                              }}
-                            >
-                              Net Profit Calculation
-                            </Typography>
-                            <Box
-                              sx={{
-                                display: "grid",
-                                gridTemplateColumns: {
-                                  xs: "1fr",
-                                  sm: "repeat(2, 1fr)",
-                                  md: "repeat(4, 1fr)",
-                                },
-                                gap: 2,
-                                mb: 2,
-                              }}
-                            >
-                              {stat(
-                                "Total Invoices (AED)",
-                                fmtMoney(billingTotals.revenue, "AED"),
-                              )}
-                              {stat(
-                                "Total Bills (AED)",
-                                fmtMoney(billingTotals.cost, "AED"),
-                              )}
-                              {stat(
-                                "Expected Profit (AED)",
-                                fmtMoney(netProfit, "AED"),
-                                netProfit >= 0 ? "success.main" : "error.main",
-                              )}
-                              {stat(
-                                "Net Margin",
-                                netMargin === null
-                                  ? "-"
-                                  : `${netMargin.toFixed(1)}%`,
-                                netProfit >= 0 ? "success.main" : "error.main",
-                              )}
-                              {stat(
-                                "Received (AED)",
-                                fmtMoney(billingTotals.received, "AED"),
-                                "success.main",
-                              )}
-                              {stat(
-                                "Paid Out (AED)",
-                                fmtMoney(billingTotals.paidOut, "AED"),
-                              )}
-                              {stat(
-                                "Current Profit (AED)",
-                                fmtMoney(currentProfit, "AED"),
-                                currentProfit >= 0
-                                  ? "success.main"
-                                  : "error.main",
-                              )}
-
-                              {stat(
-                                "To Collect (AED)",
-                                fmtMoney(billingTotals.toCollect, "AED"),
-                                "warning.main",
-                              )}
-                              {stat(
-                                "To Pay (AED)",
-                                fmtMoney(billingTotals.toPay, "AED"),
-                                "error.main",
-                              )}
-                            </Box>
-                            {billingTotals.missing > 0 && (
-                              <Alert severity="warning" sx={{ mb: 2 }}>
+                            {billingTotals.missing > 0 ? (
+                              <Alert severity="warning">
                                 {billingTotals.missing} order(s) have documents
-                                without an exchange rate. Click "Sync from Zoho"
-                                to load it. Totals above exclude them.
+                                without an exchange rate. Click "Sync Zoho" to
+                                load it.
                               </Alert>
+                            ) : (
+                              financeCards()
                             )}
-                          </>
-                        )}
-                        <TableContainer
-                          sx={{
-                            border: 1,
-                            borderColor: "divider",
-                            borderRadius: 2,
-                          }}
-                        >
-                          <Table
-                            sx={{ minWidth: 640 }}
-                            aria-label="vendor-bill-table"
-                          >
-                            <TableHead>
-                              <TableRow>
-                                <TableCell sx={headCellSx}>
-                                  Booking Ref
-                                </TableCell>
-                                <TableCell sx={headCellSx}>Form No</TableCell>
-                                <TableCell sx={headCellSx} align="center">
-                                  Bills
-                                </TableCell>
-                                <TableCell sx={headCellSx} align="center">
-                                  Invoices
-                                </TableCell>
-                                <TableCell sx={headCellSx} align="right">
-                                  To Collect
-                                </TableCell>
-                                <TableCell sx={headCellSx} align="right">
-                                  To Pay
-                                </TableCell>
-                                <TableCell sx={headCellSx} align="right">
-                                  Current Profit
-                                </TableCell>
-                                <TableCell sx={headCellSx} align="right">
-                                  Expected Profit
-                                </TableCell>
-                              </TableRow>
-                            </TableHead>
-                            <TableBody>
-                              {billingRows.length === 0 ? (
-                                <TableRow>
-                                  <TableCell
-                                    colSpan={8}
-                                    align="center"
-                                    sx={{ py: 5 }}
-                                  >
-                                    <Typography
-                                      variant="body2"
-                                      color="text.secondary"
-                                    >
-                                      {billingLoading || billingSyncing
-                                        ? "Loading billing data..."
-                                        : "No invoices or Job Details found for this consignment"}
-                                    </Typography>
-                                  </TableCell>
-                                </TableRow>
-                              ) : (
-                                billingRows.map((row) => (
-                                  <TableRow
-                                    hover
-                                    key={row.orderId}
-                                    selected={selectedBilling === row.orderId}
-                                    onClick={() =>
-                                      setSelectedBilling(row.orderId)
-                                    }
-                                    sx={{ cursor: "pointer" }}
-                                  >
-                                    <TableCell>{row.bookingRef}</TableCell>
-                                    <TableCell>{row.formNo}</TableCell>
-                                    <TableCell align="center">
-                                      {row.vendorBills.length}
-                                    </TableCell>
-                                    <TableCell align="center">
-                                      {row.invoices.length}
-                                    </TableCell>
-                                    <TableCell
-                                      align="right"
-                                      sx={{
-                                        color: "warning.main",
-                                        fontWeight: 600,
-                                      }}
-                                    >
-                                      {fmtMoney(row.toCollect, "AED")}
-                                    </TableCell>
-                                    <TableCell
-                                      align="right"
-                                      sx={{
-                                        color: "error.main",
-                                        fontWeight: 600,
-                                      }}
-                                    >
-                                      {fmtMoney(row.toPay, "AED")}
-                                    </TableCell>
-                                    {[
-                                      row.currentProfit,
-                                      row.expectedProfit,
-                                    ].map((v, i) => (
-                                      <TableCell
-                                        key={i}
-                                        align="right"
-                                        sx={{
-                                          fontWeight: 600,
-                                          color:
-                                            v === null
-                                              ? "text.secondary"
-                                              : v >= 0
-                                                ? "success.main"
-                                                : "error.main",
-                                        }}
-                                      >
-                                        {v === null
-                                          ? "Rate missing"
-                                          : fmtMoney(v, "AED")}
-                                      </TableCell>
-                                    ))}
-                                  </TableRow>
-                                ))
-                              )}
-                            </TableBody>
-                          </Table>
-                        </TableContainer>
 
-                        {selectedBill && (
-                          <Box
-                            sx={{
-                              mt: 3,
-                              border: 1,
-                              borderColor: "divider",
-                              borderRadius: 2.5,
-                              p: 2.5,
-                            }}
-                          >
+                            <Divider />
+
                             <Box
                               sx={{
                                 display: "flex",
@@ -6563,125 +6635,50 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                                 gap: 1,
                               }}
                             >
-                              <Typography
-                                sx={{ fontWeight: 700, fontSize: 16 }}
-                              >
-                                {selectedBill.bookingRef} ·{" "}
-                                {selectedBill.formNo}
-                              </Typography>
-                              <Button
+                              <ToggleButtonGroup
                                 size="small"
-                                variant="outlined"
-                                onClick={() => setSelectedBilling(null)}
-                                sx={outlineBtn}
+                                exclusive
+                                value={financeView}
+                                onChange={(_, v) => v && setFinanceView(v)}
                               >
-                                Close
-                              </Button>
+                                <ToggleButton
+                                  value="invoices"
+                                  sx={{ textTransform: "none", px: 2.5 }}
+                                >
+                                  Invoices ({allInvoices.length})
+                                </ToggleButton>
+                                <ToggleButton
+                                  value="bills"
+                                  sx={{ textTransform: "none", px: 2.5 }}
+                                >
+                                  Bills ({allBills.length})
+                                </ToggleButton>
+                              </ToggleButtonGroup>
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                              >
+                                Click a form number to collapse or expand. Void
+                                documents are excluded from totals.
+                              </Typography>
                             </Box>
-                            <Typography
-                              sx={{
-                                fontWeight: 600,
-                                color: tealText,
-                                mt: 3,
-                                mb: 1,
-                              }}
-                            >
-                              Gross Profit Calculation
-                            </Typography>
-                            {selectedBill.rateMissing ? (
-                              <Alert severity="warning">
-                                Some documents have no exchange rate yet. Click
-                                "Sync from Zoho" to load it.
-                              </Alert>
-                            ) : (
-                              <Box
-                                sx={{
-                                  display: "grid",
-                                  gridTemplateColumns: {
-                                    xs: "1fr",
-                                    sm: "repeat(2, 1fr)",
-                                    md: "repeat(4, 1fr)",
-                                  },
-                                  gap: 2,
-                                }}
-                              >
-                                {stat(
-                                  "Total Invoices (Revenue)",
-                                  fmtMoney(selectedBill.invoiceTotal, "AED"),
-                                )}
-                                {stat(
-                                  "Total Bills (Cost)",
-                                  fmtMoney(selectedBill.vendorTotal, "AED"),
-                                )}
-                                {stat(
-                                  "Expected Profit",
-                                  fmtMoney(selectedBill.expectedProfit, "AED"),
-                                  selectedBill.expectedProfit >= 0
-                                    ? "success.main"
-                                    : "error.main",
-                                )}
-                                {stat(
-                                  "Margin",
-                                  selectedBill.invoiceTotal > 0
-                                    ? `${((selectedBill.expectedProfit / selectedBill.invoiceTotal) * 100).toFixed(1)}%`
-                                    : "-",
-                                )}
-                                {stat(
-                                  "Received",
-                                  fmtMoney(selectedBill.received, "AED"),
-                                  "success.main",
-                                )}
-                                {stat(
-                                  "Paid Out",
-                                  fmtMoney(selectedBill.paidOut, "AED"),
-                                )}
-                                {stat(
-                                  "Current Profit",
-                                  fmtMoney(selectedBill.currentProfit, "AED"),
-                                  selectedBill.currentProfit >= 0
-                                    ? "success.main"
-                                    : "error.main",
-                                )}
 
-                                {stat(
-                                  "To Collect",
-                                  fmtMoney(selectedBill.toCollect, "AED"),
-                                  "warning.main",
+                            {financeView === "invoices"
+                              ? financeTable(
+                                  allInvoices,
+                                  "Customer",
+                                  "customer",
+                                  "Invoice",
+                                )
+                              : financeTable(
+                                  allBills,
+                                  "Vendor",
+                                  "vendor",
+                                  "Bill",
                                 )}
-                                {stat(
-                                  "To Pay",
-                                  fmtMoney(selectedBill.toPay, "AED"),
-                                  "error.main",
-                                )}
-                              </Box>
-                            )}
-                            <Typography
-                              variant="caption"
-                              color="text.secondary"
-                              sx={{ display: "block", mt: 1 }}
-                            >
-                              Expected Profit = all invoices − all bills (void
-                              excluded). Current Profit = received − paid out.
-                              To Collect and To Pay are the unpaid balances on
-                              invoices and bills.
-                            </Typography>
-                            {billingTable(
-                              "Job Details",
-                              selectedBill.vendorBills,
-                              "Vendor",
-                              "vendor",
-                              "Bill",
-                            )}
-                            {billingTable(
-                              "Invoices",
-                              selectedBill.invoices,
-                              "Customer",
-                              "customer",
-                              "Invoice",
-                            )}
-                          </Box>
+                          </>
                         )}
-                      </>
+                      </Stack>
                     )}
                   </>
                 )}

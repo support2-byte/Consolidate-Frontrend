@@ -1,4 +1,5 @@
-import React, { useContext } from "react";
+import React, { useContext, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Box,
   Button,
@@ -99,6 +100,17 @@ const ContainerModule = ({ propContainers = [] }) => {
   } = state;
 
   const historyContainer = containers.find((c) => c.cid === state.historyCid);
+
+  const [searchParams] = useSearchParams();
+  const urlContainerNo = searchParams.get("container_number");
+
+  useEffect(() => {
+    if (urlContainerNo) {
+      handleFilterChange({
+        target: { name: "container_number", value: urlContainerNo },
+      });
+    }
+  }, [urlContainerNo]);
 
   return (
     <Box

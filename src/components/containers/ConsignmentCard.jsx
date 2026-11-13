@@ -4,6 +4,7 @@ import {
   Button,
   Chip,
   CircularProgress,
+  Collapse,
   IconButton,
   Table,
   TableBody,
@@ -13,7 +14,7 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import { DownloadIcon } from "lucide-react";
+import { DownloadIcon, ChevronDown, ChevronRight } from "lucide-react";
 import { HISTORY_TABLE_HEADERS } from "../../constants/containers";
 
 const headSx = {
@@ -25,13 +26,13 @@ const headSx = {
 };
 
 const ORDER_HEADERS = [
+  "",
   "Booking Ref",
   "Form No",
   "Items",
   "Total Qty",
   "Total Weight",
   "Loaded At",
-  "Actions",
 ];
 
 export const ConsignmentCard = ({
@@ -224,8 +225,11 @@ export const ConsignmentCard = ({
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  {ORDER_HEADERS.map((h) => (
-                    <TableCell key={h} sx={headSx}>
+                  {ORDER_HEADERS.map((h, i) => (
+                    <TableCell
+                      key={h || `col-${i}`}
+                      sx={{ ...headSx, ...(i === 0 && { width: 40, px: 1 }) }}
+                    >
                       {h}
                     </TableCell>
                   ))}
@@ -234,7 +238,28 @@ export const ConsignmentCard = ({
               <TableBody>
                 {orderRows.map((r) => (
                   <Fragment key={r.key}>
-                    <TableRow hover sx={{ bgcolor: "background.paper" }}>
+                    <TableRow
+                      hover
+                      onClick={() =>
+                        setOpenOrders((p) => ({ ...p, [r.key]: !p[r.key] }))
+                      }
+                      sx={{
+                        bgcolor: "background.paper",
+                        cursor: "pointer",
+                        "& > td": {
+                          borderBottom: openOrders[r.key] ? "none" : undefined,
+                        },
+                      }}
+                    >
+                      <TableCell sx={{ width: 40, px: 1 }}>
+                        <IconButton size="small" sx={{ color: "#f58220" }}>
+                          {openOrders[r.key] ? (
+                            <ChevronDown size={18} />
+                          ) : (
+                            <ChevronRight size={18} />
+                          )}
+                        </IconButton>
+                      </TableCell>
                       <TableCell
                         sx={{ fontWeight: 500, color: "#0d6c6a", fontSize: 13 }}
                       >
@@ -251,109 +276,99 @@ export const ConsignmentCard = ({
                       <TableCell sx={{ fontSize: 13 }}>
                         {r.loadedAt ?? "-- Proceeded via Batch --"}
                       </TableCell>
-                      <TableCell>
-                        <Button
-                          variant="outlined"
-                          size="small"
-                          onClick={() =>
-                            setOpenOrders((p) => ({ ...p, [r.key]: !p[r.key] }))
-                          }
-                          sx={{
-                            borderColor: "#f58220",
-                            color: "#f58220",
-                            fontSize: 12,
-                            py: 0.4,
-                            px: 1.5,
-                            whiteSpace: "nowrap",
-                          }}
+                    </TableRow>
+
+                    <TableRow>
+                      <TableCell colSpan={7} sx={{ p: 0, border: 0 }}>
+                        <Collapse
+                          in={!!openOrders[r.key]}
+                          timeout="auto"
+                          unmountOnExit
                         >
-                          {openOrders[r.key] ? "Hide Items" : "View Items"}
-                        </Button>
+                          <Box sx={{ p: 2, pl: 5 }}>
+                            <Typography
+                              variant="subtitle2"
+                              sx={{ mb: 1, fontWeight: 600, color: "#f58220" }}
+                            >
+                              Order Item Details ({r.events.length})
+                            </Typography>
+                            <Table size="small">
+                              <TableHead>
+                                <TableRow>
+                                  {HISTORY_TABLE_HEADERS.map((h) => (
+                                    <TableCell key={h} sx={headSx}>
+                                      {h}
+                                    </TableCell>
+                                  ))}
+                                </TableRow>
+                              </TableHead>
+                              <TableBody>
+                                {r.events.map((event, i) => (
+                                  <TableRow
+                                    key={`${event.detailId}-${i}`}
+                                    hover
+                                    sx={{ "&:last-child td": { border: 0 } }}
+                                  >
+                                    <TableCell
+                                      sx={{
+                                        fontWeight: 500,
+                                        color: "#0d6c6a",
+                                        fontSize: 13,
+                                      }}
+                                    >
+                                      {event.bookingRef ||
+                                        event.orderId ||
+                                        "N/A"}
+                                    </TableCell>
+                                    <TableCell sx={{ fontSize: 13 }}>
+                                      {event.formNo || "N/A"}
+                                    </TableCell>
+                                    <TableCell sx={{ fontSize: 13 }}>
+                                      {event.itemRef || "N/A"}
+                                    </TableCell>
+                                    <TableCell sx={{ fontSize: 13 }}>
+                                      {event.eventSummary || "N/A"}
+                                    </TableCell>
+                                    <TableCell sx={{ fontSize: 13 }}>
+                                      {event.assignedQty ?? "—"}
+                                    </TableCell>
+                                    <TableCell sx={{ fontSize: 13 }}>
+                                      {event.assignedWeightKg != null
+                                        ? `${event.assignedWeightKg} KG`
+                                        : "—"}
+                                    </TableCell>
+                                    <TableCell
+                                      sx={{
+                                        fontSize: 12,
+                                        color: "text.secondary",
+                                      }}
+                                    >
+                                      {event.changedBy || "System"}
+                                    </TableCell>
+                                    <TableCell sx={{ fontSize: 13 }}>
+                                      {event.loadedAt ??
+                                        "-- Proceeded via Batch --"}
+                                    </TableCell>
+                                    <TableCell>
+                                      <Chip
+                                        label={event.eventType}
+                                        size="small"
+                                        sx={{
+                                          fontSize: 11,
+                                          height: 20,
+                                          bgcolor: "#e6f4f3",
+                                          color: "#0d6c6a",
+                                        }}
+                                      />
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </Box>
+                        </Collapse>
                       </TableCell>
                     </TableRow>
-                    {openOrders[r.key] && (
-                      <TableRow>
-                        <TableCell colSpan={7} sx={{ p: 2 }}>
-                          <Typography
-                            variant="subtitle2"
-                            sx={{ mb: 1, fontWeight: 600, color: "#f58220" }}
-                          >
-                            Order Item Details ({r.events.length})
-                          </Typography>
-                          <Table size="small">
-                            <TableHead>
-                              <TableRow>
-                                {HISTORY_TABLE_HEADERS.map((h) => (
-                                  <TableCell key={h} sx={headSx}>
-                                    {h}
-                                  </TableCell>
-                                ))}
-                              </TableRow>
-                            </TableHead>
-                            <TableBody>
-                              {r.events.map((event, i) => (
-                                <TableRow
-                                  key={`${event.detailId}-${i}`}
-                                  hover
-                                  sx={{ "&:last-child td": { border: 0 } }}
-                                >
-                                  <TableCell
-                                    sx={{
-                                      fontWeight: 500,
-                                      color: "#0d6c6a",
-                                      fontSize: 13,
-                                    }}
-                                  >
-                                    {event.bookingRef || event.orderId || "N/A"}
-                                  </TableCell>
-                                  <TableCell sx={{ fontSize: 13 }}>
-                                    {event.formNo || "N/A"}
-                                  </TableCell>
-                                  <TableCell sx={{ fontSize: 13 }}>
-                                    {event.itemRef || "N/A"}
-                                  </TableCell>
-                                  <TableCell sx={{ fontSize: 13 }}>
-                                    {event.eventSummary || "N/A"}
-                                  </TableCell>
-                                  <TableCell sx={{ fontSize: 13 }}>
-                                    {event.assignedQty ?? "—"}
-                                  </TableCell>
-                                  <TableCell sx={{ fontSize: 13 }}>
-                                    {event.assignedWeightKg != null
-                                      ? `${event.assignedWeightKg} KG`
-                                      : "—"}
-                                  </TableCell>
-                                  <TableCell
-                                    sx={{
-                                      fontSize: 12,
-                                      color: "text.secondary",
-                                    }}
-                                  >
-                                    {event.changedBy || "System"}
-                                  </TableCell>
-                                  <TableCell sx={{ fontSize: 13 }}>
-                                    {event.loadedAt ??
-                                      "-- Proceeded via Batch --"}
-                                  </TableCell>
-                                  <TableCell>
-                                    <Chip
-                                      label={event.eventType}
-                                      size="small"
-                                      sx={{
-                                        fontSize: 11,
-                                        height: 20,
-                                        bgcolor: "#e6f4f3",
-                                        color: "#0d6c6a",
-                                      }}
-                                    />
-                                  </TableCell>
-                                </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
-                        </TableCell>
-                      </TableRow>
-                    )}
                   </Fragment>
                 ))}
               </TableBody>

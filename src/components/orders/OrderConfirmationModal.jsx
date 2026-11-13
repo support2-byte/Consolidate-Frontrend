@@ -36,13 +36,13 @@ import Inventory2OutlinedIcon from "@mui/icons-material/Inventory2Outlined";
 import { OrderConfirmation } from "../../documents/orderConfirmationGenerator";
 import { api } from "../../api";
 import { AppContext } from "../../context/AppContext";
+import { buildEmailPreviewHtml } from "../../documents/emailPreview";
 
 const TYPE_OPTIONS = ["Box", "Package", "Bags"];
+const MODE_OPTIONS = ["Drop-Off", "Pickup"];
 
 const emptyItem = () => ({
   id: `item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-  portOfLoading: "",
-  portOfDestination: "",
   categoryId: "",
   subcategoryId: "",
   type: "",
@@ -140,7 +140,7 @@ const SectionHeader = ({ icon, title }) => (
 
 const DEFAULT_SUBJECT = "Order Confirmation & Acceptance";
 const DEFAULT_MESSAGE =
-  "Please find attached the order confirmation for your review. Kindly verify the shipment details below and confirm your acceptance at your earliest convenience.";
+  "Please review the order confirmation details below and confirm your acceptance at your earliest convenience.";
 
 const OrderConfirmationEmailModal = ({
   open,
@@ -150,7 +150,7 @@ const OrderConfirmationEmailModal = ({
 }) => {
   const { places } = useContext(AppContext);
 
-  const [expanded, setExpanded] = useState("email");
+  const [expanded, setExpanded] = useState("company");
   const handleAccordion = (panel) => (_, isExpanded) =>
     setExpanded(isExpanded ? panel : false);
 
@@ -162,6 +162,9 @@ const OrderConfirmationEmailModal = ({
   const [message, setMessage] = useState(DEFAULT_MESSAGE);
 
   const [previewRole, setPreviewRole] = useState("receiver");
+  const [previewView, setPreviewView] = useState("form");
+  const [portOfLoading, setPortOfLoading] = useState("");
+  const [portOfDestination, setPortOfDestination] = useState("");
 
   const [senderForm, setSenderForm] = useState(emptyParty());
   const [receiverForm, setReceiverForm] = useState(emptyParty());
@@ -229,18 +232,11 @@ const OrderConfirmationEmailModal = ({
       mode,
       items: items
         .filter(
-          (i) =>
-            i.portOfLoading ||
-            i.portOfDestination ||
-            i.categoryId ||
-            i.subcategoryId ||
-            i.type ||
-            i.weight ||
-            i.qty,
+          (i) => i.categoryId || i.subcategoryId || i.type || i.weight || i.qty,
         )
         .map((i) => ({
-          portOfLoading: getPlaceLabel(i.portOfLoading),
-          portOfDestination: getPlaceLabel(i.portOfDestination),
+          portOfLoading: getPlaceLabel(portOfLoading),
+          portOfDestination: getPlaceLabel(portOfDestination),
           category: getCategoryName(i.categoryId),
           subcategory: getSubcategoryName(i.subcategoryId),
           type: i.type,
@@ -266,6 +262,8 @@ const OrderConfirmationEmailModal = ({
     categories,
     subcategories,
     places,
+    portOfLoading,
+    portOfDestination,
     getPlaceName,
   ]);
 
@@ -278,6 +276,28 @@ const OrderConfirmationEmailModal = ({
       previewRole,
     );
   }, [previewOrderData, activeCompany, getPlaceName, previewRole]);
+
+  const emailPreviewHtml = useMemo(() => {
+    if (!activeCompany || !previewOrderData) return "";
+    const recipient = previewRole === "receiver" ? receiverParty : senderParty;
+    return buildEmailPreviewHtml({
+      company: activeCompany,
+      recipientName: recipient?.name || "",
+      message,
+      mode,
+      items: previewOrderData.items,
+      pol: previewOrderData.items[0]?.portOfLoading || "",
+      pod: previewOrderData.items[0]?.portOfDestination || "",
+    });
+  }, [
+    activeCompany,
+    previewOrderData,
+    previewRole,
+    receiverParty,
+    senderParty,
+    message,
+    mode,
+  ]);
 
   const handleItemChange = (id, field) => (e) => {
     const value = e.target.value;
@@ -338,10 +358,12 @@ const OrderConfirmationEmailModal = ({
       toast.warning("One or more email addresses are invalid");
       return;
     }
+
     if (senderEmail === receiverEmail) {
       toast.warning("Sender and receiver must use different email addresses");
       return;
     }
+
     if (
       [...ccEmails, ...bccOnly].some(
         (e) => e === senderEmail || e === receiverEmail,
@@ -350,8 +372,14 @@ const OrderConfirmationEmailModal = ({
       toast.warning("Remove the sender/receiver email from Cc/Bcc");
       return;
     }
+
     if (!mode.trim()) {
-      toast.warning("Enter the shipment mode");
+      toast.warning("Select the shipment mode");
+      return;
+    }
+
+    if (!portOfLoading || !portOfDestination) {
+      toast.warning("Select Place of Loading and Place of Destination");
       return;
     }
 
@@ -368,20 +396,13 @@ const OrderConfirmationEmailModal = ({
 
     const payloadItems = items
       .filter(
-        (i) =>
-          i.portOfLoading ||
-          i.portOfDestination ||
-          i.categoryId ||
-          i.subcategoryId ||
-          i.type ||
-          i.weight ||
-          i.qty,
+        (i) => i.categoryId || i.subcategoryId || i.type || i.weight || i.qty,
       )
       .map((i) => ({
-        portOfLoadingId: i.portOfLoading || null,
-        portOfLoading: getPlaceLabel(i.portOfLoading),
-        portOfDestinationId: i.portOfDestination || null,
-        portOfDestination: getPlaceLabel(i.portOfDestination),
+        portOfLoadingId: portOfLoading || null,
+        portOfLoading: getPlaceLabel(portOfLoading),
+        portOfDestinationId: portOfDestination || null,
+        portOfDestination: getPlaceLabel(portOfDestination),
         categoryId: i.categoryId || null,
         category: getCategoryName(i.categoryId),
         subcategoryId: i.subcategoryId || null,
@@ -444,7 +465,10 @@ const OrderConfirmationEmailModal = ({
     setMode("");
     setItems([emptyItem()]);
     setSelectedCompanyId("");
-    setExpanded("email");
+    setExpanded("company");
+    setPortOfLoading("");
+    setPortOfDestination("");
+    setPreviewView("form");
     onClose();
   };
 
@@ -490,76 +514,6 @@ const OrderConfirmationEmailModal = ({
             bgcolor: "#fafafa",
           }}
         >
-          <Accordion
-            sx={accordionSx}
-            expanded={expanded === "email"}
-            onChange={handleAccordion("email")}
-          >
-            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-              <SectionHeader
-                icon={
-                  <EmailOutlinedIcon
-                    fontSize="small"
-                    sx={{ color: "#f58220" }}
-                  />
-                }
-                title="Email"
-              />
-            </AccordionSummary>
-            <AccordionDetails>
-              <Stack spacing={1.25}>
-                <TextField
-                  label="Receiver (To)"
-                  size="small"
-                  fullWidth
-                  disabled
-                  value={receiverForm.email}
-                />
-                <TextField
-                  label="Sender (To)"
-                  size="small"
-                  fullWidth
-                  disabled
-                  value={senderForm.email}
-                />
-                <EmailChipInput
-                  label="Cc"
-                  value={ccEmails}
-                  onChange={setCcEmails}
-                  blocked={[
-                    senderForm.email.trim().toLowerCase(),
-                    receiverForm.email.trim().toLowerCase(),
-                  ]}
-                />
-                <EmailChipInput
-                  label="Bcc"
-                  value={bccEmails}
-                  onChange={setBccEmails}
-                  blocked={[
-                    senderForm.email.trim().toLowerCase(),
-                    receiverForm.email.trim().toLowerCase(),
-                  ]}
-                />
-                <TextField
-                  label="Subject"
-                  size="small"
-                  fullWidth
-                  value={subject}
-                  onChange={(e) => setSubject(e.target.value)}
-                />
-                <TextField
-                  label="Message"
-                  size="small"
-                  fullWidth
-                  multiline
-                  minRows={3}
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                />
-              </Stack>
-            </AccordionDetails>
-          </Accordion>
-
           <Accordion
             sx={accordionSx}
             expanded={expanded === "company"}
@@ -733,17 +687,27 @@ const OrderConfirmationEmailModal = ({
                     sx={{ color: "#0277bd" }}
                   />
                 }
-                title="Shipment Details"
+                title="Shipment Mode"
               />
             </AccordionSummary>
             <AccordionDetails>
               <TextField
+                select
                 label="Mode"
                 size="small"
                 fullWidth
                 value={mode}
                 onChange={(e) => setMode(e.target.value)}
-              />
+              >
+                <MenuItem value="" disabled>
+                  Select mode
+                </MenuItem>
+                {MODE_OPTIONS.map((m) => (
+                  <MenuItem key={m} value={m}>
+                    {m}
+                  </MenuItem>
+                ))}
+              </TextField>
             </AccordionDetails>
           </Accordion>
 
@@ -775,6 +739,46 @@ const OrderConfirmationEmailModal = ({
             </AccordionSummary>
             <AccordionDetails>
               <Stack spacing={1.5}>
+                <Grid container spacing={1}>
+                  <Grid size={{ xs: 6 }}>
+                    <TextField
+                      select
+                      label="Place of Loading"
+                      size="small"
+                      fullWidth
+                      value={portOfLoading}
+                      onChange={(e) => setPortOfLoading(e.target.value)}
+                    >
+                      <MenuItem value="" disabled>
+                        Select place
+                      </MenuItem>
+                      {(places || []).map((p) => (
+                        <MenuItem key={p.id} value={p.id}>
+                          {p.name}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </Grid>
+                  <Grid size={{ xs: 6 }}>
+                    <TextField
+                      select
+                      label="Place of Destination"
+                      size="small"
+                      fullWidth
+                      value={portOfDestination}
+                      onChange={(e) => setPortOfDestination(e.target.value)}
+                    >
+                      <MenuItem value="" disabled>
+                        Select place
+                      </MenuItem>
+                      {(places || []).map((p) => (
+                        <MenuItem key={p.id} value={p.id}>
+                          {p.name}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </Grid>
+                </Grid>
                 {items.map((item, idx) => {
                   const filteredSubcategories = subcategories.filter(
                     (s) => String(s.category_id) === String(item.categoryId),
@@ -809,50 +813,6 @@ const OrderConfirmationEmailModal = ({
                         )}
                       </Stack>
                       <Grid container spacing={1}>
-                        <Grid size={{ xs: 6 }}>
-                          <TextField
-                            select
-                            label="Place of Loading"
-                            size="small"
-                            fullWidth
-                            value={item.portOfLoading}
-                            onChange={handleItemChange(
-                              item.id,
-                              "portOfLoading",
-                            )}
-                          >
-                            <MenuItem value="" disabled>
-                              Select place
-                            </MenuItem>
-                            {(places || []).map((p) => (
-                              <MenuItem key={p.id} value={p.id}>
-                                {p.name}
-                              </MenuItem>
-                            ))}
-                          </TextField>
-                        </Grid>
-                        <Grid size={{ xs: 6 }}>
-                          <TextField
-                            select
-                            label="Place of Destination"
-                            size="small"
-                            fullWidth
-                            value={item.portOfDestination}
-                            onChange={handleItemChange(
-                              item.id,
-                              "portOfDestination",
-                            )}
-                          >
-                            <MenuItem value="" disabled>
-                              Select place
-                            </MenuItem>
-                            {(places || []).map((p) => (
-                              <MenuItem key={p.id} value={p.id}>
-                                {p.name}
-                              </MenuItem>
-                            ))}
-                          </TextField>
-                        </Grid>
                         <Grid size={{ xs: 6 }}>
                           <TextField
                             select
@@ -966,6 +926,76 @@ const OrderConfirmationEmailModal = ({
               </Stack>
             </AccordionDetails>
           </Accordion>
+
+          <Accordion
+            sx={accordionSx}
+            expanded={expanded === "email"}
+            onChange={handleAccordion("email")}
+          >
+            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+              <SectionHeader
+                icon={
+                  <EmailOutlinedIcon
+                    fontSize="small"
+                    sx={{ color: "#f58220" }}
+                  />
+                }
+                title="Email"
+              />
+            </AccordionSummary>
+            <AccordionDetails>
+              <Stack spacing={1.25}>
+                <TextField
+                  label="Receiver (To)"
+                  size="small"
+                  fullWidth
+                  disabled
+                  value={receiverForm.email}
+                />
+                <TextField
+                  label="Sender (To)"
+                  size="small"
+                  fullWidth
+                  disabled
+                  value={senderForm.email}
+                />
+                <EmailChipInput
+                  label="Cc"
+                  value={ccEmails}
+                  onChange={setCcEmails}
+                  blocked={[
+                    senderForm.email.trim().toLowerCase(),
+                    receiverForm.email.trim().toLowerCase(),
+                  ]}
+                />
+                <EmailChipInput
+                  label="Bcc"
+                  value={bccEmails}
+                  onChange={setBccEmails}
+                  blocked={[
+                    senderForm.email.trim().toLowerCase(),
+                    receiverForm.email.trim().toLowerCase(),
+                  ]}
+                />
+                <TextField
+                  label="Subject"
+                  size="small"
+                  fullWidth
+                  value={subject}
+                  onChange={(e) => setSubject(e.target.value)}
+                />
+                <TextField
+                  label="Message"
+                  size="small"
+                  fullWidth
+                  multiline
+                  minRows={3}
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                />
+              </Stack>
+            </AccordionDetails>
+          </Accordion>
         </Box>
 
         <Box
@@ -988,23 +1018,34 @@ const OrderConfirmationEmailModal = ({
               borderBottom: "1px solid #e0e0e0",
             }}
           >
-            <ToggleButtonGroup
-              size="small"
-              exclusive
-              value={previewRole}
-              onChange={(_, v) => v && setPreviewRole(v)}
-            >
-              <ToggleButton value="receiver">
-                Receiver's form{receiverParty ? ` — ${receiverParty.name}` : ""}
-              </ToggleButton>
-              <ToggleButton value="sender">
-                Sender's form{senderParty ? ` — ${senderParty.name}` : ""}
-              </ToggleButton>
-            </ToggleButtonGroup>
+            <Stack direction="row" spacing={2}>
+              <ToggleButtonGroup
+                size="small"
+                exclusive
+                value={previewRole}
+                onChange={(_, v) => v && setPreviewRole(v)}
+              >
+                <ToggleButton value="receiver">
+                  Receiver{receiverParty ? ` — ${receiverParty.name}` : ""}
+                </ToggleButton>
+                <ToggleButton value="sender">
+                  Sender{senderParty ? ` — ${senderParty.name}` : ""}
+                </ToggleButton>
+              </ToggleButtonGroup>
+              <ToggleButtonGroup
+                size="small"
+                exclusive
+                value={previewView}
+                onChange={(_, v) => v && setPreviewView(v)}
+              >
+                <ToggleButton value="form">Form</ToggleButton>
+                <ToggleButton value="email">Email</ToggleButton>
+              </ToggleButtonGroup>
+            </Stack>
             <Button
               size="small"
               startIcon={<PrintIcon />}
-              disabled={!previewHtml}
+              disabled={!previewHtml || previewView !== "form"}
               onClick={handlePrint}
             >
               Print
@@ -1028,6 +1069,23 @@ const OrderConfirmationEmailModal = ({
               <Typography variant="body2" color="text.secondary" sx={{ mt: 4 }}>
                 Fill in sender and receiver details to preview the document.
               </Typography>
+            ) : previewView === "email" ? (
+              <Paper
+                elevation={3}
+                sx={{
+                  width: 680,
+                  maxWidth: "100%",
+                  height: "fit-content",
+                  bgcolor: "#fff",
+                  overflow: "hidden",
+                }}
+              >
+                <iframe
+                  title="email-preview"
+                  srcDoc={emailPreviewHtml}
+                  style={{ width: "100%", height: 950, border: "none" }}
+                />
+              </Paper>
             ) : (
               <Paper
                 elevation={3}

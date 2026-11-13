@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, Fragment } from "react";
+import { useState, useEffect, useRef } from "react";
 import html2canvas from "html2canvas";
 import {
   Box,
@@ -40,6 +40,10 @@ import {
   Avatar,
   Checkbox,
   FormControlLabel,
+  Link,
+  Collapse,
+  ToggleButton,
+  ToggleButtonGroup,
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import InfoIcon from "@mui/icons-material/Info";
@@ -56,6 +60,14 @@ import EditIcon from "@mui/icons-material/Edit";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import PaymentsIcon from "@mui/icons-material/Payments";
 import SyncIcon from "@mui/icons-material/Sync";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import { alpha } from "@mui/material/styles";
+import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
+import ReceiptLongOutlinedIcon from "@mui/icons-material/ReceiptLongOutlined";
+import AccountBalanceWalletOutlinedIcon from "@mui/icons-material/AccountBalanceWalletOutlined";
+import CreditCardOutlinedIcon from "@mui/icons-material/CreditCardOutlined";
+import TrendingUpIcon from "@mui/icons-material/TrendingUp";
+import PieChartOutlineIcon from "@mui/icons-material/PieChartOutline";
 import { getOrderStatusColor } from "../../pages/Orders/Utlis";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../api";
@@ -211,6 +223,11 @@ const OrderModalView = ({
   const [syncingZoho, setSyncingZoho] = useState(false);
   const [previewFile, setPreviewFile] = useState(null);
 
+  const [shipView, setShipView] = useState("container");
+  const [financeView, setFinanceView] = useState("invoices");
+  const [expanded, setExpanded] = useState({});
+  const toggleExpand = (key) => setExpanded((p) => ({ ...p, [key]: !p[key] }));
+
   const resolveFileUrl = (file) => {
     const raw = file?.url || file?.secure_url || file?.location || file?.path;
     if (!raw) return null;
@@ -221,6 +238,10 @@ const OrderModalView = ({
 
   const isImage = (f) => f?.mimetype?.startsWith("image/");
   const isPdf = (f) => f?.mimetype === "application/pdf";
+
+  const containerHref = (no) =>
+    `/containers?container_number=${encodeURIComponent(no)}`;
+  const consignmentHref = (id) => `/consignments/${id}/view`;
 
   const handleDownloadFile = async (file) => {
     const url = resolveFileUrl(file);
@@ -260,6 +281,21 @@ const OrderModalView = ({
     });
   };
 
+  const getLastSyncedAt = () => {
+    const dates = [
+      ...(billing?.invoices || []),
+      ...(billing?.vendorBills || []),
+    ]
+      .map((d) => d.synced_at)
+      .filter(Boolean)
+      .map((d) => new Date(d).getTime())
+      .filter(Number.isFinite);
+
+    if (!dates.length) return null;
+
+    return new Date(Math.max(...dates));
+  };
+
   useEffect(() => {
     if (openModal && selectedOrder) {
       const init = {};
@@ -268,6 +304,7 @@ const OrderModalView = ({
       });
       setAssignments(init);
       setTabValue(0);
+      setExpanded({});
     }
   }, [openModal, selectedOrder]);
 
@@ -875,7 +912,6 @@ const OrderModalView = ({
                     ["Contact", rec.receiver_contact],
                     ["Email", rec.receiver_email],
                     ["Address", rec.receiver_address],
-                    // ["Consignment #", rec.consignment_number],
                     ["Total Number", rec.total_number],
                     [
                       "Total Weight",
@@ -914,6 +950,11 @@ const OrderModalView = ({
                           label={c}
                           size="small"
                           variant="outlined"
+                          component="a"
+                          href={containerHref(c)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          clickable
                           sx={{
                             borderColor: T.teal,
                             color: T.teal,
@@ -1000,211 +1041,595 @@ const OrderModalView = ({
     );
   };
 
-  const renderOrderItems = () => {
+  const buildShipmentData = () => {
     const receivers = selectedOrder?.receivers || [];
-    const allItems = receivers.flatMap((rec, ri) =>
-      (rec.shippingDetails || rec.shippingdetails || []).map((item, ii) => ({
+    const items = receivers.flatMap((rec) =>
+      (rec.shippingDetails || rec.shippingdetails || []).map((item) => ({
         rec,
-        ri,
         item,
-        ii,
       })),
     );
-    if (!allItems.length)
+    const map = {};
+    const unassigned = [];
+    items.forEach(({ rec, item }) => {
+      const cds = item.containerDetails || [];
+      if (!cds.length) {
+        unassigned.push({ rec, item });
+        return;
+      }
+      cds.forEach((cd) => {
+        const no = cd.container?.container_number || "Unknown";
+        if (!map[no]) map[no] = { no, status: cd.status, eta: null, rows: [] };
+        if (!map[no].eta && cd.eta) map[no].eta = cd.eta;
+        map[no].rows.push({ rec, item, cd, split: cds.length > 1 });
+      });
+    });
+    return { items, containers: Object.values(map), unassigned };
+  };
+
+  const itemLabel = (item) =>
+    [item.category, item.subcategory].filter(Boolean).join(" › ") || "Item";
+
+  const sumBy = (rows, fn) => rows.reduce((s, r) => s + Number(fn(r) || 0), 0);
+
+  const groupHeader = (key, bg, border, children) => (
+    <Box
+      onClick={() => toggleExpand(key)}
+      sx={{
+        px: 2.5,
+        py: 1.5,
+        bgcolor: bg,
+        borderBottom: expanded[key] ? `1px solid ${border}` : "none",
+        display: "flex",
+        alignItems: "center",
+        gap: 1.5,
+        flexWrap: "wrap",
+        cursor: "pointer",
+        userSelect: "none",
+      }}
+    >
+      <ExpandMoreIcon
+        sx={{
+          color: T.teal,
+          transition: "transform 0.2s",
+          transform: expanded[key] ? "rotate(180deg)" : "rotate(0deg)",
+        }}
+      />
+      {children}
+    </Box>
+  );
+
+  const summaryChip = (label, bg, color) => (
+    <Chip
+      label={label}
+      size="small"
+      sx={{ bgcolor: bg, color, fontWeight: 700, fontSize: 11 }}
+    />
+  );
+
+  const renderItemFull = (rec, item, activeNo) => {
+    const ikey = `i-${activeNo || "x"}-${item.id}`;
+    const inThis = activeNo
+      ? (item.containerDetails || []).find(
+          (cd) => cd.container?.container_number === activeNo,
+        )
+      : null;
+    return (
+      <Box
+        sx={{
+          p: 2,
+          borderRadius: 2,
+          border: `1px solid ${T.grey200}`,
+          bgcolor: T.white,
+        }}
+      >
+        <Box
+          onClick={() => toggleExpand(ikey)}
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 1.5,
+            flexWrap: "wrap",
+            cursor: "pointer",
+            userSelect: "none",
+          }}
+        >
+          <ExpandMoreIcon
+            sx={{
+              color: T.teal,
+              transition: "transform 0.2s",
+              transform: expanded[ikey] ? "rotate(180deg)" : "rotate(0deg)",
+            }}
+          />
+          <Box>
+            <Typography
+              variant="caption"
+              color={T.grey600}
+              fontWeight={700}
+              sx={{ textTransform: "uppercase", letterSpacing: 0.5 }}
+            >
+              {rec.receiver_name}
+            </Typography>
+            <Typography
+              variant="subtitle2"
+              fontWeight={700}
+              color={T.orangeDark}
+            >
+              {itemLabel(item)}
+            </Typography>
+          </Box>
+          <Box sx={{ flex: 1 }} />
+          {summaryChip(item.itemRef || "-", T.grey100, T.textSoft)}
+          {inThis
+            ? summaryChip(
+                `${inThis.assign_total_box} of ${item.totalNumber} boxes here`,
+                T.orangeLight,
+                T.orangeDark,
+              )
+            : summaryChip(`${item.totalNumber} boxes`, T.tealLight, T.tealDark)}
+          {item.weight
+            ? summaryChip(`${item.weight} kg`, T.tealLight, T.tealDark)
+            : null}
+          {(item.containerDetails?.length || 0) > 1 &&
+            summaryChip(
+              `Split across ${item.containerDetails.length} containers`,
+              T.orangeLight,
+              T.orangeDark,
+            )}
+          {!item.containerDetails?.length &&
+            summaryChip("Not assigned", T.orangeLight, T.orangeDark)}
+          {summaryChip(item.status || "Order Created", "#00695c", "#fff")}
+        </Box>
+
+        <Collapse in={!!expanded[ikey]} unmountOnExit>
+          <Box sx={{ mt: 2 }}>
+            <Grid container spacing={1.5}>
+              {[
+                ["Tracking ID", item.trackingId],
+                ["Type", item.type],
+                ["Status", item.status],
+                ["ETA", isMulti(item) ? "See container assignments" : item.eta],
+                ["ETD", item.etd],
+                ["Total Number", item.totalNumber],
+                ["Weight", item.weight ? `${item.weight} kg` : null],
+                ["Pickup Location", item.pickupLocation],
+                ["Delivery Address", item.deliveryAddress],
+                ["Item Ref", item.itemRef],
+                [
+                  "Remaining Items",
+                  item.remainingItems != null
+                    ? String(item.remainingItems)
+                    : null,
+                ],
+                ...(paymentOf(rec.id) ? [["Payment", paymentOf(rec.id)]] : []),
+              ].map(([label, val]) => (
+                <Grid item xs={12} sm={6} md={4} key={label}>
+                  <FieldCard label={label} value={val} />
+                </Grid>
+              ))}
+            </Grid>
+
+            {item.containerDetails?.length > 0 && (
+              <Box sx={{ mt: 2.5 }}>
+                <Typography
+                  variant="caption"
+                  fontWeight={700}
+                  color={T.grey600}
+                  sx={{
+                    textTransform: "uppercase",
+                    letterSpacing: 0.5,
+                    display: "block",
+                    mb: 1,
+                  }}
+                >
+                  Container Assignments
+                </Typography>
+                <TableContainer
+                  component={Paper}
+                  variant="outlined"
+                  sx={{ borderRadius: 2 }}
+                >
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        {[
+                          "Status",
+                          "Container #",
+                          "Consignment #",
+                          "Assigned Weight",
+                          "Assigned Boxes",
+                          ...(isMulti(item) ? ["ETA"] : []),
+                          "Remaining",
+                        ].map((h) => (
+                          <TableCell
+                            key={h}
+                            sx={{
+                              bgcolor: T.teal,
+                              color: "#fff",
+                              fontWeight: 700,
+                              fontSize: 12,
+                            }}
+                          >
+                            {h}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {item.containerDetails.map((cd, cdi) => (
+                        <TableRow
+                          key={cdi}
+                          sx={{
+                            "&:last-child td": { borderBottom: 0 },
+                            bgcolor:
+                              activeNo &&
+                              cd.container?.container_number === activeNo
+                                ? T.orangeLight
+                                : "inherit",
+                          }}
+                        >
+                          <TableCell>
+                            <Chip
+                              label={cd.item_status || cd.status}
+                              size="small"
+                              sx={{
+                                bgcolor:
+                                  cd.status === "Occupied"
+                                    ? "#e8f5e9"
+                                    : "#fff3e0",
+                                color:
+                                  cd.status === "Occupied"
+                                    ? "#2e7d32"
+                                    : T.orangeDark,
+                                fontWeight: 600,
+                                fontSize: 11,
+                              }}
+                            />
+                          </TableCell>
+                          <TableCell sx={{ fontWeight: 600 }}>
+                            {cd.container?.container_number ? (
+                              <Link
+                                href={containerHref(
+                                  cd.container.container_number,
+                                )}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                underline="hover"
+                                sx={{ color: T.teal }}
+                              >
+                                {cd.container.container_number}
+                              </Link>
+                            ) : (
+                              "N/A"
+                            )}
+                          </TableCell>
+                          <TableCell sx={{ fontWeight: 600 }}>
+                            {cd.consignment_id && cd.consignment_number ? (
+                              <Link
+                                href={consignmentHref(cd.consignment_id)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                underline="hover"
+                                sx={{ color: T.teal }}
+                              >
+                                {cd.consignment_number}
+                              </Link>
+                            ) : (
+                              cd.consignment_number || "N/A"
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {cd.assign_weight
+                              ? `${cd.assign_weight} kg`
+                              : "N/A"}
+                          </TableCell>
+                          <TableCell>{cd.assign_total_box || "N/A"}</TableCell>
+                          {isMulti(item) && (
+                            <TableCell>
+                              {cd.eta ? formatDate(cd.eta) : "N/A"}
+                            </TableCell>
+                          )}
+                          <TableCell>{cd.remaining_items ?? "N/A"}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Box>
+            )}
+          </Box>
+        </Collapse>
+      </Box>
+    );
+  };
+
+  const renderContainerGroup = (g) => {
+    const key = `c-${g.no}`;
+    const boxes = sumBy(g.rows, (r) => r.cd.assign_total_box);
+    const weight = sumBy(g.rows, (r) => r.cd.assign_weight);
+    const receiverCount = new Set(g.rows.map((r) => r.rec.id)).size;
+    const consignments = [
+      ...new Map(
+        g.rows
+          .filter((r) => r.cd.consignment_number)
+          .map((r) => [r.cd.consignment_number, r.cd.consignment_id]),
+      ).entries(),
+    ];
+
+    return (
+      <Card
+        key={key}
+        variant="outlined"
+        sx={{ borderRadius: 2.5, border: `1px solid ${T.grey200}` }}
+      >
+        {groupHeader(
+          key,
+          T.tealLight,
+          T.tealMid,
+          <>
+            <Link
+              href={containerHref(g.no)}
+              target="_blank"
+              rel="noopener noreferrer"
+              underline="hover"
+              onClick={(e) => e.stopPropagation()}
+              sx={{ fontWeight: 700, fontSize: 16, color: T.tealDark }}
+            >
+              {g.no}
+            </Link>
+            {consignments.map(([cNo, cId]) => (
+              <Chip
+                key={cNo}
+                size="small"
+                label={`Consignment: ${cNo}`}
+                component="a"
+                href={cId ? consignmentHref(cId) : undefined}
+                target="_blank"
+                rel="noopener noreferrer"
+                clickable={!!cId}
+                onClick={(e) => e.stopPropagation()}
+                sx={{
+                  bgcolor: "#fff",
+                  color: T.orangeDark,
+                  border: `1px solid ${T.orange}88`,
+                  fontWeight: 700,
+                  fontSize: 11,
+                }}
+              />
+            ))}
+            <Box sx={{ flex: 1 }} />
+            {summaryChip(
+              `${receiverCount} receiver${receiverCount > 1 ? "s" : ""}`,
+              "#fff",
+              T.tealDark,
+            )}
+            {summaryChip(
+              `${g.rows.length} item${g.rows.length > 1 ? "s" : ""}`,
+              "#fff",
+              T.tealDark,
+            )}
+            {summaryChip(`${boxes} boxes`, "#fff", T.tealDark)}
+            {summaryChip(`${weight.toLocaleString()} kg`, "#fff", T.tealDark)}
+            {g.eta &&
+              summaryChip(`ETA ${formatDate(g.eta)}`, "#e3f2fd", "#1565c0")}
+          </>,
+        )}
+        <Collapse in={!!expanded[key]} unmountOnExit>
+          <Stack spacing={2} sx={{ p: 2 }}>
+            {g.rows
+              .filter(
+                (r, i, a) => a.findIndex((x) => x.item.id === r.item.id) === i,
+              )
+              .map(({ rec, item }) => (
+                <Box key={item.id}>{renderItemFull(rec, item, g.no)}</Box>
+              ))}
+          </Stack>
+        </Collapse>
+      </Card>
+    );
+  };
+
+  const renderUnassignedGroup = (unassigned) => {
+    if (!unassigned.length) return null;
+    const key = "u";
+    return (
+      <Card
+        variant="outlined"
+        sx={{ borderRadius: 2.5, border: `1px solid ${T.orange}88` }}
+      >
+        {groupHeader(
+          key,
+          T.orangeLight,
+          "#ffe0b2",
+          <>
+            <Typography fontWeight={700} color={T.orangeDark}>
+              Not Assigned to a Container
+            </Typography>
+            <Box sx={{ flex: 1 }} />
+            {summaryChip(
+              `${unassigned.length} item${unassigned.length > 1 ? "s" : ""}`,
+              "#fff",
+              T.orangeDark,
+            )}
+            {summaryChip(
+              `${sumBy(unassigned, (r) => r.item.totalNumber)} boxes`,
+              "#fff",
+              T.orangeDark,
+            )}
+          </>,
+        )}
+        <Collapse in={!!expanded[key]} unmountOnExit>
+          <Stack spacing={2} sx={{ p: 2 }}>
+            {unassigned.map(({ rec, item }) => (
+              <Box key={item.id}>{renderItemFull(rec, item)}</Box>
+            ))}
+          </Stack>
+        </Collapse>
+      </Card>
+    );
+  };
+
+  const renderReceiverGroup = (rec) => {
+    const key = `r-${rec.id}`;
+    const items = rec.shippingDetails || rec.shippingdetails || [];
+    const containerSet = new Set(
+      items.flatMap((it) =>
+        (it.containerDetails || []).map((cd) => cd.container?.container_number),
+      ),
+    );
+    const qty = sumBy(items, (it) => it.totalNumber);
+    return (
+      <Card
+        key={key}
+        variant="outlined"
+        sx={{ borderRadius: 2.5, border: `1px solid ${T.grey200}` }}
+      >
+        {groupHeader(
+          key,
+          T.tealLight,
+          T.tealMid,
+          <>
+            <Typography
+              fontWeight={700}
+              color={T.tealDark}
+              sx={{ fontSize: 16 }}
+            >
+              {rec.receiver_name}
+            </Typography>
+            <Box sx={{ flex: 1 }} />
+            {paymentOf(rec.id) &&
+              summaryChip(paymentOf(rec.id), "#fff", T.tealDark)}
+            {summaryChip(
+              `${items.length} item${items.length > 1 ? "s" : ""}`,
+              "#fff",
+              T.tealDark,
+            )}
+            {summaryChip(`${qty} boxes`, "#fff", T.tealDark)}
+            {summaryChip(
+              `${containerSet.size} container${containerSet.size === 1 ? "" : "s"}`,
+              "#fff",
+              T.tealDark,
+            )}
+          </>,
+        )}
+        <Collapse in={!!expanded[key]} unmountOnExit>
+          <Stack spacing={2} sx={{ p: 2 }}>
+            {renderApprovalBar(rec)}
+            {items.map((item) => (
+              <Box key={item.id}>{renderItemFull(rec, item)}</Box>
+            ))}
+          </Stack>
+        </Collapse>
+      </Card>
+    );
+  };
+
+  const renderOrderItems = () => {
+    const { items, containers, unassigned } = buildShipmentData();
+    const receivers = selectedOrder?.receivers || [];
+    if (!items.length)
       return (
         <Typography variant="body2" color="text.secondary">
           No shipping items found
         </Typography>
       );
 
+    const totalQty = sumBy(items, ({ item }) => item.totalNumber);
+    const partialCount = items.filter(
+      ({ item }) => (item.containerDetails?.length || 0) > 1,
+    ).length;
+    const keys =
+      shipView === "container"
+        ? [
+            ...containers.map((c) => `c-${c.no}`),
+            ...(unassigned.length ? ["u"] : []),
+          ]
+        : receivers.map((r) => `r-${r.id}`);
+    const allOpen = keys.length > 0 && keys.every((k) => expanded[k]);
+
     return (
-      <Stack spacing={2}>
-        {allItems.map(({ rec, ri, item, ii }) => (
-          <Fragment key={`${ri}-${ii}`}>
-            {ii === 0 && renderApprovalBar(rec)}
-            <Card
-              variant="outlined"
-              sx={{
-                borderRadius: 2.5,
-                border: `1px solid ${T.grey200}`,
-                "&:hover": { boxShadow: "0 4px 16px rgba(0,0,0,0.08)" },
-              }}
+      <Stack spacing={2.5}>
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: { xs: "repeat(2, 1fr)", md: "repeat(5, 1fr)" },
+            gap: 2,
+          }}
+        >
+          {jobStat("Receivers", receivers.length)}
+          {jobStat("Items", items.length)}
+          {jobStat("Total Boxes", totalQty)}
+          {jobStat("Containers", containers.length)}
+          {jobStat(
+            "Needs Attention",
+            unassigned.length + partialCount,
+            unassigned.length + partialCount > 0
+              ? "warning.main"
+              : "success.main",
+          )}
+        </Box>
+
+        {(unassigned.length > 0 || partialCount > 0) && (
+          <Alert severity="warning" sx={{ borderRadius: 2 }}>
+            {unassigned.length > 0 &&
+              `${unassigned.length} item${unassigned.length > 1 ? "s are" : " is"} not assigned to any container. `}
+            {partialCount > 0 &&
+              `${partialCount} item${partialCount > 1 ? "s are" : " is"} split across multiple containers (partial shipment).`}
+          </Alert>
+        )}
+
+        <Box
+          sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: 1,
+          }}
+        >
+          <ToggleButtonGroup
+            size="small"
+            exclusive
+            value={shipView}
+            onChange={(_, v) => v && setShipView(v)}
+          >
+            <ToggleButton
+              value="container"
+              sx={{ textTransform: "none", px: 2 }}
             >
-              <Box
-                sx={{
-                  px: 2.5,
-                  py: 1.5,
-                  bgcolor: T.orangeLight,
-                  borderBottom: `1px solid #ffe0b2`,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  flexWrap: "wrap",
-                  gap: 1,
-                }}
-              >
-                <Box>
-                  <Typography
-                    variant="caption"
-                    color={T.grey600}
-                    fontWeight={700}
-                    sx={{ textTransform: "uppercase", letterSpacing: 0.5 }}
-                  >
-                    {rec.receiver_name}
-                  </Typography>
-                  <Typography
-                    variant="subtitle2"
-                    fontWeight={700}
-                    color={T.orangeDark}
-                  >
-                    {item.category} › {item.subcategory}
-                  </Typography>
-                </Box>
-                <Chip
-                  label={item.status || "Order Created"}
-                  size="small"
-                  sx={{
-                    bgcolor: "#00695c",
-                    color: "#fff",
-                    fontWeight: 700,
-                  }}
-                />
-              </Box>
+              By Container
+            </ToggleButton>
+            <ToggleButton
+              value="receiver"
+              sx={{ textTransform: "none", px: 2 }}
+            >
+              By Receiver
+            </ToggleButton>
+          </ToggleButtonGroup>
+          <Button
+            size="small"
+            onClick={() =>
+              setExpanded(
+                allOpen ? {} : Object.fromEntries(keys.map((k) => [k, true])),
+              )
+            }
+            sx={{ color: T.teal, textTransform: "none" }}
+          >
+            {allOpen ? "Collapse all" : "Expand all"}
+          </Button>
+        </Box>
 
-              <CardContent sx={{ p: 2.5 }}>
-                <Grid container spacing={1.5}>
-                  {[
-                    ["Tracking ID", item.trackingId],
-                    ["Type", item.type],
-                    ["Status", item.status],
-                    [
-                      "ETA",
-                      isMulti(item) ? "See container assignments" : item.eta,
-                    ],
-                    ["ETD", item.etd],
-                    ["Total Number", item.totalNumber],
-                    ["Weight", item.weight ? `${item.weight} kg` : null],
-                    ["Pickup Location", item.pickupLocation],
-                    ["Delivery Address", item.deliveryAddress],
-                    ["Item Ref", item.itemRef],
-                    [
-                      "Remaining Items",
-                      item.remainingItems != null
-                        ? String(item.remainingItems)
-                        : null,
-                    ],
-                    ...(paymentOf(rec.id)
-                      ? [["Payment", paymentOf(rec.id)]]
-                      : []),
-                  ].map(([label, val]) => (
-                    <Grid item xs={12} sm={6} md={4} key={label}>
-                      <FieldCard label={label} value={val} />
-                    </Grid>
-                  ))}
-                </Grid>
-
-                {item.containerDetails?.length > 0 && (
-                  <Box sx={{ mt: 2.5 }}>
-                    <Typography
-                      variant="caption"
-                      fontWeight={700}
-                      color={T.grey600}
-                      sx={{
-                        textTransform: "uppercase",
-                        letterSpacing: 0.5,
-                        display: "block",
-                        mb: 1,
-                      }}
-                    >
-                      Container Assignments
-                    </Typography>
-                    <TableContainer
-                      component={Paper}
-                      variant="outlined"
-                      sx={{ borderRadius: 2 }}
-                    >
-                      <Table size="small">
-                        <TableHead>
-                          <TableRow sx={{ bgcolor: T.tealLight }}>
-                            {[
-                              "Status",
-                              "Container #",
-                              "Consignment #",
-                              "Assigned Weight",
-                              "Assigned Boxes",
-                              ...(isMulti(item) ? ["ETA"] : []),
-                              "Remaining",
-                            ].map((h) => (
-                              <TableCell
-                                key={h}
-                                sx={{
-                                  fontWeight: 700,
-                                  color: "white",
-                                  fontSize: 12,
-                                }}
-                              >
-                                {h}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          {item.containerDetails.map((cd, cdi) => (
-                            <TableRow
-                              key={cdi}
-                              sx={{ "&:last-child td": { borderBottom: 0 } }}
-                            >
-                              <TableCell>
-                                <Chip
-                                  label={cd.item_status || cd.status}
-                                  size="small"
-                                  sx={{
-                                    bgcolor:
-                                      cd.status === "Occupied"
-                                        ? "#e8f5e9"
-                                        : "#fff3e0",
-                                    color:
-                                      cd.status === "Occupied"
-                                        ? "#2e7d32"
-                                        : T.orangeDark,
-                                    fontWeight: 600,
-                                    fontSize: 11,
-                                  }}
-                                />
-                              </TableCell>
-                              <TableCell sx={{ fontWeight: 600 }}>
-                                {cd.container?.container_number || "N/A"}
-                              </TableCell>
-                              <TableCell sx={{ fontWeight: 600 }}>
-                                {cd.consignment_number || "N/A"}
-                              </TableCell>
-                              <TableCell>
-                                {cd.assign_weight
-                                  ? `${cd.assign_weight} kg`
-                                  : "N/A"}
-                              </TableCell>
-                              <TableCell>
-                                {cd.assign_total_box || "N/A"}
-                              </TableCell>
-                              {isMulti(item) && (
-                                <TableCell>
-                                  {cd.eta ? formatDate(cd.eta) : "N/A"}
-                                </TableCell>
-                              )}
-                              <TableCell>
-                                {cd.remaining_items ?? "N/A"}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </TableContainer>
-                  </Box>
-                )}
-              </CardContent>
-            </Card>
-          </Fragment>
-        ))}
+        {shipView === "container" ? (
+          <>
+            {receivers.map((rec) => (
+              <Box key={rec.id}>{renderApprovalBar(rec)}</Box>
+            ))}
+            {containers.map(renderContainerGroup)}
+            {renderUnassignedGroup(unassigned)}
+          </>
+        ) : (
+          receivers.map(renderReceiverGroup)
+        )}
       </Stack>
     );
   };
@@ -1501,84 +1926,240 @@ const OrderModalView = ({
     </Box>
   );
 
-  const jobTable = (title, docs, partyLabel, partyKey, kind) => (
-    <Box sx={{ mt: 3 }}>
-      <Typography sx={{ fontWeight: 600, color: T.teal, mb: 1 }}>
-        {title} ({docs.length})
-      </Typography>
-      <TableContainer
-        sx={{ border: 1, borderColor: "divider", borderRadius: 2 }}
+  const docBalanceAed = (d) =>
+    d.currency === "AED"
+      ? Number(d.balance || 0)
+      : Number(d.balance || 0) * Number(d.exchangeRate || 0);
+
+  const docTotalAed = (d) =>
+    d.totalAed != null
+      ? Number(d.totalAed)
+      : d.currency === "AED"
+        ? Number(d.total || 0)
+        : 0;
+
+  const fmtAed = (n) => (n == null ? "-" : fmtMoney(n, "AED"));
+
+  const docPaidAed = (d) => docTotalAed(d) - docBalanceAed(d);
+
+  const FinStatCard = ({ icon, value, label, sub, color }) => (
+    <Box
+      sx={{
+        bgcolor: alpha(color, 0.1),
+        borderRadius: 2.5,
+        px: 1.75,
+        py: 1.5,
+      }}
+    >
+      <Box sx={{ color, display: "flex", mb: 0.5, "& svg": { fontSize: 18 } }}>
+        {icon}
+      </Box>
+      <Typography
+        sx={{ color, fontWeight: 700, fontSize: 20, lineHeight: 1.2 }}
       >
-        <Table size="small" sx={{ minWidth: 800 }}>
+        {value}
+      </Typography>
+      <Typography
+        sx={{ fontWeight: 600, fontSize: 13, color: "text.primary", mt: 0.25 }}
+      >
+        {label}
+      </Typography>
+      <Typography sx={{ color, fontWeight: 600, fontSize: 12 }}>
+        {sub}
+      </Typography>
+    </Box>
+  );
+
+  const groupByForm = (docs) =>
+    Object.values(
+      docs.reduce((m, d) => {
+        const k = d.formNumber || selectedOrder?.rgl_booking_number || "N/A";
+        (m[k] ||= { key: k, docs: [] }).docs.push(d);
+        return m;
+      }, {}),
+    );
+
+  const jobTable = (docs, partyLabel, partyKey, kind) => {
+    const groups = groupByForm(docs);
+    const live = docs.filter((d) => d.status !== "void");
+    const grandTotal = live.reduce((s, d) => s + docTotalAed(d), 0);
+    const grandBalance = live.reduce((s, d) => s + docBalanceAed(d), 0);
+    const grandPaid = live.reduce((s, d) => s + docPaidAed(d), 0);
+    const headCell = { bgcolor: T.teal, color: "#fff", fontWeight: "bold" };
+
+    return (
+      <TableContainer
+        sx={{
+          border: 1,
+          borderColor: "divider",
+          borderRadius: 2,
+          bgcolor: T.white,
+        }}
+      >
+        <Table size="small" sx={{ minWidth: 1100 }}>
           <TableHead>
             <TableRow>
-              {[`${kind} No`, partyLabel, "Date", "Due Date", "Status"].map(
-                (h) => (
-                  <TableCell
-                    key={h}
-                    sx={{ bgcolor: T.teal, color: "#fff", fontWeight: "bold" }}
-                  >
-                    {h}
-                  </TableCell>
-                ),
-              )}
-              {["Amount", "Balance", "Rate", "Amount (AED)"].map((h) => (
-                <TableCell
-                  key={h}
-                  align="right"
-                  sx={{ bgcolor: T.teal, color: "#fff", fontWeight: "bold" }}
-                >
+              {[
+                `Form No / ${kind} No`,
+                partyLabel,
+                "Date",
+                "Due Date",
+                "Status",
+              ].map((h) => (
+                <TableCell key={h} sx={headCell}>
                   {h}
                 </TableCell>
               ))}
+              <TableCell align="right" sx={headCell}>
+                Total (FCA)
+              </TableCell>
+              <TableCell align="right" sx={headCell}>
+                Paid (AED)
+              </TableCell>
+              <TableCell align="right" sx={headCell}>
+                Balance (AED)
+              </TableCell>
+              <TableCell align="right" sx={headCell}>
+                Total (AED)
+              </TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {docs.length === 0 ? (
+            {groups.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} align="center" sx={{ py: 3 }}>
+                <TableCell colSpan={9} align="center" sx={{ py: 4 }}>
                   <Typography variant="body2" color="text.secondary">
-                    No {title.toLowerCase()} found
+                    No {kind.toLowerCase()}s found
                   </Typography>
                 </TableCell>
               </TableRow>
             ) : (
-              docs.map((d) => (
-                <TableRow hover key={d.id}>
-                  <TableCell>{d.number}</TableCell>
-                  <TableCell>{d[partyKey]}</TableCell>
-                  <TableCell>{d.date ? formatDate(d.date) : "-"}</TableCell>
-                  <TableCell>
-                    {d.dueDate ? formatDate(d.dueDate) : "-"}
+              <>
+                {groups.map((g) => {
+                  const k = `f-${kind}-${g.key}`;
+                  const open = expanded[k] ?? true;
+                  const gl = g.docs.filter((d) => d.status !== "void");
+                  return [
+                    <TableRow
+                      key={k}
+                      hover
+                      onClick={() => setExpanded((p) => ({ ...p, [k]: !open }))}
+                      sx={{ cursor: "pointer", bgcolor: T.grey100 }}
+                    >
+                      <TableCell sx={{ fontWeight: 700, color: T.tealDark }}>
+                        <Box
+                          sx={{ display: "flex", alignItems: "center", gap: 1 }}
+                        >
+                          <ExpandMoreIcon
+                            fontSize="small"
+                            sx={{
+                              color: T.teal,
+                              transition: "transform 0.2s",
+                              transform: open
+                                ? "rotate(0deg)"
+                                : "rotate(-90deg)",
+                            }}
+                          />
+                          {g.key}
+                        </Box>
+                      </TableCell>
+                      <TableCell colSpan={4}>
+                        <Chip
+                          size="small"
+                          label={`${g.docs.length} ${kind.toLowerCase()}${g.docs.length > 1 ? "s" : ""}`}
+                          sx={{
+                            bgcolor: T.tealMid,
+                            color: T.tealDark,
+                            fontWeight: 700,
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell />
+                      <TableCell align="right" sx={{ fontWeight: 700 }}>
+                        {fmtMoney(sumBy(gl, docPaidAed), "AED")}
+                      </TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700 }}>
+                        {fmtMoney(sumBy(gl, docBalanceAed), "AED")}
+                      </TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700 }}>
+                        {fmtMoney(sumBy(gl, docTotalAed), "AED")}
+                      </TableCell>
+                    </TableRow>,
+                    ...(open
+                      ? g.docs.map((d) => (
+                          <TableRow hover key={d.id}>
+                            <TableCell sx={{ pl: 7, fontWeight: 600 }}>
+                              {d.number}
+                            </TableCell>
+                            <TableCell>{d[partyKey]}</TableCell>
+                            <TableCell>
+                              {d.date ? formatDate(d.date) : "-"}
+                            </TableCell>
+                            <TableCell>
+                              {d.dueDate ? formatDate(d.dueDate) : "-"}
+                            </TableCell>
+                            <TableCell>
+                              <Chip
+                                label={fmtStatus(d.status)}
+                                size="small"
+                                variant="outlined"
+                                color={docStatusColor(d.status)}
+                              />
+                            </TableCell>
+                            <TableCell align="right">
+                              {fmtMoney(d.total, d.currency)}
+                            </TableCell>
+                            <TableCell align="right">
+                              {d.totalAed == null || d.balanceAed == null
+                                ? "-"
+                                : fmtAed(d.totalAed - d.balanceAed)}
+                            </TableCell>
+                            <TableCell align="right">
+                              {fmtAed(d.balanceAed)}
+                            </TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 600 }}>
+                              {fmtAed(d.totalAed)}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      : []),
+                  ];
+                })}
+                <TableRow sx={{ bgcolor: T.tealLight }}>
+                  <TableCell
+                    colSpan={5}
+                    align="right"
+                    sx={{ fontWeight: 700, color: T.tealDark }}
+                  >
+                    Grand Total (AED)
                   </TableCell>
-                  <TableCell>
-                    <Chip
-                      label={fmtStatus(d.status)}
-                      size="small"
-                      variant="outlined"
-                      color={docStatusColor(d.status)}
-                    />
+                  <TableCell />
+                  <TableCell
+                    align="right"
+                    sx={{ fontWeight: 700, color: T.tealDark }}
+                  >
+                    {fmtMoney(grandPaid, "AED")}
                   </TableCell>
-                  <TableCell align="right">
-                    {fmtMoney(d.total, d.currency)}
+                  <TableCell
+                    align="right"
+                    sx={{ fontWeight: 700, color: T.tealDark }}
+                  >
+                    {fmtMoney(grandBalance, "AED")}
                   </TableCell>
-                  <TableCell align="right">
-                    {fmtMoney(d.balance, d.currency)}
-                  </TableCell>
-                  <TableCell align="right">
-                    {d.currency === "AED" ? "-" : (d.exchangeRate ?? "N/A")}
-                  </TableCell>
-                  <TableCell align="right">
-                    {d.totalAed == null ? "N/A" : fmtMoney(d.totalAed, "AED")}
+                  <TableCell
+                    align="right"
+                    sx={{ fontWeight: 700, color: T.tealDark }}
+                  >
+                    {fmtMoney(grandTotal, "AED")}
                   </TableCell>
                 </TableRow>
-              ))
+              </>
             )}
           </TableBody>
         </Table>
       </TableContainer>
-    </Box>
-  );
+    );
+  };
 
   const renderJobDetails = () => {
     if (!billing) {
@@ -1594,11 +2175,12 @@ const OrderModalView = ({
       billing.invoiceTotal > 0 && billing.expectedProfit !== null
         ? `${((billing.expectedProfit / billing.invoiceTotal) * 100).toFixed(1)}%`
         : "-";
+    const invoices = billing.invoices || [];
+    const bills = billing.vendorBills || [];
+    const isInvoices = financeView === "invoices";
+
     return (
-      <>
-        <Typography sx={{ fontWeight: 600, color: T.teal, mb: 1 }}>
-          Gross Profit Calculation
-        </Typography>
+      <Stack spacing={3}>
         {billing.rateMissing ? (
           <Alert severity="warning">
             Some documents have no exchange rate yet. Click "Sync Zoho" to load
@@ -1609,70 +2191,101 @@ const OrderModalView = ({
             sx={{
               display: "grid",
               gridTemplateColumns: {
-                xs: "1fr",
-                sm: "repeat(2, 1fr)",
-                md: "repeat(4, 1fr)",
+                xs: "repeat(2, 1fr)",
+                sm: "repeat(3, 1fr)",
+                lg: "repeat(6, 1fr)",
               },
-              gap: 2,
+              gap: 1.5,
             }}
           >
-            {jobStat(
-              "Total Invoices (Revenue)",
-              fmtMoney(billing.invoiceTotal, "AED"),
-            )}
-            {jobStat(
-              "Total Bills (Cost)",
-              fmtMoney(billing.vendorTotal, "AED"),
-            )}
-            {jobStat(
-              "Expected Profit",
-              fmtMoney(billing.expectedProfit, "AED"),
-              billing.expectedProfit >= 0 ? "success.main" : "error.main",
-            )}
-            {jobStat("Margin", margin)}
-            {jobStat(
-              "Received",
-              fmtMoney(billing.received, "AED"),
-              "success.main",
-            )}
-            {jobStat("Paid Out", fmtMoney(billing.paidOut, "AED"))}
-            {jobStat(
-              "Current Profit",
-              fmtMoney(billing.currentProfit, "AED"),
-              billing.currentProfit >= 0 ? "success.main" : "error.main",
-            )}
-            {jobStat(
-              "To Collect",
-              fmtMoney(billing.toCollect, "AED"),
-              "warning.main",
-            )}
-            {jobStat("To Pay", fmtMoney(billing.toPay, "AED"), "error.main")}
+            <FinStatCard
+              color="#2563eb"
+              icon={<DescriptionOutlinedIcon />}
+              value={fmtMoney(billing.invoiceTotal, "AED")}
+              label="Total Invoice"
+              sub={`${invoices.filter((d) => d.status !== "void").length} Invoices`}
+            />
+            <FinStatCard
+              color="#d97706"
+              icon={<ReceiptLongOutlinedIcon />}
+              value={fmtMoney(billing.vendorTotal, "AED")}
+              label="Total Bills"
+              sub={`${bills.filter((d) => d.status !== "void").length} Bills`}
+            />
+            <FinStatCard
+              color="#16a34a"
+              icon={<AccountBalanceWalletOutlinedIcon />}
+              value={fmtMoney(billing.received, "AED")}
+              label="Total Received"
+              sub={`${
+                invoices.filter((d) => d.status !== "void" && docPaidAed(d) > 0)
+                  .length
+              } Receipts`}
+            />
+            <FinStatCard
+              color="#7c3aed"
+              icon={<CreditCardOutlinedIcon />}
+              value={fmtMoney(billing.paidOut, "AED")}
+              label="Total Paid"
+              sub={`${
+                bills.filter((d) => d.status !== "void" && docPaidAed(d) > 0)
+                  .length
+              } Payments`}
+            />
+            <FinStatCard
+              color="#059669"
+              icon={<TrendingUpIcon />}
+              value={fmtMoney(billing.expectedProfit, "AED")}
+              label="Net Profit"
+              sub={`${margin} Margin`}
+            />
+            <FinStatCard
+              color="#e11d48"
+              icon={<PieChartOutlineIcon />}
+              value={margin}
+              label="Profit Margin"
+              sub={`${fmtMoney(billing.expectedProfit, "AED")} Profit`}
+            />
           </Box>
         )}
-        <Typography
-          variant="caption"
-          color="text.secondary"
-          sx={{ display: "block", mt: 1 }}
+
+        <Divider />
+
+        <Box
+          sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: 1,
+          }}
         >
-          Expected Profit = all invoices − all bills (void excluded). Current
-          Profit = received − paid out. To Collect and To Pay are the unpaid
-          balances on invoices and bills.
-        </Typography>
-        {jobTable(
-          "Bills",
-          billing.vendorBills || [],
-          "Vendor",
-          "vendor",
-          "Bill",
-        )}
-        {jobTable(
-          "Invoices",
-          billing.invoices || [],
-          "Customer",
-          "customer",
-          "Invoice",
-        )}
-      </>
+          <ToggleButtonGroup
+            size="small"
+            exclusive
+            value={financeView}
+            onChange={(_, v) => v && setFinanceView(v)}
+          >
+            <ToggleButton
+              value="invoices"
+              sx={{ textTransform: "none", px: 2.5 }}
+            >
+              Invoices ({invoices.length})
+            </ToggleButton>
+            <ToggleButton value="bills" sx={{ textTransform: "none", px: 2.5 }}>
+              Bills ({bills.length})
+            </ToggleButton>
+          </ToggleButtonGroup>
+          <Typography variant="caption" color="text.secondary">
+            Click a form number to collapse or expand. Void documents are
+            excluded from totals.
+          </Typography>
+        </Box>
+
+        {isInvoices
+          ? jobTable(invoices, "Customer", "customer", "Invoice")
+          : jobTable(bills, "Vendor", "vendor", "Bill")}
+      </Stack>
     );
   };
 
@@ -1700,7 +2313,7 @@ const OrderModalView = ({
     ...(canViewJobDetails
       ? [
           {
-            label: "Job Details",
+            label: "Finance",
             icon: <PaymentsIcon sx={{ fontSize: 18, color: T.teal }} />,
           },
         ]
@@ -2113,38 +2726,56 @@ const OrderModalView = ({
                 <TabPanel value={tabValue} index={5}>
                   <Card
                     variant="outlined"
-                    sx={{ borderRadius: 2.5, border: `1px solid ${T.grey200}` }}
+                    sx={{
+                      borderRadius: 2.5,
+                      border: `1px solid ${T.grey200}`,
+                    }}
                   >
                     <CardContent sx={{ p: 3 }}>
-                      <SectionHeader
-                        icon={
-                          <PaymentsIcon sx={{ color: T.teal, fontSize: 20 }} />
-                        }
-                        title="Job Details"
-                      />
                       <Box
                         sx={{
                           display: "flex",
-                          justifyContent: "flex-end",
-                          mb: 2,
+                          justifyContent: "space-between",
+                          alignItems: "flex-start",
                         }}
                       >
-                        <Button
-                          variant="outlined"
-                          size="small"
-                          onClick={handleSyncZoho}
-                          disabled={syncingZoho}
-                          startIcon={
-                            syncingZoho ? (
-                              <CircularProgress size={14} color="inherit" />
-                            ) : (
-                              <SyncIcon />
-                            )
+                        <SectionHeader
+                          icon={
+                            <PaymentsIcon
+                              sx={{ color: T.teal, fontSize: 20 }}
+                            />
                           }
-                          sx={{ borderColor: T.teal, color: T.teal }}
+                          title="Finance"
+                        />
+                        <Box
+                          sx={{
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "flex-end",
+                            gap: 0.5,
+                          }}
                         >
-                          {syncingZoho ? "Syncing…" : "Sync Zoho"}
-                        </Button>
+                          <Button
+                            variant="outlined"
+                            size="small"
+                            onClick={handleSyncZoho}
+                            disabled={syncingZoho}
+                            startIcon={
+                              syncingZoho ? (
+                                <CircularProgress size={14} color="inherit" />
+                              ) : (
+                                <SyncIcon />
+                              )
+                            }
+                            sx={{ borderColor: T.teal, color: T.teal }}
+                          >
+                            {syncingZoho ? "Syncing…" : "Sync Zoho"}
+                          </Button>
+                          <Typography variant="caption" color="text.secondary">
+                            Last synced:{" "}
+                            {billing ? formatDate(getLastSyncedAt()) : "N/A"}
+                          </Typography>
+                        </Box>
                       </Box>
                       {renderJobDetails()}
                     </CardContent>

@@ -308,7 +308,7 @@ const buildConfirmationTemplateData = (row) => ({
     row.company || row.company_name || "Royal Gulf Shipping & Logistics",
   companyLogo:
     row.company_logo_url ||
-    "https://royalgulfshipping.com/wp-content/uploads/2023/08/RGSL-LOGO.png",
+    "https://royalgulfshipping.com/wp-content/uploads/2025/09/royalgulflogo-1.jpeg",
   subject: row.subject || "Order Confirmation",
   message: row.message || "Sample message — actual content shown at send time.",
   mode: row.mode || "—",

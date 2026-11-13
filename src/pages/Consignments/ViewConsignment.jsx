@@ -1,0 +1,6615 @@
+import React, {
+  useState,
+  useEffect,
+  useMemo,
+  useRef,
+  useCallback,
+  useContext,
+} from "react";
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  Button,
+  FormControl,
+  Select,
+  MenuItem,
+  TextField,
+  InputLabel,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+  IconButton,
+  Divider,
+  Tooltip as TooltipMui,
+  FormHelperText,
+  Slide,
+  Fade,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  Alert,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  Checkbox,
+  TableContainer,
+  Paper,
+  TablePagination,
+  Tooltip,
+  Chip,
+  Stack,
+  Grid,
+  Avatar,
+  CircularProgress,
+  Card as MuiCard,
+  AlertTitle,
+  Tabs,
+  Tab,
+  InputAdornment,
+  Collapse,
+  ToggleButton,
+  ToggleButtonGroup,
+} from "@mui/material";
+import { toast } from "react-toastify";
+import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
+import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
+import InfoIcon from "@mui/icons-material/Info";
+import dayjs from "dayjs";
+import * as Yup from "yup";
+import { styled, useTheme, alpha } from "@mui/material/styles";
+import { DatePicker } from "@mui/x-date-pickers/DatePicker";
+import ExpandMoreIconMui from "@mui/icons-material/ExpandMore";
+import { useParams } from "react-router-dom";
+import AddIcon from "@mui/icons-material/Add";
+import DeleteIconMui from "@mui/icons-material/Delete";
+import DescriptionIcon from "@mui/icons-material/Description";
+import AttachFileIcon from "@mui/icons-material/AttachFile";
+import DateRangeIcon from "@mui/icons-material/DateRange";
+import DirectionsBoatIcon from "@mui/icons-material/DirectionsBoat";
+import BusinessIcon from "@mui/icons-material/Business";
+import LocalPrintshopIcon from "@mui/icons-material/LocalPrintshop";
+import LocalShippingIcon from "@mui/icons-material/LocalShipping";
+import { useBlocker } from "react-router-dom";
+import UpdateIcon from "@mui/icons-material/Update";
+import VisibilityIcon from "@mui/icons-material/Visibility";
+import EditIcon from "@mui/icons-material/Edit";
+import SearchIcon from "@mui/icons-material/Search";
+import EmojiEventsIcon from "@mui/icons-material/EmojiEvents";
+import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
+import ReceiptLongOutlinedIcon from "@mui/icons-material/ReceiptLongOutlined";
+import AccountBalanceWalletOutlinedIcon from "@mui/icons-material/AccountBalanceWalletOutlined";
+import CreditCardOutlinedIcon from "@mui/icons-material/CreditCardOutlined";
+import TrendingUpIcon from "@mui/icons-material/TrendingUp";
+import PieChartOutlineIcon from "@mui/icons-material/PieChartOutline";
+import { api } from "../../api";
+import { useNavigate } from "react-router-dom";
+import ContainersTabs from "../Containers/Containers";
+import ContainerModule from "../Containers/Containers";
+import { Navigate, useLocation } from "react-router-dom";
+import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import autoTable from "jspdf-autotable";
+import { applyPlugin } from "jspdf-autotable";
+import logoPic from "../../../public/logo-2.png";
+import { useAuth } from "../../context/AuthContext";
+import { AppContext } from "../../context/AppContext";
+import { getStatusColors } from "../../Utlis/statusColors";
+
+applyPlugin(jsPDF);
+
+const docStatusColor = (s) =>
+  s === "paid"
+    ? "success"
+    : s === "overdue"
+      ? "error"
+      : s === "void" || s === "draft"
+        ? "default"
+        : "warning";
+
+const fmtStatus = (s = "") =>
+  s.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
+
+const fmtMoney = (n, cur) =>
+  `${cur} ${Number(n).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+
+const FIN = {
+  teal: "#0d6c6a",
+  tealDark: "#0a5250",
+  tealLight: "#e8f5f4",
+  tealMid: "#b2dfdb",
+  grey100: "#f5f5f5",
+};
+
+const sumBy = (rows, fn) => rows.reduce((s, r) => s + Number(fn(r) || 0), 0);
+
+const docBalanceAed = (d) =>
+  d.currency === "AED"
+    ? Number(d.balance || 0)
+    : Number(d.balance || 0) * Number(d.exchangeRate || 0);
+
+const docTotalAed = (d) =>
+  d.totalAed != null
+    ? Number(d.totalAed)
+    : d.currency === "AED"
+      ? Number(d.total || 0)
+      : 0;
+
+const fmtAed = (n) => (n == null ? "-" : fmtMoney(n, "AED"));
+
+const docPaidAed = (d) => docTotalAed(d) - docBalanceAed(d);
+
+const FinStatCard = ({ icon, value, label, sub, color }) => (
+  <Box
+    sx={{
+      bgcolor: alpha(color, 0.1),
+      borderRadius: 2.5,
+      px: 1.75,
+      py: 1.5,
+    }}
+  >
+    <Box sx={{ color, display: "flex", mb: 0.5, "& svg": { fontSize: 18 } }}>
+      {icon}
+    </Box>
+    <Typography sx={{ color, fontWeight: 700, fontSize: 20, lineHeight: 1.2 }}>
+      {value}
+    </Typography>
+    <Typography
+      sx={{ fontWeight: 600, fontSize: 13, color: "text.primary", mt: 0.25 }}
+    >
+      {label}
+    </Typography>
+    <Typography sx={{ color, fontWeight: 600, fontSize: 12 }}>{sub}</Typography>
+  </Box>
+);
+
+const getRowBoundaries = (container, scale) => {
+  const containerRect = container.getBoundingClientRect();
+  return Array.from(container.querySelectorAll("tr")).map((row) => {
+    const r = row.getBoundingClientRect();
+    return {
+      top: (r.top - containerRect.top) * scale,
+      bottom: (r.bottom - containerRect.top) * scale,
+    };
+  });
+};
+
+const getSafeSliceEnd = (rowBoundaries, startY, desiredEnd) => {
+  let safeEnd = desiredEnd;
+  for (const row of rowBoundaries) {
+    if (row.top >= startY && row.top < desiredEnd && row.bottom > desiredEnd) {
+      safeEnd = row.top;
+      break;
+    }
+  }
+  return safeEnd > startY ? safeEnd : desiredEnd;
+};
+
+const collectTextItems = (container) => {
+  const cRect = container.getBoundingClientRect();
+  const items = [];
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  const range = document.createRange();
+  let node;
+  while ((node = walker.nextNode())) {
+    const parent = node.parentElement;
+    if (!parent || /^(STYLE|SCRIPT)$/.test(parent.tagName)) continue;
+    const fs = parseFloat(getComputedStyle(parent).fontSize) || 10;
+    const re = /\S+/g;
+    let m;
+    let line = null;
+    while ((m = re.exec(node.nodeValue))) {
+      const word = m[0].replace(/[^\x20-\x7E\u00A0-\u00FF]/g, "");
+      if (!word) continue;
+      range.setStart(node, m.index);
+      range.setEnd(node, m.index + m[0].length);
+      const r = range.getBoundingClientRect();
+      if (!r.width || !r.height) continue;
+      const top = r.top - cRect.top;
+      const left = r.left - cRect.left;
+      if (line && Math.abs(line.top - top) < 2 && left >= line.left) {
+        line.text += " " + word;
+        line.width = left + r.width - line.left;
+      } else {
+        line = { text: word, left, top, width: r.width, height: r.height, fs };
+        items.push(line);
+      }
+    }
+  }
+  return items;
+};
+
+const addTextLayer = (
+  pdf,
+  items,
+  { scale, pxPerMm, startY, sliceHeightPx, marginMm },
+) => {
+  pdf.setFont("helvetica", "normal");
+  items.forEach((it) => {
+    const topPx = it.top * scale;
+    const midPx = topPx + (it.height * scale) / 2;
+    if (midPx < startY || midPx >= startY + sliceHeightPx) return;
+    pdf.setFontSize(((it.fs * scale) / pxPerMm) * (72 / 25.4));
+    const x = marginMm + (it.left * scale) / pxPerMm;
+    const y = marginMm + (topPx - startY) / pxPerMm;
+    const targetW = (it.width * scale) / pxPerMm;
+    const charSpace =
+      it.text.length > 1
+        ? (targetW - pdf.getTextWidth(it.text)) / it.text.length
+        : 0;
+    pdf.text(it.text, x, y, {
+      baseline: "top",
+      renderingMode: "invisible",
+      charSpace,
+    });
+  });
+};
+
+const MF_THEMES = {
+  print: {
+    outer: "#ddd",
+    border: "#ddd",
+    headBg: "#ffffff",
+    headText: "#000",
+    grpBg: "#f8f9fa",
+    subBg: "#f5f5f5",
+    totalBg: "#f5f5f5",
+    totalText: "#000",
+    catText: "#666",
+  },
+  container: {
+    outer: "#e0e0e0",
+    border: "#e0e0e0",
+    headBg: "#f8f9fa",
+    headText: "#000",
+    grpBg: "#f8f9fa",
+    subBg: "#e8f5e8",
+    totalBg: "#e8f5e8",
+    totalText: "#000",
+    catText: "#666",
+  },
+};
+
+const mfStyles = (t) => {
+  const cell = `border:1px solid ${t.border};padding:6px 8px;vertical-align:top;word-wrap:break-word;text-align:left;font-weight:normal;background:#fff;`;
+  return {
+    cell,
+    num: `${cell}text-align:right;white-space:nowrap;`,
+    grp: `${cell}background:${t.grpBg};font-weight:600;`,
+    sub: `${cell}background:${t.subBg};font-weight:600;`,
+    top: "",
+    th: `border:1px solid ${t.outer};padding:6px 8px;background:${t.headBg};color:${t.headText};font-weight:bold;text-align:left;white-space:nowrap;text-transform:uppercase;`,
+    total: `border:1px solid ${t.outer};padding:6px 8px;background:${t.totalBg};color:${t.totalText};font-weight:700;`,
+  };
+};
+
+const mfFmt = (n) =>
+  Number(n || 0).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+
+const MANIFEST_COLGROUP = `
+  <colgroup>
+    <col style="width:5%"><col style="width:9%"><col style="width:15%"><col style="width:15%">
+    <col style="width:9%"><col style="width:25%"><col style="width:10%"><col style="width:12%">
+  </colgroup>`;
+
+const manifestHead = (t) => {
+  const s = mfStyles(t);
+  return `<thead><tr>${[
+    "S.NO",
+    "ORDER NO",
+    "SENDER",
+    "RECEIVER",
+    "MARKS & NOS",
+    "COMMODITY",
+    "PKGS",
+    "WEIGHT (KG)",
+  ]
+    .map((h) => `<th style="${s.th}">${h}</th>`)
+    .join("")}</tr></thead>`;
+};
+
+const buildGroupedManifestRows = (items = []) => {
+  const groups = [];
+  const map = new Map();
+  items.forEach((it) => {
+    if (!map.has(it.groupKey)) {
+      const g = { ...it, items: [], totalPkgs: 0, totalWeight: 0 };
+      map.set(it.groupKey, g);
+      groups.push(g);
+    }
+    const g = map.get(it.groupKey);
+    g.items.push(it);
+    g.totalPkgs += Number(it.pkgs) || 0;
+    g.totalWeight += Number(it.weight) || 0;
+  });
+  return groups.map((g, i) => ({ ...g, sno: i + 1 }));
+};
+
+const renderGroupedManifestRows = (groups, t) => {
+  const s = mfStyles(t);
+  return groups
+    .map((g) => {
+      const multi = g.items.length > 1;
+      const span = g.items.length + (multi ? 1 : 0);
+      const itemCells = (it, top = "") => `
+        <td style="${s.cell}${top}"><span style="display:block;color:${t.catText};font-size:8px;">${it.subcategory ? it.category : ""}</span>${it.subcategory || it.category}</td>
+        <td style="${s.num}${top}">${Number(it.pkgs || 0).toLocaleString()}</td>
+        <td style="${s.num}${top}">${mfFmt(it.weight)}</td>`;
+
+      let html = `<tr>
+        <td style="${s.grp}${s.top}text-align:center;" rowspan="${span}">${g.sno}</td>
+        <td style="${s.grp}${s.top}" rowspan="${span}">${g.orderNo}</td>
+        <td style="${s.grp}${s.top}" rowspan="${span}">${g.sender}</td>
+        <td style="${s.grp}${s.top}" rowspan="${span}">${g.receiver}</td>
+        <td style="${s.grp}${s.top}" rowspan="${span}">${g.marksAndNumber || "N/A"}</td>
+        ${itemCells(g.items[0], s.top)}
+      </tr>`;
+      g.items.slice(1).forEach((it) => {
+        html += `<tr>${itemCells(it)}</tr>`;
+      });
+      if (multi) {
+        html += `<tr>
+          <td style="${s.sub}">Subtotal</td>
+          <td style="${s.sub}text-align:right;">${g.totalPkgs.toLocaleString()}</td>
+          <td style="${s.sub}text-align:right;">${mfFmt(g.totalWeight)}</td>
+        </tr>`;
+      }
+      return html;
+    })
+    .join("");
+};
+
+const CustomTextField = ({
+  name,
+  value,
+  onChange,
+  onBlur,
+  label,
+  type = "text",
+  startAdornment,
+  endAdornment,
+  multiline,
+  rows,
+  readOnly,
+  tooltip,
+  required = false,
+  error,
+  helperText,
+  ...props
+}) => (
+  <TooltipMui title={tooltip || ""}>
+    <TextField
+      name={name}
+      value={value}
+      onChange={onChange}
+      onBlur={onBlur}
+      label={`${label}${required ? "*" : ""}`}
+      type={type}
+      multiline={multiline}
+      rows={rows}
+      fullWidth
+      error={error}
+      helperText={helperText}
+      InputProps={{
+        startAdornment,
+        endAdornment,
+        readOnly,
+        sx: readOnly ? { backgroundColor: "action.hover" } : undefined,
+      }}
+      {...props}
+    />
+  </TooltipMui>
+);
+
+const CustomSelect = ({
+  name,
+  value,
+  onChange,
+  onBlur,
+  label,
+  options,
+  tooltip,
+  required = false,
+  error,
+  helperText,
+  ...props
+}) => {
+  const labelId = `${name}-label`;
+
+  const getSafeValue = (opt) =>
+    typeof opt === "object" ? (opt.value ?? opt.label ?? opt.name ?? "") : opt;
+
+  const validValue =
+    options.length > 0 && options.some((opt) => getSafeValue(opt) === value)
+      ? (value ?? name)
+      : options.length === 0 && value
+        ? value
+        : "";
+
+  return (
+    <TooltipMui title={tooltip || ""}>
+      <FormControl fullWidth error={error}>
+        <InputLabel id={labelId}>{`${label}${required ? "*" : ""}`}</InputLabel>
+        <Select
+          name={name}
+          value={validValue}
+          onChange={onChange}
+          onBlur={onBlur}
+          labelId={labelId}
+          label={`${label}${required ? "*" : ""}`}
+          {...props}
+        >
+          {options?.map((opt, index) => {
+            const safeKey = getSafeValue(opt) || index.toString();
+            const safeValue = getSafeValue(opt);
+            const safeText =
+              typeof opt === "object"
+                ? (opt.label ?? opt.value ?? opt.name ?? "")
+                : opt;
+            const safeDisabled =
+              typeof opt === "object" ? !!opt.disabled : false; // NEW
+            return (
+              <MenuItem key={safeKey} value={safeValue} disabled={safeDisabled}>
+                {safeText}
+              </MenuItem>
+            );
+          })}
+        </Select>
+        {helperText && (
+          <Typography variant="caption" color="error">
+            {helperText}
+          </Typography>
+        )}
+      </FormControl>
+    </TooltipMui>
+  );
+};
+
+const CustomDatePicker = ({
+  name,
+  value,
+  onChange,
+  onBlur,
+  label,
+  tooltip,
+  required = false,
+  error,
+  helperText,
+  ...props
+}) => (
+  <TooltipMui title={tooltip || ""}>
+    <DatePicker
+      label={`${label}${required ? "*" : ""}`}
+      value={value}
+      onChange={(newValue) => onChange({ target: { name, value: newValue } })}
+      onClose={onBlur}
+      slotProps={{
+        textField: {
+          fullWidth: true,
+          error,
+          helperText,
+          ...props,
+        },
+      }}
+    />
+  </TooltipMui>
+);
+
+const LoadingBtn = ({
+  loading = false,
+  disabled = false,
+  startIcon,
+  children,
+  ...props
+}) => (
+  <Button
+    disabled={loading || disabled}
+    startIcon={
+      loading ? <CircularProgress size={16} color="inherit" /> : startIcon
+    }
+    {...props}
+  >
+    {children}
+  </Button>
+);
+
+const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
+  const context = useAuth();
+  const canViewJobDetails = context.isSuperAdmin() || context.isAdmin();
+  const theme = useTheme();
+  const [tab, setTab] = useState("details");
+  const [shipmentSearch, setShipmentSearch] = useState("");
+  const [shipmentStatus, setShipmentStatus] = useState("");
+  const [expandedOrders, setExpandedOrders] = useState(new Set());
+  const [previewDoc, setPreviewDoc] = useState(null);
+  const [billingRows, setBillingRows] = useState([]);
+  const [billingLoading, setBillingLoading] = useState(false);
+  const [billingSyncing, setBillingSyncing] = useState(false);
+  const [pdfLoadingId, setPdfLoadingId] = useState(null);
+  const [busyAction, setBusyAction] = useState(null);
+  const [financeView, setFinanceView] = useState("invoices");
+  const [expandedForms, setExpandedForms] = useState({});
+
+  const runAction = async (key, fn) => {
+    if (busyAction) return;
+    setBusyAction(key);
+    try {
+      await fn();
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const toggleOrder = (orderId) =>
+    setExpandedOrders((prev) => {
+      const next = new Set(prev);
+      next.has(orderId) ? next.delete(orderId) : next.add(orderId);
+      return next;
+    });
+
+  const logPrint = (documentType) => {
+    if (!effectiveConsignmentId) return;
+    api
+      .post(`/api/consignments/${effectiveConsignmentId}/manifest-prints`, {
+        document_type: documentType,
+      })
+      .catch(() => {});
+  };
+
+  const user_id = context.user.id;
+  const currentDate = dayjs();
+  const { places, statuses } = useContext(AppContext);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const { consignmentId: urlConsignmentId } = useParams();
+  const location = useLocation();
+
+  const [clearedItemIds, setClearedItemIds] = useState(new Set());
+
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [error, setError] = useState(null);
+  const effectiveConsignmentId =
+    urlConsignmentId || location.state?.consignmentId || propConsignmentId;
+  const [mode] = useState("edit");
+
+  const [auditView, setAuditView] = useState("edits");
+  const [printLogs, setPrintLogs] = useState([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+
+  const fetchAudit = useCallback(async () => {
+    if (!effectiveConsignmentId) return;
+    setAuditLoading(true);
+    try {
+      const { data } = await api.get(
+        `/api/consignments/${effectiveConsignmentId}/manifest-prints`,
+      );
+      setPrintLogs(data?.data || []);
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message || "Failed to load manifest prints.",
+      );
+    } finally {
+      setAuditLoading(false);
+    }
+  }, [effectiveConsignmentId]);
+
+  useEffect(() => {
+    if (tab === "audit" && canViewJobDetails) fetchAudit();
+  }, [tab, canViewJobDetails, fetchAudit]);
+
+  const [initialValues, setInitialValues] = useState(null);
+  const [values, setValues] = useState({
+    id: "",
+    consignment_number: "",
+    status: "Draft",
+    remarks: "",
+    shipper: "",
+    shipperName: "",
+    shipperAddress: "",
+    consignee: "",
+    consigneeName: "",
+    consigneeAddress: "",
+    origin: "",
+    originName: "",
+    destination: "",
+    destinationName: "",
+    eform: "",
+    eform_date: currentDate,
+    bank: "",
+    bankName: "",
+    paymentType: "",
+    voyage: "",
+    consignment_value: 0,
+    currency_code: "",
+    eta: currentDate,
+    vessel: "",
+    shippingLine: "",
+    delivered: 0,
+    pending: 0,
+    seal_no: "",
+    netWeight: 0,
+    gross_weight: 0,
+    containers: [],
+    orders: [],
+  });
+  const [errors, setErrors] = useState({});
+  const [touched, setTouched] = useState({});
+  const [eta, setEta] = useState(null);
+  const [etaSuggestion, setEtaSuggestion] = useState(null);
+  const [etaLoading, setEtaLoading] = useState(false);
+  const [statusOffsets, setStatusOffsets] = useState({});
+
+  const [options, setOptions] = useState({
+    third_parties: [],
+    banks: [],
+    shipperOptions: [],
+    consigneeOptions: [],
+    originOptions: [],
+    destinationOptions: [],
+    bankOptions: [],
+    paymentTypeOptions: [],
+    vesselOptions: [],
+    shippingLineOptions: [],
+    currencyOptions: [],
+    statusOptions: [],
+    containerStatusOptions: [],
+  });
+
+  const [containerModalOpen, setContainerModalOpen] = useState(false);
+  const [selectedContainers, setSelectedContainers] = useState([]);
+  const [selectedOrders, setSelectedOrders] = useState([]);
+  const [containers, setContainers] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [containersLoading, setContainersLoading] = useState(false);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [addedContainerIds, setAddedContainerIds] = useState([]);
+  const [orderPage, setOrderPage] = useState(0);
+  const [orderRowsPerPage, setOrderRowsPerPage] = useState(100);
+  const [orderTotal, setOrderTotal] = useState(0);
+  const [filters, setFilters] = useState({ status: "", booking_ref: "" });
+  const [containerErrors, setContainerErrors] = useState({});
+  const setContainerError = (path, message) => {
+    setContainerErrors((prev) => ({ ...prev, [path]: message }));
+  };
+
+  const getPlaceName = (placeId) => {
+    if (!placeId) return "-";
+    const place = options.destinationOptions.find(
+      (p) => p.value === placeId.toString(),
+    );
+    return place ? place.label : placeId.toString();
+  };
+
+  const handleStatusChange = (newStatusOrEvent) => {
+    const newStatus =
+      typeof newStatusOrEvent === "string"
+        ? newStatusOrEvent
+        : newStatusOrEvent.target.value;
+
+    setValues((prev) => ({ ...prev, status: newStatus }));
+
+    if (!statusOffsets || Object.keys(statusOffsets).length === 0) {
+      console.warn("ETA offsets not loaded yet");
+      return;
+    }
+
+    setEtaLoading(true);
+
+    try {
+      const matchedStatus = (statuses || []).find(
+        (s) => s.consignment_status === newStatus,
+      );
+      const receiverStatus = matchedStatus?.order_status || newStatus;
+      const offsetDays = statusOffsets[receiverStatus] ?? 0;
+
+      const today = dayjs();
+      const suggestedEta = today.add(offsetDays, "day").format("YYYY-MM-DD");
+
+      setEtaSuggestion(suggestedEta);
+
+      if (!eta || !eta.trim()) {
+        setEta(suggestedEta);
+        setValues((prev) => ({ ...prev, eta: suggestedEta }));
+      }
+    } catch (err) {
+      console.warn("ETA suggestion failed:", err);
+      setEtaSuggestion(null);
+    } finally {
+      setEtaLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const initData = async () => {
+      if (!places || places.length === 0) return;
+      try {
+        setLoading(true);
+
+        const [
+          thirdPartiesRes,
+          banksRes,
+          paymentTypesRes,
+          vesselsRes,
+          shippingLinesRes,
+          currenciesRes,
+        ] = await Promise.all([
+          api.get("api/options/thirdParty/crud"),
+          api.get("api/options/banks/crud"),
+          api.get("api/options/payment-types/crud"),
+          api.get("api/options/vessels/crud"),
+          api.get("api/options/shipping-lines"),
+          api.get("api/options/currencies"),
+        ]);
+
+        const third_parties = thirdPartiesRes?.data?.third_parties || [];
+        const banks = banksRes?.data?.banks || [];
+
+        const mapOptions = (items, valueKey = "id", labelKey = "name") =>
+          (items || []).map((item) => ({
+            value: (item[valueKey] || item.value)?.toString() || "",
+            label: item[labelKey] || item.label || item[valueKey] || "",
+          }));
+
+        const filteredDestinations = places.filter(
+          (place) => place.is_destination === true,
+        );
+
+        const filteredOrigins = places.filter(
+          (place) => place.is_destination === true || place.is_origin === true,
+        );
+
+        const paymentEnumMap = {
+          "AP (Advance Payment)": "Prepaid",
+          "DP (Docs against Payment)": "Collect",
+          "DA (30 Days Payment)": "Collect",
+          "DA (60 Days Payment)": "Collect",
+          "DA (90 Days Payment)": "Collect",
+          "DA (120 Days Payment)": "Collect",
+          "DA (180 Days Payment)": "Collect",
+        };
+
+        setOptions({
+          third_parties,
+          banks,
+          shipperOptions: third_parties
+            .filter((tp) => tp.type === "shipper")
+            .map((tp) => ({ value: tp.id.toString(), label: tp.company_name })),
+          consigneeOptions: third_parties
+            .filter((tp) => tp.type === "consignee")
+            .map((tp) => ({ value: tp.id.toString(), label: tp.company_name })),
+          originOptions: mapOptions(filteredOrigins, "id", "name"),
+          destinationOptions: mapOptions(filteredDestinations, "id", "name"),
+          bankOptions: mapOptions(banks, "id", "name"),
+          paymentTypeOptions: (paymentTypesRes?.data?.paymentTypes || []).map(
+            (pt) => ({
+              value: paymentEnumMap[pt.name] || "Collect",
+              label: pt.name,
+              id: pt.id,
+            }),
+          ),
+          vesselOptions: mapOptions(
+            vesselsRes?.data?.vessels || [],
+            "id",
+            "name",
+          ),
+          shippingLineOptions: mapOptions(
+            shippingLinesRes?.data?.shippingLineOptions || [],
+            "id",
+            "name",
+          ),
+          currencyOptions: mapOptions(
+            currenciesRes?.data?.currencyOptions || [],
+            "code",
+            "name",
+          ),
+
+          statusOptions: (statuses || [])
+            .filter((s) => s.consignment_status)
+            .sort((a, b) => a.sorting_number - b.sorting_number)
+            .map((s) => ({
+              value: s.consignment_status,
+              label: s.consignment_status,
+            })),
+          containerStatusOptions: (statuses || [])
+            .filter((s) => s.container_status)
+            .sort((a, b) => a.sorting_number - b.sorting_number)
+            .map((s) => ({
+              value: s.container_status,
+              label: s.container_status,
+            })),
+        });
+
+        const offsets = (statuses || []).reduce((acc, row) => {
+          if (row.order_status) acc[row.order_status] = row.days_offset;
+          return acc;
+        }, {});
+        setStatusOffsets(offsets);
+
+        if (mode === "edit" && effectiveConsignmentId) {
+          await loadConsignment(effectiveConsignmentId);
+        }
+      } catch (err) {
+        console.error("Error fetching options:", err);
+        toast.warning("Failed to load options. Using defaults.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initData();
+  }, [mode, effectiveConsignmentId, places]);
+
+  const loadConsignment = async (id) => {
+    try {
+      const res = await api.get(`/api/consignments/${id}?autoUpdate=false`);
+      const { data } = res.data || {};
+      const mappedData = {
+        ...data,
+        shipper: data?.shipper_id?.toString() || "",
+        shipperName: data?.shipper || "",
+        shipperAddress: data?.shipper_address || "",
+        consignee: data?.consignee_id?.toString() || "",
+        consigneeName: data?.consignee || "",
+        consigneeAddress: data?.consignee_address || "",
+        origin: data?.origin_id?.toString() || "",
+        originName: data?.origin || "",
+        destination: data?.destination_id?.toString() || "",
+        destinationName: data?.destination || "",
+        bank: data?.bank_id?.toString() || "",
+        bankName: data?.bank || "",
+        paymentType: data?.payment_type?.toString() || "",
+        status: data?.status || "",
+        vessel: data?.vessel ? data.vessel.toString() : "",
+        shippingLine: data?.shipping_line_name || "",
+        netWeight: data?.net_weight || 0,
+        gross_weight: data?.gross_weight || 0,
+        consignment_value: data?.consignment_value || 0,
+        currency_code: data?.currency_code || "",
+        eform_date: data?.eform_date ? dayjs(data.eform_date) : "",
+        eta: data?.eta ? dayjs(data.eta) : "",
+        containers: (data?.containers || []).map((c) => ({
+          location: c?.location || c?.container_location || "",
+          containerNo: c?.containerNo || c?.container_number || "",
+          size: c?.size || c?.container_size || "",
+          ownership:
+            c?.ownership === "soc"
+              ? "Own"
+              : c?.ownership === "coc"
+                ? "Hired"
+                : c?.ownership || "",
+          containerType: c?.containerType || c?.container_type || "",
+          status:
+            c?.assignment_status || c?.status || c?.current_status || "Pending",
+          id: c?.id || c?.cid,
+        })),
+      };
+
+      setValues(mappedData);
+      if (data?.orders && data.orders.length > 0) {
+        setSelectedOrders(data.orders.map((o) => o.id));
+      }
+    } catch (err) {
+      console.error("Error loading consignment:", err);
+    }
+  };
+
+  const lookupMissingIds = () => {
+    const updates = {};
+    let hasUpdate = false;
+    const fuzzyMatch = (str1, str2) =>
+      (str1 || "").trim().toLowerCase() === (str2 || "").trim().toLowerCase();
+    if (
+      values.shipperName &&
+      !values.shipper &&
+      options.third_parties.length > 0
+    ) {
+      const selected = options.third_parties.find(
+        (tp) =>
+          tp.type === "shipper" &&
+          (fuzzyMatch(tp.company_name, values.shipperName) ||
+            fuzzyMatch(tp.name, values.shipperName)),
+      );
+      if (selected) {
+        updates.shipper = selected.id.toString();
+        if (!values.shipperAddress || values.shipperAddress.trim() === "") {
+          updates.shipperAddress =
+            selected.address ||
+            selected.full_address ||
+            selected.company_address ||
+            "";
+        }
+        hasUpdate = true;
+      } else {
+        console.warn("No shipper match found for:", values.shipperName);
+      }
+    }
+    if (
+      values.consigneeName &&
+      !values.consignee &&
+      options.third_parties.length > 0
+    ) {
+      const selected = options.third_parties.find(
+        (tp) =>
+          tp.type === "consignee" &&
+          (fuzzyMatch(tp.company_name, values.consigneeName) ||
+            fuzzyMatch(tp.name, values.consigneeName)),
+      );
+      if (selected) {
+        updates.consignee = selected.id.toString();
+        if (!values.consigneeAddress || values.consigneeAddress.trim() === "") {
+          updates.consigneeAddress =
+            selected.address ||
+            selected.full_address ||
+            selected.company_address ||
+            "";
+        }
+        hasUpdate = true;
+      } else {
+        console.warn("No consignee match found for:", values.consigneeName);
+      }
+    }
+    if (values.bankName && !values.bank && options.banks.length > 0) {
+      const selected = options.banks.find(
+        (b) =>
+          fuzzyMatch(b.name, values.bankName) ||
+          fuzzyMatch(b.bank_name, values.bankName),
+      );
+      if (selected) {
+        updates.bank = selected.id.toString();
+        hasUpdate = true;
+      } else {
+        console.warn("No bank match found for:", values.bankName);
+      }
+    }
+    if (
+      values.originName &&
+      !values.origin &&
+      options.originOptions.length > 0
+    ) {
+      const selected = options.originOptions.find((opt) =>
+        fuzzyMatch(opt.label, values.originName),
+      );
+      if (selected) {
+        updates.origin = selected.value;
+        hasUpdate = true;
+      } else {
+        console.warn("No origin match found for:", values.originName);
+      }
+    }
+    if (
+      values.destinationName &&
+      !values.destination &&
+      options.destinationOptions.length > 0
+    ) {
+      const selected = options.destinationOptions.find((opt) =>
+        fuzzyMatch(opt.label, values.destinationName),
+      );
+      if (selected) {
+        updates.destination = selected.value;
+        hasUpdate = true;
+      } else {
+        console.warn("No destination match found for:", values.destinationName);
+      }
+    }
+    if (hasUpdate) {
+      setValues((prev) => {
+        const newValues = { ...prev, ...updates };
+        return newValues;
+      });
+    }
+  };
+
+  useEffect(() => {
+    if (
+      mode === "edit" &&
+      effectiveConsignmentId &&
+      options.originOptions?.length > 0 &&
+      options.destinationOptions?.length > 0
+    ) {
+      if (values.origin && !values.originName) {
+        const found = options.originOptions.find(
+          (opt) => opt.value === values.origin.toString(),
+        );
+        if (found) {
+          setValues((prev) => ({ ...prev, originName: found.label }));
+        }
+      }
+      if (values.destination && !values.destinationName) {
+        const found = options.destinationOptions.find(
+          (opt) => opt.value === values.destination.toString(),
+        );
+        if (found) {
+          setValues((prev) => ({ ...prev, destinationName: found.label }));
+        }
+      }
+
+      if (
+        options.third_parties?.length > 0 &&
+        options.banks?.length > 0 &&
+        (values.shipperName ||
+          values.consigneeName ||
+          values.bankName ||
+          values.originName ||
+          values.destinationName)
+      ) {
+        lookupMissingIds();
+      }
+    }
+    setEta(values.eta);
+  }, [
+    mode,
+    effectiveConsignmentId,
+    options.third_parties,
+    options.banks,
+    options.originOptions,
+    options.destinationOptions,
+    values.origin,
+    values.destination,
+    values.shipperName,
+    values.consigneeName,
+    values.bankName,
+    values.originName,
+    values.destinationName,
+  ]);
+
+  useEffect(() => {
+    if (!loading && initialValues === null) {
+      setInitialValues({ ...values });
+    }
+  }, [loading, values]);
+  const isDirty = useMemo(() => {
+    if (!initialValues) return false;
+    const primitives = [
+      "id",
+      "consignment_number",
+      "status",
+      "remarks",
+      "shipper",
+      "shipperName",
+      "shipperAddress",
+      "consignee",
+      "consigneeName",
+      "consigneeAddress",
+      "origin",
+      "originName",
+      "destination",
+      "destinationName",
+      "eform",
+      "bank",
+      "bankName",
+      "paymentType",
+      "voyage",
+      "consignment_value",
+      "currency_code",
+      "delivered",
+      "pending",
+      "seal_no",
+      "netWeight",
+      "gross_weight",
+    ];
+    for (let key of primitives) {
+      if (values[key] !== initialValues[key]) {
+        return true;
+      }
+    }
+    if (
+      values.eform_date?.format("YYYY-MM-DD") !==
+      initialValues.eform_date?.format("YYYY-MM-DD")
+    ) {
+      return true;
+    }
+    if (
+      JSON.stringify(values.containers) !==
+      JSON.stringify(initialValues.containers)
+    ) {
+      return true;
+    }
+    if (
+      JSON.stringify(values.orders) !== JSON.stringify(initialValues.orders)
+    ) {
+      return true;
+    }
+    return false;
+  }, [values, initialValues]);
+
+  const isSelected = (id) => (selectedOrders || []).indexOf(id) !== -1;
+  const handleOrderToggle = (orderId) => () => {
+    const currentIndex = (selectedOrders || []).indexOf(orderId);
+    const newSelected = [...(selectedOrders || [])];
+    if (currentIndex === -1) {
+      newSelected.push(orderId);
+    } else {
+      newSelected.splice(currentIndex, 1);
+    }
+    setSelectedOrders(newSelected);
+  };
+  const handleClick = (id) => handleOrderToggle(id)();
+
+  const includedOrders = useMemo(
+    () =>
+      (selectedOrders || [])
+        .map((id) => (orders || []).find((o) => o.id === id))
+        .filter(Boolean),
+    [selectedOrders, orders],
+  );
+
+  const allReceivers = useMemo(
+    () => orders.flatMap((order) => order.receivers || []),
+    [orders],
+  );
+  useEffect(() => {
+    if (orders && orders.length > 0) {
+      const allOrderIds = orders.map((order) => order.id);
+      setSelectedOrders(allOrderIds);
+    }
+  }, [orders]);
+
+  const calculatedTotals = useMemo(() => {
+    let totalAssignedWeight = 0;
+
+    const ordersToSum = includedOrders.length > 0 ? includedOrders : orders;
+
+    ordersToSum.forEach((order) => {
+      (order.receivers || []).forEach((receiver) => {
+        (receiver.shippingdetails || []).forEach((detail) => {
+          (detail.containerDetails || []).forEach((cd) => {
+            totalAssignedWeight += parseFloat(cd.assign_weight || 0);
+          });
+        });
+      });
+    });
+
+    const assignedWt = parseFloat(totalAssignedWeight.toFixed(3));
+
+    return {
+      totalAssignedWeight: assignedWt,
+      netWeight: assignedWt,
+      grossWeight: parseFloat((assignedWt * 1.15).toFixed(3)),
+    };
+  }, [includedOrders, orders]);
+
+  useEffect(() => {
+    setValues((prev) => ({
+      ...prev,
+      netWeight: calculatedTotals.netWeight,
+      gross_weight: calculatedTotals.grossWeight,
+      totalAssignedWeight: calculatedTotals.totalAssignedWeight,
+    }));
+  }, [calculatedTotals]);
+
+  useEffect(() => {
+    setValues((prev) => ({
+      ...prev,
+      orders: (selectedOrders || []).map((id) => ({ id })),
+    }));
+  }, [selectedOrders]);
+  const themeColors = {
+    primary: "#f58220",
+    secondary: "#1a9c8f",
+    background: "#f8f9fa",
+    surface: "#ffffff",
+    border: "#e0e0e0",
+    textPrimary: "#212121",
+    textSecondary: "#757575",
+    success: "#4caf50",
+    warning: "#ff9800",
+    error: "#f44336",
+  };
+  const handleChangeOrderPage = (event, newPage) => {
+    setOrderPage(newPage);
+  };
+  const handleChangeOrderRowsPerPage = (event) => {
+    setOrderRowsPerPage(parseInt(event.target.value, 10));
+    setOrderPage(0);
+  };
+  const numSelected = (orders || []).filter((o) => isSelected(o.id)).length;
+
+  useEffect(() => {
+    const syncMissingOptions = () => {
+      let updatedOptions = { ...options };
+      let hasUpdate = false;
+      const appendIfMissing = (optKey, value) => {
+        if (
+          value &&
+          !updatedOptions[optKey]?.find((opt) => opt.value === value)
+        ) {
+          const newOpt = { value, label: value };
+          updatedOptions[optKey] = [...(updatedOptions[optKey] || []), newOpt];
+          hasUpdate = true;
+        }
+      };
+      appendIfMissing("vesselOptions", values.vessel);
+      appendIfMissing("paymentTypeOptions", values.paymentType);
+      if (hasUpdate) {
+        setOptions(updatedOptions);
+      }
+    };
+    if (
+      mode === "edit" &&
+      effectiveConsignmentId &&
+      (values.vessel || values.paymentType || values.status) &&
+      options.vesselOptions?.length > 0
+    ) {
+      syncMissingOptions();
+    }
+  }, [
+    mode,
+    effectiveConsignmentId,
+    values.vessel,
+    values.paymentType,
+    values.status,
+    options.vesselOptions?.length,
+  ]);
+
+  const validateField = async (name, value) => {
+    try {
+      await validationSchema.fields[name]?.validate(value);
+      setErrors((prev) => ({ ...prev, [name]: undefined }));
+    } catch (error) {
+      setErrors((prev) => ({ ...prev, [name]: error.message }));
+    }
+  };
+
+  useEffect(() => {
+    const fetchContainers = async () => {
+      setContainersLoading(true);
+      try {
+        const res = await api.get("/api/containers");
+        setContainers(res.data?.data || []);
+      } catch (err) {
+        console.error("❌ Error fetching containers:", err);
+      } finally {
+        setContainersLoading(false);
+      }
+    };
+    fetchContainers();
+  }, []);
+
+  useEffect(() => {
+    const ids = (values.containers || [])
+      .map((c) => c.id || c.cid)
+      .filter((id) => id);
+    setAddedContainerIds(ids);
+  }, [values.containers]);
+
+  useEffect(() => {
+    if (values.containers && values.containers.length > 0) {
+      setErrors((prev) => ({ ...prev, containers: undefined }));
+    }
+  }, [values.containers]);
+
+  const handleSelectAllClick = (event) => {
+    if (event.target.checked) {
+      const newSelecteds = (orders || []).map((n) => n.id);
+      setSelectedOrders(newSelecteds);
+      return;
+    }
+    setSelectedOrders([]);
+  };
+
+  useEffect(() => {
+    const itemUsesSelectedContainers = (shippingDetail, selectedCidsSet) => {
+      if (!shippingDetail?.containerDetails?.length) return false;
+
+      return shippingDetail.containerDetails.some((detail) => {
+        const cid = detail?.container?.cid;
+        return cid && selectedCidsSet.has(Number(cid));
+      });
+    };
+
+    const filterContainerDetails = (containerDetails, selectedCidsSet) => {
+      if (!Array.isArray(containerDetails)) return [];
+
+      return containerDetails.filter((detail) => {
+        const cid = detail?.container?.cid;
+        if (!cid || !selectedCidsSet.has(Number(cid))) return false;
+        if (mode === "edit" && effectiveConsignmentId) {
+          return (
+            detail.consignment_id == null ||
+            Number(detail.consignment_id) === Number(effectiveConsignmentId)
+          );
+        }
+        return true;
+      });
+    };
+
+    const filterOrdersByContainers = (orders, selectedContainerIds) => {
+      if (!Array.isArray(orders)) {
+        console.warn(
+          "filterOrdersByContainers: orders is not an array",
+          orders,
+        );
+        return [];
+      }
+
+      if (!selectedContainerIds?.length) {
+        return orders.map((order) => ({
+          ...order,
+          receivers: (order.receivers || []).map((receiver) => ({
+            ...receiver,
+            order,
+          })),
+        }));
+      }
+
+      const selectedCidsSet = new Set(
+        selectedContainerIds
+          .map((id) => parseInt(id, 10))
+          .filter((id) => !isNaN(id)),
+      );
+
+      if (selectedCidsSet.size === 0) {
+        return [];
+      }
+      return orders
+        .map((order) => {
+          const filteredReceivers = (order.receivers || [])
+            .map((receiver) => {
+              const filteredShippingDetails = (receiver.shippingdetails || [])
+                .filter((detail) =>
+                  itemUsesSelectedContainers(detail, selectedCidsSet),
+                )
+                .map((detail) => ({
+                  ...detail,
+                  containerDetails: filterContainerDetails(
+                    detail.containerDetails,
+                    selectedCidsSet,
+                  ),
+                }));
+
+              if (filteredShippingDetails.length === 0) return null;
+
+              return {
+                ...receiver,
+                shippingdetails: filteredShippingDetails,
+                order,
+              };
+            })
+            .filter(Boolean);
+          if (filteredReceivers.length === 0) return null;
+
+          return {
+            ...order,
+            receivers: filteredReceivers,
+          };
+        })
+        .filter(Boolean);
+    };
+
+    const fetchOrders = async () => {
+      if (!addedContainerIds?.length) {
+        setOrders([]);
+        setOrderTotal(0);
+        setOrdersLoading(false);
+        return;
+      }
+
+      setOrdersLoading(true);
+      try {
+        const response = await api.get("/api/orders/consignmentsOrders", {
+          params: {
+            page: 1,
+            limit: 1000,
+            container_id: addedContainerIds.join(","),
+            ...(mode === "edit" && effectiveConsignmentId
+              ? { consignment_id: effectiveConsignmentId }
+              : {
+                  ...(values.origin && {
+                    pol: values.origin,
+                  }),
+                  ...(values.destination && {
+                    pod: values.destination,
+                  }),
+                }),
+          },
+        });
+
+        const fetchedOrders = response.data?.data || [];
+        const fetchedTotal = response.data?.pagination?.total || 0;
+
+        const filteredOrders = filterOrdersByContainers(
+          fetchedOrders,
+          addedContainerIds,
+        );
+
+        setOrders(filteredOrders);
+        setOrderTotal(filteredOrders.length);
+
+        if (filteredOrders.length > 0) {
+          handleSelectAllClick({ target: { checked: true } });
+        }
+      } catch (err) {
+        console.error("Error fetching orders:", err);
+        toast.error("Failed to fetch orders. Please try again.");
+        setOrders([]);
+        setOrderTotal(0);
+      } finally {
+        setOrdersLoading(false);
+      }
+    };
+
+    fetchOrders();
+  }, [
+    addedContainerIds,
+    filters?.booking_ref,
+    filters?.status,
+    orderPage,
+    orderRowsPerPage,
+    api,
+    values.origin,
+    values.destination,
+  ]);
+
+  const flatShipments = React.useMemo(() => {
+    const seen = new Set();
+    return orders
+      .flatMap((order) =>
+        (order.receivers || []).flatMap((receiver) =>
+          (receiver.shippingdetails || []).flatMap((detail) =>
+            (detail.containerDetails || []).map((containerDetail) => ({
+              orderId: order.id,
+              receiverId: receiver.id,
+              shippingDetailId: detail.id,
+              containerCid: containerDetail.container?.cid,
+              bookingRef: order.booking_ref || "-",
+              formNo: order.rgl_booking_number || "-",
+              pol: String(getPlaceName?.(order.place_of_loading) ?? "-"),
+              pod: String(getPlaceName?.(order.place_of_delivery) ?? "-"),
+              sender: String(order.sender_name ?? "-"),
+              receiverName: String(receiver.receivername ?? "-"),
+              category: detail.category || "Unknown",
+              subcategory: detail.subcategory || "",
+              type: detail.type || "Package",
+              totalItems: Number(
+                detail.totalNumber || detail.total_number || 0,
+              ),
+              weight: Number(detail.weight || 0),
+              itemRef: detail.itemRef || "",
+              remainingItems: Number(detail.remainingItems || 0),
+              receiverStatus: detail.status,
+              containerNumber:
+                containerDetail.container?.container_number?.trim() || "-",
+              containerStatus: containerDetail.status || "-",
+              assignWeight: containerDetail.assign_weight || "-",
+              assignBoxes: containerDetail.assign_total_box || "-",
+            })),
+          ),
+        ),
+      )
+      .filter((s) => {
+        const key = `${s.shippingDetailId}-${s.containerCid}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+  }, [orders]);
+
+  const shipmentStatusOptions = useMemo(
+    () =>
+      [
+        ...new Set(flatShipments.map((s) => s.receiverStatus).filter(Boolean)),
+      ].sort(),
+    [flatShipments],
+  );
+
+  const filteredShipments = useMemo(() => {
+    const q = shipmentSearch.trim().toLowerCase();
+    return flatShipments.filter((s) => {
+      if (shipmentStatus && s.receiverStatus !== shipmentStatus) return false;
+      if (!q) return true;
+      return [s.itemRef, s.bookingRef, s.formNo].some((v) =>
+        String(v ?? "")
+          .toLowerCase()
+          .includes(q),
+      );
+    });
+  }, [flatShipments, shipmentSearch, shipmentStatus]);
+
+  const orderRows = useMemo(() => {
+    const map = new Map();
+    filteredShipments.forEach((s) => {
+      if (!map.has(s.orderId)) {
+        map.set(s.orderId, {
+          orderId: s.orderId,
+          bookingRef: s.bookingRef,
+          formNo: s.formNo,
+          pol: s.pol,
+          pod: s.pod,
+          sender: s.sender,
+          receivers: new Set(),
+          items: new Set(),
+          containers: new Set(),
+          statuses: new Set(),
+          weight: 0,
+          boxes: 0,
+          shipments: [],
+        });
+      }
+      const g = map.get(s.orderId);
+      g.receivers.add(s.receiverName);
+      g.items.add(s.shippingDetailId);
+      g.containers.add(s.containerNumber);
+      g.statuses.add(s.receiverStatus);
+      g.weight += Number(s.assignWeight) || 0;
+      g.boxes += Number(s.assignBoxes) || 0;
+      g.shipments.push(s);
+    });
+    return [...map.values()];
+  }, [filteredShipments]);
+
+  const hasDeliveredShipment = useMemo(() => {
+    return orders.some((order) =>
+      (order.receivers || []).some((receiver) =>
+        (receiver.shippingdetails || []).some(
+          (detail) => detail.status === "Shipment Delivered",
+        ),
+      ),
+    );
+  }, [orders]);
+
+  const fetchBilling = useCallback(
+    async (sync = false) => {
+      if (!canViewJobDetails || mode !== "edit" || !effectiveConsignmentId)
+        return;
+      const base = `/api/zoho-invoice/consignment/${effectiveConsignmentId}/billing`;
+      try {
+        if (sync) setBillingSyncing(true);
+        else setBillingLoading(true);
+        const { data } = sync
+          ? await api.post(`${base}/sync`)
+          : await api.get(base);
+        setBillingRows(data?.rows || []);
+      } catch (err) {
+        toast.error(
+          err.response?.data?.message || "Failed to load billing data.",
+        );
+      } finally {
+        setBillingLoading(false);
+        setBillingSyncing(false);
+      }
+    },
+    [canViewJobDetails, mode, effectiveConsignmentId],
+  );
+
+  useEffect(() => {
+    if (tab === "billing" && canViewJobDetails) fetchBilling();
+  }, [tab, canViewJobDetails, fetchBilling]);
+
+  const PrettyList = ({ receivers, title }) => {
+    return (
+      <Card
+        variant="outlined"
+        sx={{
+          p: 2,
+          borderRadius: 2,
+          border: "1px solid",
+          borderColor: "divider",
+          backgroundColor: "#fafafa",
+          width: 600,
+          boxShadow: "none",
+        }}
+      >
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              pb: 1,
+              borderBottom: "1px solid",
+              borderColor: "divider",
+            }}
+          >
+            <Typography
+              variant="subtitle2"
+              sx={{ fontWeight: "bold", color: "#f58220" }}
+            >
+              {title}
+            </Typography>
+            <Chip
+              label={`(${receivers?.length || 0})`}
+              size="small"
+              color="primary"
+              variant="outlined"
+              sx={{
+                fontSize: "0.7rem",
+                height: 20,
+                "& .MuiChip-label": { px: 0.5 },
+              }}
+            />
+          </Box>
+
+          <Stack spacing={1} sx={{ maxHeight: "auto", overflow: "auto" }}>
+            {receivers?.length > 0 ? (
+              receivers.map((receiver, rIdx) => (
+                <Card
+                  key={rIdx}
+                  variant="outlined"
+                  sx={{
+                    p: 1.5,
+                    borderRadius: 1.5,
+                    border: "1px solid",
+                    borderColor: "grey.200",
+                    backgroundColor: "#fff",
+                    boxShadow: "none",
+                  }}
+                >
+                  <Stack direction="row" alignItems="center" spacing={1.5}>
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography variant="body2" fontWeight="medium" noWrap>
+                        {receiver.receiver_name || "Unnamed Receiver"}
+                      </Typography>
+                    </Box>
+                  </Stack>
+
+                  <Divider sx={{ mt: 1 }} />
+
+                  {receiver.shippingdetails?.length > 0 ? (
+                    receiver.shippingdetails.map((item, sIdx) => (
+                      <Box key={sIdx} sx={{ mt: 1, pl: 1 }}>
+                        <Box sx={{ flexDirection: "column" }}>
+                          <Stack
+                            direction="row"
+                            alignItems="center"
+                            spacing={1}
+                          >
+                            <Typography variant="body2" fontWeight="bold">
+                              {item.category || "Unknown Category"} -{" "}
+                              {item.subcategory || "Unknown Subcategory"} (
+                              {item.type || "Unknown Type"}) Total:{" "}
+                              {item.totalNumber ?? 0}, Weight:{" "}
+                              {item.weight ?? 0}
+                            </Typography>
+                            <StatusChip status={item.status} size="small" />
+                          </Stack>
+                          <Typography variant="caption" color="text.secondary">
+                            Qty Total Assigned:{" "}
+                            {Math.max(
+                              0,
+                              parseInt(item.totalNumber || 0) -
+                                parseInt(item.remainingItems || 0),
+                            ).toLocaleString()}{" "}
+                            / Remaining Items:{" "}
+                            {parseInt(
+                              item.remainingItems || 0,
+                            ).toLocaleString()}
+                          </Typography>
+                        </Box>
+                        {item.containerDetails?.length > 0 ? (
+                          <Stack
+                            direction="row"
+                            justifyContent={"space-between"}
+                            alignItems={"center"}
+                            display={"flex"}
+                            spacing={1}
+                            sx={{
+                              justifyContent: "space-between",
+                              flexWrap: "wrap",
+                            }}
+                          >
+                            {item.containerDetails.map((c, cIdx) => (
+                              <div
+                                style={{
+                                  marginTop: 5,
+                                  flexDirection: "row",
+                                  justifyContent: "space-between",
+                                  alignItems: "center",
+                                  alignSelf: "center",
+                                  flex: 1,
+                                  display: "flex",
+                                }}
+                              >
+                                <Chip
+                                  key={cIdx}
+                                  label={`${c.container.container_number} - ${c.assign_total_box} boxes (${c.assign_weight} kg)`}
+                                  size="large"
+                                  color="secondary"
+                                  variant="outlined"
+                                  sx={{ marginBottom: 2 }}
+                                  spacing={1}
+                                />
+                                <StatusChip status={c.status} size="small" />
+                              </div>
+                            ))}
+                          </Stack>
+                        ) : (
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ mt: 0.5 }}
+                          >
+                            No containers assigned
+                          </Typography>
+                        )}
+                      </Box>
+                    ))
+                  ) : (
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ mt: 1 }}
+                    >
+                      No shipping details
+                    </Typography>
+                  )}
+
+                  {receiver.drop_off_details?.length > 0 && (
+                    <Box sx={{ mt: 1, pl: 1 }}>
+                      <Typography variant="body2" fontWeight="medium">
+                        Drop Off Details:
+                      </Typography>
+                      {receiver.drop_off_details.map((dod, dIdx) => (
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          key={dIdx}
+                          display="block"
+                        >
+                          {dod.drop_method} - {dod.dropoff_name} (
+                          {dod.drop_off_mobile}) on {dod.drop_date}
+                        </Typography>
+                      ))}
+                    </Box>
+                  )}
+                </Card>
+              ))
+            ) : (
+              <Box
+                sx={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  py: 3,
+                  color: "text.secondary",
+                }}
+              >
+                <EmojiEventsIcon
+                  sx={{ fontSize: 40, color: "grey.300", mb: 1 }}
+                />
+                <Typography variant="body2" sx={{ fontStyle: "italic" }}>
+                  No receivers available
+                </Typography>
+              </Box>
+            )}
+          </Stack>
+        </Box>
+      </Card>
+    );
+  };
+
+  const CombinedTooltip = ({ order }) => {
+    return (
+      <PrettyList receivers={order.receivers} title="Receivers & Containers" />
+    );
+  };
+
+  const validationSchema = Yup.object({
+    consignment_number: Yup.string().required("Consignment # is required"),
+    shipper: Yup.string().required("Shipper is required"),
+    consignee: Yup.string().required("Consignee is required"),
+    origin: Yup.string().required("Origin is required"),
+    destination: Yup.string().required("Destination is required"),
+    eform: Yup.string()
+      .matches(/^[A-Z]{3}-\d{6}$/, "Invalid format (e.g., ABC-123456)")
+      .required("Eform # is required"),
+    eform_date: Yup.date().required("Eform Date is required"),
+    bank: Yup.string().required("Bank is required"),
+    paymentType: Yup.string().required("Payment Type is required"),
+    voyage: Yup.string()
+      .min(3, "Voyage must be at least 3 characters")
+      .required("Voyage is required"),
+    consignment_value: Yup.number()
+      .min(0)
+      .required("Consignment Value is required"),
+    vessel: Yup.string().required("Vessel is required"),
+    netWeight: Yup.number().min(0).required("Net Weight is required"),
+    gross_weight: Yup.number().min(0).required("Gross Weight is required"),
+
+    containers: Yup.array()
+      .of(
+        Yup.object({
+          containerNo: Yup.string().required("Container No. is required"),
+        }),
+      )
+      .min(1, "At least one container is required"),
+
+    orders: Yup.array(),
+
+    assignments: Yup.array()
+      .of(
+        Yup.object({
+          orderId: Yup.number().required(),
+          shippingDetailId: Yup.number().required(),
+          containerNo: Yup.string().required(),
+        }),
+      )
+      .optional(),
+  });
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setValues((prev) => ({ ...prev, [name]: value }));
+    if (touched[name]) validateField(name, value);
+  };
+
+  const handleNumberFocus = (e) => {
+    e.target.select();
+  };
+
+  const handleNumberChange = (e) => {
+    const { name, value } = e.target;
+    setValues((prev) => ({ ...prev, [name]: parseFloat(value) || 0 }));
+    if (touched[name]) validateField(name, parseFloat(value) || 0);
+  };
+  const handleDateChange = (e) => {
+    const { name, value: newValue } = e.target;
+    setValues((prev) => ({ ...prev, [name]: newValue }));
+    if (touched[name]) validateField(name, newValue);
+  };
+  const handleBlur = (e) => {
+    const { name, value } = e.target;
+    setTouched((prev) => ({ ...prev, [name]: true }));
+    validateField(name, value);
+  };
+  const handleDateBlur = (name) => {
+    setTouched((prev) => ({ ...prev, [name]: true }));
+    validateField(name, values[name]);
+  };
+  const handleSelectBlur = (name) => {
+    setTouched((prev) => ({ ...prev, [name]: true }));
+    validateField(name, values[name]);
+  };
+  const handlePartyChange = (e) => {
+    const { name, value } = e.target;
+    handleChange(e);
+    if (
+      (name === "shipper" || name === "consignee") &&
+      options.third_parties.length > 0
+    ) {
+      const selectedTp = options.third_parties.find(
+        (tp) => tp.id.toString() === value,
+      );
+      if (selectedTp) {
+        const nameField = name === "shipper" ? "shipperName" : "consigneeName";
+        const addressField =
+          name === "shipper" ? "shipperAddress" : "consigneeAddress";
+        setValues((prev) => ({
+          ...prev,
+          [nameField]:
+            selectedTp.name ||
+            selectedTp.company_name ||
+            selectedTp.title ||
+            "",
+          [addressField]: selectedTp.address || "",
+        }));
+      } else {
+        const nameField = name === "shipper" ? "shipperName" : "consigneeName";
+        const addressField =
+          name === "shipper" ? "shipperAddress" : "consigneeAddress";
+        setValues((prev) => ({
+          ...prev,
+          [nameField]: "",
+          [addressField]: "",
+        }));
+      }
+    } else if ((name === "shipper" || name === "consignee") && !value) {
+      const nameField = name === "shipper" ? "shipperName" : "consigneeName";
+      const addressField =
+        name === "shipper" ? "shipperAddress" : "consigneeAddress";
+      setValues((prev) => ({
+        ...prev,
+        [nameField]: "",
+        [addressField]: "",
+      }));
+    }
+  };
+  const handleBankChange = (e) => {
+    const { name, value } = e.target;
+    if (name !== "bank") return;
+    handleChange(e);
+    if (options.banks.length > 0) {
+      const selectedBank = options.banks.find((b) => b.id.toString() === value);
+      if (selectedBank) {
+        setValues((prev) => ({
+          ...prev,
+          bankName:
+            selectedBank.name ||
+            selectedBank.bank_name ||
+            selectedBank.title ||
+            "",
+        }));
+      } else {
+        setValues((prev) => ({ ...prev, bankName: "" }));
+      }
+    } else {
+      setValues((prev) => ({ ...prev, bankName: "" }));
+    }
+  };
+
+  const handleLocationChange = (e) => {
+    const { name, value } = e.target;
+    handleChange(e);
+
+    let optionsKey = [];
+    let nameField = "";
+
+    if (name === "origin") {
+      optionsKey = options.originOptions;
+      nameField = "originName";
+    } else if (name === "destination") {
+      optionsKey = options.destinationOptions;
+      nameField = "destinationName";
+    }
+    if (optionsKey.length > 0) {
+      const selected = optionsKey.find((opt) => opt.value === value);
+      setValues((prev) => ({
+        ...prev,
+        [nameField]: selected ? selected.label : "",
+      }));
+    } else {
+      setValues((prev) => ({ ...prev, [nameField]: "" }));
+    }
+  };
+
+  const updateArrayField = (arrayName, index, fieldName, value) => {
+    const newArray = [...(values[arrayName] || [])];
+    newArray[index][fieldName] = value;
+    setValues((prev) => ({ ...prev, [arrayName]: newArray }));
+    if (touched[arrayName]) validateArray(arrayName);
+  };
+
+  const validateArray = async (arrayName) => {
+    try {
+      await validationSchema.fields[arrayName]?.validate(
+        values[arrayName] || [],
+      );
+      setErrors((prev) => ({ ...prev, [arrayName]: undefined }));
+    } catch (error) {
+      setErrors((prev) => ({ ...prev, [arrayName]: error.message }));
+    }
+  };
+
+  const markArrayTouched = (arrayName) => {
+    if (!touched[arrayName]) {
+      setTouched((prev) => ({ ...prev, [arrayName]: true }));
+      validateArray(arrayName);
+    }
+  };
+
+  useEffect(() => {
+    if (orders && orders.length > 0) {
+      const allOrderIds = orders.map((order) => order.id);
+      setSelectedOrders(allOrderIds);
+    }
+  }, []);
+
+  const validateForm = async () => {
+    try {
+      await validationSchema.validate(values, { abortEarly: false });
+      return true;
+    } catch (validationError) {
+      const fieldErrors = {};
+      validationError.inner.forEach((err) => {
+        fieldErrors[err.path] = err.message;
+      });
+      setErrors(fieldErrors);
+      toast.error("Please fix the validation errors before submitting.");
+      return false;
+    }
+  };
+
+  const validateAndPrepare = async () => {
+    try {
+      await validationSchema.validate(values, { abortEarly: false });
+
+      if (!flatShipments?.length) {
+        toast.error(
+          "No shipments/containers selected. Please select at least one container assignment.",
+        );
+        return null;
+      }
+
+      const uniqueContainers = Array.from(
+        new Map(
+          (values.containers || []).map((c) => [
+            c.containerNo,
+            { containerNo: c.containerNo, cid: c.id || c.cid || null },
+          ]),
+        ).values(),
+      );
+
+      if (uniqueContainers.length === 0) {
+        toast.error("No valid containers found in selected shipments.");
+        return null;
+      }
+
+      const selectedCidSet = new Set(
+        (values.containers || [])
+          .map((c) => c.id || c.cid)
+          .filter(Boolean)
+          .map((id) => parseInt(id, 10)),
+      );
+
+      const activeFlatShipments = flatShipments.filter((s) =>
+        selectedCidSet.has(parseInt(s.containerCid, 10)),
+      );
+
+      if (!activeFlatShipments.length) {
+        toast.error(
+          "No shipments/containers selected. Please select at least one container assignment.",
+        );
+        return null;
+      }
+
+      const uniqueOrderIds = [
+        ...new Set(activeFlatShipments.map((s) => s.orderId)),
+      ];
+
+      if (uniqueOrderIds.length === 0) {
+        toast.error("No orders associated with selected shipments.");
+        return null;
+      }
+
+      const assignments = activeFlatShipments.map((s) => ({
+        orderId: s.orderId,
+        receiverName: s.receivername || null,
+        category: s.category || null,
+        containerNo: s.containerNumber,
+        containerCid: s.containerCid,
+        shippingDetailId: s.shippingDetailId,
+        assignedWeight: parseFloat(s.assignWeight || 0),
+        assignedBoxes: parseInt(s.assignBoxes || 0) || null,
+        remainingItems: parseInt(s.remainingItems || 0) || null,
+      }));
+
+      const submitData = {
+        consignment_number: values.consignment_number?.trim() || null,
+        consignment_value: parseFloat(values.consignment_value) || 0,
+        net_weight: parseFloat(values.netWeight) || 0,
+        gross_weight: parseFloat(values.gross_weight) || 0,
+        payment_type: values.paymentType || null,
+        status: values.status || "Draft",
+        remarks: values.remarks || null,
+
+        shipper_id: parseInt(values.shipper, 10) || null,
+        shipper: values.shipperName?.trim() || "",
+        shipper_address: values.shipperAddress || null,
+
+        consignee_id: parseInt(values.consignee, 10) || null,
+        consignee: values.consigneeName?.trim() || "",
+        consignee_address: values.consigneeAddress || null,
+
+        origin: values.originName || values.origin || null,
+        destination: values.destinationName || values.destination || null,
+        place_of_loading_id: parseInt(values.place_of_loading, 10) || null,
+        place_of_loading: values.place_of_loading_name?.trim() || null,
+        place_of_delivery_id: parseInt(values.place_of_delivery, 10) || null,
+        place_of_delivery: values.place_of_delivery_name?.trim() || null,
+
+        eform: values.eform?.trim() || null,
+        eform_date: values.eform_date
+          ? dayjs(values.eform_date).format("YYYY-MM-DD")
+          : null,
+
+        bank_id: parseInt(values.bank, 10) || null,
+        bank: values.bankName?.trim() || "",
+
+        currency_code: values.currency_code || "GBP",
+        vessel: parseInt(values.vessel, 10) || null,
+        voyage: values.voyage?.trim() || null,
+        shipping_line: values.shippingLine?.trim() || null,
+        seal_no: values.seal_no?.trim() || null,
+
+        eta: values.eta ? dayjs(values.eta).format("YYYY-MM-DD") : null,
+
+        containers: uniqueContainers,
+        orders: uniqueOrderIds,
+        assignments: assignments,
+        cleared_item_ids: [...clearedItemIds],
+        total_assigned_weight: calculatedTotals.totalAssignedWeight || 0,
+
+        user_id,
+      };
+      return submitData;
+    } catch (err) {
+      if (err.name === "ValidationError") {
+        const fieldErrors = {};
+        err.inner.forEach((e) => {
+          fieldErrors[e.path] = e.message;
+        });
+        setErrors(fieldErrors);
+        toast.error("Please fix the highlighted fields.");
+      } else {
+        console.error("Validation/Preparation failed:", err);
+        toast.error("Error preparing consignment data. Please check inputs.");
+      }
+
+      return null;
+    }
+  };
+
+  const navigate = useNavigate();
+
+  const getContainerError = (index) => {
+    const container = values.containers?.[index] || {};
+    const errors = {};
+    if (!container.containerNo?.trim()) {
+      errors.containerNo = "Container No. is required";
+    }
+    if (!container.size?.trim()) {
+      errors.size = "Size is required";
+    }
+    const isDuplicate = (containerNo) => {
+      return (values.containers || []).some(
+        (c, i) =>
+          i !== index &&
+          c.containerNo?.trim().toUpperCase() ===
+            containerNo?.trim().toUpperCase(),
+      );
+    };
+    if (container.containerNo && isDuplicate(container.containerNo)) {
+      errors.containerNo = "Container already exists in list";
+    }
+    return errors;
+  };
+  const hasErrors = Object.values(errors).some(Boolean);
+  if (loading || !places || places.length === 0) {
+    return (
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          height: "100%",
+        }}
+      >
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  const StyledTooltip = styled(Tooltip)(({ theme }) => ({
+    [`& .MuiTooltip-tooltip`]: {
+      backgroundColor: theme.palette.common.white,
+      color: theme.palette.text.primary,
+      boxShadow: theme.shadows[3],
+      borderRadius: theme.shape.borderRadius,
+      fontSize: theme.typography.body2.fontSize,
+      maxWidth: "300px",
+      border: `1px solid ${theme.palette.divider}`,
+    },
+    [`& .MuiTooltip-arrow`]: {
+      color: theme.palette.common.white,
+    },
+  }));
+  const StatusChip = ({ status }) => {
+    const colors = getStatusColors(status);
+    return (
+      <Chip
+        label={status}
+        size="small"
+        sx={{
+          height: 18,
+          fontSize: "0.85rem",
+          marginLeft: 2,
+          padding: 2,
+          backgroundColor: colors.bg,
+          color: colors.text,
+        }}
+      />
+    );
+  };
+
+  const parseSummaryToList = (receivers) => {
+    if (!receivers || !Array.isArray(receivers)) return [];
+    return receivers.map((rec) => ({
+      primary: rec.receiver_name,
+      status: rec.shippingdetails?.[0]?.status || "Created",
+    }));
+  };
+
+  const parseContainersToList = (containersStr) => {
+    if (!containersStr) return [];
+    return containersStr.split(", ").map((cont) => ({ primary: cont.trim() }));
+  };
+
+  const StyledTableRow = styled(TableRow)(({ theme }) => ({
+    "&:nth-of-type(odd)": {
+      backgroundColor: theme.palette.action.hover,
+    },
+    "&:last-child td, &:last-child th": {
+      border: 0,
+    },
+    "&:hover": {
+      backgroundColor: theme.palette.action.selected,
+    },
+  }));
+
+  const StyledTableCell = styled(TableCell)(({ theme }) => ({
+    borderBottom: `1px solid ${theme.palette.divider}`,
+    fontSize: "12px",
+    padding: theme.spacing(1.5, 2),
+  }));
+  const StyledTableHeadCell = styled(TableCell)(({ theme }) => ({
+    backgroundColor: theme.palette.primary.main,
+    color: theme.palette.primary.contrastText,
+    fontWeight: "bold",
+    fontSize: "0.875rem",
+    padding: theme.spacing(1.5, 2),
+    borderBottom: `2px solid ${theme.palette.primary.dark}`,
+  }));
+
+  const loadImageAsBase64 = (url) =>
+    new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = "Anonymous";
+      img.src = url;
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL("image/png"));
+      };
+      img.onerror = () => resolve(null);
+    });
+
+  const handleFilterText = (e) => {
+    const { name, value } = e.target;
+    setFilters((prev) => ({ ...prev, [name]: value }));
+    setPage(0);
+  };
+
+  const handleFilterChange = (e) => {
+    const { name, value } = e.target;
+    setFilters((prev) => ({ ...prev, [name]: value }));
+    setPage(0);
+  };
+
+  const generateConsignmentNotePDFWithCanvas = async (
+    data,
+    allReceivers,
+    selectedOrderObjects = includedOrders,
+  ) => {
+    if (!data.consignment_number) {
+      toast.warning(
+        "Please enter a consignment number to generate the manifest.",
+      );
+      return;
+    }
+
+    let total_assign_boxes_all = 0;
+
+    allReceivers.forEach((order) => {
+      order.receivers.forEach((receiver) => {
+        const shippingDetails = receiver.shippingdetails || [];
+
+        shippingDetails.forEach((detail) => {
+          const containerDetails = detail.containerDetails || [];
+
+          containerDetails.forEach((container) => {
+            total_assign_boxes_all += Number(container.assign_total_box) || 0;
+          });
+        });
+      });
+    });
+
+    const uniqueCommoditiesMap = new Map();
+
+    allReceivers.forEach((order) => {
+      order.receivers.forEach((receiver) => {
+        receiver.shippingdetails?.forEach((detail) => {
+          const category = detail.category || "Unknown";
+          const subcategory = detail.subcategory || "";
+          const commodityKey = `${category}${subcategory ? ` - ${subcategory}` : ""}`;
+
+          if (!uniqueCommoditiesMap.has(commodityKey)) {
+            uniqueCommoditiesMap.set(commodityKey, {
+              commodity: commodityKey,
+              totalBoxes: 0,
+              totalWeight: 0,
+              orders: new Set(),
+            });
+          }
+
+          const commodityData = uniqueCommoditiesMap.get(commodityKey);
+
+          let assignBoxes = 0;
+          detail.containerDetails?.forEach((container) => {
+            assignBoxes += Number(container.assign_total_box) || 0;
+          });
+          commodityData.totalBoxes += assignBoxes;
+
+          commodityData.totalWeight += detail.weight || 0;
+
+          commodityData.orders.add(order.id);
+        });
+      });
+    });
+
+    const uniqueCommodities = Array.from(uniqueCommoditiesMap.values()).map(
+      (item) => ({
+        commodity: item.commodity,
+        totalOrders: item.orders.size,
+        totalPkgs: item.totalBoxes,
+        totalWeight: item.totalWeight,
+      }),
+    );
+
+    let manifestData = [];
+    let serialNo = 1;
+    const processedOrders = new Set();
+
+    allReceivers.forEach((order) => {
+      if (processedOrders.has(order.id)) return;
+      processedOrders.add(order.id);
+      const bookingNumber = order.booking_ref || "N/A";
+
+      order.receivers.forEach((receiver) => {
+        receiver.shippingdetails?.forEach((detail) => {
+          let containerNo = "";
+          if (detail.containerDetails && detail.containerDetails.length > 0) {
+            containerNo =
+              detail.containerDetails[0]?.container?.container_number || "N/A";
+          } else if (order.receiver_containers_json) {
+            containerNo = order.receiver_containers_json;
+          } else {
+            containerNo = "N/A";
+          }
+
+          // Marks & Nos
+          const marksNos = detail.itemRef || "N/A";
+
+          let pkgs = 0;
+          detail.containerDetails?.forEach((container) => {
+            pkgs += Number(container.assign_total_box) || 0;
+          });
+
+          if (pkgs === 0) {
+            pkgs = detail.totalNumber || 0;
+          }
+
+          const category = detail.category || "Unknown";
+          const subcategory = detail.subcategory || "";
+          const commodity = subcategory
+            ? `${category} - ${subcategory}`
+            : category;
+
+          manifestData.push({
+            sno: serialNo++,
+            bookingNo: bookingNumber,
+            containerNo: containerNo,
+            sender: order.sender_name || "N/A",
+            receiver: receiver.receiver_name || "N/A",
+            marksNos: marksNos,
+            pkgs: pkgs,
+            weight: detail.weight || 0,
+            commodity: commodity,
+          });
+        });
+      });
+    });
+
+    const manifestTotals = manifestData.reduce(
+      (total, item) => {
+        total.totalPkgs += item.pkgs;
+        total.totalWeight += item.weight;
+        return total;
+      },
+      { totalPkgs: 0, totalWeight: 0 },
+    );
+
+    const getVesselName = (vesselId) => {
+      if (!vesselId) return "N/A";
+      const vesselOption = options.vesselOptions?.find(
+        (v) => v.value === vesselId.toString(),
+      );
+      return vesselOption?.label || `Vessel ${vesselId}`;
+    };
+
+    const vesselName = getVesselName(data.vessel);
+
+    const containerNo =
+      data.containers && data.containers.length > 0
+        ? data.containers[0].containerNo
+        : "N/A";
+
+    const containerSize =
+      data.containers && data.containers.length > 0
+        ? data.containers[0].size
+        : "N/A";
+
+    const containerType =
+      data.containers && data.containers.length > 0
+        ? data.containers[0].containerType
+        : "N/A";
+
+    const logoBase64 = await loadImageAsBase64(logoPic);
+
+    const tempElement = document.createElement("div");
+    tempElement.style.width = "210mm";
+    tempElement.style.padding = "4mm";
+    tempElement.style.backgroundColor = "white";
+    tempElement.style.fontFamily =
+      '"Helvetica Neue", Helvetica, Arial, sans-serif';
+    tempElement.style.boxSizing = "border-box";
+
+    tempElement.innerHTML = `<style>
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 13px;
+            color: #000;
+            line-height: 1.4;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 850px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .date-row {
+            text-align: right;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .title {
+            font-weight: bold;
+            text-decoration: underline;
+            font-size: 16px;
+        }
+
+        /* Top Boxes */
+        .top-boxes {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .box {
+            flex: 1;
+            border: 1px solid #000;
+        }
+
+        .box-label {
+            padding: 2px 5px;
+            border-bottom: 1px solid #000;
+            min-height: 35px;
+        }
+
+        .box-content {
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .highlighted {
+            font-weight: bold;
+        }
+
+        /* Details Grid */
+        .details-grid {
+            display: grid;
+            grid-template-columns: 1.2fr 1.2fr 1fr;
+            gap: 15px 10px;
+            margin-bottom: 40px;
+        }
+
+        .underline {
+            border-bottom: 1px solid #000;
+            display: inline-block;
+            min-width: 80px;
+        }
+
+        /* Summary Section */
+        .summary-bar {
+            display: flex;
+            align-items: center;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        .summary-box {
+            border: 1px solid #000;
+            padding: 10px 40px;
+            font-weight: bold;
+        }
+
+        .summary-text {
+            font-weight: bold;
+        }
+
+        /* Certification */
+        .certification-box {
+            border: 1px solid #000;
+            padding: 15px;
+            margin-bottom: 100px;
+            width: 90%;
+        }
+
+        /* Footer */
+        .footer {
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .sign-block {
+            width: 300px;
+        }
+
+        .sign-line {
+            border-top: 1px solid #000;
+            margin-bottom: 5px;
+        }
+
+        .text-right {
+            text-align: left;
+        }
+        
+        /* New style for container info */
+        .container-info {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="date-row">DATED: ${new Date().toLocaleString()}</div>
+            <div class="title">CONSIGNMENT NOTE: ${data.consignment_number}</div>
+        </div>
+
+        <div class="top-boxes">
+            <div class="box">
+                <div class="box-label">Custom CRN or Customs Machine number</div>
+                <div class="box-content"></div>
+            </div>
+            <div class="box">
+                <div class="box-label">
+                    <div class="container-info">
+                        <span>Container No:</span>
+                    </div>
+                </div>
+                <div class="box-content highlighted">${containerNo} ${containerSize}${containerType}</div>
+            </div>
+            <div class="box">
+                <div class="box-label">Seal No</div>
+                <div class="box-content">${data.seal_no || "N/A"}</div>
+            </div>
+        </div>
+
+        <div class="details-grid">
+            <div><strong>VESSEL:</strong> ${vesselName}</div>
+            <div><strong>Voyage:</strong> ${data.voyage || "N/A"}</div>
+            <div><strong>SHIPPING LINE:</strong> ${data.shipping_line_name || "N/A"}</div>
+
+            <div><strong>Dest:</strong> ${data.destinationName || "N/A"}</div>
+            <div><strong>Shipper:</strong> ${data.shipperName || "N/A"}</div>
+            <div><strong>BOOKING NO:</strong> ${
+              allReceivers.length > 0
+                ? allReceivers
+                    .map((order) => order.booking_ref)
+                    .filter(Boolean)
+                    .join(", ")
+                : "N/A"
+            }</div>
+
+            <div><strong>Comm:</strong> ${uniqueCommodities.length > 0 ? uniqueCommodities.map((c) => c.commodity).join(", ") : "N/A"}</div>
+            <div><strong>Origin:</strong> ${data.originName || "N/A"}</div>
+            <div>
+                <strong>NET Wt:</strong> <span class="underline">${data.net_weight || "0"} KGS</span>
+            </div>
+
+            <div><strong>Status:</strong> ${data.status || "N/A"}</div>
+            <div><strong class="underline">TRUCK NO</strong> ${
+              allReceivers.length > 0
+                ? allReceivers
+                    .map((order) => order.plate_no)
+                    .filter(Boolean)
+                    .join(", ")
+                : "N/A"
+            }</div>
+            <div><strong>TOTAL CTNS:</strong> <span class="underline">${Number(total_assign_boxes_all).toLocaleString()}</span></div>
+        </div>
+
+        <div class="summary-bar">
+            <div class="summary-box">${containerNo} ${containerSize}${containerType}</div>
+            <div class="summary-text">
+                PKGS: ${Number(total_assign_boxes_all).toLocaleString()} &nbsp; NET WT: ${data.net_weight || "0"} KGS
+            </div>
+        </div>
+
+        <div class="certification-box">
+            I / We hereby certify that goods mentioned in the accompanied packing list have been placed inside the
+            container and the container has been sealed by me / us the particulars are true.
+        </div>
+
+        <div class="footer">
+            <div class="sign-block">
+                <div class="sign-line"></div>
+                PICT/KICT/QICT Representative<br>Gate Clerk / Dmg Inspector
+            </div>
+            <div class="sign-block text-right">
+                <div class="sign-line"></div>
+                Name and Signature of Agent<br>Shipper / Consolidator with stamp
+            </div>
+        </div>
+    </div>`;
+
+    document.body.appendChild(tempElement);
+
+    const scale = 1.5;
+    const canvas = await html2canvas(tempElement, {
+      scale: scale,
+      useCORS: true,
+      allowTaint: true,
+      logging: false,
+      width: tempElement.scrollWidth,
+      height: tempElement.scrollHeight,
+      windowWidth: tempElement.scrollWidth,
+      windowHeight: tempElement.scrollHeight,
+      backgroundColor: "#ffffff",
+      imageTimeout: 0,
+      removeContainer: true,
+      onclone: function (clonedDoc) {
+        clonedDoc.querySelectorAll("img").forEach((img) => {
+          img.style.maxWidth = "100%";
+          img.style.height = "auto";
+        });
+      },
+    });
+    const textItems = collectTextItems(tempElement);
+    document.body.removeChild(tempElement);
+
+    const canvasDataURL = canvas.toDataURL("image/png", 0.85);
+    const canvasLink = document.createElement("a");
+    canvasLink.download = `Consignment_Note_${data.consignment_number}_Canvas_${Date.now()}.png`;
+    canvasLink.href = canvasDataURL;
+    canvasLink.click();
+
+    const innerWidthMm = 210 - 2 * 14;
+    const pxPerMm = canvas.width / innerWidthMm;
+    const extraBottomSpaceMm = 8;
+    const contentHeightPerPageMm = 297 - 2 * 14 - extraBottomSpaceMm;
+    const contentHeightPerPagePx = contentHeightPerPageMm * pxPerMm;
+
+    const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "p" });
+    const marginMm = 14;
+    const contentWidthMm = innerWidthMm;
+
+    let startY = 0;
+    while (startY < canvas.height) {
+      const sliceHeightPx = Math.min(
+        contentHeightPerPagePx,
+        canvas.height - startY,
+      );
+
+      const croppedCanvas = document.createElement("canvas");
+      croppedCanvas.width = canvas.width;
+      croppedCanvas.height = sliceHeightPx;
+      const ctx = croppedCanvas.getContext("2d");
+      ctx.drawImage(
+        canvas,
+        0,
+        startY,
+        canvas.width,
+        sliceHeightPx,
+        0,
+        0,
+        canvas.width,
+        sliceHeightPx,
+      );
+
+      const croppedDataURL = croppedCanvas.toDataURL("image/jpeg", 0.85);
+      const drawHeightMm = sliceHeightPx / pxPerMm;
+
+      if (startY > 0) {
+        pdf.addPage();
+      }
+      pdf.addImage(
+        croppedDataURL,
+        "JPEG",
+        marginMm,
+        marginMm,
+        contentWidthMm,
+        drawHeightMm,
+        undefined,
+        "FAST",
+      );
+
+      startY += sliceHeightPx;
+
+      addTextLayer(pdf, textItems, {
+        scale,
+        pxPerMm,
+        startY,
+        sliceHeightPx,
+        marginMm,
+      });
+    }
+
+    pdf.save(`Manifest_${data.consignment_number}_Detailed_${Date.now()}.pdf`);
+  };
+
+  const generateshipmentsAndOrdersPDFWithCanvas = async (
+    data,
+    allReceivers,
+    selectedOrderObjects = includedOrders,
+  ) => {
+    if (!data.consignment_number) {
+      toast.warning(
+        "Please enter a consignment number to generate the manifest.",
+      );
+      return;
+    }
+
+    const receiverGroups = [];
+
+    if (allReceivers && allReceivers.length > 0) {
+      allReceivers.forEach((order) => {
+        if (order.receivers && order.receivers.length > 0) {
+          order.receivers.forEach((receiver) => {
+            const items = receiver.shippingdetails || [];
+            if (items.length > 0) {
+              items.forEach((item) => {
+                receiverGroups.push({
+                  orderId: order.id,
+                  orderNumber: order.rgl_booking_number || `ORD-${order.id}`,
+                  sender: order.sender_name || "N/A",
+                  receiver: receiver.receivername || "N/A",
+                  receiverData: receiver,
+                  orderData: order,
+                  shippingDetails: [item],
+                });
+              });
+            } else {
+              receiverGroups.push({
+                orderId: order.id,
+                orderNumber: order.rgl_booking_number || `ORD-${order.id}`,
+                sender: order.sender_name || "N/A",
+                receiver: receiver.receivername || "N/A",
+                receiverData: receiver,
+                orderData: order,
+                shippingDetails: [],
+              });
+            }
+          });
+        }
+      });
+    }
+
+    const formatDateForPDF = (dateStr) => {
+      if (!dateStr) return "N/A";
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) return "N/A";
+      return date
+        .toLocaleDateString("en-GB", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        })
+        .toUpperCase();
+    };
+
+    const getVesselName = (vesselId) => {
+      if (!vesselId) return "N/A";
+      const vesselOption = options.vesselOptions?.find(
+        (v) => v.value === vesselId.toString(),
+      );
+      return vesselOption?.label || `Vessel ${vesselId}`;
+    };
+
+    const vesselName = getVesselName(data.vessel);
+
+    const logoBase64 = await loadImageAsBase64(logoPic);
+
+    const commonData = {
+      consignment_number: data.consignment_number || "N/A",
+      originName: data.originName || "N/A",
+      destinationName: data.destinationName || "N/A",
+      shipperName: data.shipperName || "N/A",
+      shipperAddress: data.shipperAddress || "N/A",
+      consigneeName: data.consigneeName || "N/A",
+      consigneeAddress: data.consigneeAddress || "N/A",
+      bankName: data.bankName || "N/A",
+      sealNo: data.seal_no || "N/A",
+      created_at: data.created_at || "N/A",
+      generated_date: new Date()
+        .toLocaleDateString("en-GB", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        })
+        .toUpperCase(),
+      generated_time: new Date().toLocaleTimeString("en-GB", {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+      voyage: data.voyage || "N/A",
+    };
+
+    const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "p" });
+    const marginMm = 14;
+    const contentWidthMm = 210 - 2 * marginMm;
+
+    for (let i = 0; i < receiverGroups.length; i++) {
+      const receiverGroup = receiverGroups[i];
+      const receiver = receiverGroup.receiverData;
+      const shippingDetails = receiverGroup.shippingDetails;
+
+      let receiverPackages = 0;
+      let receiverWeight = 0;
+      let itemRef = "";
+
+      shippingDetails.forEach((item) => {
+        let packagesForItem = 0;
+        let weightForItem = 0;
+
+        if (item.containerDetails && item.containerDetails.length > 0) {
+          item.containerDetails.forEach((containerDetail) => {
+            packagesForItem += Number(containerDetail.assign_total_box) || 0;
+            weightForItem += Number(containerDetail.assign_weight) || 0;
+          });
+        } else {
+          packagesForItem = parseInt(item.totalNumber) || 0;
+          weightForItem = parseFloat(item.weight) || 0;
+        }
+
+        receiverPackages += packagesForItem;
+        receiverWeight += weightForItem;
+
+        if (item.itemRef && !itemRef.includes(item.itemRef)) {
+          itemRef += (itemRef ? ", " : "") + item.itemRef;
+        }
+      });
+
+      const containerInfo =
+        data.containers && data.containers.length > 0
+          ? data.containers[0]
+          : { containerNo: "N/A", seal_no: "N/A" };
+
+      const tempElement = document.createElement("div");
+      tempElement.style.width = "780px";
+      tempElement.style.padding = "25px";
+      tempElement.style.backgroundColor = "white";
+      tempElement.style.fontFamily = "Arial, sans-serif";
+      tempElement.style.boxSizing = "border-box";
+      tempElement.style.borderTop = "8px solid #f37021";
+      tempElement.style.margin = "0 auto";
+      tempElement.style.fontSize = "10px";
+      tempElement.style.color = "#333";
+
+      tempElement.innerHTML = `
+      <style>
+        .terms {
+          font-size: 10px;
+          line-height: 1.4;
+        }
+
+        .terms ol {
+          margin: 6px 0;
+          padding-left: 0;
+          list-style-position: inside; /* 🔥 MAIN FIX */
+        }
+
+        .terms li {
+          margin-bottom: 4px;
+        }
+
+        .terms .footer {
+          font-size: 7px;
+          margin-top: 10px;
+        }
+      </style>
+      <div style="width: 780px; margin: 0 auto; background: white;">
+        <!-- HBL Design Header -->
+        <div class="header" style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+          <div class="logo-area">
+            <img src="${logoBase64 || ""}" alt="RoyalGulf Logo" style="width: 150px; height: auto;">
+          </div>
+          <div class="company-info" style="text-align: left; flex-grow: 1; margin-left: 20px;">
+            <p class="company-name" style="color: #f37021; font-size: 16px; font-weight: bold; margin: 0;">ROYAL GULF SHIPPING & LOGISTICS LLC</p>
+            <p class="locations" style="color: #008a45; font-weight: bold; margin: 2px 0;">DUBAI • LONDON • KARACHI • SHENZHEN</p>
+            <p style="font-size: 8px;">Ph: +971-4-3331785 | www.royalgulfshipping.com</p>
+          </div>
+          <div class="title-area" style="text-align: right;">
+            <p class="hbl-title" style="color: #f37021; font-size: 20px; font-weight: bold; margin: 0;">HOUSE BILL OF LADING</p>
+            <p style="font-size: 8px;">Non-negotiable copy</p>
+            <p style="font-size: 8px;">Consignment: ${commonData.consignment_number}</p>
+          </div>
+        </div>
+        
+        <!-- First Row - Basic Info -->
+        <div class="grid-row" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 8px;">
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">HBL NO.</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">--</span>
+          </div>
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">ORDER REFERENCE</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${receiverGroup.orderNumber}</span>
+          </div>
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">Item REFERENCE</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${itemRef}</span>
+          </div>
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">ISSUE DATE</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${new Date(commonData.created_at).toLocaleString("en-US", { month: "numeric", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true })}</span>
+          </div>
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">PLACE OF ISSUE</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${commonData.originName}</span>
+          </div>
+          
+        </div>
+        
+        <!-- Shipment Parties Section -->
+        <div class="section-header" style="color: #008a45; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid #008a45; margin-bottom: 5px; grid-column: span 4;">SHIPMENT PARTIES</div>
+        
+        <div class="parties-row" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 70px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">SHIPPER</span>
+            <div class="placeholder" style="font-weight: bold; font-size: 9px;">${commonData.shipperName}</div>
+            <div class="placeholder" style="font-size: 8px; color: #666;">${commonData.shipperName}</div>
+          </div>
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 70px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">CONSIGNEE</span>
+            <div class="placeholder" style="font-weight: bold; font-size: 9px;">${commonData.consigneeName}</div>
+            <div class="placeholder" style="font-size: 8px; color: #666;">${commonData.consigneeAddress || "N/A"}</div>
+          </div>
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 70px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">NOTIFY PARTY</span>
+            <div class="placeholder" style="font-weight: bold; font-size: 9px;">SAME AS CONSIGNEE</div>
+          </div>
+        </div>
+        
+        <!-- Voyage & Routing Section -->
+        <div class="section-header" style="color: #008a45; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid #008a45; margin-bottom: 5px; grid-column: span 4;">VOYAGE & ROUTING DETAILS</div>
+        
+        <div class="grid-row" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">PORT OF LOADING (POL)</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${commonData.originName}</span>
+          </div>
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">PORT OF DISCHARGE (POD)</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${commonData.destinationName}</span>
+          </div>
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">FINAL DESTINATION</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${commonData.destinationName}</span>
+          </div>
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">VESSEL NAME</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${vesselName}</span>
+          </div>
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">VOYAGE / SAILING</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${commonData.voyage}</span>
+          </div>
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">INCOTERMS</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">SEAFREIGHT</span>
+          </div>
+        </div>
+        
+        <!-- Container Info -->
+        <div class="section-header" style="color: #008a45; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid #008a45; margin-bottom: 5px; grid-column: span 4;">CONTAINER & PACKAGE INFO</div>
+        
+        <div class="grid-row" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 8px;">
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">CONTAINER NO.</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${containerInfo.containerNo} | ${containerInfo.size}ft</span>
+          </div>
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">SEAL NO.</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${commonData.sealNo || "N/A"}</span>
+          </div>
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">TOTAL PACKAGES</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${receiverPackages}</span>
+          </div>
+          <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
+            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">TOTAL WEIGHT (KGS)</span>
+            <span class="placeholder" style="font-weight: bold; font-size: 9px;">${receiverWeight.toFixed(2)}</span>
+          </div>
+        </div>
+        
+        <!-- Cargo Description Table -->
+        <div class="section-header" style="color: #008a45; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid #008a45; margin-bottom: 5px; grid-column: span 4;">CARGO DESCRIPTION</div>
+        
+        ${
+          shippingDetails.length > 0
+            ? `
+        <table class="cargo-table" style="width: 100%; border-collapse: collapse; margin-top: 5px;">
+          <thead>
+            <tr>
+              <th style="border: 1px solid #ccc; background-color: #f9f9f9; padding: 4px; font-size: 8px; width: 20%;">MARKS & NUMBERS</th>
+              <th style="border: 1px solid #ccc; background-color: #f9f9f9; padding: 4px; font-size: 8px; width: 40%;">DESCRIPTION OF GOODS</th>
+              <th style="border: 1px solid #ccc; background-color: #f9f9f9; padding: 4px; font-size: 8px; width: 10%;">PKGS</th>
+              <th style="border: 1px solid #ccc; background-color: #f9f9f9; padding: 4px; font-size: 8px; width: 15%;">WEIGHT (KGS)</th>
+              <th style="border: 1px solid #ccc; background-color: #f9f9f9; padding: 4px; font-size: 8px; width: 15%;">VOLUME (CBM)</th>
+            </tr>
+          </thead>
+          <tbody>
+  ${shippingDetails
+    .map((item, idx) => {
+      // Calculate packages and weight from containerDetails
+      let packagesForItem = 0;
+      let weightForItem = 0;
+
+      if (item.containerDetails && item.containerDetails.length > 0) {
+        item.containerDetails.forEach((containerDetail) => {
+          packagesForItem += Number(containerDetail.assign_total_box) || 0;
+          weightForItem += Number(containerDetail.assign_weight) || 0;
+        });
+      } else {
+        packagesForItem = parseInt(item.totalNumber) || 0;
+        weightForItem = parseFloat(item.weight) || 0;
+      }
+
+      const category = item.category || "N/A";
+      const subcategory = item.subcategory || "";
+      const description = subcategory
+        ? `${category} - ${subcategory}`
+        : category;
+
+      return `
+            <tr>
+              <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">${item.type || "N/A"}</td>
+              <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">${description}</td>
+              <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">${packagesForItem}</td>
+              <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">${weightForItem.toFixed(2)}</td>
+              <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">0.00</td>
+            </tr>
+            `;
+    })
+    .join("")}
+          <tr style="font-weight: bold; background-color: #e8f5e8;">
+            <td colspan="2" style="border: 1px solid #ccc; padding: 8px 4px; text-align: right;">TOTAL:</td>
+            <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">${receiverPackages}</td>
+            <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">${receiverWeight.toFixed(2)}</td>
+            <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">0.00</td>
+          </tr>
+        </tbody>
+        </table>
+        `
+            : `
+        <div style="text-align: center; padding: 30px; background: #f9f9f9; border: 1px dashed #ccc; margin-bottom: 20px;">
+          <h4 style="color: #666; font-style: italic;">NO CARGO DETAILS FOUND</h4>
+          <p style="color: #999;">No shipping details available for this receiver.</p>
+        </div>
+        `
+        }
+        
+        <!-- Terms and Footer -->
+        <div class="bottom-section" style="display: grid; grid-template-columns: 2fr 1fr; gap: 15px; margin-top: 10px; border-top: 1px solid #000; padding-top: 8px;">
+          <div class="terms">
+            <strong>
+              By confirming this order for shipment, the Shipper/Consignee agrees to the following terms:
+            </strong>
+
+            <ol style="margin-left: 4px;">
+              <li>Carriage is performed under Royal Gulf Shipping & Logistics LLC’s standard terms and applicable international conventions. All cargo details supplied must be true and complete.</li>
+
+              <li>Transit times are estimates only. Delays may occur due to weather, customs, port congestion, operational issues or carrier schedules.</li>
+
+              <li>Customs scanning, inspections, dog checks, or port delays may incur extra charges payable by the Merchant.</li>
+
+              <li>In case of loss/damage, liability shall not exceed the freight value or USD 50 per package unless a higher value is declared and agreed in writing beforehand.</li>
+
+              <li>The Merchant confirms lawful ownership of goods and accepts full responsibility for any illegal, prohibited or undeclared items shipped.</li>
+
+              <li>Royal Gulf is not liable for any damage during customs/port inspections at origin, transit or destination.</li>
+
+              <li>Cargo is carried at Merchant’s risk unless the Merchant arranges separate insurance. Royal Gulf is not liable for indirect or consequential losses.</li>
+
+              <li>Claims must be notified immediately in writing and within legal time limits. Late claims may be void.</li>
+
+              <li>Royal Gulf may use third-party carriers or subcontractors; all their protections and liability limits apply equally to Royal Gulf.</li>
+
+              <li>This HBL applies only to order ref ${receiverGroup.orderNumber}.</li>
+
+              <li>Governed by UAE law; disputes fall under Dubai courts unless agreed otherwise.</li>
+            </ol>
+
+            <p class="footer">
+              Receiver: ${receiverGroup.receiver || receiverGroup.receiverData.receivername} |
+              Order: ${receiverGroup.orderNumber} |
+              Container: ${containerInfo.containerNo} |
+              Page ${i + 1} of ${receiverGroups.length}
+            </p>
+          </div>
+
+          <div class="signature-box" style="border-left: 1px solid #ccc; padding-left: 10px;">
+          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #000;">For and on behalf of</span>
+            <p style="color: #f37021; font-weight: bold; margin: 0; font-size:12px;">Royal Gulf Shipping & Logistics LLC</p>
+          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #000;">Generated: ${commonData.generated_date} ${commonData.generated_time}</span>
+
+            <div style="margin-top: 35px; border-top: 1px solid #000;">
+              <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">Authorised Signature</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+      document.body.appendChild(tempElement);
+
+      const canvas = await html2canvas(tempElement, {
+        scale: 1.5,
+        useCORS: true,
+        allowTaint: true,
+        logging: false,
+        width: tempElement.scrollWidth,
+        height: tempElement.scrollHeight,
+        windowWidth: tempElement.scrollWidth,
+        windowHeight: tempElement.scrollHeight,
+        backgroundColor: "#ffffff",
+        imageTimeout: 0,
+        removeContainer: true,
+      });
+
+      const textItems = collectTextItems(tempElement);
+
+      document.body.removeChild(tempElement);
+
+      const pxPerMm = canvas.width / contentWidthMm;
+      const canvasHeightMm = canvas.height / pxPerMm;
+
+      if (i > 0) {
+        pdf.addPage();
+      }
+
+      const imgData = canvas.toDataURL("image/jpeg", 0.85);
+      pdf.addImage(
+        imgData,
+        "JPEG",
+        marginMm,
+        marginMm,
+        contentWidthMm,
+        canvasHeightMm,
+        undefined,
+        "FAST",
+      );
+
+      addTextLayer(pdf, textItems, {
+        scale: 1.5,
+        pxPerMm,
+        startY: 0,
+        sliceHeightPx: canvas.height,
+        marginMm,
+      });
+    }
+    pdf.save(`HBL_${data.consignment_number}_${Date.now()}.pdf`);
+  };
+
+  const generateManifestPDFWithCanvas = async (
+    data,
+    allReceivers,
+    selectedOrderObjects = includedOrders,
+    groupBySubcategory = false,
+  ) => {
+    if (!data.consignment_number) {
+      toast.warn("Please enter a consignment number to generate the manifest.");
+      return;
+    }
+
+    const groupedShipping = allReceivers.reduce((acc, order) => {
+      acc[order.id] = order.receivers.reduce((recAcc, receiver) => {
+        recAcc[receiver.id] = receiver.shippingdetails || [];
+        return recAcc;
+      }, {});
+      return acc;
+    }, {});
+
+    let total_assign_boxes_all = 0;
+    let total_assign_weight_all = 0;
+
+    allReceivers.forEach((order) => {
+      order.receivers.forEach((receiver) => {
+        const shippingDetails = receiver.shippingdetails || [];
+        shippingDetails.forEach((detail) => {
+          const containerDetails = detail.containerDetails || [];
+          containerDetails.forEach((container) => {
+            total_assign_boxes_all += Number(container.assign_total_box) || 0;
+            total_assign_weight_all += Number(container.assign_weight) || 0;
+          });
+        });
+      });
+    });
+
+    const logoBase64 = await loadImageAsBase64(logoPic);
+
+    const tempElement = document.createElement("div");
+    tempElement.style.width = "210mm";
+    tempElement.style.padding = "4mm";
+    tempElement.style.backgroundColor = "white";
+    tempElement.style.fontFamily =
+      '"Helvetica Neue", Helvetica, Arial, sans-serif';
+    tempElement.style.boxSizing = "border-box";
+
+    const commoditySummary = allReceivers.reduce((summary, order) => {
+      order.receivers.forEach((receiver) => {
+        receiver.shippingdetails?.forEach((detail) => {
+          const commodity = detail.category || "Unknown";
+          const subcategory = detail.subcategory || "";
+          const commodityType = detail.type || "";
+
+          const commodityKey = groupBySubcategory
+            ? `${commodity}|${subcategory}`
+            : commodity;
+          const displayKey =
+            groupBySubcategory && subcategory
+              ? `${commodity} - ${subcategory}`
+              : commodity;
+
+          if (!summary[commodityKey]) {
+            summary[commodityKey] = {
+              commodity: displayKey,
+              commodityType: commodityType,
+              totalOrders: new Set(),
+              totalPkgs: 0,
+              totalWeight: 0,
+            };
+          }
+
+          summary[commodityKey].totalOrders.add(order.id);
+
+          let assignBoxesForThisDetail = 0;
+          let assignWeightForThisDetail = 0;
+
+          if (detail.containerDetails && detail.containerDetails.length > 0) {
+            detail.containerDetails.forEach((container) => {
+              assignBoxesForThisDetail +=
+                Number(container.assign_total_box) || 0;
+              assignWeightForThisDetail += Number(container.assign_weight) || 0;
+            });
+          }
+
+          summary[commodityKey].totalPkgs += assignBoxesForThisDetail;
+          summary[commodityKey].totalWeight += assignWeightForThisDetail;
+        });
+      });
+
+      return summary;
+    }, {});
+
+    Object.values(commoditySummary).forEach((item) => {
+      item.totalOrders = item.totalOrders.size;
+    });
+
+    const commodityArray = Object.values(commoditySummary).sort((a, b) =>
+      a.commodity.localeCompare(b.commodity),
+    );
+
+    const grandTotal = commodityArray.reduce(
+      (total, item) => {
+        total.totalOrders += item.totalOrders;
+        total.totalPkgs += item.totalPkgs;
+        total.totalWeight += item.totalWeight;
+        return total;
+      },
+      { totalOrders: 0, totalPkgs: 0, totalWeight: 0 },
+    );
+
+    const containerGroups = {};
+    let serialNo = 1;
+
+    const containersData = data.containers || [];
+
+    allReceivers.forEach((order) => {
+      order.receivers.forEach((receiver) => {
+        receiver.shippingdetails?.forEach((detail) => {
+          let containerNo = "";
+          let containerSize = "N/A";
+          let containerType = "N/A";
+
+          if (detail.containerDetails && detail.containerDetails.length > 0) {
+            containerNo =
+              detail.containerDetails[0]?.container?.container_number ||
+              order.receiver_containers_json ||
+              order.container_number ||
+              "N/A";
+
+            containerSize =
+              detail.containerDetails[0]?.container?.size ||
+              detail.containerDetails[0]?.size ||
+              "N/A";
+
+            containerType =
+              detail.containerDetails[0]?.container?.containerType ||
+              detail.containerDetails[0]?.containerType ||
+              "N/A";
+          } else {
+            containerNo =
+              order.receiver_containers_json || order.container_number || "N/A";
+          }
+
+          if (containerNo !== "N/A" && containersData.length > 0) {
+            const matchedContainer = containersData.find(
+              (c) => c.containerNo === containerNo,
+            );
+            if (matchedContainer) {
+              containerSize = matchedContainer.size || containerSize;
+              containerType = matchedContainer.containerType || containerType;
+            }
+          }
+
+          if (containerSize === "N/A") {
+            containerSize = order.container_size || "N/A";
+          }
+
+          const trackingId = detail.itemRef || "N/A";
+          let pkgs = 0;
+          let assignWeight = 0;
+
+          detail.containerDetails?.forEach((container) => {
+            pkgs += Number(container.assign_total_box) || 0;
+            assignWeight += Number(container.assign_weight) || 0;
+          });
+
+          if (pkgs === 0) {
+            pkgs = detail.totalNumber || 0;
+          }
+
+          const commodity = detail.category || "Unknown";
+          const subcategory = detail.subcategory
+            ? ` - ${detail.subcategory}`
+            : "";
+          const fullCommodity = `${commodity}${subcategory}`;
+
+          if (!containerGroups[containerNo]) {
+            containerGroups[containerNo] = {
+              containerNumber: containerNo,
+              containerSize: containerSize,
+              containerType: containerType,
+              data: [],
+            };
+          }
+
+          containerGroups[containerNo].data.push({
+            sno: serialNo++,
+            groupKey: `${order.id}-${receiver.id}`,
+            orderNo: order.rgl_booking_number || "N/A",
+            containerNo: containerNo,
+            sender: order.sender_name || "N/A",
+            receiver: receiver.receivername || "N/A",
+            trackingId: trackingId,
+            pkgs: pkgs,
+            weight: assignWeight,
+            commodity: fullCommodity,
+            category: detail.category || "Unknown",
+            subcategory: detail.subcategory || "",
+            marksAndNumber: receiver.marksandnumber || "N/A",
+          });
+        });
+      });
+    });
+
+    Object.keys(containerGroups).forEach((containerNo) => {
+      const containerData = containerGroups[containerNo].data;
+      const containerTotal = containerData.reduce(
+        (total, item) => {
+          total.totalPkgs += item.pkgs;
+          total.totalWeight += item.weight;
+          return total;
+        },
+        { totalPkgs: 0, totalWeight: 0 },
+      );
+
+      containerGroups[containerNo].containerTotal = containerTotal;
+    });
+
+    const manifestTotals = Object.values(containerGroups).reduce(
+      (total, container) => {
+        total.totalPkgs += container.containerTotal.totalPkgs;
+        total.totalWeight += container.containerTotal.totalWeight;
+        return total;
+      },
+      { totalPkgs: 0, totalWeight: 0 },
+    );
+
+    const getVesselName = (vesselId) => {
+      if (!vesselId) return "N/A";
+      const vesselOption = options.vesselOptions?.find(
+        (v) => v.value === vesselId.toString(),
+      );
+      return vesselOption?.label || `Vessel ${vesselId}`;
+    };
+
+    const vesselName = getVesselName(data.vessel);
+
+    tempElement.innerHTML = `
+    <style>
+      * { box-sizing: border-box; }
+      body { 
+        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; 
+        margin: 0; padding: 0; 
+        color: #2c3e50; background: white; 
+        line-height: 1.4; 
+        font-size: 11px; 
+      }
+      .header { 
+        padding: 4mm 4mm; 
+        display: flex; 
+        justify-content: space-between; 
+        align-items: start; 
+      }
+      .header-logo { width: 185px; opacity: 0.95;   image-rendering: optimizeQuality;-webkit-image-rendering: optimizeQuality; } 
+      .header-left { display: flex; gap: 0mm; flex-direction: column; line-height: 0;}
+      .header-consignment { font-size: 14px; font-weight: bold; margin: 0; }
+      .header-right { text-align: right; flex-shrink: 0; }
+      .header h1 { margin: 0 0 2mm 0; font-size: 20px; font-weight: 600; }
+      .header p { margin: 0.5mm 0; font-size: 10px; opacity: 0.9; }
+      .summary-grid { 
+        display: grid; 
+        grid-template-columns: repeat(auto-fit, minmax(85mm, 1fr)); 
+        gap: 4mm; 
+        margin-bottom: 8mm; 
+      }
+      .card { 
+        background: linear-gradient(145deg, #ffffff 0%, #f8f9fa 100%); 
+        border: 1px solid #e9ecef; 
+        border-radius: 8px; 
+        padding: 6mm; 
+        display: flex; 
+        flex-direction: column; 
+        justify-content: space-between; 
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08); 
+        transition: transform 0.2s ease; /* Subtle hover for interactivity */
+      }
+      .card:hover { transform: translateY(-1px); }
+      .card-header { 
+        background: linear-gradient(135deg, #0d6c6a 0%, #1abc9c 100%); 
+        color: white; 
+        padding: 2mm 3mm; 
+        border-radius: 6px 6px 0 0; 
+        font-size: 10px; 
+        font-weight: 600; 
+        text-align: center; 
+      }
+      .card-value { 
+        font-size: 12px; 
+        color: #2c3e50; 
+        font-weight: 500; 
+        text-align: center; 
+        margin-top: 1mm; 
+      }
+      .section { 
+        margin-bottom: 4mm; 
+        background: #fff; 
+        border-radius: 8px; 
+        box-shadow: 0 2px 10px rgba(0,0,0,0.06); 
+        page-break-inside: avoid; 
+      }
+      .section-header { 
+        padding: 1mm 3mm; 
+        font-size: 15px; 
+        margin: 0; 
+      }
+      .section-content { padding: 6mm; background: #f8f9fa; }
+      .details-grid { 
+        display: flex; 
+        flex-Direction:colums;
+        gap: 6mm; 
+        font-size: 10px; 
+      }
+      .details-grid dt { 
+        font-weight: 600; 
+        color: #0d6c6a; 
+        margin-bottom: 2mm; 
+        font-size: 11px; 
+      }
+      .details-grid dd { 
+        margin: 0 0 4mm 0; 
+        color: #34495e; 
+        padding: 2mm; 
+        background: white; 
+        border-left: 3px solid #1abc9c; 
+        border-radius: 0 4px 4px 0; 
+      }
+      .remarks-box { 
+        background: linear-gradient(145deg, #f8f9fa 0%, #e9ecef 100%); 
+        border-radius: 8px; 
+        padding: 6mm; 
+        margin-bottom: 18mm; 
+        font-style: italic; 
+        color: #5a6c7d; 
+        font-size: 10px; 
+        border-left: 4px solid #f58220; 
+        box-shadow: inset 0 2px 4px rgba(0,0,0,0.05); 
+      }
+      table { 
+        width: 100%; 
+        border-collapse: collapse; 
+        font-size: 9px; 
+        border: 1px solid #909090;
+      }
+      th { 
+        text-align: center; 
+        font-weight: normal;
+      }
+      td { 
+        padding: 2mm; 
+        border-bottom: 1px solid #e9ecef; 
+        vertical-align: top; 
+        text-align: center;
+        font-weight: 600;
+      }
+      tr:nth-child(even) td { background: #f8f9fa; }
+      tr:last-child td { border-bottom: none; }
+      tr:hover td { background: #e3f2fd; }
+      .orders-title { 
+        background: linear-gradient(135deg, #f58220 0%, #e67e22 100%); 
+        color: white; 
+        padding: 3mm 6mm; 
+        font-size: 14px; 
+        font-weight: 600; 
+        margin-bottom: 2mm; 
+        border-radius: 6px 6px 0 0; 
+      }
+      .receiver-detail { 
+        margin-bottom: 8mm; 
+        padding: 6mm; 
+        background: white; 
+        border-radius: 8px; 
+        box-shadow: 0 2px 6px rgba(0,0,0,0.05); 
+        border-left: 4px solid #1abc9c; 
+      }
+      .receiver-header { 
+        background: linear-gradient(135deg, #3498db 0%, #2980b9 100%); 
+        color: white; 
+        padding: 4mm; 
+        border-radius: 6px 6px 0 0; 
+        font-size: 13px; 
+        font-weight: 600; 
+        margin: -6mm -6mm 4mm -6mm; 
+      }
+      .shipping-item { 
+        margin-bottom: 6mm; 
+        padding: 4mm; 
+        background: #f8f9fa; 
+        border-radius: 6px; 
+        border-left: 3px solid #f58220; 
+      }
+      .shipping-header { 
+        font-size: 12px; 
+        color: #e67e22; 
+        margin-bottom: 3mm; 
+        font-weight: 600; 
+      }
+      .container-subtable { 
+        font-size: 8px; 
+        margin-top: 3mm; 
+      }
+      .container-subtable th { 
+        background: #3498db; 
+        color: white; 
+        padding: 2mm; 
+      }
+      .container-subtable td { 
+        padding: 2mm; 
+        border-bottom: 1px solid #bdc3c7; 
+      }
+      .footer { 
+        margin-top: 12mm; 
+        padding-top: 5mm; 
+        border-top: 2px solid #0d6c6a; 
+        color: #7f8c8d; 
+        font-size: 10px; 
+        text-align: center; 
+        font-style: italic; 
+      }
+      .page-break { page-break-before: always; }
+    </style>
+    
+   <div class="header">
+      <div class="header-left">
+        <img src="${logoBase64}" alt="Company Logo" class="header-logo" onerror="this.style.display='none';">
+        <div>
+            <h2>ROYAL GULF SHIPPING & LOGISTICS LLC</h2>
+            <h5 style="color: gray;">Dubai • London • Karachi • Shenzhen</h5>
+        </div>
+        <h2>CONSOLIDATION MANIFEST - CONSIGNMENT LEVEL</h2>
+
+      </div>
+      <div class="header-right">
+    <h1>Manifest Report</h1>
+    <p class="header-consignment">Consignment ID: ${data.consignment_number || "N/A"}</p>
+    <p>POL: ${data.originName || "N/A"}</p>
+    <p>POD: ${data.destinationName || "N/A"}</p>
+    <p>ETA: ${data.eta}</p>
+    <p>Vessel / Voyage: ${vesselName}, ${data.voyage}</p>
+    <p>Generated: ${new Date().toLocaleString()}</p>
+  </div>
+    </div>
+
+    <div class="section">
+ <div class="section">
+        <h2 class="section-header">PARTIES</h2>
+        <div style="display: flex; flex-direction: column; margin-left: 10px;">
+            <div style="display: flex;gap: 50px;">
+                <h5>Shipper:</h5>
+                <h5>${data.shipperName}</h5>
+            </div>
+            <div style="display: flex;gap: 37px;">
+                <h5>Consignee:</h5>
+                <h5>${data.consigneeName}</h5>
+            </div>
+        </div>
+    </div>
+
+    <div class="section" >
+    <h2 class="section-header">CONSIGNMENT SUMMARY</h2>
+    <table>
+        <thead>
+            <tr style="border-bottom: 1px solid #909090;">
+                <th style="border: 1px solid #ddd;">TOTAL CONTAINERS</th>
+                <th style="border: 1px solid #ddd;">TOTAL ORDERS</th>
+                <th style="border: 1px solid #ddd;">TOTAL PACKAGES</th>
+                <th style="border: 1px solid #ddd;">TOTAL WEIGHT (KGS)</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td style="border: 1px solid #ddd;">${data.containers?.length || 0}</td>
+                <td style="border: 1px solid #ddd;">${selectedOrderObjects?.length || allReceivers?.length || 0}</td>
+                <td style="border: 1px solid #ddd;">${Number(total_assign_boxes_all).toLocaleString()} Packages</td>
+                <td style="border: 1px solid #ddd;">${Number(total_assign_weight_all).toFixed(2)}</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+    ${
+      data.containers && data.containers.length > 0
+        ? `
+    <div class="section">
+        <h2 class="section-header">COMMODITY SUMMARY (ALL CONTAINERS)</h2>
+        <small>System clubs all orders with the same commodity and shows combined packages & weight.</small>
+        <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr>
+                    <th style="border: 1px solid #ddd;">COMMODITY</th>
+                    <th style="border: 1px solid #ddd;">TOTAL ORDERS</th>
+                    <th style="border: 1px solid #ddd;">TOTAL PKGS</th>
+                    <th style="border: 1px solid #ddd;">TOTAL WEIGHT (KGS)</th>
+                </tr>
+            </thead>
+            <tbody>
+                                ${commodityArray
+                                  .map(
+                                    (item) => `
+                <tr>
+                    <td style="text-align:left; border: 1px solid #ddd;font-weight: normal;">${item.commodity}</td>
+                    <td style="border: 1px solid #ddd;font-weight: normal;">${item.totalOrders}</td>
+                    <td style="border: 1px solid #ddd;font-weight: normal;">${item.totalPkgs.toLocaleString()}</td>
+                    <td style="border: 1px solid #ddd;font-weight: normal;">${Number(item.totalWeight).toFixed(2)}</td>
+                `,
+                                  )
+                                  .join("")}
+
+                <!-- Grand Total Row -->
+                <tr style="background-color: #f5f5f5; font-weight: bold;">
+                    <td style="text-align: left; padding: 12px; border: 1px solid #ddd;">TOTAL (All Commodities)</td>
+                    <td style="padding: 12px; border: 1px solid #ddd;">${grandTotal.totalOrders}</td>
+                    <td style="padding: 12px; border: 1px solid #ddd;">${grandTotal.totalPkgs.toLocaleString()}</td>
+                    <td style="padding: 12px; border: 1px solid #ddd;">
+                        ${grandTotal.totalWeight}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>`
+        : ""
+    }
+
+    <div class="section" style="page-break-before: always;">
+        <h2 class="section-header">DETAILED MANIFEST - CONTAINER WISE</h2>
+        
+        ${Object.values(containerGroups)
+          .map(
+            (container, containerIndex) => `
+            <div style="margin-bottom: 6mm;">
+                <div class="container-header">
+                    <h2><span>Container: ${container.containerNumber}</span>
+                    <span>Size: ${container.containerSize}${container.containerType}</span></h2>
+                </div>
+                <table style="width:100%;border-collapse:collapse;table-layout:fixed;font-size:9px;">
+                    ${MANIFEST_COLGROUP}
+                    ${manifestHead(MF_THEMES.print)}
+                    <tbody>
+                        ${renderGroupedManifestRows(buildGroupedManifestRows(container.data), MF_THEMES.print)}
+                        <tr>
+                            <td colspan="6" style="${mfStyles(MF_THEMES.print).total}text-align:right;">Container Total:</td>
+                            <td style="${mfStyles(MF_THEMES.print).total}text-align:right;">${container.containerTotal.totalPkgs.toLocaleString()}</td>
+                            <td style="${mfStyles(MF_THEMES.print).total}text-align:right;">${mfFmt(container.containerTotal.totalWeight)}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        `,
+          )
+          .join("")}
+        <table style="margin-top:4mm;width:100%;border-collapse:collapse;table-layout:fixed;font-size:9px;">
+            ${MANIFEST_COLGROUP}
+            <tbody>
+                <tr>
+                    <td colspan="6" style="${mfStyles(MF_THEMES.print).total}text-align:right;">GRAND TOTAL (All Containers):</td>
+                    <td style="${mfStyles(MF_THEMES.print).total}text-align:right;">${manifestTotals.totalPkgs.toLocaleString()}</td>
+                    <td style="${mfStyles(MF_THEMES.print).total}text-align:right;">${mfFmt(manifestTotals.totalWeight)}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="footer">
+        <p><strong>Generated:</strong> ${new Date().toLocaleString()} | <strong>Total Containers:</strong> ${Object.keys(containerGroups).length}</p>
+        <p style="margin-top: 2mm; font-size: 9px; opacity: 0.7;">© ${new Date().getFullYear()} Royal Gulf Shipping Management System | This manifest is computer-generated and legally binding.</p>
+    </div>
+</div>`;
+
+    document.body.appendChild(tempElement);
+
+    // Improved PDF generation with better page break handling
+    const scale = 1.5;
+    const canvas = await html2canvas(tempElement, {
+      scale: scale,
+      useCORS: true,
+      allowTaint: true,
+      logging: false,
+      width: tempElement.scrollWidth,
+      height: tempElement.scrollHeight,
+      windowWidth: tempElement.scrollWidth,
+      windowHeight: tempElement.scrollHeight,
+      backgroundColor: "#ffffff",
+      imageTimeout: 0,
+      removeContainer: true,
+      onclone: function (clonedDoc) {
+        // Add page break logic for better PDF rendering
+        const tables = clonedDoc.querySelectorAll("table");
+        tables.forEach((table, index) => {
+          if (index > 0) {
+            // Add page break before each container table except first
+            const parentDiv = table.closest("div");
+            if (
+              parentDiv &&
+              parentDiv.previousElementSibling &&
+              parentDiv.previousElementSibling.className === "container-header"
+            ) {
+              const containerDiv = parentDiv.parentElement;
+              containerDiv.style.breakInside = "avoid";
+            }
+          }
+        });
+
+        clonedDoc.querySelectorAll("img").forEach((img) => {
+          img.style.maxWidth = "100%";
+          img.style.height = "auto";
+        });
+      },
+    });
+
+    const rowBoundaries = getRowBoundaries(tempElement, scale);
+
+    const textItems = collectTextItems(tempElement);
+
+    document.body.removeChild(tempElement);
+
+    const canvasDataURL = canvas.toDataURL("image/png", 0.85);
+    const canvasLink = document.createElement("a");
+    canvasLink.download = `Manifest_${data.consignment_number}_Canvas_${Date.now()}.png`;
+    canvasLink.href = canvasDataURL;
+    canvasLink.click();
+
+    const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "p" });
+    const marginMm = 14;
+    const contentWidthMm = 210 - 2 * marginMm;
+
+    // Calculate dimensions
+    const pxPerMm = canvas.width / contentWidthMm;
+    const maxPageHeightMm = 297 - 2 * marginMm;
+    const maxPageHeightPx = maxPageHeightMm * pxPerMm;
+
+    let currentY = 0;
+    let pageNum = 1;
+
+    const needsContainerBreak = (
+      containerStartY,
+      containerHeightPx,
+      currentPageY,
+    ) => {
+      const remainingSpace = maxPageHeightPx - currentPageY;
+      return containerHeightPx > remainingSpace;
+    };
+
+    while (currentY < canvas.height) {
+      let sliceHeightPx = maxPageHeightPx;
+      let shouldBreak = false;
+
+      const containerDivs = tempElement.querySelectorAll(".container-header");
+      containerDivs.forEach((containerDiv) => {
+        const rect = containerDiv.getBoundingClientRect();
+        const containerStartY = rect.top * scale;
+        const containerEndY = containerStartY + rect.height * scale;
+
+        if (
+          containerStartY >= currentY &&
+          containerStartY < currentY + maxPageHeightPx
+        ) {
+          const containerSection = containerDiv.parentElement;
+          const containerRect = containerSection.getBoundingClientRect();
+          const containerHeightPx = containerRect.height * scale;
+
+          if (
+            needsContainerBreak(
+              containerStartY - currentY,
+              containerHeightPx,
+              currentY,
+            )
+          ) {
+            sliceHeightPx = containerStartY - currentY - 10;
+            shouldBreak = true;
+          }
+        }
+      });
+
+      sliceHeightPx = Math.min(sliceHeightPx, canvas.height - currentY);
+
+      const desiredEnd = currentY + sliceHeightPx;
+      const safeEnd = getSafeSliceEnd(rowBoundaries, currentY, desiredEnd);
+      sliceHeightPx = safeEnd - currentY;
+
+      const croppedCanvas = document.createElement("canvas");
+      croppedCanvas.width = canvas.width;
+      croppedCanvas.height = sliceHeightPx;
+      const ctx = croppedCanvas.getContext("2d");
+      ctx.drawImage(
+        canvas,
+        0,
+        currentY,
+        canvas.width,
+        sliceHeightPx,
+        0,
+        0,
+        canvas.width,
+        sliceHeightPx,
+      );
+
+      const croppedDataURL = croppedCanvas.toDataURL("image/jpeg", 0.85);
+      const drawHeightMm = sliceHeightPx / pxPerMm;
+
+      if (currentY > 0) {
+        pdf.addPage();
+        pageNum++;
+      }
+
+      pdf.addImage(
+        croppedDataURL,
+        "JPEG",
+        marginMm,
+        marginMm,
+        contentWidthMm,
+        drawHeightMm,
+        undefined,
+        "FAST",
+      );
+
+      addTextLayer(pdf, textItems, {
+        scale,
+        pxPerMm,
+        startY: currentY,
+        sliceHeightPx,
+        marginMm,
+      });
+
+      pdf.setFontSize(9);
+      pdf.setTextColor(128, 128, 128);
+      pdf.text(`Page ${pageNum}`, 210 / 2, 297 - 10, { align: "center" });
+
+      croppedCanvas.remove();
+      currentY += sliceHeightPx;
+    }
+
+    pdf.save(
+      `Manifest_${data.consignment_number}_ContainerWise_${Date.now()}.pdf`,
+    );
+  };
+
+  const generateContainersAndOrdersPDFWithCanvas = async (
+    data,
+    allReceivers,
+    selectedOrderObjects = includedOrders,
+  ) => {
+    if (!data.consignment_number) {
+      toast.warn("Please enter a consignment number to generate the manifest.");
+      return;
+    }
+
+    const containerOrdersMap = {};
+
+    if (data.containers && data.containers.length > 0) {
+      data.containers.forEach((container) => {
+        containerOrdersMap[container.containerNo] = {
+          container: container,
+          orders: [],
+        };
+      });
+    } else {
+      containerOrdersMap["DEFAULT"] = {
+        container: {
+          containerNo: "DEFAULT",
+          size: "N/A",
+          type: "N/A",
+          seal_no: "N/A",
+        },
+        orders: [],
+      };
+    }
+
+    if (allReceivers && allReceivers.length > 0) {
+      allReceivers.forEach((order) => {
+        let assignedContainerNo = null;
+
+        if (order.receivers && order.receivers.length > 0) {
+          order.receivers.forEach((receiver) => {
+            if (
+              receiver.shippingdetails &&
+              receiver.shippingdetails.length > 0
+            ) {
+              receiver.shippingdetails.forEach((shippingDetail) => {
+                if (
+                  shippingDetail.containerDetails &&
+                  shippingDetail.containerDetails.length > 0
+                ) {
+                  const containerDetail = shippingDetail.containerDetails[0];
+                  if (
+                    containerDetail.container &&
+                    containerDetail.container.container_number
+                  ) {
+                    assignedContainerNo =
+                      containerDetail.container.container_number;
+                  }
+                }
+              });
+            }
+          });
+        }
+
+        if (!assignedContainerNo && order.receiver_containers_json) {
+          assignedContainerNo = order.receiver_containers_json;
+        }
+
+        let containerInfo = { containerNo: "N/A", seal_no: "N/A", size: "N/A" };
+
+        if (
+          !assignedContainerNo &&
+          order.receivers &&
+          order.receivers.length > 0
+        ) {
+          const receiver = order.receivers[0];
+          if (receiver.containers && receiver.containers.length > 0) {
+            assignedContainerNo = receiver.containers[0];
+          }
+        }
+
+        if (assignedContainerNo && containerOrdersMap[assignedContainerNo]) {
+          containerOrdersMap[assignedContainerNo].orders.push(order);
+        } else {
+          const firstKey = Object.keys(containerOrdersMap)[0];
+          if (firstKey) {
+            containerOrdersMap[firstKey].orders.push(order);
+          }
+        }
+      });
+    }
+
+    const formatDate = (dateStr) => {
+      if (!dateStr) return "N/A";
+      return new Date(dateStr).toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+    };
+
+    const calculateContainerStats = (orders) => {
+      if (!orders || orders.length === 0) {
+        return {
+          totalOrders: 0,
+          totalPackages: 0,
+          totalWeight: 0,
+          grossWeight: 0,
+        };
+      }
+
+      let totalOrders = 0;
+      let totalPackages = 0;
+      let totalWeight = 0;
+
+      orders.forEach((order) => {
+        totalOrders++;
+
+        if (order.receivers && order.receivers.length > 0) {
+          order.receivers.forEach((receiver) => {
+            if (
+              receiver.shippingdetails &&
+              receiver.shippingdetails.length > 0
+            ) {
+              receiver.shippingdetails.forEach((item) => {
+                let packagesForItem = 0;
+                let weightForItem = 0;
+
+                if (item.containerDetails && item.containerDetails.length > 0) {
+                  item.containerDetails.forEach((containerDetail) => {
+                    packagesForItem +=
+                      Number(containerDetail.assign_total_box) || 0;
+                    weightForItem += Number(containerDetail.assign_weight) || 0;
+                  });
+                } else {
+                  packagesForItem = parseInt(item.totalNumber) || 0;
+                  weightForItem = parseFloat(item.weight) || 0;
+                }
+
+                totalPackages += packagesForItem;
+                totalWeight += weightForItem;
+              });
+            }
+          });
+        }
+      });
+
+      // Gross weight calculation
+      const totalAllContainersWeight = Object.keys(containerOrdersMap).reduce(
+        (sum, key) => {
+          const ordersInContainer = containerOrdersMap[key].orders;
+          const containerWeight = ordersInContainer.reduce((wSum, order) => {
+            let weight = 0;
+            if (order.receivers && order.receivers.length > 0) {
+              order.receivers.forEach((receiver) => {
+                if (
+                  receiver.shippingdetails &&
+                  receiver.shippingdetails.length > 0
+                ) {
+                  receiver.shippingdetails.forEach((item) => {
+                    if (
+                      item.containerDetails &&
+                      item.containerDetails.length > 0
+                    ) {
+                      item.containerDetails.forEach((containerDetail) => {
+                        weight += Number(containerDetail.assign_weight) || 0;
+                      });
+                    } else {
+                      weight += parseFloat(item.weight) || 0;
+                    }
+                  });
+                }
+              });
+            }
+            return wSum + weight;
+          }, 0);
+          return sum + containerWeight;
+        },
+        0,
+      );
+
+      const grossWeightRatio =
+        totalAllContainersWeight > 0
+          ? totalWeight / totalAllContainersWeight
+          : 1;
+      const grossWeight = data.gross_weight
+        ? parseFloat(data.gross_weight) * grossWeightRatio
+        : totalWeight;
+
+      return {
+        totalOrders: totalOrders,
+        totalPackages: totalPackages,
+        totalWeight: totalWeight,
+        grossWeight: grossWeight,
+      };
+    };
+
+    const calculateCommoditySummary = (orders) => {
+      const commodityMap = {};
+
+      if (orders && orders.length > 0) {
+        orders.forEach((order) => {
+          if (order.receivers && order.receivers.length > 0) {
+            order.receivers.forEach((receiver) => {
+              if (
+                receiver.shippingdetails &&
+                receiver.shippingdetails.length > 0
+              ) {
+                receiver.shippingdetails.forEach((item) => {
+                  const commodity = item.category || "General";
+                  const subcategory = item.subcategory || "";
+                  const commodityType = item.type || "N/A";
+
+                  const commodityKey = subcategory
+                    ? `${commodity}|${subcategory}`
+                    : commodity;
+                  const displayName = subcategory
+                    ? `${commodity} - ${subcategory} (${commodityType})`
+                    : commodity;
+
+                  if (!commodityMap[commodityKey]) {
+                    commodityMap[commodityKey] = {
+                      commodity: displayName,
+                      totalOrders: new Set(),
+                      totalPackages: 0,
+                      totalWeight: 0,
+                    };
+                  }
+
+                  commodityMap[commodityKey].totalOrders.add(order.id);
+
+                  let packagesForItem = 0;
+                  let weightForItem = 0;
+
+                  if (
+                    item.containerDetails &&
+                    item.containerDetails.length > 0
+                  ) {
+                    item.containerDetails.forEach((containerDetail) => {
+                      packagesForItem +=
+                        Number(containerDetail.assign_total_box) || 0;
+                      weightForItem +=
+                        Number(containerDetail.assign_weight) || 0;
+                    });
+                  } else {
+                    packagesForItem = parseInt(item.totalNumber) || 0;
+                    weightForItem = parseFloat(item.weight) || 0;
+                  }
+
+                  commodityMap[commodityKey].totalPackages += packagesForItem;
+                  commodityMap[commodityKey].totalWeight += weightForItem;
+                });
+              }
+            });
+          }
+        });
+      }
+
+      return Object.values(commodityMap)
+        .map((item) => ({
+          commodity: item.commodity,
+          totalOrders: item.totalOrders.size,
+          totalPackages: item.totalPackages,
+          totalWeight: item.totalWeight,
+        }))
+        .sort((a, b) =>
+          a.commodity.localeCompare(b.commodity, undefined, {
+            sensitivity: "base",
+          }),
+        );
+    };
+
+    const getDetailedManifestData = (orders) => {
+      const detailedData = [];
+      let serialNumber = 1;
+
+      if (orders && orders.length > 0) {
+        orders.forEach((order) => {
+          if (order.receivers && order.receivers.length > 0) {
+            order.receivers.forEach((receiver) => {
+              if (
+                receiver.shippingdetails &&
+                receiver.shippingdetails.length > 0
+              ) {
+                receiver.shippingdetails.forEach((item) => {
+                  let packages = 0;
+                  let weight = 0;
+
+                  if (
+                    item.containerDetails &&
+                    item.containerDetails.length > 0
+                  ) {
+                    item.containerDetails.forEach((containerDetail) => {
+                      packages += Number(containerDetail.assign_total_box) || 0;
+                      weight += Number(containerDetail.assign_weight) || 0;
+                    });
+                  } else {
+                    packages = parseInt(item.totalNumber) || 0;
+                    weight = parseFloat(item.weight) || 0;
+                  }
+
+                  const commodity = item.category || "N/A";
+                  const subcategory = item.subcategory || "";
+                  const fullCommodity = subcategory
+                    ? `${commodity} - ${subcategory}`
+                    : commodity;
+
+                  detailedData.push({
+                    sno: serialNumber++,
+                    groupKey: `${order.id}-${receiver.id}`,
+                    orderNumber: order.rgl_booking_number || `ORD-${order.id}`,
+                    orderNo: order.rgl_booking_number || `ORD-${order.id}`,
+                    sender: order.sender_name || "N/A",
+                    receiver: receiver.receivername || "N/A",
+                    marksNos: receiver.marksandnumber || "N/A",
+                    marksAndNumber: receiver.marksandnumber || "N/A",
+                    packages: packages,
+                    pkgs: packages,
+                    weight: weight,
+                    commodity: fullCommodity,
+                    category: commodity,
+                    subcategory: subcategory,
+                  });
+                });
+              }
+            });
+          }
+        });
+      }
+
+      return detailedData;
+    };
+
+    const getVesselName = (vesselId) => {
+      if (!vesselId) return "N/A";
+      const vesselOption = options.vesselOptions?.find(
+        (v) => v.value === vesselId.toString(),
+      );
+      return vesselOption?.label || `Vessel ${vesselId}`;
+    };
+
+    const vesselName = getVesselName(data.vessel);
+
+    // Load logo as base64
+    const logoBase64 = await loadImageAsBase64(logoPic);
+
+    // Create a temporary div element
+    const tempElement = document.createElement("div");
+    tempElement.style.width = "210mm";
+    tempElement.style.padding = "4mm";
+    tempElement.style.backgroundColor = "white";
+    tempElement.style.fontFamily =
+      '"Helvetica Neue", Helvetica, Arial, sans-serif';
+    tempElement.style.boxSizing = "border-box";
+
+    // 6. GENERATE HTML FOR EACH CONTAINER
+    let allContainersHTML = "";
+    let containerCounter = 0;
+
+    Object.keys(containerOrdersMap).forEach((containerNo) => {
+      const containerData = containerOrdersMap[containerNo];
+      const orders = containerData.orders;
+
+      const containerStats = calculateContainerStats(orders);
+      const commoditySummary = calculateCommoditySummary(orders);
+      const detailedData = getDetailedManifestData(orders);
+
+      containerCounter++;
+
+      const pageBreakClass = containerCounter > 1 ? "page-break" : "";
+
+      allContainersHTML += `
+        <div class="${pageBreakClass}" style="margin-top: ${containerCounter > 1 ? "30px" : "0"}">
+          <!-- Container Header -->
+          <div class="container-title">
+            CONTAINER ${containerCounter}: ${containerNo} | SIZE: ${containerData.container.size || "N/A"}${containerData.container.containerType || "N/A"}
+          </div>
+          
+          <!-- TABLE 1: Container Summary -->
+          <div class="section-title">CONTAINER SUMMARY - ${containerNo} (${containerData.container.size || "N/A"}${containerData.container.containerType || "N/A"})</div>
+          ${
+            orders.length > 0
+              ? `
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="border-right: #7e7e7e 1px solid;">ORDERS IN CONTAINER</th>
+                <th style="border-right: #7e7e7e 1px solid;">TOTAL PACKAGES</th>
+                <th style="border-right: #7e7e7e 1px solid;">TOTAL WEIGHT (KGS)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="border-right: #7e7e7e 1px solid;">${containerStats.totalOrders}</td>
+                <td style="border-right: #7e7e7e 1px solid;">${containerStats.totalPackages}</td>
+                <td style="border-right: #7e7e7e 1px solid;">${containerStats.totalWeight.toFixed(2)}</td>
+              </tr>
+            </tbody>
+          </table>
+          `
+              : `
+          <div style="text-align: center; padding: 30px; background: #f9f9f9; border: 1px dashed #ccc; margin-bottom: 20px;">
+            <h4 style="color: #666; font-style: italic;">NO ORDERS FOUND IN THIS CONTAINER</h4>
+            <p style="color: #999;">This container has no orders assigned to it.</p>
+          </div>
+          `
+          }
+          
+          <!-- TABLE 2: Container Commodity Summary -->
+          ${
+            orders.length > 0
+              ? `
+          <div class="section-title">CONTAINER COMMODITY SUMMARY - ${containerNo} (${containerData.container.size || "N/A"}${containerData.container.containerType || "N/A"})</div>
+
+          <div class="note">Commodity-wise breakdown for this container</div>
+          ${
+            commoditySummary.length > 0
+              ? `
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="text-align:left; border-right: #7e7e7e 1px solid;">COMMODITY</th>
+                <th style="border-right: #7e7e7e 1px solid;">TOTAL ORDERS</th>
+                <th style="border-right: #7e7e7e 1px solid;">TOTAL PKGS</th>
+                <th>TOTAL WEIGHT (KGS)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${commoditySummary
+                .map(
+                  (item) => `
+              <tr>
+                <td style="text-align:left;border-right: #7e7e7e 1px solid;">${item.commodity}</td>
+
+                <td style="border-right: #7e7e7e 1px solid;">${item.totalOrders}</td>
+                <td style="border-right: #7e7e7e 1px solid;">${item.totalPackages}</td>
+                <td>${item.totalWeight.toFixed(2)}</td>
+              </tr>
+              `,
+                )
+                .join("")}
+              <tr class="total-row">
+                <td class="bold" style="text-align:left;border-right: #7e7e7e 1px solid;">TOTAL</td>
+                <td class="bold" style="border-right: #7e7e7e 1px solid;">${commoditySummary.reduce((sum, item) => sum + item.totalOrders, 0)}</td>
+                <td class="bold" style="border-right: #7e7e7e 1px solid;">${commoditySummary.reduce((sum, item) => sum + item.totalPackages, 0)}</td>
+                <td class="bold">${commoditySummary.reduce((sum, item) => sum + item.totalWeight, 0).toFixed(2)}</td>
+              </tr>
+            </tbody>
+          </table>
+          `
+              : '<p style="text-align: center; color: #666; font-style: italic;">No commodity data available</p>'
+          }
+          `
+              : ""
+          }
+          
+          ${
+            orders.length > 0
+              ? `<div class="section-title">DETAILED MANIFEST - ${containerNo} (${containerData.container.size || "N/A"}${containerData.container.containerType || "N/A"})</div>
+          ${
+            detailedData.length > 0
+              ? `
+          <table style="width:100%;border-collapse:collapse;table-layout:fixed;font-size:10px;margin-bottom:25px;">
+            ${MANIFEST_COLGROUP}
+            ${manifestHead(MF_THEMES.container)}
+            <tbody>
+              ${renderGroupedManifestRows(buildGroupedManifestRows(detailedData), MF_THEMES.container)}
+              <tr>
+                <td colspan="6" style="${mfStyles(MF_THEMES.container).total}text-align:right;">TOTAL:</td>
+                <td style="${mfStyles(MF_THEMES.container).total}text-align:right;">${detailedData.reduce((sum, item) => sum + item.packages, 0).toLocaleString()}</td>
+                <td style="${mfStyles(MF_THEMES.container).total}text-align:right;">${mfFmt(detailedData.reduce((sum, item) => sum + item.weight, 0))}</td>
+              </tr>
+            </tbody>
+          </table>
+          `
+              : '<p style="text-align: center; color: #666; font-style: italic;">No detailed manifest data available</p>'
+          }
+          `
+              : ""
+          }
+        </div>
+      `;
+    });
+
+    tempElement.innerHTML = `
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+        margin: 0;
+        padding: 0;
+        color: #2c3e50;
+        background: white;
+        line-height: 1.4;
+        font-size: 11px;
+      }
+
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: start;
+        border-bottom: 2px solid #f58220;
+        margin-bottom: 20px;
+        padding-bottom: 15px;
+      }
+
+      .header-logo {
+        width: 185px;
+        opacity: 0.95;
+      }
+
+      .header-left {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .header-consignment {
+        font-size: 14px;
+        font-weight: bold;
+        margin: 0;
+        color: #f58220;
+      }
+
+      .header-right {
+        text-align: right;
+        flex-shrink: 0;
+      }
+
+      .header h2 {
+        margin: 0 0 2mm 0;
+        font-size: 20px;
+        font-weight: 600;
+      }
+
+      .header p {
+        margin: 0.5mm 0;
+        font-size: 10px;
+        opacity: 0.9;
+      }
+
+      .section-title {
+        font-size: 16px;
+        font-weight: bold;
+        color: #000000;
+        margin: 25px 0 10px 0;
+        padding-bottom: 5px;
+        border-bottom: 2px solid #f58220;
+        text-transform: uppercase;
+      }
+
+      .data-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 25px;
+        font-size: 11px;
+        border: 1px solid #7e7e7e;
+      }
+
+      .data-table th {
+        color: #000000;
+        font-weight: bold;
+        text-align: center;
+        padding: 10px 8px;
+        border-bottom: 1px solid #7e7e7e;
+        text-transform: uppercase;
+        background-color: #f8f9fa;
+      }
+
+      .data-table td {
+        padding: 8px;
+        text-align: center;
+        border-right: 1px solid #e0e0e0;
+      }
+
+      .data-table tr {
+        border-bottom: 1px solid #e0e0e0;
+      }
+
+      .data-table tr:hover {
+        background-color: #f5f5f5;
+      }
+
+      .data-table .total-row {
+        font-weight: bold;
+        background-color: #e8f5e8;
+      }
+
+      .container-title {
+        font-size: 15px;
+        font-weight: bold;
+        color: #000000;
+        margin: 30px 0 15px 0;
+        background: #f5f5f5;
+        padding: 12px;
+        border-left: 4px solid #f58220;
+        border-radius: 4px;
+      }
+
+      .page-break {
+        page-break-before: always;
+        padding-top: 20px;
+      }
+
+      .note {
+        font-size: 10px;
+        color: #666666;
+        font-style: italic;
+        margin: 5px 0 15px 0;
+      }
+
+      .footer {
+        margin-top: 40px;
+        padding-top: 20px;
+        text-align: center;
+        color: #000000;
+        font-size: 11px;
+        border-top: 2px solid #f58220;
+      }
+
+      .footer-line {
+        margin: 5px 0;
+      }
+
+      .shipper-info {
+        display: flex;
+        flex-direction: column;
+        margin: 20px 0;
+        padding: 15px;
+        background: #f8f9fa;
+        border-radius: 6px;
+      }
+
+      .shipper-row {
+        display: flex;
+        margin: 5px 0;
+      }
+
+      .shipper-label {
+        font-weight: bold;
+        min-width: 120px;
+      }
+    </style>
+
+    <div class="header">
+      <div class="header-left">
+        <img src="${logoBase64}" alt="Company Logo" class="header-logo" onerror="this.style.display='none';">
+        <div>
+          <h2 style="margin: 5px 0;">ROYAL GULF SHIPPING & LOGISTICS LLC</h2>
+          <h5 style="color: gray; margin: 3px 0;">Dubai • London • Karachi • Shenzhen</h5>
+        </div>
+        <h2 style="color: #f58220; margin-top: 10px;">CONSOLIDATION MANIFEST - CONTAINER LEVEL</h2>
+      </div>
+      <div class="header-right">
+        <p class="header-consignment">Consignment: ${data.consignment_number || "N/A"}</p>
+        <p>Total Containers: ${data.containers ? data.containers.length : 0}</p>
+        <p>POL: ${data.originName || "N/A"}</p>
+        <p>POD: ${data.destinationName || "N/A"}</p>
+        <p>ETD: ${formatDate(data.eta) || "N/A"}</p>
+        <p>ETA: ${formatDate(data.eta) || "N/A"}</p>
+        <p>Generated: ${new Date().toLocaleString()}</p>
+      </div>
+    </div>
+
+    <div class="shipper-info">
+      <div class="shipper-row">
+        <div class="shipper-label">Shipper:</div>
+        <div>${data.shipperName || "N/A"}</div>
+      </div>
+      <div class="shipper-row">
+        <div class="shipper-label">Consignee:</div>
+        <div>${data.consigneeName || "N/A"}</div>
+      </div>
+    </div>
+
+    <!-- CONTAINER WISE REPORTS -->
+    ${allContainersHTML || '<p style="text-align: center; color: red; font-weight: bold;">No container data available</p>'}
+
+    <div class="footer">
+      <div class="footer-line">Generated by Royal Gulf Shipping Management System</div>
+      <div class="footer-line">Date: ${new Date().toLocaleDateString()} | Time: ${new Date().toLocaleTimeString()}</div>
+    </div>
+    `;
+
+    document.body.appendChild(tempElement);
+
+    const scale = 1.5;
+    const canvas = await html2canvas(tempElement, {
+      scale: scale,
+      useCORS: true,
+      allowTaint: true,
+      logging: false,
+      width: tempElement.scrollWidth,
+      height: tempElement.scrollHeight,
+      windowWidth: tempElement.scrollWidth,
+      windowHeight: tempElement.scrollHeight,
+      backgroundColor: "#ffffff",
+      imageTimeout: 0,
+      removeContainer: true,
+      onclone: function (clonedDoc) {
+        clonedDoc.querySelectorAll("img").forEach((img) => {
+          img.style.maxWidth = "100%";
+          img.style.height = "auto";
+        });
+      },
+    });
+
+    const rowBoundaries = getRowBoundaries(tempElement, scale);
+
+    const textItems = collectTextItems(tempElement);
+
+    document.body.removeChild(tempElement);
+
+    const canvasDataURL = canvas.toDataURL("image/png", 0.85);
+    const canvasLink = document.createElement("a");
+    canvasLink.download = `Manifest_${data.consignment_number}_${Date.now()}.png`;
+    canvasLink.href = canvasDataURL;
+    canvasLink.click();
+
+    const innerWidthMm = 210 - 2 * 14;
+    const pxPerMm = canvas.width / innerWidthMm;
+    const extraBottomSpaceMm = 8;
+    const contentHeightPerPageMm = 297 - 2 * 14 - extraBottomSpaceMm;
+    const contentHeightPerPagePx = contentHeightPerPageMm * pxPerMm;
+
+    const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "p" });
+    const marginMm = 14;
+    const contentWidthMm = innerWidthMm;
+
+    let startY = 0;
+    while (startY < canvas.height) {
+      const desiredEnd = Math.min(
+        startY + contentHeightPerPagePx,
+        canvas.height,
+      );
+      const safeEnd = getSafeSliceEnd(rowBoundaries, startY, desiredEnd);
+      const sliceHeightPx = safeEnd - startY;
+
+      const croppedCanvas = document.createElement("canvas");
+      croppedCanvas.width = canvas.width;
+      croppedCanvas.height = sliceHeightPx;
+      const ctx = croppedCanvas.getContext("2d");
+      ctx.drawImage(
+        canvas,
+        0,
+        startY,
+        canvas.width,
+        sliceHeightPx,
+        0,
+        0,
+        canvas.width,
+        sliceHeightPx,
+      );
+
+      const croppedDataURL = croppedCanvas.toDataURL("image/jpeg", 0.85);
+      const drawHeightMm = sliceHeightPx / pxPerMm;
+
+      if (startY > 0) pdf.addPage();
+      pdf.addImage(
+        croppedDataURL,
+        "JPEG",
+        marginMm,
+        marginMm,
+        contentWidthMm,
+        drawHeightMm,
+        undefined,
+        "FAST",
+      );
+
+      addTextLayer(pdf, textItems, {
+        scale,
+        pxPerMm,
+        startY,
+        sliceHeightPx,
+        marginMm,
+      });
+
+      croppedCanvas.remove();
+      startY += sliceHeightPx;
+    }
+
+    pdf.save(
+      `Manifest_${data.consignment_number}_Containers_${Date.now()}.pdf`,
+    );
+  };
+  const isDark = theme.palette.mode === "dark";
+  const teal = "#0d6c6a";
+  const tealText = isDark ? "#4db6ac" : teal;
+  const orange = "#f58220";
+  const lockRef = (el) => {
+    if (el) el.setAttribute("inert", "");
+  };
+
+  const span = (n) => ({
+    gridColumn: {
+      xs: "span 12",
+      sm: `span ${n === 3 ? 6 : n}`,
+      md: `span ${n}`,
+    },
+  });
+  const gridSx = {
+    display: "grid",
+    gridTemplateColumns: "repeat(12, 1fr)",
+    gap: 2,
+  };
+  const outlineBtn = {
+    borderColor: orange,
+    color: orange,
+    "&:hover": {
+      borderColor: "#e65100",
+      backgroundColor: alpha(orange, 0.1),
+    },
+  };
+  const headCellSx = {
+    bgcolor: teal,
+    color: "#fff",
+    fontWeight: "bold",
+    whiteSpace: "nowrap",
+  };
+  const sectionTitle = (text) => (
+    <Typography
+      sx={{
+        gridColumn: "span 12",
+        mt: 1.5,
+        pb: 0.75,
+        fontWeight: 600,
+        color: tealText,
+        borderBottom: 1,
+        borderColor: "divider",
+      }}
+    >
+      {text}
+    </Typography>
+  );
+  const tabLabel = (text, count) => (
+    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+      {text}
+      {count !== undefined && (
+        <Box
+          component="span"
+          sx={{
+            bgcolor: orange,
+            color: "#fff",
+            borderRadius: "10px",
+            fontSize: 11,
+            px: "7px",
+            lineHeight: "18px",
+          }}
+        >
+          {count}
+        </Box>
+      )}
+    </Box>
+  );
+  const itemHeaders = [
+    "Item Ref No",
+    "Product",
+    "Receiver",
+    "Container",
+    "Assign Weight & Items",
+    "Status",
+  ];
+
+  const orderHeaders = [
+    "",
+    "Booking Ref",
+    "Form No",
+    "POL",
+    "POD",
+    "Sender",
+    "Receivers",
+    "Items",
+    "Containers",
+    "Assign Weight & Boxes",
+    "Status",
+  ];
+
+  const documents = [
+    {
+      icon: "📄",
+      title: "HBL (Shipments & Orders)",
+      text: "House bill of lading with all shipments and orders in this consignment.",
+      label: "Download PDF",
+      run: async () => {
+        await generateshipmentsAndOrdersPDFWithCanvas(values, orders);
+        logPrint("HBL (Shipments & Orders)");
+      },
+    },
+    {
+      icon: "🖨️",
+      title: "Print Manifest",
+      text: "Cargo manifest listing every shipment.",
+      label: "Print",
+      run: async () => {
+        await generateManifestPDFWithCanvas(values, orders);
+        logPrint("Manifest");
+      },
+    },
+    {
+      icon: "🖨️",
+      title: "Print Manifest with Subcategory",
+      text: "Manifest with items grouped by product subcategory.",
+      label: "Print",
+      run: async () => {
+        await generateManifestPDFWithCanvas(
+          values,
+          orders,
+          includedOrders,
+          true,
+        );
+        logPrint("Manifest with Subcategory");
+      },
+    },
+    {
+      icon: "📄",
+      title: "Container & Orders PDF",
+      text: "Each container with the orders loaded in it.",
+      label: "Download PDF",
+      run: async () => {
+        await generateContainersAndOrdersPDFWithCanvas(values, orders);
+        logPrint("Container & Orders PDF");
+      },
+    },
+  ];
+
+  const billingTotals = billingRows.reduce(
+    (t, r) => {
+      t.revenue += r.invoiceTotal || 0;
+      t.cost += r.vendorTotal || 0;
+      t.draft += r.draftInvoiceTotal || 0;
+      t.received += r.received || 0;
+      t.paidOut += r.paidOut || 0;
+      t.toCollect += r.toCollect || 0;
+      t.toPay += r.toPay || 0;
+      if (r.rateMissing) t.missing += 1;
+      return t;
+    },
+    {
+      revenue: 0,
+      cost: 0,
+      draft: 0,
+      received: 0,
+      paidOut: 0,
+      toCollect: 0,
+      toPay: 0,
+      missing: 0,
+    },
+  );
+  const netProfit = billingTotals.revenue - billingTotals.cost;
+  const currentProfit = billingTotals.received - billingTotals.paidOut;
+  const netMargin =
+    billingTotals.revenue > 0
+      ? (netProfit / billingTotals.revenue) * 100
+      : null;
+
+  const allInvoices = billingRows.flatMap((r) =>
+    (r.invoices || []).map((d) => ({
+      ...d,
+      formNumber: d.formNumber || r.formNo,
+    })),
+  );
+  const allBills = billingRows.flatMap((r) =>
+    (r.vendorBills || []).map((d) => ({
+      ...d,
+      formNumber: d.formNumber || r.formNo,
+    })),
+  );
+
+  const financeTable = (docs, partyLabel, partyKey, kind) => {
+    const groups = Object.values(
+      docs.reduce((m, d) => {
+        const k = d.formNumber || "N/A";
+        (m[k] ||= { key: k, docs: [] }).docs.push(d);
+        return m;
+      }, {}),
+    );
+    const live = docs.filter((d) => d.status !== "void");
+    const grandTotal = sumBy(live, docTotalAed);
+    const grandBalance = sumBy(live, docBalanceAed);
+    const grandPaid = sumBy(live, docPaidAed);
+    const headCell = { bgcolor: FIN.teal, color: "#fff", fontWeight: "bold" };
+
+    return (
+      <TableContainer
+        sx={{
+          border: 1,
+          borderColor: "divider",
+          borderRadius: 2,
+          bgcolor: "background.paper",
+        }}
+      >
+        <Table size="small" sx={{ minWidth: 1100 }}>
+          <TableHead>
+            <TableRow>
+              {[
+                `Form No / ${kind} No`,
+                partyLabel,
+                "Date",
+                "Due Date",
+                "Status",
+              ].map((h) => (
+                <TableCell key={h} sx={headCell}>
+                  {h}
+                </TableCell>
+              ))}
+              <TableCell align="right" sx={headCell}>
+                Total (FCA)
+              </TableCell>
+              <TableCell align="right" sx={headCell}>
+                Paid
+              </TableCell>
+              <TableCell align="right" sx={headCell}>
+                Balance
+              </TableCell>
+              <TableCell align="right" sx={headCell}>
+                Total
+              </TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {groups.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={9} align="center" sx={{ py: 4 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    No {kind.toLowerCase()}s found
+                  </Typography>
+                </TableCell>
+              </TableRow>
+            ) : (
+              <>
+                {groups.map((g) => {
+                  const k = `f-${kind}-${g.key}`;
+                  const open = expandedForms[k] ?? true;
+                  const gl = g.docs.filter((d) => d.status !== "void");
+                  return [
+                    <TableRow
+                      key={k}
+                      hover
+                      onClick={() =>
+                        setExpandedForms((p) => ({ ...p, [k]: !open }))
+                      }
+                      sx={{ cursor: "pointer", bgcolor: FIN.grey100 }}
+                    >
+                      <TableCell sx={{ fontWeight: 700, color: FIN.tealDark }}>
+                        <Box
+                          sx={{ display: "flex", alignItems: "center", gap: 1 }}
+                        >
+                          <ExpandMoreIcon
+                            fontSize="small"
+                            sx={{
+                              color: FIN.teal,
+                              transition: "transform 0.2s",
+                              transform: open
+                                ? "rotate(0deg)"
+                                : "rotate(-90deg)",
+                            }}
+                          />
+                          {g.key}
+                        </Box>
+                      </TableCell>
+                      <TableCell colSpan={4}>
+                        <Chip
+                          size="small"
+                          label={`${g.docs.length} ${kind.toLowerCase()}${g.docs.length > 1 ? "s" : ""}`}
+                          sx={{
+                            bgcolor: FIN.tealMid,
+                            color: FIN.tealDark,
+                            fontWeight: 700,
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell />
+                      <TableCell align="right" sx={{ fontWeight: 700 }}>
+                        {fmtMoney(sumBy(gl, docPaidAed), "AED")}
+                      </TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700 }}>
+                        {fmtMoney(sumBy(gl, docBalanceAed), "AED")}
+                      </TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700 }}>
+                        {fmtMoney(sumBy(gl, docTotalAed), "AED")}
+                      </TableCell>
+                    </TableRow>,
+                    ...(open
+                      ? g.docs.map((d) => (
+                          <TableRow hover key={d.id}>
+                            <TableCell sx={{ pl: 7, fontWeight: 600 }}>
+                              {d.number}
+                            </TableCell>
+                            <TableCell>{d[partyKey]}</TableCell>
+                            <TableCell>
+                              {d.date
+                                ? dayjs(d.date).format("MMM DD, YYYY")
+                                : "-"}
+                            </TableCell>
+                            <TableCell>
+                              {d.dueDate
+                                ? dayjs(d.dueDate).format("MMM DD, YYYY")
+                                : "-"}
+                            </TableCell>
+                            <TableCell>
+                              <Chip
+                                label={fmtStatus(d.status)}
+                                size="small"
+                                variant="outlined"
+                                color={docStatusColor(d.status)}
+                              />
+                            </TableCell>
+                            <TableCell align="right">
+                              {fmtMoney(d.total, d.currency)}
+                            </TableCell>
+                            <TableCell align="right">
+                              {d.totalAed == null || d.balanceAed == null
+                                ? "-"
+                                : fmtAed(d.totalAed - d.balanceAed)}
+                            </TableCell>
+                            <TableCell align="right">
+                              {fmtAed(d.balanceAed)}
+                            </TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 600 }}>
+                              {fmtAed(d.totalAed)}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      : []),
+                  ];
+                })}
+                <TableRow sx={{ bgcolor: FIN.tealLight }}>
+                  <TableCell
+                    colSpan={5}
+                    align="right"
+                    sx={{ fontWeight: 700, color: FIN.tealDark }}
+                  >
+                    Grand Total
+                  </TableCell>
+                  <TableCell />
+                  <TableCell
+                    align="right"
+                    sx={{ fontWeight: 700, color: FIN.tealDark }}
+                  >
+                    {fmtMoney(grandPaid, "AED")}
+                  </TableCell>
+                  <TableCell
+                    align="right"
+                    sx={{ fontWeight: 700, color: FIN.tealDark }}
+                  >
+                    {fmtMoney(grandBalance, "AED")}
+                  </TableCell>
+                  <TableCell
+                    align="right"
+                    sx={{ fontWeight: 700, color: FIN.tealDark }}
+                  >
+                    {fmtMoney(grandTotal, "AED")}
+                  </TableCell>
+                </TableRow>
+              </>
+            )}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    );
+  };
+
+  const openDocPdf = async (kind, doc) => {
+    setPdfLoadingId(doc.id);
+    try {
+      const path =
+        kind === "Bill"
+          ? `/api/zoho-invoice/bill/${doc.id}/pdf`
+          : `/api/zoho-invoice/${doc.id}/pdf`;
+      const { data } = await api.get(path, { responseType: "blob" });
+      setPreviewDoc({
+        kind,
+        doc,
+        url: URL.createObjectURL(new Blob([data], { type: "application/pdf" })),
+      });
+    } catch {
+      toast.error("Failed to load PDF.");
+    } finally {
+      setPdfLoadingId(null);
+    }
+  };
+
+  const closePreview = () => {
+    if (previewDoc?.url) URL.revokeObjectURL(previewDoc.url);
+    setPreviewDoc(null);
+  };
+
+  const stat = (label, value, color) => (
+    <Box
+      sx={{
+        border: 1,
+        borderColor: "divider",
+        borderRadius: 2,
+        p: 2,
+        bgcolor: "action.hover",
+      }}
+    >
+      <Typography variant="caption" color="text.secondary">
+        {label}
+      </Typography>
+      <Typography
+        sx={{ fontWeight: 700, fontSize: 18, color: color || "text.primary" }}
+      >
+        {value}
+      </Typography>
+    </Box>
+  );
+
+  const billingTable = (title, docs, partyLabel, partyKey, kind) => (
+    <Box sx={{ mt: 2 }}>
+      <Typography sx={{ fontWeight: 600, color: tealText, mb: 1 }}>
+        {title} ({docs.length})
+      </Typography>
+      <TableContainer
+        sx={{ border: 1, borderColor: "divider", borderRadius: 2 }}
+      >
+        <Table size="small" sx={{ minWidth: 800 }}>
+          <TableHead>
+            <TableRow>
+              {[`${kind} No`, partyLabel, "Date", "Due Date", "Status"].map(
+                (h) => (
+                  <TableCell key={h} sx={headCellSx}>
+                    {h}
+                  </TableCell>
+                ),
+              )}
+              <TableCell sx={headCellSx} align="right">
+                Amount
+              </TableCell>
+              <TableCell sx={headCellSx} align="right">
+                Balance
+              </TableCell>
+              <TableCell sx={headCellSx} align="right">
+                Rate
+              </TableCell>
+              <TableCell sx={headCellSx} align="right">
+                Amount (AED)
+              </TableCell>
+              <TableCell sx={headCellSx} align="center">
+                Preview
+              </TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {docs.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={10} align="center" sx={{ py: 3 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    No {title.toLowerCase()} found
+                  </Typography>
+                </TableCell>
+              </TableRow>
+            ) : (
+              docs.map((d) => (
+                <TableRow hover key={d.id}>
+                  <TableCell>{d.number}</TableCell>
+                  <TableCell>{d[partyKey]}</TableCell>
+                  <TableCell>
+                    {d.date ? dayjs(d.date).format("DD MMM YYYY") : "-"}
+                  </TableCell>
+                  <TableCell>
+                    {d.dueDate ? dayjs(d.dueDate).format("DD MMM YYYY") : "-"}
+                  </TableCell>
+                  <TableCell>
+                    <Chip
+                      label={fmtStatus(d.status)}
+                      size="small"
+                      variant="outlined"
+                      color={docStatusColor(d.status)}
+                    />
+                  </TableCell>
+                  <TableCell align="right">
+                    {fmtMoney(d.total, d.currency)}
+                  </TableCell>
+                  <TableCell align="right">
+                    {fmtMoney(d.balance, d.currency)}
+                  </TableCell>
+                  <TableCell align="right">
+                    {d.currency === "AED" ? "-" : (d.exchangeRate ?? "N/A")}
+                  </TableCell>
+                  <TableCell align="right">
+                    {d.totalAed == null ? "N/A" : fmtMoney(d.totalAed, "AED")}
+                  </TableCell>
+                  <TableCell align="center">
+                    <IconButton
+                      size="small"
+                      disabled={pdfLoadingId === d.id}
+                      onClick={() => openDocPdf(kind, d)}
+                    >
+                      {pdfLoadingId === d.id ? (
+                        <CircularProgress size={18} />
+                      ) : (
+                        <VisibilityIcon fontSize="small" />
+                      )}
+                    </IconButton>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    </Box>
+  );
+
+  const financeCards = () => {
+    const liveInv = allInvoices.filter((d) => d.status !== "void");
+    const liveBills = allBills.filter((d) => d.status !== "void");
+    const receipts = liveInv.filter((d) => docPaidAed(d) > 0).length;
+    const payments = liveBills.filter((d) => docPaidAed(d) > 0).length;
+    const marginTxt = netMargin === null ? "-" : `${netMargin.toFixed(1)}%`;
+
+    return (
+      <Box
+        sx={{
+          display: "grid",
+          gridTemplateColumns: {
+            xs: "repeat(2, 1fr)",
+            sm: "repeat(3, 1fr)",
+            lg: "repeat(6, 1fr)",
+          },
+          gap: 1.5,
+        }}
+      >
+        <FinStatCard
+          color="#2563eb"
+          icon={<DescriptionOutlinedIcon />}
+          value={fmtMoney(billingTotals.revenue, "AED")}
+          label="Total Invoice"
+          sub={`${liveInv.length} Invoices`}
+        />
+        <FinStatCard
+          color="#d97706"
+          icon={<ReceiptLongOutlinedIcon />}
+          value={fmtMoney(billingTotals.cost, "AED")}
+          label="Total Bills"
+          sub={`${liveBills.length} Bills`}
+        />
+        <FinStatCard
+          color="#16a34a"
+          icon={<AccountBalanceWalletOutlinedIcon />}
+          value={fmtMoney(billingTotals.received, "AED")}
+          label="Total Received"
+          sub={`${receipts} Receipts`}
+        />
+        <FinStatCard
+          color="#7c3aed"
+          icon={<CreditCardOutlinedIcon />}
+          value={fmtMoney(billingTotals.paidOut, "AED")}
+          label="Total Paid"
+          sub={`${payments} Payments`}
+        />
+        <FinStatCard
+          color="#059669"
+          icon={<TrendingUpIcon />}
+          value={fmtMoney(netProfit, "AED")}
+          label="Net Profit"
+          sub={`${marginTxt} Margin`}
+        />
+        <FinStatCard
+          color="#e11d48"
+          icon={<PieChartOutlineIcon />}
+          value={marginTxt}
+          label="Profit Margin"
+          sub={`${fmtMoney(netProfit, "AED")} Profit`}
+        />
+      </Box>
+    );
+  };
+
+  const statusColors = getStatusColors(values.status);
+
+  const editLogs = [
+    values.updated_at && {
+      key: "updated",
+      label: "Last Updated",
+      by: values.updated_by,
+      at: values.updated_at,
+    },
+    values.created_at && {
+      key: "created",
+      label: "Created",
+      by: values.created_by,
+      at: values.created_at,
+    },
+  ].filter(Boolean);
+
+  return (
+    <LocalizationProvider dateAdapter={AdapterDayjs}>
+      <Box sx={{ bgcolor: "background.default", pb: 4, minHeight: "100%" }}>
+        <Slide in timeout={1000}>
+          <Box sx={{ mx: "auto", p: 2 }}>
+            <form onSubmit={(e) => e.preventDefault()}>
+              <Box
+                sx={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 1.5,
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  mb: 1.5,
+                }}
+              >
+                <Box>
+                  <Typography
+                    variant="h4"
+                    sx={{ color: tealText, fontWeight: "bold", fontSize: 24 }}
+                  >
+                    View Consignment Details
+                  </Typography>
+                  <Stack
+                    direction="row"
+                    spacing={1}
+                    alignItems="center"
+                    flexWrap="wrap"
+                    sx={{ color: "text.secondary", fontSize: 13 }}
+                  >
+                    {values.consignment_number && (
+                      <span>#{values.consignment_number}</span>
+                    )}
+                    {values.originName && values.destinationName && (
+                      <span>
+                        · {values.originName.split(",")[0]} →{" "}
+                        {values.destinationName.split(",")[0]}
+                      </span>
+                    )}
+                    {values.status && (
+                      <Chip
+                        label={values.status}
+                        size="small"
+                        sx={{
+                          bgcolor: statusColors.bg,
+                          color: statusColors.text,
+                        }}
+                      />
+                    )}
+                  </Stack>
+                </Box>
+                <LoadingBtn
+                  variant="outlined"
+                  startIcon={<DescriptionIcon />}
+                  loading={busyAction === "note-pdf"}
+                  onClick={() =>
+                    runAction("note-pdf", async () => {
+                      await generateConsignmentNotePDFWithCanvas(
+                        values,
+                        includedOrders,
+                      );
+                      logPrint("Consignment Note");
+                    })
+                  }
+                  disabled={
+                    saving || !!busyAction || !values.consignment_number
+                  }
+                  sx={outlineBtn}
+                >
+                  Consignment Note PDF
+                </LoadingBtn>
+              </Box>
+
+              <Tabs
+                value={tab}
+                onChange={(_, v) => setTab(v)}
+                variant="scrollable"
+                scrollButtons="auto"
+                TabIndicatorProps={{ sx: { display: "none" } }}
+                sx={{
+                  bgcolor: teal,
+                  borderRadius: "10px 10px 0 0",
+                  px: 0.75,
+                  pt: 0.75,
+                  minHeight: 0,
+                  "& .MuiTabs-scrollButtons": { color: "#cfe6e6" },
+                  "& .MuiTab-root": {
+                    color: "#cfe6e6",
+                    textTransform: "none",
+                    fontWeight: 500,
+                    fontSize: 14,
+                    minHeight: 44,
+                    borderRadius: "8px 8px 0 0",
+                    "&:hover": { bgcolor: "rgba(255,255,255,.1)" },
+                  },
+                  "& .MuiTab-root.Mui-selected": {
+                    bgcolor: "background.paper",
+                    color: tealText,
+                    fontWeight: 600,
+                  },
+                }}
+              >
+                <Tab value="details" label={tabLabel("📦 Details")} />
+                <Tab
+                  value="containers"
+                  label={tabLabel(
+                    "🚛 Containers",
+                    (values.containers || []).length,
+                  )}
+                />
+                <Tab
+                  value="shipments"
+                  label={tabLabel(
+                    "🛒 Shipments",
+                    new Set(flatShipments.map((s) => s.shippingDetailId)).size,
+                  )}
+                />
+                {canViewJobDetails && (
+                  <Tab value="billing" label={tabLabel("💰 Finance")} />
+                )}
+                <Tab
+                  value="documents"
+                  label={tabLabel("📄 Documents", documents.length)}
+                />
+                {canViewJobDetails && (
+                  <Tab value="audit" label={tabLabel("🕵️ Audit")} />
+                )}
+              </Tabs>
+
+              <Box
+                sx={{
+                  bgcolor: "background.paper",
+                  border: 1,
+                  borderTop: 0,
+                  borderColor: "divider",
+                  borderRadius: "0 0 10px 10px",
+                  p: { xs: 1.75, sm: 2.5 },
+                }}
+              >
+                {tab === "details" && (
+                  <Box ref={lockRef}>
+                    <Box sx={gridSx}>
+                      <Box sx={span(3)}>
+                        <CustomTextField
+                          name="consignment_number"
+                          value={values.consignment_number}
+                          onChange={handleChange}
+                          onBlur={handleBlur}
+                          label="Consignment #"
+                          startAdornment={
+                            <DescriptionIcon sx={{ mr: 1, color: orange }} />
+                          }
+                          readOnly={mode === "edit"}
+                          required
+                          error={
+                            touched.consignment_number &&
+                            Boolean(errors.consignment_number)
+                          }
+                          helperText={
+                            touched.consignment_number &&
+                            errors.consignment_number
+                              ? errors.consignment_number
+                              : "Enter unique consignment number"
+                          }
+                        />
+                      </Box>
+                      <Box sx={span(3)}>
+                        <CustomTextField
+                          name="eform"
+                          value={values.eform}
+                          onChange={handleChange}
+                          onBlur={handleBlur}
+                          label="Eform #"
+                          inputProps={{
+                            pattern: "^[A-Z]{3}-\\d{6}$",
+                            placeholder: "ABC-123456",
+                          }}
+                          required
+                          error={touched.eform && Boolean(errors.eform)}
+                          helperText={
+                            touched.eform && errors.eform ? errors.eform : ""
+                          }
+                          tooltip="Format: ABC-123456"
+                        />
+                      </Box>
+                      <Box sx={span(3)}>
+                        <CustomDatePicker
+                          name="eform_date"
+                          tooltip="Select Date"
+                          value={values.eform_date}
+                          onChange={handleDateChange}
+                          onBlur={() => handleDateBlur("eform_date")}
+                          label="Eform Date"
+                          required
+                          error={
+                            touched.eform_date && Boolean(errors.eform_date)
+                          }
+                          helperText={
+                            touched.eform_date && errors.eform_date
+                              ? errors.eform_date
+                              : ""
+                          }
+                          slotProps={{
+                            textField: {
+                              InputProps: {
+                                startAdornment: (
+                                  <DateRangeIcon
+                                    sx={{ mr: 1, color: orange }}
+                                  />
+                                ),
+                              },
+                            },
+                          }}
+                        />
+                      </Box>
+                      {mode === "edit" && (
+                        <Box sx={span(3)}>
+                          <DatePicker
+                            label="ETA"
+                            value={eta ? dayjs(eta) : dayjs(etaSuggestion)}
+                            onChange={(value) => {
+                              if (value && value?.isValid()) {
+                                const formatted = value.format("YYYY-MM-DD");
+                                setEta(formatted);
+                                setValues((prev) => ({
+                                  ...prev,
+                                  eta: formatted,
+                                }));
+                              } else {
+                                setEta(null);
+                              }
+                            }}
+                            inputFormat="YYYY-MM-DD"
+                            readOnly={true}
+                            slotProps={{
+                              textField: {
+                                fullWidth: true,
+                                helperText: etaLoading
+                                  ? "Calculating ETA..."
+                                  : etaSuggestion && eta !== etaSuggestion
+                                    ? `Suggested: ${dayjs(etaSuggestion).isValid() ? dayjs(etaSuggestion).format("MMM DD, YYYY") : "Invalid date"} based on status (edited)`
+                                    : etaSuggestion
+                                      ? `Suggested: ${dayjs(etaSuggestion).isValid() ? dayjs(etaSuggestion).format("MMM DD, YYYY") : "Invalid date"} based on status`
+                                      : "Set ETA based on status",
+                              },
+                            }}
+                            disabled={["Delivered", "Cancelled"].includes(
+                              values.status,
+                            )}
+                            name="eta"
+                          />
+                        </Box>
+                      )}
+
+                      <Box sx={{ ...span(6), display: "flex", gap: 1 }}>
+                        <CustomSelect
+                          name="status"
+                          value={values.status}
+                          onChange={handleStatusChange}
+                          label="Status"
+                          options={(mode === "add"
+                            ? [{ value: "Draft", label: "Draft" }]
+                            : values.status &&
+                                !(options.statusOptions || []).some(
+                                  (o) => o.value === values.status,
+                                )
+                              ? [
+                                  {
+                                    value: values.status,
+                                    label: values.status,
+                                  },
+                                  ...(options.statusOptions || []),
+                                ]
+                              : options.statusOptions || []
+                          ).map((opt) =>
+                            opt.value === "Delivered"
+                              ? {
+                                  ...opt,
+                                  disabled: hasDeliveredShipment,
+                                  label: "Delivered",
+                                }
+                              : opt,
+                          )}
+                          disabled={mode === "add"}
+                          error={touched.status && Boolean(errors.status)}
+                          helperText={
+                            touched.status && errors.status ? errors.status : ""
+                          }
+                          loading={etaLoading}
+                        />
+                      </Box>
+                      <Box sx={span(6)}>
+                        <CustomTextField
+                          name="remarks"
+                          value={values.remarks}
+                          onChange={handleChange}
+                          label="Remarks"
+                          multiline
+                          startAdornment={
+                            <AttachFileIcon sx={{ mr: 1, color: orange }} />
+                          }
+                        />
+                      </Box>
+
+                      {sectionTitle("Parties")}
+                      <Box sx={span(6)}>
+                        <CustomSelect
+                          name="shipper"
+                          value={values.shipper}
+                          onChange={handlePartyChange}
+                          onBlur={() => handleSelectBlur("shipper")}
+                          label="Shipper"
+                          options={options.shipperOptions || []}
+                          required
+                          error={touched.shipper && Boolean(errors.shipper)}
+                          helperText={
+                            touched.shipper && errors.shipper
+                              ? errors.shipper
+                              : ""
+                          }
+                          tooltip="Select shipper"
+                        />
+                      </Box>
+                      <Box sx={span(6)}>
+                        <CustomSelect
+                          name="consignee"
+                          value={values.consignee}
+                          onChange={handlePartyChange}
+                          onBlur={() => handleSelectBlur("consignee")}
+                          label="Consignee"
+                          options={options.consigneeOptions || []}
+                          required
+                          error={touched.consignee && Boolean(errors.consignee)}
+                          helperText={
+                            touched.consignee && errors.consignee
+                              ? errors.consignee
+                              : ""
+                          }
+                          tooltip="Select consignee"
+                        />
+                      </Box>
+                      <Box sx={span(6)}>
+                        <CustomTextField
+                          name="shipperAddress"
+                          value={values.shipperAddress}
+                          label="Shipper Address"
+                          multiline
+                          rows={3}
+                        />
+                      </Box>
+                      <Box sx={span(6)}>
+                        <CustomTextField
+                          name="consigneeAddress"
+                          value={values.consigneeAddress}
+                          label="Consignee Address"
+                          multiline
+                          rows={3}
+                        />
+                      </Box>
+
+                      {sectionTitle("Route & Vessel")}
+                      <Box sx={span(6)}>
+                        <CustomSelect
+                          name="origin"
+                          value={values.origin}
+                          onChange={handleLocationChange}
+                          onBlur={() => handleSelectBlur("origin")}
+                          label="Origin"
+                          options={options.originOptions || []}
+                          disabled={
+                            !options.originOptions ||
+                            options.originOptions.length === 0
+                          }
+                          required
+                          error={touched.origin && Boolean(errors.origin)}
+                          helperText={
+                            touched.origin && errors.origin ? errors.origin : ""
+                          }
+                          tooltip="Select origin port"
+                        />
+                      </Box>
+                      <Box sx={span(6)}>
+                        <CustomSelect
+                          name="destination"
+                          value={values.destination}
+                          onChange={handleLocationChange}
+                          onBlur={() => handleSelectBlur("destination")}
+                          label="Destination"
+                          options={options.destinationOptions || []}
+                          disabled={
+                            !options.destinationOptions ||
+                            options.destinationOptions.length === 0
+                          }
+                          required
+                          error={
+                            touched.destination && Boolean(errors.destination)
+                          }
+                          helperText={
+                            touched.destination && errors.destination
+                              ? errors.destination
+                              : ""
+                          }
+                          tooltip="Select destination port"
+                        />
+                      </Box>
+                      <Box sx={span(3)}>
+                        <CustomTextField
+                          name="shippingLine"
+                          value={values.shippingLine || ""}
+                          onChange={handleChange}
+                          onBlur={handleBlur}
+                          label="Shipping Line"
+                          type="text"
+                          placeholder="e.g., Maersk, MSC, COSCO"
+                        />
+                      </Box>
+                      <Box sx={span(3)}>
+                        <CustomSelect
+                          name="vessel"
+                          value={values.vessel ?? ""}
+                          onChange={handleChange}
+                          onBlur={() => handleSelectBlur("vessel")}
+                          label="Vessel"
+                          options={options.vesselOptions || []}
+                          required
+                          error={touched.vessel && Boolean(errors.vessel)}
+                          helperText={
+                            touched.vessel && errors.vessel ? errors.vessel : ""
+                          }
+                          tooltip="Select vessel"
+                        />
+                      </Box>
+                      <Box sx={span(3)}>
+                        <CustomTextField
+                          name="voyage"
+                          value={values.voyage}
+                          onChange={handleChange}
+                          onBlur={handleBlur}
+                          label="Voyage"
+                          startAdornment={
+                            <DirectionsBoatIcon sx={{ mr: 1, color: orange }} />
+                          }
+                          required
+                          error={touched.voyage && Boolean(errors.voyage)}
+                          helperText={
+                            touched.voyage && errors.voyage ? errors.voyage : ""
+                          }
+                          tooltip="Enter voyage number (min 3 chars)"
+                        />
+                      </Box>
+                      <Box sx={span(3)}>
+                        <CustomTextField
+                          name="seal_no"
+                          value={values.seal_no}
+                          onChange={handleChange}
+                          label="Seal No"
+                          startAdornment={
+                            <LocalPrintshopIcon sx={{ mr: 1, color: orange }} />
+                          }
+                        />
+                      </Box>
+
+                      {sectionTitle("Payment & Weight")}
+                      <Box sx={span(3)}>
+                        <FormControl fullWidth error={!!errors.paymentType}>
+                          <InputLabel id="paymentType-label">
+                            Payment Terms*
+                          </InputLabel>
+                          <Select
+                            labelId="paymentType-label"
+                            label="Payment Terms*"
+                            name="paymentType"
+                            value={values.paymentType || ""}
+                            onChange={(e) => {
+                              const newValue = e.target.value || "";
+                              setValues((prev) => ({
+                                ...prev,
+                                paymentType: newValue,
+                              }));
+                              if (touched.paymentType) {
+                                validateField("paymentType", newValue);
+                              }
+                              setTouched((prev) => ({
+                                ...prev,
+                                paymentType: true,
+                              }));
+                            }}
+                          >
+                            {options.paymentTypeOptions?.map((option) => (
+                              <MenuItem key={option.value} value={option.value}>
+                                {option.label}
+                              </MenuItem>
+                            )) || null}
+                          </Select>
+                          <FormHelperText
+                            sx={{
+                              color: errors.paymentType
+                                ? "error.main"
+                                : "text.secondary",
+                            }}
+                          >
+                            {errors.paymentType || "(Required)"}
+                          </FormHelperText>
+                        </FormControl>
+                      </Box>
+                      <Box sx={span(3)}>
+                        <CustomTextField
+                          name="consignment_value"
+                          value={values.consignment_value}
+                          onChange={handleNumberChange}
+                          onBlur={handleBlur}
+                          onFocus={handleNumberFocus}
+                          label="Consignment Value"
+                          type="number"
+                          required
+                          endAdornment={
+                            <FormControl size="small" sx={{ minWidth: 60 }}>
+                              <Select
+                                name="currency_code"
+                                value={
+                                  (options.currencyOptions || []).length > 0 &&
+                                  (options.currencyOptions || []).some(
+                                    (opt) => opt.value === values.currency_code,
+                                  )
+                                    ? values.currency_code
+                                    : ""
+                                }
+                                onChange={handleChange}
+                              >
+                                {(options.currencyOptions || [])?.length > 0 ? (
+                                  (options.currencyOptions || []).map((opt) => (
+                                    <MenuItem key={opt.value} value={opt.value}>
+                                      {opt.label}
+                                    </MenuItem>
+                                  ))
+                                ) : (
+                                  <MenuItem value="">Select Currency</MenuItem>
+                                )}
+                              </Select>
+                            </FormControl>
+                          }
+                          error={
+                            touched.consignment_value &&
+                            Boolean(errors.consignment_value)
+                          }
+                          helperText={
+                            touched.consignment_value &&
+                            errors.consignment_value
+                              ? errors.consignment_value
+                              : ""
+                          }
+                        />
+                      </Box>
+                      <Box sx={span(3)}>
+                        <CustomSelect
+                          name="bank"
+                          value={values.bank}
+                          onChange={handleBankChange}
+                          onBlur={() => handleSelectBlur("bank")}
+                          label="Bank"
+                          options={options.bankOptions || []}
+                          required
+                          error={touched.bank && Boolean(errors.bank)}
+                          helperText={
+                            touched.bank && errors.bank ? errors.bank : ""
+                          }
+                          tooltip="Select associated bank"
+                        />
+                      </Box>
+                      <Box sx={span(3)}>
+                        <CustomTextField
+                          name="netWeight"
+                          value={values.netWeight || 0}
+                          label="Net Weight"
+                          type="number"
+                          required
+                          readOnly
+                          endAdornment={
+                            <Typography variant="body2" color="text.secondary">
+                              KGS
+                            </Typography>
+                          }
+                          helperText="Auto-calculated from selected orders"
+                        />
+                      </Box>
+                    </Box>
+                    {selectedOrders.length > 0 && (
+                      <Alert
+                        severity="info"
+                        icon={<InfoIcon />}
+                        sx={{ mt: 2, borderLeft: `4px solid ${orange}` }}
+                      >
+                        <AlertTitle>Weight Summary</AlertTitle>
+                        Based on <strong>{selectedOrders.length}</strong>{" "}
+                        selected order(s):{" "}
+                        <strong>{calculatedTotals.netWeight} KGS</strong> net
+                      </Alert>
+                    )}
+                  </Box>
+                )}
+
+                {tab === "containers" && (
+                  <>
+                    <TableContainer
+                      sx={{
+                        border: 1,
+                        borderColor: "divider",
+                        borderRadius: 2,
+                      }}
+                    >
+                      <Table
+                        sx={{ minWidth: 760 }}
+                        aria-label="Containers table"
+                      >
+                        <TableHead>
+                          <TableRow>
+                            {[
+                              "Container No.",
+                              "Location",
+                              "Size",
+                              "Type",
+                              "Ownership",
+                              "Status",
+                            ].map((h) => (
+                              <TableCell key={h} sx={headCellSx}>
+                                {h}
+                              </TableCell>
+                            ))}
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {(values.containers || []).length === 0 ? (
+                            <TableRow>
+                              <TableCell
+                                colSpan={6}
+                                align="center"
+                                sx={{ py: 4 }}
+                              >
+                                <Typography
+                                  variant="body2"
+                                  color="text.secondary"
+                                >
+                                  No containers added.
+                                </Typography>
+                              </TableCell>
+                            </TableRow>
+                          ) : (
+                            (values.containers || []).map(
+                              (container, index) => (
+                                <Fade
+                                  in
+                                  key={`${container.containerNo || "new"}-${index}`}
+                                  timeout={300 * index}
+                                >
+                                  <TableRow hover>
+                                    <TableCell>
+                                      {container.containerNo}
+                                    </TableCell>
+                                    <TableCell>{container.location}</TableCell>
+                                    <TableCell>{container.size}</TableCell>
+                                    <TableCell>
+                                      {container.containerType}
+                                    </TableCell>
+                                    <TableCell>{container.ownership}</TableCell>
+                                    <TableCell>
+                                      {container.status || "Available"}
+                                    </TableCell>
+                                  </TableRow>
+                                </Fade>
+                              ),
+                            )
+                          )}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  </>
+                )}
+
+                {tab === "shipments" && (
+                  <>
+                    <Box
+                      sx={{
+                        display: "flex",
+                        gap: 2,
+                        mb: 2,
+                        flexDirection: { xs: "column", sm: "row" },
+                      }}
+                    >
+                      <TextField
+                        size="small"
+                        sx={{ maxWidth: 800 }}
+                        placeholder="Search Item Ref No, Booking Ref or Form No"
+                        value={shipmentSearch}
+                        onChange={(e) => setShipmentSearch(e.target.value)}
+                        InputProps={{
+                          startAdornment: (
+                            <InputAdornment position="start">
+                              <SearchIcon fontSize="small" />
+                            </InputAdornment>
+                          ),
+                        }}
+                      />
+                      <FormControl size="small" sx={{ minWidth: 220 }}>
+                        <InputLabel id="shipment-status-label">
+                          Status
+                        </InputLabel>
+                        <Select
+                          labelId="shipment-status-label"
+                          label="Status"
+                          value={shipmentStatus}
+                          onChange={(e) => setShipmentStatus(e.target.value)}
+                        >
+                          <MenuItem value="">All</MenuItem>
+                          {shipmentStatusOptions.map((st) => (
+                            <MenuItem key={st} value={st}>
+                              {st}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        sx={{ alignSelf: "center", whiteSpace: "nowrap" }}
+                      >
+                        {orderRows.length} orders ·{" "}
+                        {
+                          new Set(
+                            filteredShipments.map((s) => s.shippingDetailId),
+                          ).size
+                        }{" "}
+                        items
+                      </Typography>
+                    </Box>
+                    <TableContainer
+                      sx={{
+                        border: 1,
+                        borderColor: "divider",
+                        borderRadius: 2,
+                        maxHeight: 580,
+                      }}
+                    >
+                      <Table
+                        stickyHeader
+                        sx={{ minWidth: 760 }}
+                        aria-label="shipments-by-order-table"
+                      >
+                        <TableHead>
+                          <TableRow>
+                            {orderHeaders.map((h, i) => (
+                              <TableCell key={i} sx={headCellSx}>
+                                {h}
+                              </TableCell>
+                            ))}
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {orderRows.length === 0 ? (
+                            <TableRow>
+                              <TableCell
+                                colSpan={orderHeaders.length}
+                                align="center"
+                                sx={{ py: 6 }}
+                              >
+                                <Typography
+                                  variant="body1"
+                                  color="text.secondary"
+                                >
+                                  {flatShipments.length === 0
+                                    ? "No shipments with container assignments found"
+                                    : "No orders match your search or filter"}
+                                </Typography>
+                              </TableCell>
+                            </TableRow>
+                          ) : (
+                            orderRows.map((row) => {
+                              const open =
+                                expandedOrders.has(row.orderId) ||
+                                !!shipmentSearch.trim();
+                              return (
+                                <React.Fragment key={row.orderId}>
+                                  <TableRow
+                                    hover
+                                    onClick={() => toggleOrder(row.orderId)}
+                                    sx={{ cursor: "pointer" }}
+                                  >
+                                    <TableCell padding="checkbox">
+                                      <IconButton size="small">
+                                        <ExpandMoreIcon
+                                          fontSize="small"
+                                          sx={{
+                                            transform: open
+                                              ? "rotate(180deg)"
+                                              : "none",
+                                            transition: "transform .2s",
+                                          }}
+                                        />
+                                      </IconButton>
+                                    </TableCell>
+                                    <TableCell>{row.bookingRef}</TableCell>
+                                    <TableCell>{row.formNo}</TableCell>
+                                    <TableCell>
+                                      {String(row.pol).substring(0, 15)}
+                                    </TableCell>
+                                    <TableCell>
+                                      {String(row.pod).substring(0, 15)}
+                                    </TableCell>
+                                    <TableCell>
+                                      {String(row.sender).substring(0, 15)}
+                                    </TableCell>
+                                    <TableCell>
+                                      {[...row.receivers]
+                                        .join(", ")
+                                        .substring(0, 30)}
+                                    </TableCell>
+                                    <TableCell>{row.items.size}</TableCell>
+                                    <TableCell>
+                                      <Stack
+                                        direction="row"
+                                        spacing={0.5}
+                                        flexWrap="wrap"
+                                        useFlexGap
+                                      >
+                                        {[...row.containers].map((c) => (
+                                          <Chip
+                                            key={c}
+                                            label={c}
+                                            size="small"
+                                            variant="outlined"
+                                            sx={{
+                                              borderColor: orange,
+                                              color: orange,
+                                            }}
+                                          />
+                                        ))}
+                                      </Stack>
+                                    </TableCell>
+                                    <TableCell>
+                                      {row.weight > 0
+                                        ? `${row.weight.toLocaleString()} kg`
+                                        : "-"}{" "}
+                                      {row.boxes > 0
+                                        ? `${row.boxes.toLocaleString()} boxes`
+                                        : "-"}
+                                    </TableCell>
+                                    <TableCell>
+                                      {[...row.statuses].map((st) => (
+                                        <StatusChip
+                                          key={st}
+                                          status={st}
+                                          size="small"
+                                        />
+                                      ))}
+                                    </TableCell>
+                                  </TableRow>
+                                  <TableRow>
+                                    <TableCell
+                                      colSpan={orderHeaders.length}
+                                      sx={{
+                                        p: 0,
+                                        borderBottom: open ? undefined : 0,
+                                      }}
+                                    >
+                                      <Collapse
+                                        in={open}
+                                        timeout="auto"
+                                        unmountOnExit
+                                      >
+                                        <Box
+                                          sx={{
+                                            p: 1.5,
+                                            bgcolor: "action.hover",
+                                          }}
+                                        >
+                                          <Table size="small">
+                                            <TableHead>
+                                              <TableRow>
+                                                {itemHeaders.map((h) => (
+                                                  <TableCell
+                                                    key={h}
+                                                    sx={headCellSx}
+                                                  >
+                                                    {h}
+                                                  </TableCell>
+                                                ))}
+                                              </TableRow>
+                                            </TableHead>
+                                            <TableBody>
+                                              {row.shipments.map((shipment) => (
+                                                <TableRow
+                                                  key={`${shipment.shippingDetailId}-${shipment.containerCid}`}
+                                                >
+                                                  <TableCell>
+                                                    {shipment.itemRef}
+                                                  </TableCell>
+                                                  <TableCell>
+                                                    <Typography
+                                                      variant="body2"
+                                                      fontWeight="medium"
+                                                    >
+                                                      {shipment.category}
+                                                    </Typography>
+                                                    <Typography
+                                                      variant="caption"
+                                                      color="text.secondary"
+                                                    >
+                                                      {shipment.subcategory}
+                                                    </Typography>
+                                                  </TableCell>
+                                                  <TableCell>
+                                                    {String(
+                                                      shipment.receiverName ??
+                                                        "-",
+                                                    ).substring(0, 15)}
+                                                  </TableCell>
+                                                  <TableCell>
+                                                    <Chip
+                                                      label={
+                                                        shipment.containerNumber
+                                                      }
+                                                      size="small"
+                                                      variant="outlined"
+                                                      sx={{
+                                                        borderColor: orange,
+                                                        color: orange,
+                                                      }}
+                                                    />
+                                                  </TableCell>
+                                                  <TableCell>
+                                                    {shipment.assignWeight > 0
+                                                      ? `${shipment.assignWeight.toLocaleString()} kg`
+                                                      : "-"}{" "}
+                                                    {shipment.assignBoxes > 0
+                                                      ? `${shipment.assignBoxes.toLocaleString()} ${shipment.type}`
+                                                      : "-"}
+                                                  </TableCell>
+                                                  <TableCell>
+                                                    <StatusChip
+                                                      status={
+                                                        shipment.receiverStatus
+                                                      }
+                                                      size="small"
+                                                    />
+                                                  </TableCell>
+                                                </TableRow>
+                                              ))}
+                                            </TableBody>
+                                          </Table>
+                                        </Box>
+                                      </Collapse>
+                                    </TableCell>
+                                  </TableRow>
+                                </React.Fragment>
+                              );
+                            })
+                          )}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  </>
+                )}
+                {tab === "billing" && canViewJobDetails && (
+                  <>
+                    {mode !== "edit" ? (
+                      <Typography color="text.secondary">
+                        Save the consignment first to see its Finance and
+                        invoices.
+                      </Typography>
+                    ) : (
+                      <Stack spacing={3}>
+                        <Box
+                          sx={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 1.5,
+                            }}
+                          >
+                            <Box
+                              sx={{
+                                width: 36,
+                                height: 36,
+                                borderRadius: "50%",
+                                bgcolor: FIN.tealLight,
+                                display: "grid",
+                                placeItems: "center",
+                              }}
+                            >
+                              💰
+                            </Box>
+                            <Typography
+                              variant="h6"
+                              fontWeight={700}
+                              color={tealText}
+                            >
+                              Finance
+                            </Typography>
+                          </Box>
+                          <LoadingBtn
+                            size="small"
+                            variant="outlined"
+                            onClick={() => fetchBilling(true)}
+                            loading={billingSyncing}
+                            disabled={billingLoading}
+                            startIcon={<UpdateIcon />}
+                            sx={{ borderColor: teal, color: teal }}
+                          >
+                            Sync Zoho
+                          </LoadingBtn>
+                        </Box>
+
+                        {billingRows.length === 0 ? (
+                          <Typography variant="body2" color="text.secondary">
+                            {billingLoading || billingSyncing
+                              ? "Loading billing data..."
+                              : "No invoices or bills found for this consignment. Click Sync Zoho to fetch them."}
+                          </Typography>
+                        ) : (
+                          <>
+                            {billingTotals.missing > 0 ? (
+                              <Alert severity="warning">
+                                {billingTotals.missing} order(s) have documents
+                                without an exchange rate. Click "Sync Zoho" to
+                                load it.
+                              </Alert>
+                            ) : (
+                              financeCards()
+                            )}
+
+                            <Divider />
+
+                            <Box
+                              sx={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                                flexWrap: "wrap",
+                                gap: 1,
+                              }}
+                            >
+                              <ToggleButtonGroup
+                                size="small"
+                                exclusive
+                                value={financeView}
+                                onChange={(_, v) => v && setFinanceView(v)}
+                              >
+                                <ToggleButton
+                                  value="invoices"
+                                  sx={{ textTransform: "none", px: 2.5 }}
+                                >
+                                  Invoices ({allInvoices.length})
+                                </ToggleButton>
+                                <ToggleButton
+                                  value="bills"
+                                  sx={{ textTransform: "none", px: 2.5 }}
+                                >
+                                  Bills ({allBills.length})
+                                </ToggleButton>
+                              </ToggleButtonGroup>
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                              >
+                                Click a form number to collapse or expand. Void
+                                documents are excluded from totals.
+                              </Typography>
+                            </Box>
+
+                            {financeView === "invoices"
+                              ? financeTable(
+                                  allInvoices,
+                                  "Customer",
+                                  "customer",
+                                  "Invoice",
+                                )
+                              : financeTable(
+                                  allBills,
+                                  "Vendor",
+                                  "vendor",
+                                  "Bill",
+                                )}
+                          </>
+                        )}
+                      </Stack>
+                    )}
+                  </>
+                )}
+                {tab === "audit" && canViewJobDetails && (
+                  <>
+                    <Tabs
+                      value={auditView}
+                      onChange={(_, v) => setAuditView(v)}
+                      sx={{ mb: 2, borderBottom: 1, borderColor: "divider" }}
+                    >
+                      <Tab
+                        value="edits"
+                        label={`Who Edited (${editLogs.length})`}
+                      />
+                      <Tab
+                        value="prints"
+                        label={`Who Printed Manifest (${printLogs.length})`}
+                      />
+                    </Tabs>
+                    <TableContainer
+                      sx={{
+                        border: 1,
+                        borderColor: "divider",
+                        borderRadius: 2,
+                        maxHeight: 520,
+                      }}
+                    >
+                      <Table stickyHeader size="small">
+                        <TableHead>
+                          <TableRow>
+                            {(auditView === "edits"
+                              ? ["#", "Edited By", "Action", "Date & Time"]
+                              : ["#", "Printed By", "Document", "Date & Time"]
+                            ).map((h) => (
+                              <TableCell key={h} sx={headCellSx}>
+                                {h}
+                              </TableCell>
+                            ))}
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {auditLoading ? (
+                            <TableRow>
+                              <TableCell
+                                colSpan={4}
+                                align="center"
+                                sx={{ py: 4 }}
+                              >
+                                <CircularProgress size={24} />
+                              </TableCell>
+                            </TableRow>
+                          ) : (auditView === "edits" ? editLogs : printLogs)
+                              .length === 0 ? (
+                            <TableRow>
+                              <TableCell
+                                colSpan={4}
+                                align="center"
+                                sx={{ py: 4 }}
+                              >
+                                <Typography
+                                  variant="body2"
+                                  color="text.secondary"
+                                >
+                                  {auditView === "edits"
+                                    ? "No edits recorded"
+                                    : "No manifest prints recorded"}
+                                </Typography>
+                              </TableCell>
+                            </TableRow>
+                          ) : auditView === "edits" ? (
+                            editLogs.map((r, i) => (
+                              <TableRow hover key={r.key}>
+                                <TableCell>{i + 1}</TableCell>
+                                <TableCell>{r.by || "-"}</TableCell>
+                                <TableCell>{r.label}</TableCell>
+                                <TableCell>
+                                  {dayjs(r.at).format("DD MMM YYYY, hh:mm A")}
+                                </TableCell>
+                              </TableRow>
+                            ))
+                          ) : (
+                            printLogs.map((r, i) => (
+                              <TableRow hover key={r.id}>
+                                <TableCell>{i + 1}</TableCell>
+                                <TableCell>{r.user_email}</TableCell>
+                                <TableCell>{r.document_type}</TableCell>
+                                <TableCell>
+                                  {dayjs(r.printed_at).format(
+                                    "DD MMM YYYY, hh:mm A",
+                                  )}
+                                </TableCell>
+                              </TableRow>
+                            ))
+                          )}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  </>
+                )}
+                {tab === "documents" && (
+                  <Box
+                    sx={{
+                      display: "grid",
+                      gridTemplateColumns:
+                        "repeat(auto-fill, minmax(240px, 1fr))",
+                      gap: 2,
+                    }}
+                  >
+                    {documents.map((doc) => (
+                      <Box
+                        key={doc.title}
+                        sx={{
+                          border: 1,
+                          borderColor: "divider",
+                          borderRadius: 2.5,
+                          p: 2,
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 0.75,
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            width: 38,
+                            height: 38,
+                            borderRadius: 2,
+                            bgcolor: alpha(orange, 0.14),
+                            display: "grid",
+                            placeItems: "center",
+                            fontSize: 19,
+                          }}
+                        >
+                          {doc.icon}
+                        </Box>
+                        <Typography sx={{ fontWeight: 600, fontSize: 15 }}>
+                          {doc.title}
+                        </Typography>
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ flex: 1, mb: 1 }}
+                        >
+                          {doc.text}
+                        </Typography>
+                        <LoadingBtn
+                          variant="outlined"
+                          loading={busyAction === doc.title}
+                          onClick={() => runAction(doc.title, doc.run)}
+                          disabled={
+                            saving || !!busyAction || !values.consignment_number
+                          }
+                          sx={outlineBtn}
+                        >
+                          {doc.label}
+                        </LoadingBtn>
+                      </Box>
+                    ))}
+                  </Box>
+                )}
+              </Box>
+              <Dialog
+                open={Boolean(previewDoc)}
+                onClose={closePreview}
+                maxWidth="lg"
+                fullWidth
+              >
+                {previewDoc && (
+                  <>
+                    <DialogTitle>
+                      {previewDoc.kind} Preview · {previewDoc.doc.number}
+                    </DialogTitle>
+                    <DialogContent dividers sx={{ p: 0 }}>
+                      <iframe
+                        title="document-preview"
+                        src={previewDoc.url}
+                        style={{ width: "100%", height: "75vh", border: 0 }}
+                      />
+                    </DialogContent>
+                    <DialogActions>
+                      <Button onClick={closePreview}>Close</Button>
+                    </DialogActions>
+                  </>
+                )}
+              </Dialog>
+            </form>
+          </Box>
+        </Slide>
+      </Box>
+    </LocalizationProvider>
+  );
+};
+export default ViewConsignmentPage;
