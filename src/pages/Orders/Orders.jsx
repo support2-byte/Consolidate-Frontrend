@@ -75,6 +75,11 @@ import Menu from "@mui/material/Menu";
 import { toast } from "react-toastify";
 import { OrderConfirmation } from "../../documents/orderConfirmationGenerator";
 import OrderConfirmationEmailModal from "../../components/orders/OrderConfirmationModal";
+import {
+  MasterBillOfLading,
+  WharfageConsignmentNote,
+  RickmersBillOfLading,
+} from "../../documents/mblGenerator";
 
 const OrdersList = () => {
   const navigate = useNavigate();
@@ -150,6 +155,7 @@ const OrdersList = () => {
   const [activeOrderData, setActiveOrderData] = useState(null);
   const [openOrderConfirmEmail, setOpenOrderConfirmEmail] = useState(false);
   const printFrameRef = useRef(null);
+  const [mblVariant, setMblVariant] = useState("original");
 
   const toLocalISO = (v) => {
     if (!v) return "";
@@ -566,7 +572,21 @@ const OrdersList = () => {
         sender_signature_url:
           data.sender?.signatureUrl || data.sender_signature_url || "",
       };
-      setActiveOrderData(normalizedData);
+
+      const mblList = (
+        await Promise.all(
+          (data.mbl_consignment_ids || []).map((cid) =>
+            api
+              .get(`/api/orders/consignment-mbl/${cid}`)
+              .then((r) => r.data)
+              .catch((e) => {
+                console.error("MBL fetch failed", cid, e);
+                return null;
+              }),
+          ),
+        )
+      ).filter(Boolean);
+      setActiveOrderData({ ...normalizedData, mblList });
     } catch (err) {
       console.error("Error fetching order data for preview:", err);
       setSnackbar({
@@ -1948,10 +1968,14 @@ const OrdersList = () => {
     return null;
   };
   const getReceiverAddress = (orderData) => {
-    if (orderData.receivers && orderData.receivers.length > 0) {
-      return orderData.receivers[0].receiverAddress || null;
-    }
-    return null;
+    const list = [
+      ...new Set(
+        (orderData.receivers || [])
+          .map((r) => r.receiverAddress)
+          .filter(Boolean),
+      ),
+    ];
+    return list.length ? list.join("; ") : null;
   };
   const getReceiverEmail = (orderData) => {
     if (orderData.receivers && orderData.receivers.length > 0) {
@@ -2106,7 +2130,7 @@ const OrdersList = () => {
 
             <div class="cnic-info">
                 <span class="cnic-label">CNIC</span>
-                <span>: <span style="color: #000000;">${containerData.sender_cnic || "_____-_______-_"}</span></span>
+                <span>: <span style="color: #000000;">${containerData.sender_emirates_id || "_____-_______-_"}</span></span>
             </div>
 
             <div class="content-margin">
@@ -2143,15 +2167,11 @@ const OrdersList = () => {
                 <div class="signature-item">
                     <span class="signature-label">Signature</span>
                     <span class="signature-colon">:</span>
-                    <img
-                      style="
-                        width:150px;
-                        height:auto;
-                        filter: grayscale(100%) contrast(100%);
-                        mix-blend-mode: multiply;
-                      "
-                      src="${containerData.sender_signature_url}"
-                    />
+                    ${
+                      containerData.sender_signature_url
+                        ? `<img style="width:150px;height:auto;filter:grayscale(100%) contrast(100%);mix-blend-mode:multiply;" src="${containerData.sender_signature_url}" />`
+                        : ""
+                    }
                 </div>
                 <div class="signature-item">
                     <span class="signature-label">Name</span>
@@ -2624,7 +2644,7 @@ const OrdersList = () => {
         ${
           safeOrder.sender_signature_url
             ? `<img src="${safeOrder.sender_signature_url}" style="height:40px;filter: grayscale(100%) contrast(100%);mix-blend-mode: multiply;" />`
-            : ": (Digitally Signed Login Credentials & OTP Verified)"
+            : ": __________"
         }
     </td>
 </tr>
@@ -2656,10 +2676,10 @@ const OrdersList = () => {
     const trade_license = safeOrder.sender_trade_license || "________";
     const senderPassport = safeOrder.sender_kyc_approved
       ? safeOrder.sender_passport_number || "________"
-      : "Not Approved";
+      : "__________";
     const senderEmiratesID = safeOrder.sender_kyc_approved
       ? safeOrder.sender_emirates_id || "________"
-      : "Not Approved";
+      : "__________";
     const senderPhone = safeOrder.sender_contact || "________";
     const senderAddress = safeOrder.sender_address || "Address in Karachi";
     const senderCompany =
@@ -2669,7 +2689,7 @@ const OrdersList = () => {
 
     const calculateTotalPackages = () => {
       if (!safeOrder.receivers || !Array.isArray(safeOrder.receivers)) {
-        return safeOrder.total_packages || "123";
+        return safeOrder.total_packages || 0;
       }
 
       let total = 0;
@@ -2683,18 +2703,22 @@ const OrdersList = () => {
           });
         }
       });
-      return total || "123";
+      return total;
     };
 
     const getGoodsDescription = () => {
       if (safeOrder.goods_description) return safeOrder.goods_description;
-
-      if (safeOrder.receivers && safeOrder.receivers[0]?.shippingdetails?.[0]) {
-        const detail = safeOrder.receivers[0].shippingdetails[0];
-        return `${detail.category || "TEXTILE"} ${detail.subcategory || ""}`.trim();
-      }
-
-      return "TEXTILE";
+      const categories = new Set();
+      (safeOrder.receivers || []).forEach((r) => {
+        (r.shippingdetails || []).forEach((d) => {
+          const label = [d.category, d.subcategory]
+            .filter(Boolean)
+            .join(" ")
+            .trim();
+          if (label) categories.add(label);
+        });
+      });
+      return categories.size ? Array.from(categories).join(", ") : "";
     };
 
     const totalPackages = calculateTotalPackages();
@@ -2860,7 +2884,7 @@ const OrdersList = () => {
                 <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #000000;">${getReceiverAddress(safeOrder)}</span></td>
             </tr>
             <tr>
-                <td style="padding: 2px 0; vertical-align: top;">CNIC ID #</td>
+                <td style="padding: 2px 0; vertical-align: top;">Emirates ID #</td>
                 <td style="padding: 2px 0; vertical-align: top;">: <span style="color: #000000;">${getSafeValue(senderEmiratesID)}</span></td>
             </tr>
             <tr>
@@ -2870,7 +2894,7 @@ const OrdersList = () => {
                       safeOrder.sender_kyc_approved &&
                       safeOrder.sender_signature_url
                         ? `<img src="${safeOrder.sender_signature_url}" style="height:50px;filter: grayscale(100%) contrast(100%);mix-blend-mode: multiply;" />`
-                        : ": (Digitally Signed Login Credentials & OTP Verified)"
+                        : ": __________"
                     }
                 </td>
             </tr>
@@ -3109,7 +3133,7 @@ const OrdersList = () => {
                       safeOrder.sender_kyc_approved &&
                       safeOrder.sender_signature_url
                         ? `<img src="${safeOrder.sender_signature_url}" style="height:40px;filter: grayscale(100%) contrast(100%);mix-blend-mode: multiply;" />`
-                        : ": (Digitally Signed Login Credentials & OTP Verified)"
+                        : ": __________"
                     }
                 </td>
             </tr>
@@ -3305,7 +3329,7 @@ const OrdersList = () => {
         </div>
 
         <div style="font-family: Arial; font-size: 15.0px; color: #000000; margin-bottom: 20px; text-align: justify;">
-            2. We hereby agree that "<span style="color: #000000;">XYZ Exporter</span> & their agents" Cargo Aviation Systems (Pvt) Ltd, are only a Warehousing & Distribution agents on behalf our ourselves to arrange the transport and clearance of the subject shipment and holds no responsibility in event of any prohibited goods, drugs or narcotics found in the consignment at any point of inspection/examination by ports/customs authorities while in process of shipping and clearance.
+            2. We hereby agree that "<span style="color: #000000;">${getSafeValue(senderCompany)}</span> & their agents" Cargo Aviation Systems (Pvt) Ltd, are only a Warehousing & Distribution agents on behalf our ourselves to arrange the transport and clearance of the subject shipment and holds no responsibility in event of any prohibited goods, drugs or narcotics found in the consignment at any point of inspection/examination by ports/customs authorities while in process of shipping and clearance.
         </div>
 
         <div style="margin-bottom: 20px;">
@@ -3346,7 +3370,7 @@ const OrdersList = () => {
                       safeOrder.sender_kyc_approved &&
                       safeOrder.sender_signature_url
                         ? `<img src="${safeOrder.sender_signature_url}" style="height:40px;filter: grayscale(100%) contrast(100%);mix-blend-mode: multiply;" />`
-                        : ": (Digitally Signed Login Credentials & OTP Verified)"
+                        : ": __________"
                     }
                 </td>
             </tr>
@@ -3374,10 +3398,10 @@ const OrdersList = () => {
     const trade_license = safeOrder.sender_trade_license || "________";
     const senderPassport = safeOrder.sender_kyc_approved
       ? safeOrder.sender_passport_number || "________"
-      : "Not Approved";
+      : "__________";
     const senderEmiratesID = safeOrder.sender_kyc_approved
       ? safeOrder.sender_emirates_id || "________"
-      : "Not Approved";
+      : "__________";
     const senderPhone = safeOrder.sender_contact || "________";
     const senderAddress = safeOrder.sender_address || "Address in Karachi";
     const senderCompany =
@@ -3590,7 +3614,7 @@ const OrdersList = () => {
                       safeOrder.sender_kyc_approved &&
                       safeOrder.sender_signature_url
                         ? `<img src="${safeOrder.sender_signature_url}" style="height:50PX;filter: grayscale(100%) contrast(100%);mix-blend-mode: multiply;" />`
-                        : ": (Digitally Signed Login Credentials & OTP Verified)"
+                        : ": __________"
                     }
                 </td>
             </tr>
@@ -3622,10 +3646,10 @@ const OrdersList = () => {
     const trade_license = safeOrder.sender_trade_license || "________";
     const senderPassport = safeOrder.sender_kyc_approved
       ? safeOrder.sender_passport_number || "________"
-      : "Not Approved";
+      : "__________";
     const senderEmiratesID = safeOrder.sender_kyc_approved
       ? safeOrder.sender_emirates_id || "________"
-      : "Not Approved";
+      : "__________";
     const senderPhone = safeOrder.sender_contact || "________";
     const senderAddress = safeOrder.sender_address || "Address in Karachi";
     const senderCompany =
@@ -3838,7 +3862,7 @@ const OrdersList = () => {
                       safeOrder.sender_kyc_approved &&
                       safeOrder.sender_signature_url
                         ? `<img src="${safeOrder.sender_signature_url}" style="height:50px;filter: grayscale(100%) contrast(100%);mix-blend-mode: multiply;" />`
-                        : ": (Digitally Signed Login Credentials & OTP Verified)"
+                        : ": __________"
                     }
                 </td>
             </tr>
@@ -4085,7 +4109,7 @@ const OrdersList = () => {
                       safeOrder.sender_kyc_approved &&
                       safeOrder.sender_signature_url
                         ? `<img src="${safeOrder.sender_signature_url}" style="height:40px;filter: grayscale(100%) contrast(100%);mix-blend-mode: multiply;" />`
-                        : ": (Digitally Signed Login Credentials & OTP Verified)"
+                        : ": __________"
                     }
                 </td>
             </tr>
@@ -4190,7 +4214,7 @@ const OrdersList = () => {
       })
       .replace(/ /g, "-");
 
-    const consignmentNumber = `CNS-${safeOrder.id || "XXXX"}-${new Date().getTime()}`;
+    const consignmentNumber = c.consignment_number || "_________";
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -4419,7 +4443,7 @@ const OrdersList = () => {
             <div><strong>SHIPPING LINE:</strong> ${getSafeValue(c.shipping_line_name)}</div>
 
             <div><strong>Dest:</strong> ${getPlaceName(getSafeValue(safeOrder.final_destination))}</div>
-            <div><strong>Shipper:</strong> ${getSafeValue(firstReceiver.receiverName)}</div>
+            <div><strong>Shipper:</strong> ${getSafeValue(safeOrder.sender_name)}</div>
             <div><strong>BOOKING NO:</strong> ${getSafeValue(safeOrder.rgl_booking_number)}</div>
 
             <div><strong>Comm:</strong> ${getCommodities() || "N/A"}</div>
@@ -4537,10 +4561,10 @@ const OrdersList = () => {
     const senderKycApproved = orderData.sender_kyc_approved || false;
     const senderPassport = senderKycApproved
       ? orderData.sender_passport_number || "N/A"
-      : "Not Approved";
+      : "__________";
     const senderEmiratesId = senderKycApproved
       ? orderData.sender_emirates_id || "N/A"
-      : "Not Approved";
+      : "__________";
     const senderSignatureUrl = senderKycApproved
       ? orderData.sender_signature_url || ""
       : "";
@@ -4548,10 +4572,10 @@ const OrdersList = () => {
     const receiverKycApproved = receiver.kycApproved || false;
     const receiverPassport = receiverKycApproved
       ? receiver.passportNumber || "N/A"
-      : "Not Approved";
+      : "__________";
     const receiverEmiratesId = receiverKycApproved
       ? receiver.emiratesId || "N/A"
-      : "Not Approved";
+      : "__________";
     const receiverSignatureUrl = receiverKycApproved
       ? receiver.signatureUrl || ""
       : "";
@@ -6138,8 +6162,8 @@ const OrdersList = () => {
     "Receiver Undertaking Dubai ANF.pdf": ReceiverUndertakingDubaiANF,
     "Sender Undertaking for 3rd Party Shipper.pdf":
       SenderUndertakingForThirdPartyShipper,
-    "WHARFAGE - CONSIGNMENT NOTE.pdf": WHARFAGEConsignmentsNote,
-    "Rickmers Bill of Lading Sample.pdf": RickmersBillOfLadingSample,
+    "WHARFAGE - CONSIGNMENT NOTE.pdf": WharfageConsignmentNote,
+    "Rickmers Bill of Lading Sample.pdf": RickmersBillOfLading,
   };
 
   const BRANDABLE_DOCUMENT_GENERATORS = {
@@ -6148,6 +6172,7 @@ const OrdersList = () => {
       OrderAcknowledgementPrintableVersion,
     "GP#0121725 - Cargo GatePass.pdf": CargoGatePass,
     "House Bill of Lading (HBL).pdf": HouseBillOfLading,
+    "Master Bill of Lading (MBL).pdf": MasterBillOfLading,
   };
 
   const isBrandable = (docName) => !!BRANDABLE_DOCUMENT_GENERATORS[docName];
@@ -6162,11 +6187,12 @@ const OrdersList = () => {
       return BRANDABLE_DOCUMENT_GENERATORS[activeDocKey](
         activeOrderData,
         activeCompany,
+        { variant: mblVariant },
       );
     }
     const generator = STATIC_DOCUMENT_GENERATORS[activeDocKey];
     return generator ? generator(activeOrderData) : "";
-  }, [activeDocKey, activeOrderData, activeCompany, filterPlaces]);
+  }, [activeDocKey, activeOrderData, activeCompany, filterPlaces, mblVariant]);
 
   const handlePrintActiveDoc = () => {
     if (!activeDocHtml || !printFrameRef.current) return;
@@ -6241,6 +6267,7 @@ const OrdersList = () => {
                       "Order Acknowledgement Printabe Version.pdf",
                       "GP#0121725 - Cargo GatePass.pdf",
                       "House Bill of Lading (HBL).pdf",
+                      "Master Bill of Lading (MBL).pdf",
                     ],
                   },
                   {
@@ -6487,7 +6514,21 @@ const OrdersList = () => {
                 alignItems="center"
                 sx={{ p: 1.5 }}
               >
-                <Typography variant="subtitle2">Preview</Typography>
+                <Stack direction="row" spacing={1.5} alignItems="center">
+                  <Typography variant="subtitle2">Preview</Typography>
+                  {activeDocKey === "Master Bill of Lading (MBL).pdf" && (
+                    <Select
+                      size="small"
+                      value={mblVariant}
+                      onChange={(e) => setMblVariant(e.target.value)}
+                      sx={{ height: 30, fontSize: "0.75rem" }}
+                    >
+                      <MenuItem value="original">Original</MenuItem>
+                      <MenuItem value="copy">Copy</MenuItem>
+                      <MenuItem value="certified">Certified True Copy</MenuItem>
+                    </Select>
+                  )}
+                </Stack>
                 <Button
                   size="small"
                   startIcon={<PrintIcon />}

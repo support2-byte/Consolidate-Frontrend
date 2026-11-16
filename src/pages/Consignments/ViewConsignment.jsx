@@ -106,6 +106,7 @@ import logoPic from "../../../public/logo-2.png";
 import { useAuth } from "../../context/AuthContext";
 import { AppContext } from "../../context/AppContext";
 import { getStatusColors } from "../../Utlis/statusColors";
+import { buildMblPages, mblCss } from "../../documents/mblGenerator";
 
 applyPlugin(jsPDF);
 
@@ -607,6 +608,9 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
   const [hblModalOpen, setHblModalOpen] = useState(false);
   const [hblOrderId, setHblOrderId] = useState("");
   const [hblItemId, setHblItemId] = useState("all");
+  const [mblModalOpen, setMblModalOpen] = useState(false);
+  const [mblCompanyId, setMblCompanyId] = useState("");
+  const [mblVariant, setMblVariant] = useState("original");
 
   const runAction = async (key, fn) => {
     if (busyAction) return;
@@ -636,7 +640,7 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
 
   const user_id = context.user.id;
   const currentDate = dayjs();
-  const { places, statuses } = useContext(AppContext);
+  const { places, statuses, companies } = useContext(AppContext);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const { consignmentId: urlConsignmentId } = useParams();
@@ -4528,6 +4532,17 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       },
     },
     {
+      icon: "📄",
+      title: "MBL (Master Bill of Lading)",
+      text: "Master bill of lading for the whole consignment, with all containers and cargo.",
+      label: "Print",
+      run: async () => {
+        setMblCompanyId("");
+        setMblVariant("original");
+        setMblModalOpen(true);
+      },
+    },
+    {
       icon: "🖨️",
       title: "Print Manifest",
       text: "Cargo manifest listing every shipment.",
@@ -5036,6 +5051,21 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       );
       logPrint("HBL (Shipments & Orders)");
       setHblModalOpen(false);
+    });
+
+  const printMbl = () =>
+    runAction("mbl", async () => {
+      const company = (companies || []).find((c) => c.id === mblCompanyId);
+      const { data } = await api.get(
+        `/api/orders/consignment-mbl/${effectiveConsignmentId}`,
+      );
+      await printHtml(buildMblPages(data, company, mblVariant).join(""), {
+        title: `MBL_${values.consignment_number}`,
+        pageMargin: "0",
+        extraCss: mblCss(company),
+      });
+      logPrint("MBL");
+      setMblModalOpen(false);
     });
 
   const statusColors = getStatusColors(values.status);
@@ -6501,6 +6531,68 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                     onClick={() => printHbl(false)}
                     disabled={!hblOrderId || !!busyAction}
                     loading={busyAction === "hbl-one"}
+                    sx={{
+                      backgroundColor: orange,
+                      "&:hover": { backgroundColor: "#e65100" },
+                    }}
+                  >
+                    Print
+                  </LoadingBtn>
+                </DialogActions>
+              </Dialog>
+              <Dialog
+                open={mblModalOpen}
+                onClose={() => !busyAction && setMblModalOpen(false)}
+                maxWidth="xs"
+                fullWidth
+              >
+                <DialogTitle>Print MBL</DialogTitle>
+                <DialogContent>
+                  <Stack spacing={2} sx={{ mt: 1 }}>
+                    <FormControl fullWidth>
+                      <InputLabel id="mbl-company-label">Company</InputLabel>
+                      <Select
+                        labelId="mbl-company-label"
+                        label="Company"
+                        value={mblCompanyId}
+                        onChange={(e) => setMblCompanyId(e.target.value)}
+                      >
+                        {(companies || []).map((c) => (
+                          <MenuItem key={c.id} value={c.id}>
+                            {c.company}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    <FormControl fullWidth>
+                      <InputLabel id="mbl-variant-label">Variant</InputLabel>
+                      <Select
+                        labelId="mbl-variant-label"
+                        label="Variant"
+                        value={mblVariant}
+                        onChange={(e) => setMblVariant(e.target.value)}
+                      >
+                        <MenuItem value="original">Original</MenuItem>
+                        <MenuItem value="copy">Copy</MenuItem>
+                        <MenuItem value="certified">
+                          Certified True Copy
+                        </MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Stack>
+                </DialogContent>
+                <DialogActions>
+                  <Button
+                    onClick={() => setMblModalOpen(false)}
+                    disabled={!!busyAction}
+                  >
+                    Cancel
+                  </Button>
+                  <LoadingBtn
+                    variant="contained"
+                    onClick={printMbl}
+                    disabled={!mblCompanyId || !!busyAction}
+                    loading={busyAction === "mbl"}
                     sx={{
                       backgroundColor: orange,
                       "&:hover": { backgroundColor: "#e65100" },
