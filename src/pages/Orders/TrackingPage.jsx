@@ -518,7 +518,10 @@ const TrackingPage = () => {
             />
           )}
           {isConsignmentLayout && (
-            <ConsignmentLayout trackingData={trackingData} />
+            <ConsignmentLayout
+              trackingData={trackingData}
+              timelineSteps={orderedStatuses}
+            />
           )}
         </Box>
       )}
@@ -1575,12 +1578,20 @@ const OrderDetailedLayout = ({ trackingData, timelineSteps = [] }) => {
                   <Chip
                     size="small"
                     label={`${items.length} item${items.length === 1 ? "" : "s"}`}
-                    sx={{ bgcolor: "#1976d2", color: "#fff", fontWeight: 600 }}
+                    sx={{
+                      bgcolor: "#1976d2",
+                      color: "#fff",
+                      fontWeight: 600,
+                    }}
                   />
                   <Chip
                     size="small"
                     label={`${deliveredCount}/${items.length} delivered`}
-                    sx={{ bgcolor: "#16a34a", color: "#fff", fontWeight: 600 }}
+                    sx={{
+                      bgcolor: "#16a34a",
+                      color: "#fff",
+                      fontWeight: 600,
+                    }}
                   />
                   {leastItem && (
                     <Chip
@@ -1742,7 +1753,98 @@ const OrderDetailedLayout = ({ trackingData, timelineSteps = [] }) => {
   );
 };
 
-const ConsignmentLayout = ({ trackingData }) => {
+const ConsignmentItemRow = ({ item, steps }) => {
+  const [open, setOpen] = useState(false);
+  const shipments = normalizeShipments(item, steps);
+  const allDelivered =
+    shipments.length > 0 && shipments.every((s) => s.delivered);
+  const leastAdvanced = shipments.reduce(
+    (min, s) => (!min || s.idx < min.idx ? s : min),
+    null,
+  );
+  const etaValue = earliestEta(shipments);
+
+  return (
+    <>
+      <TableRow hover>
+        <TableCell sx={{ width: 40 }}>
+          <IconButton size="small" onClick={() => setOpen((o) => !o)}>
+            {open ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
+          </IconButton>
+        </TableCell>
+        <TableCell>{item.trackingId || item.itemRef || "—"}</TableCell>
+        <TableCell>
+          {item.category}
+          {item.subcategory && ` • ${item.subcategory}`}
+          {item.type && ` (${item.type})`}
+        </TableCell>
+        <TableCell align="right">
+          {Number(item.assignedHere || 0).toLocaleString()}
+        </TableCell>
+        <TableCell align="right">
+          {Number(item.totalNumber || 0).toLocaleString()}
+        </TableCell>
+        <TableCell align="right">
+          {Number(item.remainingItems || 0).toLocaleString()}
+        </TableCell>
+        <TableCell align="right">
+          {Number(item.assignedWeightHere || 0).toLocaleString()} kg
+        </TableCell>
+        <TableCell>
+          <Chip
+            size="small"
+            label={
+              allDelivered ? "Delivered" : leastAdvanced?.status || "Created"
+            }
+            sx={{
+              bgcolor: allDelivered ? "#16a34a" : "#f58220",
+              color: "#fff",
+              fontWeight: 600,
+            }}
+          />
+        </TableCell>
+        <TableCell>{fmtDate(etaValue)}</TableCell>
+        <TableCell>
+          {shipments.map((s, i) => (
+            <Typography key={i} variant="body2">
+              {s.container || "Not Assigned"}
+              <Typography
+                component="span"
+                variant="caption"
+                color="text.secondary"
+              >
+                {" "}
+                • {s.qty.toLocaleString()} pkgs
+              </Typography>
+            </Typography>
+          ))}
+        </TableCell>
+      </TableRow>
+
+      <TableRow>
+        <TableCell colSpan={10} sx={{ py: 0, border: open ? undefined : 0 }}>
+          <Collapse in={open} timeout="auto" unmountOnExit>
+            <Box sx={{ py: 2, pl: 6 }}>
+              <Stack spacing={1.5}>
+                {shipments.map((sh, n) => (
+                  <ShipmentBlock
+                    key={n}
+                    sh={sh}
+                    n={n}
+                    total={shipments.length}
+                    steps={steps}
+                  />
+                ))}
+              </Stack>
+            </Box>
+          </Collapse>
+        </TableCell>
+      </TableRow>
+    </>
+  );
+};
+
+const ConsignmentLayout = ({ trackingData, timelineSteps = [] }) => {
   if (!trackingData) {
     return (
       <Alert severity="info" sx={{ maxWidth: 800, mx: "auto", mt: 4 }}>
@@ -1754,30 +1856,43 @@ const ConsignmentLayout = ({ trackingData }) => {
   const cons = trackingData.consignment || {};
   const orders = trackingData.orders || [];
   const summary = trackingData.summary || {};
-  const hasSummaryData =
-    summary.order_count ||
-    summary.total_assigned ||
-    summary.totalNumber ||
-    summary.active_containers?.length > 0;
 
-  const formatDate = (dateStr) =>
-    dateStr
-      ? new Date(dateStr).toLocaleDateString("en-GB", {
-          day: "numeric",
-          month: "short",
-          year: "numeric",
-        })
-      : "TBD";
+  // Real progress: delivered shipments / all shipments in this consignment
+  const allShipments = orders.flatMap((o) =>
+    (o.receivers || []).flatMap((r) =>
+      (r.shippingDetails || []).flatMap((it) =>
+        normalizeShipments(it, timelineSteps),
+      ),
+    ),
+  );
+  const deliveredShipments = allShipments.filter((s) => s.delivered).length;
+  const progressPercent = allShipments.length
+    ? Math.round((deliveredShipments / allShipments.length) * 100)
+    : 0;
 
-  const vesselName =
-    cons.vessel === 1
-      ? "Vessel Alpha"
-      : cons.vessel === 2
-        ? "Vessel Beta"
-        : `Vessel ID ${cons.vessel || "—"}`;
+  const containerList = cons.containers?.length
+    ? cons.containers.map((c) => c.containerNo).filter(Boolean)
+    : summary.active_containers || [];
+
+  const vesselName = cons.vessel ? `Vessel ${cons.vessel}` : "—";
+
+  const stats = [
+    { label: "Orders", value: summary.order_count ?? orders.length },
+    { label: "Items", value: summary.item_count },
+    {
+      label: "Packages in this consignment",
+      value: summary.total_assigned,
+    },
+    {
+      label: "Total Weight",
+      value: summary.total_weight_kg,
+      suffix: " kg",
+    },
+  ];
 
   return (
     <Box sx={{ maxWidth: 1400, mx: "auto", px: { xs: 2, md: 3 } }}>
+      {/* Header */}
       <Paper
         elevation={5}
         sx={{
@@ -1786,13 +1901,11 @@ const ConsignmentLayout = ({ trackingData }) => {
           borderRadius: 3,
           background: "linear-gradient(135deg, #0d6c6a 0%, #1b263b 100%)",
           color: "white",
-          justifyContent: "space-between",
         }}
       >
         <Typography variant="h4" fontWeight={800} gutterBottom>
           Consignment: {cons.number || "Not available"}
         </Typography>
-
         <Typography variant="h6" sx={{ opacity: 0.9, mb: 4 }}>
           Status: <strong>{cons.status || "Unknown"}</strong>
         </Typography>
@@ -1806,7 +1919,6 @@ const ConsignmentLayout = ({ trackingData }) => {
               {cons.origin || "—"} → {cons.destination || "—"}
             </Typography>
           </Grid>
-
           <Grid item xs={12} sm={6} md={3}>
             <Typography variant="subtitle2" color="grey.400">
               Vessel / Voyage
@@ -1815,25 +1927,24 @@ const ConsignmentLayout = ({ trackingData }) => {
               {vesselName} / {cons.voyage || "—"}
             </Typography>
           </Grid>
-
           <Grid item xs={12} sm={6} md={3}>
             <Typography variant="subtitle2" color="grey.400">
               ETA
             </Typography>
-            <Typography variant="h6">{formatDate(cons.eta)}</Typography>
+            <Typography variant="h6">{fmtDate(cons.eta)}</Typography>
           </Grid>
-
           <Grid item xs={12} sm={6} md={3}>
             <Typography variant="subtitle2" color="grey.400">
               Containers
             </Typography>
             <Typography variant="h6" sx={{ wordBreak: "break-all" }}>
-              {cons.containers?.map((c) => c.containerNo).join(", ") || "—"}
+              {containerList.join(", ") || "—"}
             </Typography>
           </Grid>
         </Grid>
       </Paper>
 
+      {/* Overview */}
       <Paper
         elevation={2}
         sx={{
@@ -1844,468 +1955,337 @@ const ConsignmentLayout = ({ trackingData }) => {
           border: "1px solid #e0e7ff",
         }}
       >
-        <Typography variant="h5" fontWeight={700} gutterBottom sx={{ mb: 4 }}>
+        <Typography variant="h5" fontWeight={700} sx={{ mb: 4 }}>
           Consignment Overview
         </Typography>
 
-        {hasSummaryData ? (
-          <Grid container spacing={4}>
-            <Grid item xs={6} sm={3}>
-              <Typography
-                variant="subtitle2"
-                color="text.secondary"
-                gutterBottom
-              >
-                Orders
-              </Typography>
-              <Typography variant="h5" fontWeight={600}>
-                {summary.order_count || orders.length || 0}
-              </Typography>
+        {orders.length > 0 ? (
+          <>
+            <Grid container spacing={4}>
+              {stats.map((s) => (
+                <Grid item xs={6} sm={3} key={s.label}>
+                  <Typography
+                    variant="subtitle2"
+                    color="text.secondary"
+                    gutterBottom
+                  >
+                    {s.label}
+                  </Typography>
+                  <Typography variant="h5" fontWeight={600}>
+                    {s.value != null
+                      ? `${Number(s.value).toLocaleString()}${s.suffix || ""}`
+                      : "—"}
+                  </Typography>
+                </Grid>
+              ))}
             </Grid>
 
-            <Grid item xs={6} sm={3}>
-              <Typography
-                variant="subtitle2"
-                color="text.secondary"
-                gutterBottom
+            <Box sx={{ mt: 4 }}>
+              <Stack direction="row" justifyContent="space-between">
+                <Typography variant="subtitle2" color="text.secondary">
+                  Delivery progress
+                </Typography>
+                <Typography variant="subtitle2" fontWeight={700}>
+                  {deliveredShipments}/{allShipments.length} shipments delivered
+                  ({progressPercent}%)
+                </Typography>
+              </Stack>
+              <Box
+                sx={{
+                  mt: 1,
+                  height: 8,
+                  borderRadius: 4,
+                  bgcolor: "#e0e0e0",
+                  overflow: "hidden",
+                }}
               >
-                Total Items
-              </Typography>
-              <Typography variant="h5" fontWeight={600}>
-                {summary.total_items?.toLocaleString() || "—"}
-              </Typography>
-            </Grid>
-
-            <Grid item xs={6} sm={3}>
-              <Typography
-                variant="subtitle2"
-                color="text.secondary"
-                gutterBottom
-              >
-                Assigned Quantity
-              </Typography>
-              <Typography variant="h5" fontWeight={600}>
-                {summary.total_assigned?.toLocaleString() || "—"}
-              </Typography>
-            </Grid>
-
-            <Grid item xs={6} sm={3}>
-              <Typography
-                variant="subtitle2"
-                color="text.secondary"
-                gutterBottom
-              >
-                Active Containers
-              </Typography>
-              <Typography
-                variant="h6"
-                sx={{ wordBreak: "break-all", lineHeight: 1.4 }}
-              >
-                {summary.active_containers?.join(", ") || "—"}
-              </Typography>
-            </Grid>
-          </Grid>
+                <Box
+                  sx={{
+                    height: "100%",
+                    width: `${progressPercent}%`,
+                    bgcolor: "#16a34a",
+                    transition: "width 0.6s ease",
+                  }}
+                />
+              </Box>
+              {summary.latest_activity && (
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ mt: 1, display: "block" }}
+                >
+                  Last activity: {fmtDateTime(summary.latest_activity)}
+                </Typography>
+              )}
+            </Box>
+          </>
         ) : (
           <Box sx={{ py: 6, textAlign: "center", color: "text.secondary" }}>
             <Typography variant="h6" gutterBottom>
-              No summary statistics available yet
+              No cargo assigned yet
             </Typography>
             <Typography variant="body1">
-              This section will display totals once the consignment progresses
-              further.
+              Details will appear once items are assigned to this consignment.
             </Typography>
           </Box>
         )}
       </Paper>
 
+      {/* Orders */}
       {orders.length > 0 && (
         <>
           <Typography
             variant="h5"
             fontWeight={700}
-            gutterBottom
-            sx={{ mb: 4, textAlign: "center" }}
+            sx={{ mb: 3, textAlign: "center" }}
           >
             Associated Orders ({orders.length})
           </Typography>
 
-          <Stack spacing={2}>
-            {orders.map((order) => (
-              <Paper
-                key={order.order_id}
-                elevation={3}
-                sx={{ borderRadius: 3, overflow: "hidden" }}
+          {orders.map((order, oIdx) => (
+            <Accordion
+              key={order.order_id}
+              defaultExpanded={oIdx === 0}
+              sx={{
+                mb: 2,
+                borderRadius: 2,
+                overflow: "hidden",
+                "&:before": { display: "none" },
+              }}
+            >
+              <AccordionSummary
+                expandIcon={<ExpandMoreIcon sx={{ color: "#fff" }} />}
+                sx={{
+                  color: "#fff",
+                  background:
+                    "linear-gradient(135deg, #0d6c6a 0%, #1b263b 100%)",
+                }}
               >
-                <Box
-                  sx={{
-                    background:
-                      "linear-gradient(135deg, #0d6c6a 0%, #1b263b 100%)",
-                    color: "white",
-                    p: 3,
-                  }}
-                >
+                <Box sx={{ width: "100%" }}>
                   <Typography variant="h6" fontWeight={700}>
-                    Order #{order.rgl_booking_number} •{" "}
+                    Order #{order.rgl_booking_number || "—"} •{" "}
                     {order.booking_ref || "—"}
                   </Typography>
-                  <Typography variant="body2" sx={{ mt: 1, opacity: 0.9 }}>
-                    {/* Status: {order.status || order.status || 'In Process'} */}
+                  <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                    Tracking ID: {order.tracking_id || "—"}
+                    {order.sender_name && ` • Sender: ${order.sender_name}`}
+                    {order.transport_type && ` • ${order.transport_type}`}
                   </Typography>
                 </Box>
+              </AccordionSummary>
 
-                <Box sx={{ p: 4 }}>
-                  <Typography
-                    variant="subtitle1"
-                    fontWeight={600}
-                    gutterBottom
-                    sx={{ mt: 3 }}
-                  >
-                    Receivers ({order.receivers?.length || 0})
-                  </Typography>
+              <AccordionDetails sx={{ p: { xs: 2, md: 3 }, bgcolor: "#fff" }}>
+                <Stack spacing={3}>
+                  {(order.receivers || []).map((receiver, idx) => {
+                    const items = receiver.shippingDetails || [];
 
-                  <Stack spacing={3} sx={{ mt: 2 }}>
-                    {order.receivers.map((receiver, idx) => {
-                      const shippingDetails = receiver.shippingDetails || [];
-                      const totalPackages = shippingDetails.reduce(
-                        (sum, item) => sum + (Number(item.totalNumber) || 0),
-                        0,
-                      );
-                      const totalRemaining = shippingDetails.reduce(
-                        (sum, item) => sum + (Number(item.remainingItems) || 0),
-                        0,
-                      );
+                    const lastIdx = timelineSteps.length - 1;
+                    const rankOf = (status) =>
+                      Math.max(stepIndex(timelineSteps, status), 0);
 
-                      return (
-                        <Paper
-                          key={receiver.id}
-                          elevation={3}
+                    const progressItems = receiver.allItems?.length
+                      ? receiver.allItems
+                      : items.map((it) => {
+                          const sh = normalizeShipments(it, timelineSteps);
+                          const least = sh.reduce(
+                            (min, s) => (!min || s.idx < min.idx ? s : min),
+                            null,
+                          );
+                          return {
+                            trackingId: it.trackingId,
+                            status: least?.status || it.status,
+                          };
+                        });
+
+                    const leastItem = progressItems.reduce(
+                      (min, it) =>
+                        !min || rankOf(it.status) < rankOf(min.status)
+                          ? it
+                          : min,
+                      null,
+                    );
+                    const currentIndex = leastItem
+                      ? rankOf(leastItem.status)
+                      : 0;
+                    const deliveredCount = progressItems.filter(
+                      (it) => rankOf(it.status) === lastIdx,
+                    ).length;
+
+                    return (
+                      <Paper
+                        key={receiver.id}
+                        variant="outlined"
+                        sx={{ borderRadius: 2, overflow: "hidden" }}
+                      >
+                        <Box
                           sx={{
-                            borderRadius: 3,
-                            overflow: "hidden",
-                            border: "1px solid #e2e8f0",
-                            transition: "all 0.2s",
-                            "&:hover": {
-                              boxShadow: "0 12px 40px rgba(0,0,0,0.1)",
-                              transform: "translateY(-4px)",
-                            },
+                            background:
+                              "linear-gradient(135deg, #1b263b 0%, #0d6c6a 100%)",
+                            color: "#fff",
+                            p: 3,
                           }}
                         >
-                          <Box
-                            sx={{
-                              background:
-                                "linear-gradient(135deg, #1b263b 0%, #0d6c6a 100%)",
-                              color: "white",
-                              p: { xs: 3, md: 4 },
-                            }}
+                          <Typography variant="h6" fontWeight={700}>
+                            Receiver {idx + 1}: {receiver.receiverName || "—"}
+                          </Typography>
+                          <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                            {receiver.receiverAddress || "—"}
+                            {receiver.receiverEmail &&
+                              ` • ${receiver.receiverEmail}`}
+                          </Typography>
+                          <Stack
+                            direction="row"
+                            spacing={1}
+                            sx={{ mt: 1, flexWrap: "wrap" }}
                           >
-                            <Typography variant="h5" fontWeight={700}>
-                              Receiver {idx + 1}: {receiver.receiverName || "—"}
-                            </Typography>
-
-                            <Typography
-                              variant="body1"
-                              sx={{ mt: 1, opacity: 0.95 }}
-                            >
-                              {receiver.receiverAddress || "—"}
-                            </Typography>
-                            <Typography
-                              variant="subtitle2"
-                              color="#fff"
-                              gutterBottom
-                            >
-                              Email: {receiver.receiverEmail || "—"}
-                            </Typography>
-                            <Stack
-                              direction="row"
-                              spacing={2}
-                              sx={{ mt: 2.5, flexWrap: "wrap" }}
-                            >
+                            <Chip
+                              size="small"
+                              label={`${items.length} of ${progressItems.length} item${progressItems.length === 1 ? "" : "s"} in this consignment`}
+                              sx={{
+                                bgcolor: "#1976d2",
+                                color: "#fff",
+                                fontWeight: 600,
+                              }}
+                            />
+                            <Chip
+                              size="small"
+                              label={`${deliveredCount}/${progressItems.length} delivered`}
+                              sx={{
+                                bgcolor: "#16a34a",
+                                color: "#fff",
+                                fontWeight: 600,
+                              }}
+                            />
+                            {leastItem && (
                               <Chip
-                                label={receiver.status || "Pending"}
-                                size="medium"
+                                size="small"
+                                label={`Current: ${leastItem.status}`}
                                 sx={{
                                   bgcolor: "#f58220",
-                                  color: "white",
+                                  color: "#fff",
                                   fontWeight: 600,
                                 }}
                               />
-                              <Chip
-                                label={`ETA: ${formatDate(receiver.eta) || "TBD"}`}
-                                size="medium"
-                                sx={{
-                                  bgcolor: "#16a34a",
-                                  color: "white",
-                                  fontWeight: 600,
-                                }}
-                              />
-                              {receiver.containers?.length > 0 && (
-                                <Chip
-                                  label={`Container${receiver.containers.length > 1 ? "s" : ""}: ${receiver.containers.join(" • ")}`}
-                                  size="medium"
-                                  sx={{
-                                    bgcolor: "#1976d2",
-                                    color: "white",
-                                    fontWeight: 600,
-                                  }}
+                            )}
+                          </Stack>
+                        </Box>
+
+                        {timelineSteps.length > 0 && items.length > 0 && (
+                          <Box sx={{ px: 3, pt: 2, bgcolor: "#fff" }}>
+                            <Typography
+                              variant="subtitle2"
+                              color="text.secondary"
+                            >
+                              Overall progress (based on the least advanced item
+                              {leastItem?.trackingId
+                                ? `: ${leastItem.trackingId}`
+                                : ""}
+                              )
+                            </Typography>
+                            <ReceiverProgress
+                              steps={timelineSteps}
+                              currentIndex={currentIndex}
+                            />
+                          </Box>
+                        )}
+
+                        <TableContainer>
+                          <Table size="medium">
+                            <TableHead>
+                              <TableRow sx={{ bgcolor: "#f8fafc" }}>
+                                <TableCell />
+                                <TableCell>
+                                  <strong>Tracking ID</strong>
+                                </TableCell>
+                                <TableCell>
+                                  <strong>Description</strong>
+                                </TableCell>
+                                <TableCell align="right">
+                                  <strong>In this consignment</strong>
+                                </TableCell>
+                                <TableCell align="right">
+                                  <strong>Total Qty</strong>
+                                </TableCell>
+                                <TableCell align="right">
+                                  <strong>Remaining</strong>
+                                </TableCell>
+                                <TableCell align="right">
+                                  <strong>Weight</strong>
+                                </TableCell>
+                                <TableCell>
+                                  <strong>Status</strong>
+                                </TableCell>
+                                <TableCell>
+                                  <strong>ETA</strong>
+                                </TableCell>
+                                <TableCell>
+                                  <strong>Container</strong>
+                                </TableCell>
+                              </TableRow>
+                            </TableHead>
+                            <TableBody>
+                              {items.map((item) => (
+                                <ConsignmentItemRow
+                                  key={item.id}
+                                  item={item}
+                                  steps={timelineSteps}
                                 />
-                              )}
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </TableContainer>
+
+                        {receiver.dropOffDetails?.length > 0 && (
+                          <Box
+                            sx={{
+                              p: 3,
+                              bgcolor: "#fffbeb",
+                              borderTop: "1px solid #fde68a",
+                            }}
+                          >
+                            <Typography
+                              variant="subtitle1"
+                              fontWeight={600}
+                              gutterBottom
+                            >
+                              Pickup / Drop-off Schedule
+                            </Typography>
+                            <Stack spacing={2}>
+                              {receiver.dropOffDetails.map((d, i) => (
+                                <Box key={i}>
+                                  <Typography
+                                    variant="subtitle2"
+                                    fontWeight={600}
+                                  >
+                                    {d.drop_method || "—"}
+                                  </Typography>
+                                  <Typography variant="body2">
+                                    {d.dropoff_name} •{" "}
+                                    {d.drop_off_mobile || "—"}
+                                    {d.plate_no && ` • Vehicle: ${d.plate_no}`}
+                                  </Typography>
+                                  <Typography
+                                    variant="body2"
+                                    color="text.secondary"
+                                  >
+                                    Date: {fmtDate(d.drop_date)}
+                                  </Typography>
+                                </Box>
+                              ))}
                             </Stack>
                           </Box>
-
-                          {/* Content */}
-                          <Box sx={{ p: { xs: 3, md: 4 }, bgcolor: "#fff" }}>
-                            <Grid
-                              container
-                              flexDirection={"row"}
-                              alignItems={"center"}
-                              justifyContent={"space-between"}
-                              spacing={4}
-                            >
-                              <Grid
-                                sx={{
-                                  p: 3,
-                                  bgcolor: "#fffbeb",
-                                  border: "1px solid #fde68a",
-                                  width: 400,
-                                  borderRadius: 2,
-                                }}
-                              >
-                                <Stack spacing={4}>
-                                  <Box>
-                                    {order.sender && (
-                                      <Box sx={{ mb: 4 }}>
-                                        <Typography
-                                          variant="subtitle1"
-                                          fontWeight={600}
-                                          gutterBottom
-                                        >
-                                          Sender
-                                        </Typography>
-                                        <Typography>
-                                          {order.sender.name} •{" "}
-                                          {order.sender.email ||
-                                            order.sender.contact ||
-                                            "—"}
-                                        </Typography>
-                                      </Box>
-                                    )}
-                                  </Box>
-
-                                  <Box>
-                                    <Typography
-                                      variant="subtitle2"
-                                      color="text.secondary"
-                                      gutterBottom
-                                    >
-                                      Shipment Summary
-                                    </Typography>
-                                    <Typography fontWeight={500}>
-                                      {totalPackages.toLocaleString()} packages
-                                    </Typography>
-                                    <Typography
-                                      variant="body2"
-                                      color="text.secondary"
-                                    >
-                                      Remaining:{" "}
-                                      {totalRemaining.toLocaleString()} pcs
-                                    </Typography>
-                                  </Box>
-                                </Stack>
-                              </Grid>
-
-                              {receiver.dropOffDetails?.length > 0 && (
-                                <Grid>
-                                  <Paper
-                                    variant="outlined"
-                                    sx={{
-                                      p: 3,
-                                      bgcolor: "#fffbeb",
-                                      border: "1px solid #fde68a",
-                                      width: 400,
-                                      borderRadius: 2,
-                                    }}
-                                  >
-                                    <Typography
-                                      variant="subtitle1"
-                                      fontWeight={600}
-                                      gutterBottom
-                                      color="amber.dark"
-                                    >
-                                      Pickup / Drop-off Schedule
-                                    </Typography>
-                                    <Stack spacing={2.5}>
-                                      {receiver.dropOffDetails.map((d, i) => (
-                                        <Box key={i}>
-                                          <Typography
-                                            variant="subtitle2"
-                                            fontWeight={600}
-                                          >
-                                            {d.drop_method || "—"}
-                                          </Typography>
-                                          <Typography variant="body2">
-                                            {d.dropoff_name} •{" "}
-                                            {d.drop_off_mobile || "—"}
-                                          </Typography>
-                                          {d.plate_no && (
-                                            <Typography variant="body2">
-                                              Vehicle: {d.plate_no}
-                                            </Typography>
-                                          )}
-                                          <Typography
-                                            variant="body2"
-                                            color="text.secondary"
-                                          >
-                                            Date:{" "}
-                                            {formatDate(d.drop_date) || "—"}
-                                          </Typography>
-                                        </Box>
-                                      ))}
-                                    </Stack>
-                                  </Paper>
-                                </Grid>
-                              )}
-                            </Grid>
-
-                            {shippingDetails.length > 0 && (
-                              <Box sx={{ mt: 5 }}>
-                                <Typography
-                                  variant="h6"
-                                  fontWeight={600}
-                                  gutterBottom
-                                >
-                                  Cargo Details
-                                </Typography>
-
-                                {shippingDetails.map((item) => {
-                                  const containerInfo =
-                                    item.containerDetails?.[0] || {};
-                                  const cont = containerInfo.container || {};
-                                  const status =
-                                    containerInfo.status ||
-                                    receiver.status ||
-                                    "—";
-
-                                  return (
-                                    <Box flex={1}>
-                                      <TableContainer
-                                        component={Paper}
-                                        sx={{
-                                          border: "1px solid #e2e8f0",
-                                          borderRadius: 2,
-                                          overflow: "hidden",
-                                        }}
-                                      >
-                                        <Table size="medium">
-                                          <TableHead>
-                                            <TableRow
-                                              sx={{ bgcolor: "#f8fafc" }}
-                                            >
-                                              <TableCell>
-                                                <strong>Ref</strong>
-                                              </TableCell>
-                                              <TableCell>
-                                                <strong>Description</strong>
-                                              </TableCell>
-                                              <TableCell align="right">
-                                                <strong>Total Weight</strong>
-                                              </TableCell>
-                                              <TableCell align="right">
-                                                <strong>Total Items</strong>
-                                              </TableCell>
-
-                                              <TableCell align="right">
-                                                <strong>Remaining</strong>
-                                              </TableCell>
-                                              <TableCell>
-                                                <strong>
-                                                  Container / Status
-                                                </strong>
-                                              </TableCell>
-                                            </TableRow>
-                                          </TableHead>
-                                          <TableBody>
-                                            <TableRow key={item.id} hover>
-                                              <TableCell>
-                                                {item.itemRef || "—"}
-                                              </TableCell>
-                                              <TableCell>
-                                                {item.category}
-                                                {item.subcategory &&
-                                                  ` • ${item.subcategory}`}
-                                                {item.type && ` (${item.type})`}
-                                              </TableCell>
-                                              <TableCell align="right">
-                                                {Number(
-                                                  item.weight,
-                                                )?.toLocaleString() || "—"}
-                                              </TableCell>
-                                              <TableCell align="right">
-                                                {Number(
-                                                  item.totalNumber,
-                                                )?.toLocaleString() || "—"}
-                                              </TableCell>
-                                              <TableCell align="right">
-                                                {Number(
-                                                  item.remainingItems,
-                                                )?.toLocaleString() || "—"}
-                                              </TableCell>
-                                              <TableCell>
-                                                {cont.container_number ? (
-                                                  <>
-                                                    {cont.container_number}
-                                                    <br />
-                                                    <Typography
-                                                      variant="caption"
-                                                      color="text.secondary"
-                                                    >
-                                                      {status} •{" "}
-                                                      {Number(
-                                                        containerInfo.assign_total_box ||
-                                                          0,
-                                                      ).toLocaleString()}{" "}
-                                                      boxes •{" "}
-                                                      {Number(
-                                                        containerInfo.assign_weight ||
-                                                          0,
-                                                      ).toLocaleString()}{" "}
-                                                      kg
-                                                    </Typography>
-                                                  </>
-                                                ) : (
-                                                  "Not Assigned"
-                                                )}
-                                              </TableCell>
-                                            </TableRow>
-                                          </TableBody>
-                                        </Table>
-                                      </TableContainer>
-                                      <Box sx={{ m: 3 }}>
-                                        {cont.container_number ? (
-                                          <ShipmentTimeline
-                                            currentStatus={receiver.status}
-                                            statusHistory={
-                                              receiver.status_history || []
-                                            }
-                                          />
-                                        ) : null}
-                                      </Box>
-                                    </Box>
-                                  );
-                                })}
-                              </Box>
-                            )}
-                          </Box>
-                        </Paper>
-                      );
-                    })}
-                  </Stack>
-                </Box>
-              </Paper>
-            ))}
-          </Stack>
+                        )}
+                      </Paper>
+                    );
+                  })}
+                </Stack>
+              </AccordionDetails>
+            </Accordion>
+          ))}
         </>
       )}
 
+      {/* Contact */}
       <Paper
         sx={{
           mt: 8,
