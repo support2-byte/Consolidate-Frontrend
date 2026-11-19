@@ -13,30 +13,35 @@ const tint = (hex, op = 0.1) => {
 };
 
 const nl = (v) => (v ? esc(v).replace(/\r?\n/g, "<br>") : "");
+const catName = (i) => i.category || "Unknown";
 
 export const mblCss = (company) => {
   const primary = company?.primary_color || "#2b3a67";
   const secondary = company?.secondary_color || "#e63946";
   return `
-  .mk-page { width: 794px; height: 1122px; padding: 24px; background: #fff; box-sizing: border-box; font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #111; position: relative; margin: 0 auto 20px auto; overflow: hidden; }
+  .mk-page { width: 794px; height: 1120px; padding: 18px; background: #fff; box-sizing: border-box; font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #111; position: relative; margin: 0 auto 20px auto; overflow: hidden; }
   .mk-page * { box-sizing: border-box; }
   .mk-frame { border: 1.5px solid #000; border-top-left-radius: 26px; border-bottom-right-radius: 26px; overflow: hidden; }
   .mk-label { display: block; font-size: 9px; color: #555; margin-bottom: 3px; line-height: 1.2; }
   .mk-content { font-size: 12px; font-weight: bold; text-transform: uppercase; line-height: 1.35; word-break: break-word; }
   .mk-cell { border-bottom: 1px solid #000; border-right: 1px solid #000; padding: 5px 7px; }
-  .mk-head { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px 10px 22px; border-bottom: 1px solid #000; border-top: 6px solid ${primary}; }
-  .mk-brand { display: flex; align-items: center; gap: 12px; }
-  .mk-brand-name { font-size: 15px; font-weight: bold; color: ${primary}; }
-  .mk-head-right { text-align: right; }
-  .mk-title { font-size: 20px; font-weight: bold; color: ${primary}; letter-spacing: .5px; }
-  .mk-sub { font-size: 10px; font-weight: bold; color: ${secondary}; letter-spacing: 1px; }
+  .mk-head { display: grid; grid-template-columns: 1.1fr 1.4fr .9fr; border-bottom: 1px solid #000; border-top: 4px solid ${primary}; }
+  .mk-head > div { padding: 8px 12px; display: flex; flex-direction: column; justify-content: center; }
+  .mk-head > div + div { border-left: 1px solid #000; }
+  .mk-brand { align-items: flex-start; gap: 4px; }
+  .mk-brand-name { font-size: 10px; font-weight: bold; color: ${primary}; letter-spacing: .3px; line-height: 1.2; }
+  .mk-head-mid { align-items: center; text-align: center; }
+  .mk-title { font-size: 17px; font-weight: bold; color: #000; white-space: nowrap; letter-spacing: .5px; }
+  .mk-sub { font-size: 10px; font-weight: bold; color: ${secondary}; letter-spacing: 1.5px; margin-top: 3px; }
+  .mk-head-no .mk-content { font-size: 15px; }
   .mk-upper { display: grid; grid-template-columns: 1.1fr 1fr; }
-  .mk-upper > div:last-child .mk-cell { border-right: none; }
+  .mk-upper > div { display: flex; flex-direction: column; }
+  .mk-upper > div > .mk-cell:last-child { flex: 1; }
   .mk-small { font-size: 9.5px; line-height: 1.4; color: #333; text-align: justify; }
   .mk-route { display: grid; grid-template-columns: 1fr 1fr 1fr; }
   .mk-route .mk-cell:nth-child(3n) { border-right: none; }
   .mk-band { text-align: center; font-weight: bold; font-size: 12px; padding: 5px; letter-spacing: .6px; background: ${tint(primary)}; border-bottom: 1px solid #000; }
-  .mk-desc { display: grid; grid-template-columns: 1fr 150px 120px; height: 330px; border-bottom: 1px solid #000; overflow: hidden; }
+  .mk-desc { display: grid; grid-template-columns: 1fr 150px 120px; height: 250px; border-bottom: 1px solid #000; overflow: hidden; }
   .mk-dcol { padding: 6px 8px; border-right: 1px solid #000; }
   .mk-dcol.mk-last { border-right: none; }
   .mk-dtext { text-transform: none; }
@@ -49,6 +54,8 @@ export const mblCss = (company) => {
   .mk-fhead { font-size: 9px; color: #555; border-bottom: 1px solid #000; }
   .mk-fbody { border-bottom: 1px solid #000; }
   .mk-foot { display: grid; grid-template-columns: 1fr 1fr; }
+  .mk-foot > div:first-child { border-right: 1px solid #000; }
+  .mk-foot > div:first-child > .mk-cell { border-right: none; }
   .mk-foot > div:last-child .mk-cell { border-right: none; }
   .mk-two { display: grid; grid-template-columns: 1fr 1fr; }
   .mk-two .mk-cell:last-child { border-right: none; }
@@ -57,11 +64,12 @@ export const mblCss = (company) => {
   .mk-signname { font-size: 12px; font-weight: bold; color: ${primary}; margin: 4px 0; }
   .mk-line-sig { border-top: 1px solid #000; margin-bottom: 3px; }
   .mk-p2head { display: flex; justify-content: space-between; padding: 10px 18px; font-size: 12px; border-bottom: 1px solid #000; border-top: 6px solid ${primary}; }
-  .mk-terms { padding: 14px 18px; height: 700px; overflow: hidden; font-size: 10.5px; line-height: 1.5; border-bottom: 1px solid #000; }
+  .mk-terms { padding: 14px 18px; min-height: 700px; height: auto; overflow: visible; font-size: 10.5px; line-height: 1.5; border-bottom: 1px solid #000; }
   .mk-terms ol { margin: 8px 0; padding-left: 18px; }
   .mk-terms li { margin-bottom: 5px; }
   .mk-pgno { font-size: 9px; color: #555; margin-top: 6px; }
   .mk-wm { position: absolute; left: 0; right: 0; top: 46%; text-align: center; font-size: 72px; font-weight: bold; color: rgba(0,0,0,.12); transform: rotate(-18deg); pointer-events: none; line-height: 1; }
+    .mk-frame, .mk-cell, .mk-line, .mk-crow, .mk-sign, .mk-frow, .mk-terms li { break-inside: avoid; page-break-inside: avoid; }
   @media print {
     @page { size: A4; margin: 0; }
     .mk-page { margin: 0; page-break-after: always; break-after: page; }
@@ -69,7 +77,8 @@ export const mblCss = (company) => {
   }`;
 };
 
-const ROWS_P1 = 12;
+const ROWS_P1 = 10;
+const ROWS_CONT = 38;
 
 export const buildMblPages = (data, company, variant = "original") => {
   const c = data.consignment || {};
@@ -84,13 +93,7 @@ export const buildMblPages = (data, company, variant = "original") => {
     .join(", ");
   const vesselLine = [c.vessel_name, c.voyage].filter(Boolean).join(" / ");
   const goods = [
-    ...new Set(
-      containers.flatMap((ct) =>
-        ct.items.map((i) =>
-          i.subcategory ? `${i.category} - ${i.subcategory}` : i.category,
-        ),
-      ),
-    ),
+    ...new Set(containers.flatMap((ct) => ct.items.map(catName))),
   ].join(", ");
   const showSig = variant !== "copy" && company?.signature_url;
   const watermark =
@@ -105,14 +108,35 @@ export const buildMblPages = (data, company, variant = "original") => {
     rows.push(
       `<div class="mk-crow">${esc(ct.container_number)} ${esc(ct.size)}${esc(ct.type)} &nbsp; Seal: ${esc(c.seal_no) || "-"} &nbsp; ${ct.pkgs} PKGS &nbsp; ${ct.weight.toFixed(3)} KGS</div>`,
     );
+    const merged = {};
     ct.items.forEach((i) => {
+      const key = `${i.order_no || ""}||${catName(i)}`;
+      if (!merged[key])
+        merged[key] = {
+          order_no: i.order_no,
+          category: catName(i),
+          type: i.type,
+          pkgs: 0,
+          weight: 0,
+        };
+      merged[key].pkgs += Number(i.pkgs) || 0;
+      merged[key].weight += Number(i.weight) || 0;
+    });
+    const seenOrders = new Set();
+    Object.values(merged).forEach((m) => {
+      const showNo = m.order_no && !seenOrders.has(m.order_no);
+      if (m.order_no) seenOrders.add(m.order_no);
       rows.push(
-        `<div class="mk-line"><span>${esc(i.subcategory ? `${i.category} - ${i.subcategory}` : i.category)}</span><span>${i.pkgs} ${esc(i.type)}</span><span>${i.weight.toFixed(3)} KGS</span></div>`,
+        `<div class="mk-line"><span>${showNo ? esc(m.order_no) + " | " : ""}${esc(m.category)}</span><span>${m.pkgs} ${esc(m.type)}</span><span>${m.weight.toFixed(3)} KGS</span></div>`,
       );
     });
   });
   const p1Rows = rows.slice(0, ROWS_P1);
   const overflow = rows.slice(ROWS_P1);
+  const contChunks = [];
+  for (let n = 0; n < overflow.length; n += ROWS_CONT)
+    contChunks.push(overflow.slice(n, n + ROWS_CONT));
+  const totalPages = 2 + contChunks.length;
 
   const freight = (h) => `
     <div class="mk-frow mk-fhead"><div>Freight &amp; Charges</div><div>Rate</div><div>Unit</div><div>Currency</div><div>Prepaid</div><div>Collect</div></div>
@@ -126,28 +150,29 @@ export const buildMblPages = (data, company, variant = "original") => {
   <div class="mk-page">
     <div class="mk-frame">
       <div class="mk-head">
-        <div class="mk-brand">${logo}<span class="mk-brand-name">${esc(companyName.toUpperCase())}</span></div>
-        <div class="mk-head-right">
+        <div class="mk-brand">${logo}</div>
+        <div class="mk-head-mid">
           <div class="mk-title">MASTER BILL OF LADING</div>
           <div class="mk-sub">NON-NEGOTIABLE</div>
+        </div>
+        <div class="mk-head-no">
+          <span class="mk-label">B/L No.</span>
+          <div class="mk-content">${esc(c.consignment_number)}</div>
         </div>
       </div>
       <div class="mk-upper">
         <div>
-          <div class="mk-cell" style="min-height:96px;"><span class="mk-label">Shipper</span>
+          <div class="mk-cell" style="min-height:80px;"><span class="mk-label">Shipper</span>
             <div class="mk-content">${esc(c.shipper)}<br>${nl(c.shipper_address)}${c.shipper_contact ? `<br>Tel: ${esc(c.shipper_contact)}` : ""}</div></div>
-          <div class="mk-cell" style="min-height:96px;"><span class="mk-label">Consignee</span>
+          <div class="mk-cell" style="min-height:80px;"><span class="mk-label">Consignee</span>
             <div class="mk-content">${esc(c.consignee)}<br>${nl(c.consignee_address)}${c.consignee_contact ? `<br>Tel: ${esc(c.consignee_contact)}` : ""}</div></div>
           <div class="mk-cell" style="min-height:60px;"><span class="mk-label">Notify Party</span>
             <div class="mk-content">Same as Consignee</div></div>
         </div>
         <div>
-          <div class="mk-two">
-            <div class="mk-cell" style="min-height:48px;"><span class="mk-label">Booking No.</span><div class="mk-content" style="font-size:11px;">${esc(formNos)}</div></div>
-            <div class="mk-cell" style="min-height:48px;"><span class="mk-label">B/L No.</span><div class="mk-content">${esc(c.consignment_number)}</div></div>
-          </div>
+          <div class="mk-cell" style="min-height:48px;"><span class="mk-label">Booking No.</span><div class="mk-content" style="font-size:11px;">${esc(formNos)}</div></div>
           <div class="mk-cell" style="min-height:48px;"><span class="mk-label">Export References</span><div class="mk-content" style="font-size:11px;">${esc(c.eform)}${c.eform_date ? ` / ${esc(c.eform_date)}` : ""}${c.customs_crn ? `<br>CRN: ${esc(c.customs_crn)}` : ""}</div></div>
-          <div class="mk-cell" style="min-height:150px;"><div class="mk-small">This contract is subject to the standard terms, conditions and exceptions of ${esc(companyName)}, including the limitation of liability and the law and jurisdiction clauses. Full terms are printed on page 2.</div></div>
+          <div class="mk-cell" style="min-height:150px;"><div class="mk-small">This contract is subject to the standard terms, conditions and exceptions of ${esc(companyName)}, including the limitation of liability and the law and jurisdiction clauses. Full terms are printed on page ${totalPages}.</div></div>
           <div class="mk-cell" style="min-height:48px;"><span class="mk-label">Carrier / Shipping Line</span><div class="mk-content" style="font-size:11px;">${esc(c.shipping_line_name)}</div></div>
         </div>
       </div>
@@ -174,7 +199,7 @@ export const buildMblPages = (data, company, variant = "original") => {
         <div class="mk-dcol"><span class="mk-label">Weight</span><div class="mk-content" style="margin-top:14px;">${Number(totals.weight).toFixed(3)} KGS</div></div>
         <div class="mk-dcol mk-last"><span class="mk-label">Measurement</span></div>
       </div>
-      ${freight(90)}
+      ${freight(60)}
       <div class="mk-foot">
         <div>
           <div class="mk-cell"><span class="mk-label">Carrier's Receipt. Total number of containers or packages received by Carrier</span><div class="mk-content">${totals.containers} container(s) / ${totals.pkgs} packages</div></div>
@@ -200,16 +225,27 @@ export const buildMblPages = (data, company, variant = "original") => {
       </div>
     </div>
     ${watermark}
-    <div class="mk-pgno">This transport document has 2 numbered pages &nbsp;|&nbsp; Page 1 of 2</div>
+    <div class="mk-pgno">This transport document has ${totalPages} numbered pages &nbsp;|&nbsp; Page 1 of ${totalPages}</div>
   </div>`;
+
+  const contPages = contChunks.map(
+    (chunk, idx) => `
+  <div class="mk-page">
+    <div class="mk-frame">
+      <div class="mk-p2head"><span>B/L: <b>${esc(c.consignment_number)}</b></span><span>Page: ${idx + 2}</span></div>
+      <div class="mk-terms" style="min-height:900px;">${chunk.join("")}</div>
+    </div>
+    ${watermark}
+    <div class="mk-pgno">Page ${idx + 2} of ${totalPages}</div>
+  </div>`,
+  );
 
   const cn = esc(companyName);
   const page2 = `
   <div class="mk-page">
     <div class="mk-frame">
-      <div class="mk-p2head"><span>B/L: <b>${esc(c.consignment_number)}</b></span><span>Page: 2</span></div>
+      <div class="mk-p2head"><span>B/L: <b>${esc(c.consignment_number)}</b></span><span>Page: ${totalPages}</span></div>
       <div class="mk-terms">
-        ${overflow.length ? overflow.join("") + "<br>" : ""}
         <strong>By accepting this document, the Merchant agrees to the following terms:</strong>
         <ol>
           <li>Carriage is performed under ${cn}'s standard terms and applicable international conventions. All cargo details supplied must be true and complete.</li>
@@ -229,7 +265,7 @@ export const buildMblPages = (data, company, variant = "original") => {
       ${freight(150)}
     </div>
     ${watermark}
-    <div class="mk-pgno">Page 2 of 2</div>
+    <div class="mk-pgno">Page ${totalPages} of ${totalPages}</div>
   </div>`;
 
   return [page1, page2];
@@ -566,7 +602,7 @@ export const RickmersBillOfLading = (orderData) => {
       <div class="footer-note" style="text-align:right;margin-top:20px;">RICKMERS CONTAINER LINE<br>AS CARRIER</div>
     </div>`;
 
-    return [page1, page2];
+    return [page1, ...contPages, page2];
   });
 
   return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Rickmers Bill of Lading</title>
