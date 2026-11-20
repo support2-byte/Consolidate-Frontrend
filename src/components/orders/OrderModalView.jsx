@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useContext } from "react";
 import html2canvas from "html2canvas";
 import {
   Box,
@@ -72,6 +72,9 @@ import { getOrderStatusColor } from "../../pages/Orders/Utlis";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../api";
 import { useAuth } from "../../context/AuthContext";
+import { AppContext } from "../../context/AppContext";
+import { HouseBillOfLading } from "../../documents/hblGenerator";
+import PrintIcon from "@mui/icons-material/Print";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { applyPlugin } from "jspdf-autotable";
@@ -124,46 +127,61 @@ const SectionHeader = ({ icon, title, count }) => (
   </Box>
 );
 
-const FieldCard = ({ label, value, accent = false }) => (
-  <Box
-    sx={{
-      p: 1.75,
-      borderRadius: 2,
-      border: `1px solid ${accent ? T.orange + "55" : T.grey200}`,
-      bgcolor: accent ? T.orangeLight : T.grey50,
-      height: "100%",
-      transition: "box-shadow 0.2s",
-      "&:hover": { boxShadow: "0 3px 10px rgba(0,0,0,0.07)" },
-    }}
-  >
-    <Typography
-      variant="caption"
+const copyText = async (text) => {
+  try {
+    await navigator.clipboard.writeText(String(text));
+    toast.success(`Copied: ${text}`);
+  } catch {
+    toast.error("Copy failed");
+  }
+};
+
+const FieldCard = ({ label, value, accent = false, copyable = false }) => {
+  const canCopy = copyable && value && value !== "N/A";
+  return (
+    <Box
+      onClick={canCopy ? () => copyText(value) : undefined}
+      title={canCopy ? "Click to copy" : undefined}
       sx={{
-        color: T.grey600,
-        fontWeight: 700,
-        textTransform: "uppercase",
-        letterSpacing: 0.5,
-        display: "block",
-        mb: 0.4,
+        p: 1.75,
+        borderRadius: 2,
+        border: `1px solid ${accent ? T.orange + "55" : T.grey200}`,
+        bgcolor: accent ? T.orangeLight : T.grey50,
+        height: "100%",
+        cursor: canCopy ? "pointer" : "default",
+        transition: "box-shadow 0.2s",
+        "&:hover": { boxShadow: "0 3px 10px rgba(0,0,0,0.07)" },
       }}
     >
-      {label}
-    </Typography>
-    <Typography
-      variant="body2"
-      fontWeight={600}
-      color={value && value !== "N/A" ? T.text : T.grey600}
-    >
-      {value || "N/A"}
-    </Typography>
-  </Box>
-);
+      <Typography
+        variant="caption"
+        sx={{
+          color: T.grey600,
+          fontWeight: 700,
+          textTransform: "uppercase",
+          letterSpacing: 0.5,
+          display: "block",
+          mb: 0.4,
+        }}
+      >
+        {label}
+      </Typography>
+      <Typography
+        variant="body2"
+        fontWeight={600}
+        color={value && value !== "N/A" ? T.text : T.grey600}
+      >
+        {value || "N/A"}
+      </Typography>
+    </Box>
+  );
+};
 
-const FieldGrid = ({ data, cols = 3 }) => (
+const FieldGrid = ({ data, cols = 3, copyKeys = [] }) => (
   <Grid container spacing={1.5}>
     {Object.entries(data).map(([key, val]) => (
       <Grid item xs={12} sm={6} md={12 / cols} key={key}>
-        <FieldCard label={key} value={val} />
+        <FieldCard label={key} value={val} copyable={copyKeys.includes(key)} />
       </Grid>
     ))}
   </Grid>
@@ -229,6 +247,12 @@ const OrderModalView = ({
   const [syncingZoho, setSyncingZoho] = useState(false);
   const [previewFile, setPreviewFile] = useState(null);
 
+  const { companies } = useContext(AppContext);
+  const [hblCompanyId, setHblCompanyId] = useState("");
+  const [hblHtml, setHblHtml] = useState("");
+  const [hblLoading, setHblLoading] = useState(false);
+  const hblFrameRef = useRef(null);
+
   const [shipView, setShipView] = useState("container");
   const [financeView, setFinanceView] = useState("invoices");
   const [expanded, setExpanded] = useState({});
@@ -278,6 +302,29 @@ const OrderModalView = ({
     return p ? p.label : id;
   };
 
+  const handleOpenHbl = async () => {
+    const company = (companies || []).find((c) => c.id === hblCompanyId);
+    if (!selectedOrder?.id || !company) return;
+    setHblLoading(true);
+    try {
+      const { data } = await api.get(
+        `/api/orders/pdf-data/${selectedOrder.id}`,
+      );
+      const normalized = {
+        ...data,
+        sender_name: data.sender?.name || data.sender_name || "",
+        sender_address: data.sender?.address || data.sender_address || "",
+      };
+      setHblHtml(HouseBillOfLading(normalized, company, getPlaceName));
+    } catch {
+      toast.error("Failed to load HBL data.");
+    } finally {
+      setHblLoading(false);
+    }
+  };
+
+  const handlePrintHbl = () => hblFrameRef.current?.contentWindow?.print();
+
   const formatDate = (d) => {
     if (!d) return "N/A";
     return new Date(d).toLocaleDateString("en-US", {
@@ -287,19 +334,29 @@ const OrderModalView = ({
     });
   };
 
-  const getLastSyncedAt = () => {
-    const dates = [
-      ...(billing?.invoices || []),
-      ...(billing?.vendorBills || []),
-    ]
-      .map((d) => d.synced_at)
+  const pickDate = (list, mode) => {
+    const ts = list
       .filter(Boolean)
-      .map((d) => new Date(d).getTime())
+      .map((x) => new Date(x).getTime())
       .filter(Number.isFinite);
+    if (!ts.length) return "-";
+    return formatDate(
+      new Date(mode === "max" ? Math.max(...ts) : Math.min(...ts)),
+    );
+  };
 
-    if (!dates.length) return null;
-
-    return new Date(Math.max(...dates));
+  const getLastSync = () => {
+    let best = null;
+    [...(billing?.invoices || []), ...(billing?.vendorBills || [])].forEach(
+      (d) => {
+        if (!d.synced_at) return;
+        const t = new Date(d.synced_at).getTime();
+        if (Number.isFinite(t) && (!best || t > best.at)) {
+          best = { at: t, by: d.synced_by };
+        }
+      },
+    );
+    return best;
   };
 
   useEffect(() => {
@@ -311,6 +368,8 @@ const OrderModalView = ({
       setAssignments(init);
       setTabValue(0);
       setExpanded({});
+      setHblHtml("");
+      setHblCompanyId("");
     }
   }, [openModal, selectedOrder]);
 
@@ -734,6 +793,13 @@ const OrderModalView = ({
     }
   };
 
+  const allGatepasses = [
+    ...(selectedOrder?.gatepass || []),
+    ...(selectedOrder?.receivers || []).flatMap((r) =>
+      (r.collections || []).flatMap((c) => c.gatepass || []),
+    ),
+  ];
+
   const renderFiles = (files) => {
     if (!files?.length)
       return (
@@ -924,12 +990,21 @@ const OrderModalView = ({
                       rec.total_weight ? `${rec.total_weight} kg` : null,
                     ],
                     ["Receiver Ref", rec.receiver_ref],
+                    [
+                      "Tracking ID",
+                      rec.tracking_id ||
+                        (rec.shippingDetails || [])[0]?.trackingId,
+                    ],
                     ["Full / Partial", rec.full_partial],
                     ["Qty Delivered", rec.qty_delivered],
                     ["Remarks", rec.remarks],
                   ].map(([label, val]) => (
                     <Grid item xs={12} sm={6} md={4} key={label}>
-                      <FieldCard label={label} value={val} />
+                      <FieldCard
+                        label={label}
+                        value={val}
+                        copyable={label === "Tracking ID"}
+                      />
                     </Grid>
                   ))}
                 </Grid>
@@ -1867,34 +1942,59 @@ const OrderModalView = ({
                                 letterSpacing: 0.5,
                               }}
                             >
-                              Gatepass
+                              Gatepass ({c.gatepass.length})
                             </Typography>
                             <Stack
                               direction="row"
                               flexWrap="wrap"
-                              gap={1}
+                              gap={1.5}
                               sx={{ mt: 0.75 }}
                             >
                               {c.gatepass.map((g, gi) => (
-                                <a
-                                  key={gi}
-                                  href={g.url}
-                                  target="_blank"
-                                  rel="noreferrer"
+                                <Stack
+                                  key={g.id || gi}
+                                  alignItems="center"
+                                  spacing={0.25}
                                 >
                                   <Box
                                     component="img"
                                     src={g.url}
                                     alt="gatepass"
+                                    onClick={() =>
+                                      setPreviewFile({
+                                        ...g,
+                                        mimetype: g.mimetype || "image/png",
+                                      })
+                                    }
                                     sx={{
                                       width: 56,
                                       height: 56,
                                       objectFit: "cover",
                                       borderRadius: 1,
                                       border: `1px solid ${T.grey200}`,
+                                      cursor: "pointer",
+                                      "&:hover": {
+                                        boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+                                      },
                                     }}
                                   />
-                                </a>
+                                  <Tooltip title="Download">
+                                    <IconButton
+                                      size="small"
+                                      onClick={() =>
+                                        handleDownloadFile({
+                                          ...g,
+                                          originalname:
+                                            g.originalname ||
+                                            `Gatepass_${selectedOrder.booking_ref}_${gi + 1}.png`,
+                                        })
+                                      }
+                                      sx={{ color: T.orange }}
+                                    >
+                                      <DownloadIcon fontSize="small" />
+                                    </IconButton>
+                                  </Tooltip>
+                                </Stack>
                               ))}
                             </Stack>
                           </Box>
@@ -2045,6 +2145,15 @@ const OrderModalView = ({
                   const k = `f-${kind}-${g.key}`;
                   const open = expanded[k] ?? true;
                   const gl = g.docs.filter((d) => d.status !== "void");
+                  const paidCnt = gl.filter((d) => d.status === "paid").length;
+                  const currencies = [...new Set(gl.map((d) => d.currency))];
+                  const fcaTxt =
+                    currencies.length === 1 && currencies[0] !== "AED"
+                      ? fmtMoney(
+                          sumBy(gl, (d) => d.total),
+                          currencies[0],
+                        )
+                      : "-";
                   return [
                     <TableRow
                       key={k}
@@ -2069,7 +2178,7 @@ const OrderModalView = ({
                           {g.key}
                         </Box>
                       </TableCell>
-                      <TableCell colSpan={4}>
+                      <TableCell>
                         <Chip
                           size="small"
                           label={`${g.docs.length} ${kind.toLowerCase()}${g.docs.length > 1 ? "s" : ""}`}
@@ -2080,7 +2189,35 @@ const OrderModalView = ({
                           }}
                         />
                       </TableCell>
-                      <TableCell />
+                      <TableCell sx={{ fontWeight: 600 }}>
+                        {!open
+                          ? pickDate(
+                              gl.map((d) => d.date),
+                              "max",
+                            )
+                          : ""}
+                      </TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>
+                        {!open
+                          ? pickDate(
+                              gl.map((d) => d.dueDate),
+                              "min",
+                            )
+                          : ""}
+                      </TableCell>
+                      <TableCell>
+                        {!open && (
+                          <Chip
+                            label={`Paid (${paidCnt}/${gl.length})`}
+                            size="small"
+                            variant="outlined"
+                            color="success"
+                          />
+                        )}
+                      </TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700 }}>
+                        {!open ? fcaTxt : ""}
+                      </TableCell>
                       <TableCell align="right" sx={{ fontWeight: 700 }}>
                         {fmtMoney(sumBy(gl, docPaidAed), "AED")}
                       </TableCell>
@@ -2297,6 +2434,8 @@ const OrderModalView = ({
     );
   };
 
+  const lastSync = getLastSync();
+
   const tabs = [
     {
       label: "Overview",
@@ -2366,29 +2505,17 @@ const OrderModalView = ({
           >
             <LocalShippingIcon sx={{ fontSize: 22 }} />
             <Typography variant="h6" fontWeight={700} noWrap>
-              {selectedOrder?.booking_ref || "Order Details"}
+              {selectedOrder?.rgl_booking_number || "Order Details"}
             </Typography>
-            {selectedOrder?.status && (
+            {selectedOrder?.created_at && (
               <Chip
-                label={selectedOrder.status}
-                size="small"
-                sx={{
-                  bgcolor: statusColor,
-                  color: "#fff",
-                  fontWeight: 700,
-                  fontSize: 11,
-                }}
-              />
-            )}
-            {(selectedOrder?.receivers || []).length > 0 && (
-              <Chip
-                label={`${selectedOrder.receivers.length} Receiver${selectedOrder.receivers.length > 1 ? "s" : ""}`}
+                label={`Created Date: ${formatDate(selectedOrder.created_at)}`}
                 size="small"
                 variant="outlined"
                 sx={{
                   borderColor: "rgba(255,255,255,0.5)",
                   color: T.white,
-                  fontSize: 11,
+                  fontSize: 12,
                 }}
               />
             )}
@@ -2483,6 +2610,7 @@ const OrderModalView = ({
                     />
                     <FieldGrid
                       cols={3}
+                      copyKeys={["Tracking ID", "RGL Booking #"]}
                       data={{
                         "Tracking ID": selectedOrder.tracking_id,
                         "Booking Ref": selectedOrder.booking_ref,
@@ -2716,7 +2844,7 @@ const OrderModalView = ({
                         </Typography>
                         <Chip
                           size="small"
-                          label={selectedOrder?.gatepass?.length || 0}
+                          label={allGatepasses.length}
                           sx={{
                             bgcolor: T.tealMid,
                             color: T.tealDark,
@@ -2724,7 +2852,71 @@ const OrderModalView = ({
                           }}
                         />
                       </Box>
-                      {renderFiles(selectedOrder?.gatepass)}
+                      {renderFiles(allGatepasses)}
+                    </Paper>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <Paper
+                      variant="outlined"
+                      sx={{ borderRadius: 2.5, overflow: "hidden" }}
+                    >
+                      <Box
+                        sx={{
+                          px: 2.5,
+                          py: 1.5,
+                          bgcolor: T.tealLight,
+                          borderBottom: `1px solid ${T.tealMid}`,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 1,
+                        }}
+                      >
+                        <PictureAsPdfIcon
+                          sx={{ color: T.teal, fontSize: 18 }}
+                        />
+                        <Typography fontWeight={700} color={T.tealDark}>
+                          House Bill of Lading (HBL)
+                        </Typography>
+                      </Box>
+                      <Stack
+                        direction="row"
+                        spacing={1.5}
+                        alignItems="center"
+                        sx={{ p: 2 }}
+                      >
+                        <Select
+                          size="small"
+                          displayEmpty
+                          value={hblCompanyId}
+                          onChange={(e) => setHblCompanyId(e.target.value)}
+                          sx={{ minWidth: 220 }}
+                        >
+                          <MenuItem value="" disabled>
+                            Select company
+                          </MenuItem>
+                          {(companies || []).map((c) => (
+                            <MenuItem key={c.id} value={c.id}>
+                              {c.company}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          disabled={!hblCompanyId || hblLoading}
+                          onClick={handleOpenHbl}
+                          startIcon={
+                            hblLoading ? (
+                              <CircularProgress size={14} color="inherit" />
+                            ) : (
+                              <VisibilityIcon />
+                            )
+                          }
+                          sx={{ borderColor: T.teal, color: T.teal }}
+                        >
+                          Preview
+                        </Button>
+                      </Stack>
                     </Paper>
                   </Grid>
                 </Grid>
@@ -2781,7 +2973,18 @@ const OrderModalView = ({
                           </Button>
                           <Typography variant="caption" color="text.secondary">
                             Last synced:{" "}
-                            {billing ? formatDate(getLastSyncedAt()) : "N/A"}
+                            {lastSync
+                              ? `${new Date(lastSync.at).toLocaleString(
+                                  "en-US",
+                                  {
+                                    month: "short",
+                                    day: "numeric",
+                                    year: "numeric",
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  },
+                                )}${lastSync.by ? ` by ${lastSync.by}` : ""}`
+                              : "N/A"}
                           </Typography>
                         </Box>
                       </Box>
@@ -2909,6 +3112,38 @@ const OrderModalView = ({
               style={{ width: "100%", height: "75vh", border: 0 }}
             />
           )}
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={!!hblHtml}
+        onClose={() => setHblHtml("")}
+        maxWidth="lg"
+        fullWidth
+      >
+        <DialogTitle
+          sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <Typography fontWeight={700}>House Bill of Lading</Typography>
+          <Box>
+            <IconButton onClick={handlePrintHbl}>
+              <PrintIcon />
+            </IconButton>
+            <IconButton onClick={() => setHblHtml("")}>
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent dividers sx={{ p: 0, bgcolor: T.grey100 }}>
+          <iframe
+            ref={hblFrameRef}
+            title="hbl-preview"
+            srcDoc={hblHtml}
+            style={{ width: "100%", height: "75vh", border: 0 }}
+          />
         </DialogContent>
       </Dialog>
     </>

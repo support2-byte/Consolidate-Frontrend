@@ -1,292 +1,440 @@
-import { createContext, useEffect, useState, useRef } from "react";
-import { api } from "../api";
+import {
+  createContext,
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+} from "react";
 import { toast } from "react-toastify";
+import { api } from "../api";
 import { useAuth } from "./AuthContext";
 
-export const AppContext = createContext();
+export const AppContext = createContext(null);
+
+const CACHE_PREFIX = "appctx:v1:";
+const CACHE_TTL_MS = 10 * 60 * 1000;
+
+const readCache = (key) => {
+  try {
+    const raw = sessionStorage.getItem(CACHE_PREFIX + key);
+    if (!raw) return null;
+    const { t, d } = JSON.parse(raw);
+    return { data: d, fresh: Date.now() - t < CACHE_TTL_MS };
+  } catch {
+    return null;
+  }
+};
+
+const writeCache = (key, data) => {
+  try {
+    sessionStorage.setItem(
+      CACHE_PREFIX + key,
+      JSON.stringify({ t: Date.now(), d: data }),
+    );
+  } catch {
+    sessionStorage.removeItem(CACHE_PREFIX + key);
+  }
+};
+
+const clearCache = () => {
+  try {
+    Object.keys(sessionStorage)
+      .filter((k) => k.startsWith(CACHE_PREFIX))
+      .forEach((k) => sessionStorage.removeItem(k));
+  } catch {
+    return;
+  }
+};
+
+const RESOURCES = {
+  customers: {
+    url: "/api/customers",
+    params: { search: "All", limit: 5000 },
+    select: (res) => res.data,
+    error: "An error occurred while fetching customers.",
+    initialLoading: true,
+  },
+  places: {
+    url: "/api/options/places/crud",
+    select: (res) => res.data.places,
+    error: "An error occurred while fetching places.",
+  },
+  statuses: {
+    url: "/api/options/allStatus",
+    select: (res) => res.data.statuses,
+    error: "An error occurred while fetching statuses.",
+  },
+  modules: {
+    url: "/api/options/modules",
+    select: (res) => res.data.modules,
+    error: "An error occurred while fetching modules.",
+  },
+  companies: {
+    url: "/api/options/companies",
+    select: (res) => res.data.data || [],
+    error: "Failed to load companies",
+    serverMessage: true,
+    toast: false,
+  },
+  thirdParties: {
+    url: "/api/options/thirdParty/crud",
+    select: (res) => res.data.third_parties || [],
+    error: "Failed to load third parties. Please try again.",
+  },
+  drivers: {
+    url: "/api/options/drivers",
+    select: (res) => res.data.rows || [],
+    error: "Failed to load drivers. Please try again.",
+    emptyOn404: true,
+  },
+  driverTrucks: {
+    url: "/api/options/driver-trucks",
+    select: (res) => res.data.rows || [],
+    error: "Failed to load driver trucks. Please try again.",
+    emptyOn404: true,
+  },
+  systemSettings: {
+    url: "/api/options/system-settings",
+    select: (res) => res.data.data || [],
+    error: "Failed to load system settings.",
+  },
+  zohoInvoices: {
+    url: "/api/zoho-invoice",
+    select: (res) => res.data?.invoices || [],
+    error: "Failed to fetch invoices.",
+    serverMessage: true,
+    quietStatuses: [403],
+  },
+  banks: {
+    url: "/api/options/banks/crud",
+    select: (res) => res.data.banks || [],
+    error: "Failed to load banks.",
+    lazy: true,
+  },
+  paymentTypes: {
+    url: "/api/options/payment-types/crud",
+    select: (res) => res.data.paymentTypes || [],
+    error: "Failed to load payment types.",
+    lazy: true,
+  },
+  vessels: {
+    url: "/api/options/vessels/crud",
+    select: (res) => res.data.vessels || [],
+    error: "Failed to load vessels.",
+    lazy: true,
+  },
+  shippingLines: {
+    url: "/api/options/shipping-lines",
+    select: (res) => res.data.shippingLineOptions || [],
+    error: "Failed to load shipping lines.",
+    lazy: true,
+  },
+  currencies: {
+    url: "/api/options/currencies",
+    select: (res) => res.data.currencyOptions || [],
+    error: "Failed to load currencies.",
+    lazy: true,
+  },
+  categories: {
+    url: "/api/options/categories/crud",
+    select: (res) => res.data.categories || [],
+    error: "Failed to load categories.",
+    lazy: true,
+  },
+  subCategories: {
+    url: "/api/options/subcategories/crud",
+    select: (res) => res.data.subCategories || [],
+    error: "Failed to load subcategories.",
+    lazy: true,
+  },
+};
+
+const RESOURCE_KEYS = Object.keys(RESOURCES);
+
+const createInitialState = (pending) =>
+  Object.fromEntries(
+    RESOURCE_KEYS.map((key) => [
+      key,
+      {
+        data: [],
+        loading: Boolean(RESOURCES[key].initialLoading) && pending,
+        error: "",
+      },
+    ]),
+  );
+
+const reducer = (state, action) => {
+  switch (action.type) {
+    case "patch":
+      return {
+        ...state,
+        [action.key]: { ...state[action.key], ...action.patch },
+      };
+    case "reset":
+      return createInitialState(false);
+    default:
+      return state;
+  }
+};
 
 export const AppProvider = ({ children }) => {
   const { isAuthenticated, loading: authLoading } = useAuth();
+  const [state, dispatch] = useReducer(reducer, true, createInitialState);
 
-  const [customers, setCustomers] = useState([]);
-  const [places, setPlaces] = useState([]);
-  const [statuses, setStatuses] = useState([]);
-  const [modules, setModules] = useState([]);
-  const [companies, setCompanies] = useState([]);
-  const [thirdParties, setThirdParties] = useState([]);
-  const [drivers, setDrivers] = useState([]);
-  const [driverTrucks, setDriverTracks] = useState([]);
-  const [systemSettings, setSystemSettings] = useState([]);
-  const [zohoInvoices, setZohoInvoices] = useState([]);
-  const [zohoInvoicesLoading, setZohoInvoicesLoading] = useState(false);
-  const [zohoInvoicesSyncing, setZohoInvoicesSyncing] = useState(false);
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const inflight = useRef(new Map());
+  const generation = useRef(0);
+  const initialized = useRef(false);
 
-  const [placesLoading, setPlacesLoading] = useState(false);
-  const [statusLoading, setStatusLoading] = useState(false);
-  const [loadingCustomers, setLoadingCustomers] = useState(true);
-  const [modulesLoading, setModulesLoading] = useState(false);
-  const [companiesLoading, setCompaniesLoading] = useState(false);
-  const [companiesError, setCompaniesError] = useState("");
-  const [thirdPartiesLoading, setThirdPartiesLoading] = useState(false);
-  const [driversLoading, setDriversLoading] = useState(false);
-  const [driverTrucksLoading, setDriverTrucksLoading] = useState(false);
-  const [systemSettingsLoading, setSystemSettingsLoading] = useState(false);
+  const load = useCallback((key, { silent = false } = {}) => {
+    if (inflight.current.has(key)) return inflight.current.get(key);
 
-  const isInitialized = useRef(false);
+    const config = RESOURCES[key];
+    const gen = generation.current;
 
-  const fetchCustomers = async () => {
-    try {
-      setLoadingCustomers(true);
-      const params = new URLSearchParams({
-        search: "All",
-        limit: 5000,
-      });
-
-      const response = await api.get(`/api/customers?${params}`);
-
-      if (response.status === 200) {
-        setCustomers(response.data);
-      } else {
-        toast.error("Failed to load customers data.");
+    const run = async () => {
+      if (!silent) {
+        dispatch({ type: "patch", key, patch: { loading: true, error: "" } });
       }
-    } catch (error) {
-      console.error("Customer Fetch Error:", error);
-      toast.error("An error occurred while fetching customers.");
-    } finally {
-      setLoadingCustomers(false);
-    }
-  };
+      try {
+        const res = await api.get(
+          config.url,
+          config.params ? { params: config.params } : undefined,
+        );
+        if (gen !== generation.current) return;
+        const data = config.select(res);
+        writeCache(key, data);
+        dispatch({
+          type: "patch",
+          key,
+          patch: { data, loading: false, error: "" },
+        });
+      } catch (err) {
+        if (gen !== generation.current) return;
+        const status = err.response?.status;
 
-  const fetchPlaces = async () => {
-    try {
-      setPlacesLoading(true);
-      const response = await api.get(`/api/options/places/crud`);
+        if (status === 404 && config.emptyOn404) {
+          dispatch({
+            type: "patch",
+            key,
+            patch: { data: [], loading: false, error: "" },
+          });
+          return;
+        }
 
-      if (response.status === 200) {
-        setPlaces(response.data.places);
-      } else {
-        toast.error("Failed to load locations.");
+        const message = config.serverMessage
+          ? err.response?.data?.message || config.error
+          : config.error;
+
+        if (!config.quietStatuses?.includes(status)) {
+          console.error(`[AppContext] ${key} fetch failed:`, err);
+          if (config.toast !== false) toast.error(message);
+        }
+
+        dispatch({
+          type: "patch",
+          key,
+          patch: { loading: false, error: message },
+        });
       }
-    } catch (error) {
-      console.error("Places Fetch Error:", error);
-      toast.error("An error occurred while fetching places.");
-    } finally {
-      setPlacesLoading(false);
-    }
-  };
+    };
 
-  const fetchStatuses = async ({ silent = false } = {}) => {
+    const promise = run().finally(() => inflight.current.delete(key));
+    inflight.current.set(key, promise);
+    return promise;
+  }, []);
+
+  const setData = useCallback((key, value) => {
+    const prev = stateRef.current[key].data;
+    const next = typeof value === "function" ? value(prev) : value;
+    stateRef.current = {
+      ...stateRef.current,
+      [key]: { ...stateRef.current[key], data: next },
+    };
+    writeCache(key, next);
+    dispatch({ type: "patch", key, patch: { data: next } });
+  }, []);
+
+  const fetchers = useMemo(
+    () =>
+      Object.fromEntries(
+        RESOURCE_KEYS.map((key) => [key, (options) => load(key, options)]),
+      ),
+    [load],
+  );
+
+  const setters = useMemo(
+    () =>
+      Object.fromEntries(
+        RESOURCE_KEYS.map((key) => [key, (value) => setData(key, value)]),
+      ),
+    [setData],
+  );
+
+  const refreshAll = useCallback(
+    () =>
+      Promise.all(
+        RESOURCE_KEYS.filter((key) => !RESOURCES[key].lazy).map((key) =>
+          load(key, { silent: true }),
+        ),
+      ),
+    [load],
+  );
+
+  const syncZohoInvoices = useCallback(async () => {
+    dispatch({ type: "patch", key: "zohoInvoices", patch: { syncing: true } });
     try {
-      if (!silent) setStatusLoading(true);
-      const response = await api.get(`/api/options/allStatus`);
-
-      if (response.status === 200) {
-        setStatuses(response.data.statuses);
-      } else {
-        toast.error("Failed to load system statuses.");
-      }
-    } catch (error) {
-      console.error("Status Fetch Error:", error);
-      toast.error("An error occurred while fetching statuses.");
-    } finally {
-      if (!silent) setStatusLoading(false);
-    }
-  };
-
-  const fetchModules = async () => {
-    try {
-      setModulesLoading(true);
-      const response = await api.get("/api/options/modules");
-
-      if (response.status === 200) {
-        setModules(response.data.modules);
-      } else {
-        toast.error("Failed to load system statuses.");
-      }
-    } catch (error) {
-      console.error("Modules Fetch Error:", error);
-      toast.error("An error occurred while fetching modules.");
-    } finally {
-      setModulesLoading(false);
-    }
-  };
-
-  const fetchCompanies = async () => {
-    setCompaniesLoading(true);
-    setCompaniesError("");
-    try {
-      const { data } = await api.get("/api/options/companies");
-      setCompanies(data.data || []);
-    } catch (err) {
-      setCompaniesError(
-        err.response?.data?.message || "Failed to load companies",
-      );
-    } finally {
-      setCompaniesLoading(false);
-    }
-  };
-
-  const fetchThirdParties = async () => {
-    try {
-      setThirdPartiesLoading(true);
-      const response = await api.get("api/options/thirdParty/crud");
-      const data = response.data.third_parties || [];
-      setThirdParties(data);
-    } catch (err) {
-      console.error("Error fetching third parties:", err);
-      toast.error("Failed to load third parties. Please try again.");
-    } finally {
-      setThirdPartiesLoading(false);
-    }
-  };
-
-  const fetchDrivers = async () => {
-    try {
-      setDriversLoading(true);
-      const response = await api.get("api/options/drivers");
-      setDrivers(response.data.rows || []);
-    } catch (err) {
-      if (err.response?.status === 404) {
-        setDrivers([]);
-      } else {
-        console.error("Error fetching drivers:", err);
-        toast.error("Failed to load drivers. Please try again.");
-      }
-    } finally {
-      setDriversLoading(false);
-    }
-  };
-
-  const fetchDriverTrucks = async () => {
-    try {
-      setDriverTrucksLoading(true);
-      const response = await api.get("api/options/driver-trucks");
-      setDriverTracks(response.data.rows || []);
-    } catch (err) {
-      if (err.response?.status === 404) {
-        setDriverTracks([]);
-      } else {
-        console.error("Error fetching driver tracks:", err);
-        toast.error("Failed to load driver tracks. Please try again.");
-      }
-    } finally {
-      setDriverTrucksLoading(false);
-    }
-  };
-
-  const fetchSystemSettings = async () => {
-    try {
-      setSystemSettingsLoading(true);
-      const { data } = await api.get("/api/options/system-settings");
-      setSystemSettings(data.data || []);
-    } catch (err) {
-      console.error("Error fetching system settings:", err);
-      toast.error("Failed to load system settings.");
-    } finally {
-      setSystemSettingsLoading(false);
-    }
-  };
-
-  const fetchZohoInvoices = async () => {
-    try {
-      setZohoInvoicesLoading(true);
-      const { data } = await api.get("/api/zoho-invoice");
-      setZohoInvoices(data?.invoices || []);
-    } catch (err) {
-      if (err.response?.status !== 403) {
-        toast.error(err.response?.data?.message || "Failed to fetch invoices.");
-      }
-    } finally {
-      setZohoInvoicesLoading(false);
-    }
-  };
-
-  const syncZohoInvoices = async () => {
-    try {
-      setZohoInvoicesSyncing(true);
       await api.post("/api/zoho-invoice/sync");
-      const { data } = await api.get("/api/zoho-invoice");
-      setZohoInvoices(data?.invoices || []);
+      await load("zohoInvoices", { silent: true });
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to sync invoices.");
     } finally {
-      setZohoInvoicesSyncing(false);
+      dispatch({
+        type: "patch",
+        key: "zohoInvoices",
+        patch: { syncing: false },
+      });
     }
-  };
+  }, [load]);
 
-  const getSystemRate = (key, fallback = 0) => {
-    const setting = systemSettings.find((s) => s.key === key);
-    return setting ? Number(setting.value) : fallback;
-  };
+  const systemSettings = state.systemSettings.data;
+
+  const getSystemRate = useCallback(
+    (key, fallback = 0) => {
+      const setting = systemSettings.find((s) => s.key === key);
+      return setting ? Number(setting.value) : fallback;
+    },
+    [systemSettings],
+  );
 
   useEffect(() => {
     if (authLoading) return;
+
     if (!isAuthenticated) {
-      setLoadingCustomers(false);
-      isInitialized.current = false;
+      generation.current += 1;
+      inflight.current.clear();
+      initialized.current = false;
+      clearCache();
+      dispatch({ type: "reset" });
       return;
     }
 
-    if (isInitialized.current) return;
-    isInitialized.current = true;
+    if (initialized.current) return;
+    initialized.current = true;
 
-    fetchCustomers();
-    fetchPlaces();
-    fetchStatuses();
-    fetchModules();
-    fetchCompanies();
-    fetchThirdParties();
-    fetchDrivers();
-    fetchDriverTrucks();
-    fetchSystemSettings();
-    getSystemRate();
-    fetchZohoInvoices();
-  }, [authLoading, isAuthenticated]);
+    RESOURCE_KEYS.forEach((key) => {
+      const cached = readCache(key);
+      if (cached) {
+        dispatch({
+          type: "patch",
+          key,
+          patch: { data: cached.data, loading: false },
+        });
+      }
+      if (!RESOURCES[key].lazy && !cached?.fresh) {
+        load(key, { silent: Boolean(cached) });
+      }
+    });
+  }, [authLoading, isAuthenticated, load]);
 
-  return (
-    <AppContext.Provider
-      value={{
-        customers,
-        setCustomers,
-        loadingCustomers,
-        places,
-        setPlaces,
-        placesLoading,
-        fetchPlaces,
-        statuses,
-        setStatuses,
-        statusLoading,
-        fetchStatuses,
-        modules,
-        setModules,
-        companies,
-        setCompanies,
-        companiesLoading,
-        companiesError,
-        fetchCompanies,
-        thirdParties,
-        setThirdParties,
-        drivers,
-        setDrivers,
-        driversLoading,
-        fetchDrivers,
-        driverTrucks,
-        setDriverTracks,
-        driverTrucksLoading,
-        fetchDriverTrucks,
-        systemSettings,
-        setSystemSettings,
-        systemSettingsLoading,
-        fetchSystemSettings,
-        getSystemRate,
-        zohoInvoices,
-        zohoInvoicesLoading,
-        zohoInvoicesSyncing,
-        fetchZohoInvoices,
-        syncZohoInvoices,
-      }}
-    >
-      {children}
-    </AppContext.Provider>
+  const ensure = useCallback(
+    (keys) =>
+      Promise.all(
+        keys.map((key) => {
+          const cached = readCache(key);
+          return cached?.fresh ? null : load(key, { silent: Boolean(cached) });
+        }),
+      ),
+    [load],
   );
+
+  const reload = useCallback(
+    (keys) => Promise.all(keys.map((key) => load(key, { silent: true }))),
+    [load],
+  );
+
+  const value = useMemo(
+    () => ({
+      customers: state.customers.data,
+      setCustomers: setters.customers,
+      loadingCustomers: state.customers.loading,
+      fetchCustomers: fetchers.customers,
+
+      places: state.places.data,
+      setPlaces: setters.places,
+      placesLoading: state.places.loading,
+      fetchPlaces: fetchers.places,
+
+      statuses: state.statuses.data,
+      setStatuses: setters.statuses,
+      statusLoading: state.statuses.loading,
+      fetchStatuses: fetchers.statuses,
+
+      modules: state.modules.data,
+      setModules: setters.modules,
+      modulesLoading: state.modules.loading,
+      fetchModules: fetchers.modules,
+
+      companies: state.companies.data,
+      setCompanies: setters.companies,
+      companiesLoading: state.companies.loading,
+      companiesError: state.companies.error,
+      fetchCompanies: fetchers.companies,
+
+      thirdParties: state.thirdParties.data,
+      setThirdParties: setters.thirdParties,
+      thirdPartiesLoading: state.thirdParties.loading,
+      fetchThirdParties: fetchers.thirdParties,
+
+      drivers: state.drivers.data,
+      setDrivers: setters.drivers,
+      driversLoading: state.drivers.loading,
+      fetchDrivers: fetchers.drivers,
+
+      driverTrucks: state.driverTrucks.data,
+      setDriverTracks: setters.driverTrucks,
+      setDriverTrucks: setters.driverTrucks,
+      driverTrucksLoading: state.driverTrucks.loading,
+      fetchDriverTrucks: fetchers.driverTrucks,
+
+      systemSettings,
+      setSystemSettings: setters.systemSettings,
+      systemSettingsLoading: state.systemSettings.loading,
+      fetchSystemSettings: fetchers.systemSettings,
+      getSystemRate,
+
+      zohoInvoices: state.zohoInvoices.data,
+      zohoInvoicesLoading: state.zohoInvoices.loading,
+      zohoInvoicesSyncing: Boolean(state.zohoInvoices.syncing),
+      fetchZohoInvoices: fetchers.zohoInvoices,
+      syncZohoInvoices,
+
+      banks: state.banks.data,
+      paymentTypes: state.paymentTypes.data,
+      vessels: state.vessels.data,
+      shippingLines: state.shippingLines.data,
+      currencies: state.currencies.data,
+      categories: state.categories.data,
+      subCategories: state.subCategories.data,
+      ensure,
+      reload,
+
+      refreshAll,
+    }),
+    [
+      state,
+      systemSettings,
+      setters,
+      fetchers,
+      getSystemRate,
+      syncZohoInvoices,
+      refreshAll,
+      ensure,
+      reload,
+    ],
+  );
+
+  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 };

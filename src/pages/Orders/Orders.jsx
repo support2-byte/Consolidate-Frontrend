@@ -36,6 +36,9 @@ import {
   Divider,
   Tabs,
   Tab,
+  useMediaQuery,
+  useTheme,
+  Autocomplete,
 } from "@mui/material";
 import XLSX from "xlsx-js-style";
 import Avatar from "@mui/material/Avatar";
@@ -51,7 +54,6 @@ import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
 import Tooltip from "@mui/material/Tooltip";
 import List from "@mui/material/List";
 import AssignmentIcon from "@mui/icons-material/Assignment";
-import { Autocomplete } from "@mui/material";
 import CargoIcon from "@mui/icons-material/LocalShipping";
 import { styled } from "@mui/material/styles";
 import VisibilityIcon from "@mui/icons-material/Visibility";
@@ -80,12 +82,79 @@ import {
   WharfageConsignmentNote,
   RickmersBillOfLading,
 } from "../../documents/mblGenerator";
+import { HouseBillOfLading } from "../../documents/hblGenerator";
+
+const StyledTooltip = styled(Tooltip)(({ theme }) => ({
+  [`& .MuiTooltip-tooltip`]: {
+    borderRadius: theme.shape.borderRadius,
+    fontSize: theme.typography.body2.fontSize,
+    width: 600,
+  },
+  [`& .MuiTooltip-arrow`]: {},
+}));
+
+const StyledTableRow = styled(TableRow)(({ theme }) => ({
+  "&:nth-of-type(odd)": { backgroundColor: theme.palette.action.hover },
+  "&:last-child td, &:last-child th": { border: 0 },
+  "&:hover": { backgroundColor: theme.palette.action.selected },
+}));
+
+const StyledTableCell = styled(TableCell)(({ theme }) => ({
+  borderBottom: `1px solid ${theme.palette.divider}`,
+  fontSize: "12px",
+  padding: theme.spacing(1.5, 2),
+}));
+
+const StyledTableHeadCell = styled(TableCell)(({ theme }) => ({
+  backgroundColor: theme.palette.primary.main,
+  color: theme.palette.primary.contrastText,
+  fontWeight: "bold",
+  fontSize: "0.875rem",
+  padding: theme.spacing(1.5, 2),
+  borderBottom: `2px solid ${theme.palette.primary.dark}`,
+}));
+
+const STATUS_COLORS = {
+  "Ready for Loading": { bg: "#f3e5f5", text: "#7b1fa2" },
+  "Loaded Into Container": { bg: "#e0f2f1", text: "#00695c" },
+  "Shipment Processing": { bg: "#fff3e0", text: "#ef6c00" },
+  "In Transit": { bg: "#e1f5fe", text: "#0277bd" },
+  "Under Processing": { bg: "#fff3e0", text: "#f57c00" },
+  "Arrived at Sort Facility": { bg: "#f1f8e9", text: "#689f38" },
+  "Ready for Delivery": { bg: "#fce4ec", text: "#c2185b" },
+  "Shipment Delivered": { bg: "#e8f5e8", text: "#2e7d32" },
+  Loaded: { bg: "#e8f5e8", text: "#2e7d32" },
+  "Assigned to Job": { bg: "#fff3e0", text: "#f57c00" },
+  default: { bg: "#555555", text: "#ededed" },
+};
+
+const getStatusColors = (status) =>
+  STATUS_COLORS[status] || STATUS_COLORS.default;
+
+const StatusChip = ({ status, height, size }) => {
+  const colors = getStatusColors(status);
+  return (
+    <Chip
+      label={status}
+      size={size}
+      sx={{
+        height,
+        fontSize: "0.65rem",
+        marginLeft: 2,
+        backgroundColor: colors.bg,
+        color: colors.text,
+      }}
+    />
+  );
+};
 
 const OrdersList = () => {
   const navigate = useNavigate();
-  const { places, statuses, companies } = useContext(AppContext);
+  const theme = useTheme();
+  const fullScreen = useMediaQuery(theme.breakpoints.down("sm"));
+  const { places, statuses, companies, customers } = useContext(AppContext);
   const { isLoading, setIsLoading } = useLoading();
-  const [orders, setOrders] = useState([]);
+  const [rawOrders, setOrders] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
   const [openDocumentsModal, setOpenDocumentsModal] = useState(false);
@@ -98,20 +167,62 @@ const OrdersList = () => {
   const [assignmentError, setAssignmentError] = useState(null);
   const [selectedContainers, setSelectedContainers] = useState([]);
   const [assigning, setAssigning] = useState(false);
+
   const filterPlaces = useMemo(
     () =>
       (places || []).map((p) => ({ value: p.id.toString(), label: p.name })),
     [places],
   );
+
+  const customersById = useMemo(() => {
+    const map = new Map();
+    (customers || []).forEach((c) => {
+      if (c.zoho_id) map.set(String(c.zoho_id), c);
+      if (c.id) map.set(String(c.id), c);
+    });
+    return map;
+  }, [customers]);
+
+  const orders = useMemo(
+    () =>
+      rawOrders.map((order) => {
+        const ownerPrefix =
+          order.sender_type === "sender" ? "sender" : "receiver";
+        const ownerNameKey = `${ownerPrefix}_name`;
+        const ownerId = order.selected_sender_owner;
+        if (!ownerId || order[ownerNameKey]?.trim()) return order;
+        const customer = customersById.get(String(ownerId));
+        if (!customer) return order;
+        return {
+          ...order,
+          [ownerNameKey]:
+            customer.contact_name || customer.contact_persons?.[0]?.name || "",
+          [`${ownerPrefix}_contact`]:
+            customer.primary_phone ||
+            customer.contact_persons?.[0]?.phone ||
+            "",
+          [`${ownerPrefix}_address`]:
+            customer.zoho_notes || customer.billing_address || "",
+          [`${ownerPrefix}_email`]:
+            customer.email || customer.contact_persons?.[0]?.email || "",
+          [`${ownerPrefix}_ref`]: customer.zoho_id || customer.ref || "",
+          [`${ownerPrefix}_remarks`]:
+            customer.zoho_notes || customer.system_notes || "",
+        };
+      }),
+    [rawOrders, customersById],
+  );
+
   const [filters, setFilters] = useState({
     status: "",
-    search: "",
+    search: new URLSearchParams(window.location.search).get("search") || "",
   });
   const [snackbar, setSnackbar] = useState({
     open: false,
     message: "",
     severity: "info",
   });
+
   const [openModal, setOpenModal] = useState(false);
   const [assignments, setAssignments] = useState({});
   const [selectedOrder, setSelectedOrder] = useState(null);
@@ -165,7 +276,7 @@ const OrdersList = () => {
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
   };
 
-  const etaBounds = (currentEta, minIsToday = false) => {
+  const etaBounds = (currentEta) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     let base = today;
@@ -176,10 +287,15 @@ const OrdersList = () => {
     }
     const max = new Date(base);
     max.setDate(max.getDate() + 30);
-    return {
-      min: toLocalISO(minIsToday ? today : base),
-      max: toLocalISO(max),
-    };
+    return { min: toLocalISO(base), max: toLocalISO(max) };
+  };
+
+  const getCurrentEta = () => {
+    const d = selectedReceiverForUpdateDetails;
+    const cd = selectedCid
+      ? d?.containerDetails?.find((c) => c.container.cid === selectedCid)
+      : null;
+    return cd?.eta || d?.trackingEta || d?.eta;
   };
 
   const toDateInput = (v) => toLocalISO(v);
@@ -190,12 +306,8 @@ const OrdersList = () => {
     const d = new Date();
     d.setDate(d.getDate() + matched.days_offset);
     const calc = toLocalISO(d);
-    const { max } = etaBounds(
-      selectedReceiverForUpdateDetails?.trackingEta ||
-        selectedReceiverForUpdateDetails?.eta,
-      true,
-    );
-    return calc > max ? max : calc;
+    const { min, max } = etaBounds(getCurrentEta());
+    return calc < min ? min : calc > max ? max : calc;
   };
 
   const handleOpenActionMenu = (e, order) => {
@@ -299,13 +411,14 @@ const OrdersList = () => {
   };
 
   const handleConfirmStatusUpdate = async () => {
-    setIsLoading(true);
     if (
       !selectedOrderForUpdate ||
       !selectedReceiverForUpdate ||
       !selectedStatus
     )
       return;
+
+    setIsLoading(true);
 
     try {
       await api.put(
@@ -379,14 +492,13 @@ const OrdersList = () => {
   };
 
   const handleNotify = async () => {
-    setIsLoading(true);
     if (
       !selectedOrderForUpdate ||
       !selectedReceiverForUpdate ||
       !selectedStatus
     )
       return;
-
+    setIsLoading(true);
     try {
       await api.post(`/api/orders/${selectedOrderForUpdate.id}/notify`, {
         status: selectedStatus,
@@ -451,50 +563,7 @@ const OrdersList = () => {
         response.data.pagination.count ||
         response.data.pagination.totalCount ||
         0;
-      const ordersWithAutoPopulate = await Promise.all(
-        ordersData.map(async (order) => {
-          const ownerPrefix =
-            order.sender_type === "sender" ? "sender" : "receiver";
-          const ownerNameKey = `${ownerPrefix}_name`;
-          const selectedOwnerKey = "selected_sender_owner";
-
-          if (order[selectedOwnerKey] && !order[ownerNameKey]?.trim()) {
-            try {
-              const customerRes = await api.get(
-                `/api/customers/${order[selectedOwnerKey]}`,
-              );
-              if (customerRes?.data) {
-                const customer = customerRes.data;
-                const updatedOrder = { ...order };
-                updatedOrder[ownerNameKey] =
-                  customer.contact_name ||
-                  customer.contact_persons?.[0]?.name ||
-                  "";
-                updatedOrder[`${ownerPrefix}_contact`] =
-                  customer.primary_phone ||
-                  customer.contact_persons?.[0]?.phone ||
-                  "";
-                updatedOrder[`${ownerPrefix}_address`] =
-                  customer.zoho_notes || customer.billing_address || "";
-                updatedOrder[`${ownerPrefix}_email`] =
-                  customer.email || customer.contact_persons?.[0]?.email || "";
-                updatedOrder[`${ownerPrefix}_ref`] =
-                  customer.zoho_id || customer.ref || "";
-                updatedOrder[`${ownerPrefix}_remarks`] =
-                  customer.zoho_notes || customer.system_notes || "";
-                return updatedOrder;
-              }
-            } catch (autoErr) {
-              console.error(
-                `Auto-populate owner failed for order ${order.id}:`,
-                autoErr,
-              );
-            }
-          }
-          return order;
-        }),
-      );
-      setOrders(ordersWithAutoPopulate);
+      setOrders(ordersData);
       setTotal(totalCount);
     } catch (err) {
       console.error("Error fetching orders:", err);
@@ -539,7 +608,7 @@ const OrdersList = () => {
     });
 
     setPage(0);
-    window.location.reload();
+    window.location.assign(window.location.pathname);
   };
 
   const handleDocuments = async (orderId) => {
@@ -673,13 +742,25 @@ const OrdersList = () => {
       ),
     );
   };
-  const fetchContainers = async () => {
+
+  const containersCache = useRef({ data: null, at: 0 });
+  const loadContainers = async (force) => {
+    const cache = containersCache.current;
+    if (!force && cache.data && Date.now() - cache.at < 60 * 1000) {
+      return cache.data;
+    }
+    const response = await api.get("/api/containers");
+    cache.data = response.data.data || [];
+    cache.at = Date.now();
+    return cache.data;
+  };
+
+  const fetchContainers = async (force = true) => {
     if (loadingContainers) return;
     setLoadingContainers(true);
     setAssignmentError(null);
     try {
-      const response = await api.get("/api/containers");
-      const availableContainers = response.data.data || [];
+      const availableContainers = await loadContainers(force !== false);
       setContainers(availableContainers);
     } catch (err) {
       console.error("Error fetching containers:", err);
@@ -898,7 +979,6 @@ const OrdersList = () => {
     }
     setExporting(true);
     try {
-      // 1) Collect all orders matching current filters
       const listed = [];
       let currentPage = 1;
       const pageSize = 100;
@@ -1235,7 +1315,7 @@ const OrdersList = () => {
   };
 
   useEffect(() => {
-    fetchContainers();
+    if (openAssignModal) fetchContainers(false);
   }, [openAssignModal]);
 
   const handleChangePage = (event, newPage) => {
@@ -1261,24 +1341,6 @@ const OrdersList = () => {
   };
   const handleSnackbarClose = () => {
     setSnackbar((prev) => ({ ...prev, open: false }));
-  };
-
-  const getStatusColors = (status) => {
-    const colorMap = {
-      "Ready for Loading": { bg: "#f3e5f5", text: "#7b1fa2" },
-      "Loaded Into Container": { bg: "#e0f2f1", text: "#00695c" },
-      "Shipment Processing": { bg: "#fff3e0", text: "#ef6c00" },
-      "In Transit": { bg: "#e1f5fe", text: "#0277bd" },
-      "Under Processing": { bg: "#fff3e0", text: "#f57c00" },
-      "Arrived at Sort Facility": { bg: "#f1f8e9", text: "#689f38" },
-      "Ready for Delivery": { bg: "#fce4ec", text: "#c2185b" },
-      "Shipment Delivered": { bg: "#e8f5e8", text: "#2e7d32" },
-      Loaded: { bg: "#e8f5e8", text: "#2e7d32" },
-      "Assigned to Job": { bg: "#fff3e0", text: "#f57c00" },
-
-      default: { bg: "#555555", text: "#ededed" },
-    };
-    return colorMap[status] || colorMap.default;
   };
 
   const getLeastStatus = (productsSummary, statuses) => {
@@ -1311,25 +1373,6 @@ const OrdersList = () => {
     };
   };
 
-  const StyledTooltip = styled(Tooltip)(({ theme }) => ({
-    [`& .MuiTooltip-tooltip`]: {
-      borderRadius: theme.shape.borderRadius,
-      fontSize: theme.typography.body2.fontSize,
-      width: 600,
-    },
-    [`& .MuiTooltip-arrow`]: {},
-  }));
-
-  const StyledList = styled(List)(({ theme }) => ({
-    padding: theme.spacing(1),
-    "& .MuiListItem-root": {
-      borderRadius: theme.shape.borderRadius,
-      margin: theme.spacing(0.25),
-      "&:hover": {
-        backgroundColor: theme.palette.action.hover,
-      },
-    },
-  }));
   const normalizeContainers = (containers) => {
     if (!containers) return [];
     if (typeof containers === "string") {
@@ -1510,9 +1553,7 @@ const OrdersList = () => {
     setTempOrderId(orderId);
 
     try {
-      const response = await api.get("/api/containers");
-
-      const allContainers = response.data.data || [];
+      const allContainers = await loadContainers(false);
 
       const selectedOrderObjects = orders.filter((o) =>
         selectedOrders.includes(o.id),
@@ -1557,22 +1598,6 @@ const OrdersList = () => {
     setDirectSelectedContainers(null);
   };
 
-  const StatusChip = ({ status, height, size }) => {
-    const colors = getStatusColors(status);
-    return (
-      <Chip
-        label={status}
-        size={size}
-        sx={{
-          height: height,
-          fontSize: "0.65rem",
-          marginLeft: 2,
-          backgroundColor: colors.bg,
-          color: colors.text,
-        }}
-      />
-    );
-  };
   const parseSummaryToList = (receivers, order) => {
     if (!receivers || !Array.isArray(receivers)) return [];
     return receivers;
@@ -1933,31 +1958,6 @@ const OrdersList = () => {
     );
   };
 
-  const StyledTableRow = styled(TableRow)(({ theme }) => ({
-    "&:nth-of-type(odd)": {
-      backgroundColor: theme.palette.action.hover,
-    },
-    "&:last-child td, &:last-child th": {
-      border: 0,
-    },
-    "&:hover": {
-      backgroundColor: theme.palette.action.selected,
-    },
-  }));
-  const StyledTableCell = styled(TableCell)(({ theme }) => ({
-    borderBottom: `1px solid ${theme.palette.divider}`,
-    fontSize: "12px",
-    padding: theme.spacing(1.5, 2),
-  }));
-
-  const StyledTableHeadCell = styled(TableCell)(({ theme }) => ({
-    backgroundColor: theme.palette.primary.main,
-    color: theme.palette.primary.contrastText,
-    fontWeight: "bold",
-    fontSize: "0.875rem",
-    padding: theme.spacing(1.5, 2),
-    borderBottom: `2px solid ${theme.palette.primary.dark}`,
-  }));
   const numSelected = selectedOrders.length;
   const rowCount = orders.length;
 
@@ -1975,7 +1975,7 @@ const OrdersList = () => {
           .filter(Boolean),
       ),
     ];
-    return list.length ? list.join("; ") : null;
+    return list.length ? list.join("; ") : "___________";
   };
   const getReceiverEmail = (orderData) => {
     if (orderData.receivers && orderData.receivers.length > 0) {
@@ -2040,7 +2040,7 @@ const OrdersList = () => {
         if (assignmentsForThisContainer.length > 0) {
           assignmentsForThisContainer.forEach((a) => {
             containerData.orders.push({
-              orderRef: detail.itemRef || orderData.booking_ref || "_________",
+              orderRef: orderData.rgl_booking_number || "_________",
               itemName: detail.itemName || "",
               quantity: a.assigned_qty || 0,
               weight: a.assigned_weight_kg || 0,
@@ -2052,7 +2052,7 @@ const OrdersList = () => {
     if (containerData.orders.length === 0) {
       const firstDetail = orderData.receivers?.[0]?.shippingdetails?.[0];
       containerData.orders.push({
-        orderRef: orderData.booking_ref || "_________",
+        orderRef: orderData.rgl_booking_number || "_________",
         itemName: firstDetail?.itemName || "",
         quantity: firstDetail?.totalNumber || 0,
         weight: firstDetail?.weight || 0,
@@ -2584,7 +2584,7 @@ const OrdersList = () => {
         <div style="margin-bottom: 20px;">
             <div style="margin-bottom: 10px;">
                 <span style="font-family: Arial; font-size: 15.0px; color: #000000; font-weight: bold;">SUBJECT:</span>
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;"> EXPORT OF <span style="color: #000000;">${totalPackages} Pkgs</span> , Vide Order No : BB System # <span style="color: #000000;">${getSafeValue(safeOrder.booking_ref)}</span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;"> EXPORT OF <span style="color: #000000;">${totalPackages} Pkgs</span> , Order Number: <span style="color: #000000;">${getSafeValue(safeOrder.rgl_booking_number)}</span>
             </div>
             <div style="margin-bottom: 5px; margin-left: 99px;">
                 <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Co-Loader : <span style="color: #000000;">${getSafeValue(senderName)}</span></span>
@@ -2833,7 +2833,7 @@ const OrdersList = () => {
         <div style="margin-bottom: 20px;">
             <div style="margin-bottom: 10px;">
                 <span style="font-family: Arial; font-size: 15.0px; color: #000000; font-weight: bold;">SUBJECT:</span>
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;"> EXPORT OF <span style="color: #000000;">${totalPackages} Pkgs</span> , Vide Order No : BB System # <span style="color: #000000;">${getSafeValue(safeOrder.booking_ref)}</span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;"> EXPORT OF <span style="color: #000000;">${totalPackages} Pkgs</span> , Order Number: <span style="color: #000000;">${getSafeValue(safeOrder.rgl_booking_number)}</span>
             </div>
             <div style="margin-bottom: 5px; margin-left: 99px;">
                 <span style="font-family: Arial; font-size: 15.0px; color: #000000;">EXPORTER : <span style="color: #000000;">${getSafeValue(senderName)}</span></span>
@@ -3070,7 +3070,7 @@ const OrdersList = () => {
         <div style="margin-bottom: 20px;">
             <div style="margin-bottom: 10px;">
                 <span style="font-family: Arial; font-size: 15.0px; color: #000000; font-weight: bold;">SUBJECT:</span>
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;"> EXPORT OF <span style="color: #000000;">${totalPackages} Pkgs</span> , Vide Order No : BB System # <span style="color: #000000;">${getSafeValue(safeOrder.booking_ref)}</span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;"> EXPORT OF <span style="color: #000000;">${totalPackages} Pkgs</span> , Order Number: <span style="color: #000000;">${getSafeValue(safeOrder.rgl_booking_number)}</span>
             </div>
             <div style="margin-bottom: 5px; margin-left: 99px;">
                 <span style="font-family: Arial; font-size: 15.0px; color: #000000;">EXPORTER : <span style="color: #000000;">${getSafeValue(senderName)}</span></span>
@@ -3307,7 +3307,7 @@ const OrdersList = () => {
         <div style="margin-bottom: 20px;">
             <div style="margin-bottom: 10px;">
                 <span style="font-family: Arial; font-size: 15.0px; color: #000000; font-weight: bold;">SUBJECT:</span>
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;"> EXPORT OF <span style="color: #000000;">${totalPackages} Pkgs</span> , Vide Order No : BB System # <span style="color: #000000;">${getSafeValue(safeOrder.booking_ref)}</span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;"> EXPORT OF <span style="color: #000000;">${totalPackages} Pkgs</span> , Order Number: <span style="color: #000000;">${getSafeValue(safeOrder.rgl_booking_number)}</span>
             </div>
             <div style="margin-bottom: 5px; margin-left: 99px;">
                 <span style="font-family: Arial; font-size: 15.0px; color: #000000;">EXPORTER : <span style="color: #000000;">${getSafeValue(senderName)}</span></span>
@@ -3553,7 +3553,7 @@ const OrdersList = () => {
         <div style="margin-bottom: 20px;">
             <div style="margin-bottom: 10px;">
                 <span style="font-family: Arial; font-size: 15.0px; color: #000000; font-weight: bold;">SUBJECT:</span>
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;"> IMPORT OF <span style="color: #000000;">${totalPackages} Pkgs</span> , Vide Order No : BB System # <span style="color: #000000;">${getSafeValue(safeOrder.booking_ref)}</span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;"> IMPORT OF <span style="color: #000000;">${totalPackages} Pkgs</span> , Order Number: <span style="color: #000000;">${getSafeValue(safeOrder.rgl_booking_number)}</span>
             </div>
             <div style="margin-bottom: 5px; margin-left: 99px;">
                 <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Co-Loader : <span style="color: #000000;">${getSafeValue(senderName)}</span></span>
@@ -3801,7 +3801,7 @@ const OrdersList = () => {
         <div style="margin-bottom: 20px;">
             <div style="margin-bottom: 10px;">
                 <span style="font-family: Arial; font-size: 15.0px; color: #000000; font-weight: bold;">SUBJECT:</span>
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">IMPORT OF <span style="color: #000000;">${totalPackages} Pkgs</span> , Vide Order No : BB System # <span style="color: #000000;">${getSafeValue(safeOrder.booking_ref)}</span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">IMPORT OF <span style="color: #000000;">${totalPackages} Pkgs</span> , Order Number: <span style="color: #000000;">${getSafeValue(safeOrder.rgl_booking_number)}</span>
             </div>
             <div style="margin-bottom: 5px; margin-left: 99px;">
                 <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Co-Loader : <span style="color: #000000;">${getSafeValue(senderName)}</span></span>
@@ -4048,7 +4048,7 @@ const OrdersList = () => {
         <div style="margin-bottom: 20px;">
             <div style="margin-bottom: 10px;">
                 <span style="font-family: Arial; font-size: 15.0px; color: #000000; font-weight: bold;">SUBJECT:</span>
-                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">EXPORT OF <span style="color: #000000;">${totalPackages} Pkgs</span> , Vide Order No : BB System # <span style="color: #000000;">${getSafeValue(safeOrder.booking_ref)}</span>
+                <span style="font-family: Arial; font-size: 15.0px; color: #000000;">EXPORT OF <span style="color: #000000;">${totalPackages} Pkgs</span> , Order Number: <span style="color: #000000;">${getSafeValue(safeOrder.rgl_booking_number)}</span>
             </div>
             <div style="margin-bottom: 5px; margin-left: 99px;">
                 <span style="font-family: Arial; font-size: 15.0px; color: #000000;">Co-Loader : <span style="color: #000000;">${getSafeValue(senderName)}</span></span>
@@ -4929,381 +4929,6 @@ const OrdersList = () => {
     `;
   };
 
-  const HouseBillOfLading = (orderData, company) => {
-    const safeOrder = orderData || {};
-    const receivers = safeOrder.receivers || [];
-    const consignment = safeOrder.consignment || {};
-
-    const primary = company?.primary_color || "#f37021";
-    const secondary = company?.secondary_color || "#008a45";
-
-    const tint = (hex, opacity = 0.12) => {
-      if (!hex) return "#f5f5f5";
-      const clean = hex.replace("#", "");
-      const r = parseInt(clean.substring(0, 2), 16);
-      const g = parseInt(clean.substring(2, 4), 16);
-      const b = parseInt(clean.substring(4, 6), 16);
-      return `rgba(${r}, ${g}, ${b}, ${opacity})`;
-    };
-
-    const commonData = {
-      consignment_number:
-        consignment.consignment_number || safeOrder.booking_ref || "N/A",
-      originName: getPlaceName(safeOrder.place_of_loading) || "N/A",
-      destinationName: getPlaceName(safeOrder.final_destination) || "N/A",
-      shipperName: safeOrder.sender_name || "N/A",
-      shipperAddress: safeOrder.sender_address || "N/A",
-      voyage: consignment.voyage || "N/A",
-      vesselName: consignment.vessel || "N/A",
-      sealNo: consignment.seal_no || safeOrder.seal_no || "N/A",
-      created_at: safeOrder.created_at || null,
-      generated_date: new Date()
-        .toLocaleDateString("en-GB", {
-          day: "2-digit",
-          month: "short",
-          year: "numeric",
-        })
-        .toUpperCase(),
-      generated_time: new Date().toLocaleTimeString("en-GB", {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-    };
-
-    const companyName =
-      company?.company || "ROYAL GULF SHIPPING & LOGISTICS LLC";
-    const companyPhone = company?.phone || "";
-    const companyEmail = company?.email || "";
-    const companyLogo = company?.logo_url || "";
-
-    const receiverGroups =
-      receivers.length > 0
-        ? receivers.map((receiver) => ({
-            orderNumber: safeOrder.rgl_booking_number || `ORD-${safeOrder.id}`,
-            receiverName: receiver.receiverName || "N/A",
-            receiverAddress: receiver.receiverAddress || "N/A",
-            receiverData: receiver,
-            shippingDetails: receiver.shippingdetails || [],
-          }))
-        : [
-            {
-              orderNumber:
-                safeOrder.rgl_booking_number || `ORD-${safeOrder.id}`,
-              receiverName: "N/A",
-              receiverAddress: "N/A",
-              receiverData: {},
-              shippingDetails: [],
-            },
-          ];
-
-    let allPagesHTML = "";
-
-    receiverGroups.forEach((receiverGroup, i) => {
-      const receiver = receiverGroup.receiverData;
-      const shippingDetails = receiverGroup.shippingDetails;
-
-      let receiverPackages = 0;
-      let receiverWeight = 0;
-      let itemRef = "";
-
-      shippingDetails.forEach((item) => {
-        let packagesForItem = 0;
-        let weightForItem = 0;
-
-        if (item.containerDetails && item.containerDetails.length > 0) {
-          item.containerDetails.forEach((cd) => {
-            packagesForItem += Number(cd.assign_total_box) || 0;
-            weightForItem += Number(cd.assign_weight) || 0;
-          });
-        } else {
-          packagesForItem = parseInt(item.totalNumber) || 0;
-          weightForItem = parseFloat(item.weight) || 0;
-        }
-
-        receiverPackages += packagesForItem;
-        receiverWeight += weightForItem;
-
-        if (item.itemRef && !itemRef.includes(item.itemRef)) {
-          itemRef += (itemRef ? ", " : "") + item.itemRef;
-        }
-      });
-
-      const firstContainerNumber =
-        receiver.containers && receiver.containers.length > 0
-          ? receiver.containers[0]
-          : "N/A";
-
-      const issueDate = commonData.created_at
-        ? new Date(commonData.created_at).toLocaleString("en-US", {
-            month: "numeric",
-            day: "numeric",
-            year: "numeric",
-            hour: "numeric",
-            minute: "2-digit",
-            second: "2-digit",
-            hour12: true,
-          })
-        : "N/A";
-
-      const cargoRows =
-        shippingDetails.length > 0
-          ? shippingDetails
-              .map((item) => {
-                let packagesForItem = 0;
-                let weightForItem = 0;
-
-                if (item.containerDetails && item.containerDetails.length > 0) {
-                  item.containerDetails.forEach((cd) => {
-                    packagesForItem += Number(cd.assign_total_box) || 0;
-                    weightForItem += Number(cd.assign_weight) || 0;
-                  });
-                } else {
-                  packagesForItem = parseInt(item.totalNumber) || 0;
-                  weightForItem = parseFloat(item.weight) || 0;
-                }
-
-                const category = item.category || "N/A";
-                const subcategory = item.subcategory || "";
-                const description = subcategory
-                  ? `${category} - ${subcategory}`
-                  : category;
-
-                return `
-                <tr>
-                  <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">${item.type || "N/A"}</td>
-                  <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">${description}</td>
-                  <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">${packagesForItem}</td>
-                  <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">${weightForItem.toFixed(2)}</td>
-                  <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">0.00</td>
-                </tr>
-              `;
-              })
-              .join("")
-          : "";
-
-      allPagesHTML += `
-    <div class="hbl-page" style="border-top: 8px solid ${primary};">
-      <div class="header" style="display: flex; justify-content: space-between; margin-bottom: 10px;">
-        <div class="logo-area">
-          ${companyLogo ? `<img src="${companyLogo}" alt="${companyName}" style="width: 150px; height: auto;">` : `<span style="color: ${primary}; font-size: 16px; font-weight: bold;">${companyName}</span>`}
-        </div>
-        <div class="company-info" style="text-align: left; flex-grow: 1; margin-left: 20px;">
-          <p class="company-name" style="color: ${primary}; font-size: 16px; font-weight: bold; margin: 0;">${companyName.toUpperCase()}</p>
-          <p class="locations" style="color: ${secondary}; font-weight: bold; margin: 2px 0;">DUBAI • LONDON • KARACHI • SHENZHEN</p>
-          <p style="font-size: 8px;">${companyPhone ? `Ph: ${companyPhone} | ` : ""}${companyEmail}</p>
-        </div>
-        <div class="title-area" style="text-align: right;">
-          <p class="hbl-title" style="color: ${primary}; font-size: 20px; font-weight: bold; margin: 0;">HOUSE BILL OF LADING</p>
-          <p style="font-size: 8px;">Non-negotiable copy</p>
-          <p style="font-size: 8px;">Consignment: ${commonData.consignment_number}</p>
-        </div>
-      </div>
-
-      <div class="grid-row" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 8px;">
-        <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
-          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">HBL NO.</span>
-          <span style="font-weight: bold; font-size: 9px;">${receiverGroup.orderNumber}</span>
-        </div>
-        <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
-          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">ORDER REFERENCE</span>
-          <span style="font-weight: bold; font-size: 9px;">${receiverGroup.orderNumber}</span>
-        </div>
-        <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
-          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">ITEM REFERENCE</span>
-          <span style="font-weight: bold; font-size: 9px;">${itemRef}</span>
-        </div>
-        <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
-          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">ISSUE DATE</span>
-          <span style="font-weight: bold; font-size: 9px;">${issueDate}</span>
-        </div>
-        <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
-          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">PLACE OF ISSUE</span>
-          <span style="font-weight: bold; font-size: 9px;">${commonData.originName}</span>
-        </div>
-      </div>
-
-      <div class="section-header" style="color: ${secondary}; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid ${secondary}; margin-bottom: 5px;">SHIPMENT PARTIES</div>
-
-      <div class="parties-row" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 8px;">
-        <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 70px;">
-          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">SHIPPER</span>
-          <div style="font-weight: bold; font-size: 9px;">${commonData.shipperName}</div>
-          <div style="font-size: 8px; color: #666;">${commonData.shipperAddress}</div>
-        </div>
-        <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 70px;">
-          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">CONSIGNEE</span>
-          <div style="font-weight: bold; font-size: 9px;">${receiverGroup.receiverName}</div>
-          <div style="font-size: 8px; color: #666;">${receiverGroup.receiverAddress}</div>
-        </div>
-        <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 70px;">
-          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">NOTIFY PARTY</span>
-          <div style="font-weight: bold; font-size: 9px;">SAME AS CONSIGNEE</div>
-        </div>
-      </div>
-
-      <div class="section-header" style="color: ${secondary}; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid ${secondary}; margin-bottom: 5px;">VOYAGE & ROUTING DETAILS</div>
-
-      <div class="grid-row" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 8px;">
-        <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
-          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">PORT OF LOADING (POL)</span>
-          <span style="font-weight: bold; font-size: 9px;">${commonData.originName}</span>
-        </div>
-        <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
-          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">PORT OF DISCHARGE (POD)</span>
-          <span style="font-weight: bold; font-size: 9px;">${commonData.destinationName}</span>
-        </div>
-        <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
-          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">FINAL DESTINATION</span>
-          <span style="font-weight: bold; font-size: 9px;">${commonData.destinationName}</span>
-        </div>
-        <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
-          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">VESSEL NAME</span>
-          <span style="font-weight: bold; font-size: 9px;">${commonData.vesselName}</span>
-        </div>
-        <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
-          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">VOYAGE / SAILING</span>
-          <span style="font-weight: bold; font-size: 9px;">${commonData.voyage}</span>
-        </div>
-        <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
-          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">INCOTERMS</span>
-          <span style="font-weight: bold; font-size: 9px;">SEAFREIGHT</span>
-        </div>
-      </div>
-
-      <div class="section-header" style="color: ${secondary}; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid ${secondary}; margin-bottom: 5px;">CONTAINER & PACKAGE INFO</div>
-
-      <div class="grid-row" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 8px;">
-        <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
-          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">CONTAINER NO.</span>
-          <span style="font-weight: bold; font-size: 9px;">${firstContainerNumber} | 40ft</span>
-        </div>
-        <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
-          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">SEAL NO.</span>
-          <span style="font-weight: bold; font-size: 9px;">${commonData.sealNo}</span>
-        </div>
-        <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
-          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">TOTAL PACKAGES</span>
-          <span style="font-weight: bold; font-size: 9px;">${receiverPackages}</span>
-        </div>
-        <div class="data-box" style="border: 1px solid #ccc; padding: 4px; min-height: 30px;">
-          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">TOTAL WEIGHT (KGS)</span>
-          <span style="font-weight: bold; font-size: 9px;">${receiverWeight.toFixed(2)}</span>
-        </div>
-      </div>
-
-      <div class="section-header" style="color: ${secondary}; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid ${secondary}; margin-bottom: 5px;">CARGO DESCRIPTION</div>
-
-      ${
-        shippingDetails.length > 0
-          ? `
-      <table style="width: 100%; border-collapse: collapse; margin-top: 5px;">
-        <thead>
-          <tr>
-            <th style="border: 1px solid #ccc; border-top: 2px solid ${primary}; background-color: #f9f9f9; padding: 4px; font-size: 8px; width: 20%;">MARKS & NUMBERS</th>
-            <th style="border: 1px solid #ccc; border-top: 2px solid ${primary}; background-color: #f9f9f9; padding: 4px; font-size: 8px; width: 40%;">DESCRIPTION OF GOODS</th>
-            <th style="border: 1px solid #ccc; border-top: 2px solid ${primary}; background-color: #f9f9f9; padding: 4px; font-size: 8px; width: 10%;">PKGS</th>
-            <th style="border: 1px solid #ccc; border-top: 2px solid ${primary}; background-color: #f9f9f9; padding: 4px; font-size: 8px; width: 15%;">WEIGHT (KGS)</th>
-            <th style="border: 1px solid #ccc; border-top: 2px solid ${primary}; background-color: #f9f9f9; padding: 4px; font-size: 8px; width: 15%;">VOLUME (CBM)</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${cargoRows}
-          <tr style="font-weight: bold; background-color: ${tint(secondary)};">
-            <td colspan="2" style="border: 1px solid #ccc; padding: 8px 4px; text-align: right;">TOTAL:</td>
-            <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">${receiverPackages}</td>
-            <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">${receiverWeight.toFixed(2)}</td>
-            <td style="border: 1px solid #ccc; padding: 8px 4px; text-align: center;">0.00</td>
-          </tr>
-        </tbody>
-      </table>
-      `
-          : `
-      <div style="text-align: center; padding: 30px; background: #f9f9f9; border: 1px dashed #ccc; margin-bottom: 20px;">
-        <h4 style="color: #666; font-style: italic;">NO CARGO DETAILS FOUND</h4>
-        <p style="color: #999;">No shipping details available for this receiver.</p>
-      </div>
-      `
-      }
-
-      <div class="bottom-section" style="display: grid; grid-template-columns: 2fr 1fr; gap: 15px; margin-top: 10px; border-top: 1px solid #000; padding-top: 8px;">
-        <div class="terms" style="font-size: 10px; line-height: 1.4;">
-          <strong>By confirming this order for shipment, the Shipper/Consignee agrees to the following terms:</strong>
-          <ol style="margin: 6px 0; padding-left: 0; list-style-position: inside;">
-            <li style="margin-bottom: 4px;">Carriage is performed under ${companyName}'s standard terms and applicable international conventions. All cargo details supplied must be true and complete.</li>
-            <li style="margin-bottom: 4px;">Transit times are estimates only. Delays may occur due to weather, customs, port congestion, operational issues or carrier schedules.</li>
-            <li style="margin-bottom: 4px;">Customs scanning, inspections, dog checks, or port delays may incur extra charges payable by the Merchant.</li>
-            <li style="margin-bottom: 4px;">In case of loss/damage, liability shall not exceed the freight value or USD 50 per package unless a higher value is declared and agreed in writing beforehand.</li>
-            <li style="margin-bottom: 4px;">The Merchant confirms lawful ownership of goods and accepts full responsibility for any illegal, prohibited or undeclared items shipped.</li>
-            <li style="margin-bottom: 4px;">${companyName} is not liable for any damage during customs/port inspections at origin, transit or destination.</li>
-            <li style="margin-bottom: 4px;">Cargo is carried at Merchant's risk unless the Merchant arranges separate insurance. ${companyName} is not liable for indirect or consequential losses.</li>
-            <li style="margin-bottom: 4px;">Claims must be notified immediately in writing and within legal time limits. Late claims may be void.</li>
-            <li style="margin-bottom: 4px;">${companyName} may use third-party carriers or subcontractors; all their protections and liability limits apply equally to ${companyName}.</li>
-            <li style="margin-bottom: 4px;">This HBL applies only to order ref ${receiverGroup.orderNumber}.</li>
-            <li style="margin-bottom: 4px;">Governed by UAE law; disputes fall under Dubai courts unless agreed otherwise.</li>
-          </ol>
-          <p style="font-size: 7px; margin-top: 10px;">
-            Receiver: ${receiverGroup.receiverName} |
-            Order: ${receiverGroup.orderNumber} |
-            Container: ${firstContainerNumber} |
-            Page ${i + 1} of ${receiverGroups.length}
-          </p>
-        </div>
-        <div class="signature-box" style="border-left: 1px solid #ccc; padding-left: 10px;">
-          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #000;">For and on behalf of</span>
-          <p style="color: ${primary}; font-weight: bold; margin: 0; font-size:12px;">${companyName}</p>
-          <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #000;">Generated: ${commonData.generated_date} ${commonData.generated_time}</span>
-          <div style="margin-top: 35px; border-top: 1px solid #000;">
-            <span class="label" style="font-size: 7px; font-weight: bold; display: block; text-transform: uppercase; color: #666;">Authorised Signature</span>
-          </div>
-        </div>
-      </div>
-    </div>
-    `;
-    });
-
-    return `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>House Bill of Lading</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f5f5f5;
-            font-size: 10px;
-            color: #333;
-        }
-        .hbl-page {
-            width: 780px;
-            margin: 0 auto 20px auto;
-            padding: 25px;
-            background-color: #fff;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-        }
-        .hbl-page:not(:last-child) {
-            page-break-after: always;
-        }
-        @media print {
-            body { background-color: white; padding: 0; }
-            .hbl-page {
-                box-shadow: none;
-                page-break-after: always;
-                page-break-inside: avoid;
-            }
-            .hbl-page:last-child { page-break-after: auto; }
-        }
-    </style>
-</head>
-<body>
-    ${allPagesHTML}
-</body>
-</html>
-  `;
-  };
-
   const BillOfLading = (orderData, company) => {
     const primary = company?.primary_color || "#2b3a67";
     const secondary = company?.secondary_color || "#e63946";
@@ -6167,12 +5792,12 @@ const OrdersList = () => {
   };
 
   const BRANDABLE_DOCUMENT_GENERATORS = {
-    "Bill of Lading.pdf": BillOfLading,
+    // "Bill of Lading.pdf": BillOfLading,
     "Order Acknowledgement Printabe Version.pdf":
       OrderAcknowledgementPrintableVersion,
     "GP#0121725 - Cargo GatePass.pdf": CargoGatePass,
-    "House Bill of Lading (HBL).pdf": HouseBillOfLading,
-    "Master Bill of Lading (MBL).pdf": MasterBillOfLading,
+    "House Bill of Lading (HBL).pdf": (d, c) =>
+      HouseBillOfLading(d, c, getPlaceName),
   };
 
   const isBrandable = (docName) => !!BRANDABLE_DOCUMENT_GENERATORS[docName];
@@ -6208,6 +5833,10 @@ const OrdersList = () => {
   const needsCid =
     (selectedReceiverForUpdateDetails?.containerDetails?.length || 0) > 1 &&
     !selectedCid;
+
+  const etaRange = etaBounds(getCurrentEta());
+  const etaInvalid =
+    !!selectedEta && (selectedEta < etaRange.min || selectedEta > etaRange.max);
 
   if (isLoading) {
     return (
@@ -6263,11 +5892,10 @@ const OrdersList = () => {
                     label: "Branded Documents",
                     color: "#1a7a6e",
                     docs: [
-                      "Bill of Lading.pdf",
+                      // "Bill of Lading.pdf",
                       "Order Acknowledgement Printabe Version.pdf",
                       "GP#0121725 - Cargo GatePass.pdf",
                       "House Bill of Lading (HBL).pdf",
-                      "Master Bill of Lading (MBL).pdf",
                     ],
                   },
                   {
@@ -6514,21 +6142,6 @@ const OrdersList = () => {
                 alignItems="center"
                 sx={{ p: 1.5 }}
               >
-                <Stack direction="row" spacing={1.5} alignItems="center">
-                  <Typography variant="subtitle2">Preview</Typography>
-                  {activeDocKey === "Master Bill of Lading (MBL).pdf" && (
-                    <Select
-                      size="small"
-                      value={mblVariant}
-                      onChange={(e) => setMblVariant(e.target.value)}
-                      sx={{ height: 30, fontSize: "0.75rem" }}
-                    >
-                      <MenuItem value="original">Original</MenuItem>
-                      <MenuItem value="copy">Copy</MenuItem>
-                      <MenuItem value="certified">Certified True Copy</MenuItem>
-                    </Select>
-                  )}
-                </Stack>
                 <Button
                   size="small"
                   startIcon={<PrintIcon />}
@@ -6788,7 +6401,7 @@ const OrdersList = () => {
                     sx={{ bgcolor: "#0d6c6a", color: "#fff" }}
                     key="ref"
                   >
-                    Booking Ref
+                    Tracking ID
                   </StyledTableHeadCell>,
                   <StyledTableHeadCell
                     sx={{ bgcolor: "#0d6c6a", color: "#fff" }}
@@ -6869,7 +6482,16 @@ const OrdersList = () => {
                 const categoryList = [
                   ...new Set(productsSummary.map((p) => p.category)),
                 ].join(", ");
-
+                const containerNos = new Set(
+                  order.receivers.flatMap((r) =>
+                    (r.shippingdetails || []).flatMap((d) =>
+                      (d.containerDetails || [])
+                        .map((cd) => cd.container?.container_number)
+                        .filter(Boolean),
+                    ),
+                  ),
+                );
+                const containerCount = containerNos.size;
                 const { label: leastStatusLabel, count: leastStatusRemaining } =
                   getLeastStatus(productsSummary, statuses);
 
@@ -6898,9 +6520,55 @@ const OrdersList = () => {
                     <StyledTableCell>
                       {new Date(order.created_at).toLocaleDateString()}
                     </StyledTableCell>
-                    <StyledTableCell>{order.booking_ref}</StyledTableCell>
                     <StyledTableCell>
-                      {order?.rgl_booking_number}
+                      {order.tracking_id ? (
+                        <Tooltip title="Click to copy">
+                          <Box
+                            component="span"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleCopyContainer(order.tracking_id);
+                            }}
+                            sx={{
+                              cursor: "pointer",
+                              fontWeight: 600,
+                              "&:hover": {
+                                color: "#0d6c6a",
+                                textDecoration: "underline",
+                              },
+                            }}
+                          >
+                            {order.tracking_id}
+                          </Box>
+                        </Tooltip>
+                      ) : (
+                        "-"
+                      )}
+                    </StyledTableCell>
+                    <StyledTableCell>
+                      {order?.rgl_booking_number ? (
+                        <Tooltip title="Click to copy">
+                          <Box
+                            component="span"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleCopyContainer(order.rgl_booking_number);
+                            }}
+                            sx={{
+                              cursor: "pointer",
+                              fontWeight: 600,
+                              "&:hover": {
+                                color: "#0d6c6a",
+                                textDecoration: "underline",
+                              },
+                            }}
+                          >
+                            {order.rgl_booking_number}
+                          </Box>
+                        </Tooltip>
+                      ) : (
+                        "-"
+                      )}
                     </StyledTableCell>
                     <TableCell colSpan={1.5}>
                       <StyledTooltip
@@ -6992,7 +6660,21 @@ const OrdersList = () => {
                           variant="caption"
                           sx={{ ml: 0.5, fontWeight: "bold" }}
                         >
-                          (+{leastStatusRemaining - 1})
+                          (+{leastStatusRemaining - 1}){" "}
+                          {containerCount > 1 && (
+                            <Chip
+                              size="small"
+                              label={`${containerCount} containers`}
+                              sx={{
+                                ml: 1,
+                                height: 20,
+                                fontSize: "0.65rem",
+                                fontWeight: 700,
+                                bgcolor: "#e8f5f4",
+                                color: "#0a5250",
+                              }}
+                            />
+                          )}
                         </Typography>
                       )}
                       {delayedCount > 0 && (
@@ -7216,109 +6898,186 @@ const OrdersList = () => {
           onClose={handleCloseStatusDialog}
           maxWidth="sm"
           fullWidth
+          fullScreen={fullScreen}
+          PaperProps={{ sx: { borderRadius: fullScreen ? 0 : 3 } }}
         >
-          <DialogTitle>Update Receiver Status</DialogTitle>
-          <DialogContent>
-            <Typography variant="body2" color="text.secondary" mb={2}>
-              Select receiver and new status for order "
-              {selectedOrderForUpdate?.booking_ref}". Notifications will be sent
-              based on rules.
-            </Typography>
-            <FormControl fullWidth margin="dense">
-              <InputLabel>Receiver</InputLabel>
-              <Select
-                value={selectedReceiverForUpdate?.id || ""}
-                label="Receiver"
-                onChange={handleReceiverChange}
-              >
-                {selectedOrderForUpdate?.receivers?.map((rec) => (
-                  <MenuItem key={rec.id} value={rec.id}>
-                    {rec.receiverName} | (Current: {rec.status})
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <FormControl fullWidth margin="dense">
-              <InputLabel>Items</InputLabel>
-              <Select
-                value={selectedReceiverForUpdateDetails?.itemRef || ""}
-                label="Receiver"
-                onChange={handleShippingChange}
-              >
-                {selectedReceiverForUpdate?.shippingdetails?.map((rec) => (
-                  <MenuItem key={rec.itemRef} value={rec.itemRef}>
-                    {rec.itemRef} (Category: {rec.category})
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            {(selectedReceiverForUpdateDetails?.containerDetails?.length || 0) >
-              1 && (
-              <FormControl fullWidth margin="dense">
-                <InputLabel>Container</InputLabel>
+          <DialogTitle
+            sx={{
+              bgcolor: "#0d6c6a",
+              color: "#fff",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              py: 1.5,
+            }}
+          >
+            <Box>
+              <Typography variant="h6" fontWeight="bold" lineHeight={1.2}>
+                Update Status
+              </Typography>
+              <Typography variant="body2" sx={{ opacity: 0.85, mt: 1 }}>
+                Order: {selectedOrderForUpdate?.rgl_booking_number || "-"}
+              </Typography>
+            </Box>
+            <IconButton
+              onClick={handleCloseStatusDialog}
+              size="small"
+              sx={{ color: "#fff" }}
+            >
+              <CloseIcon />
+            </IconButton>
+          </DialogTitle>
+          <DialogContent sx={{ pt: "20px !important", px: { xs: 2, sm: 3 } }}>
+            <Alert severity="info" sx={{ mb: 2, borderRadius: 2 }}>
+              Notifications will be sent based on configured rules.
+            </Alert>
+
+            <Stack spacing={2}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Receiver</InputLabel>
                 <Select
-                  value={selectedCid}
-                  label="Container"
-                  onChange={handleContainerChange}
+                  value={selectedReceiverForUpdate?.id || ""}
+                  label="Receiver"
+                  onChange={handleReceiverChange}
                 >
-                  {selectedReceiverForUpdateDetails.containerDetails.map(
-                    (cd) => (
-                      <MenuItem key={cd.container.cid} value={cd.container.cid}>
-                        {cd.container.container_number} ({cd.assign_total_box}{" "}
-                        boxes)
-                      </MenuItem>
-                    ),
-                  )}
-                </Select>
-              </FormControl>
-            )}
-            <Box sx={{ display: "flex", gap: 2, alignItems: "flex-start" }}>
-              <FormControl fullWidth margin="dense" sx={{ flex: 1 }}>
-                <InputLabel>Status</InputLabel>
-                <Select
-                  value={selectedStatus}
-                  label="Status"
-                  onChange={handleStatusChange}
-                >
-                  {statuses.map((status) => (
-                    <MenuItem key={status.id} value={status.order_status}>
-                      {status.order_status}
+                  {selectedOrderForUpdate?.receivers?.map((rec) => (
+                    <MenuItem key={rec.id} value={rec.id}>
+                      <Stack
+                        direction="row"
+                        justifyContent="space-between"
+                        alignItems="center"
+                        sx={{ width: "100%", gap: 1 }}
+                      >
+                        <Typography variant="body2" noWrap>
+                          {rec.receiverName}
+                        </Typography>
+                        <StatusChip
+                          status={rec.status}
+                          size="small"
+                          height={18}
+                        />
+                      </Stack>
                     </MenuItem>
                   ))}
                 </Select>
               </FormControl>
-              <TextField
-                label="ETA"
-                type="date"
-                margin="dense"
-                value={selectedEta}
-                onChange={(e) => setSelectedEta(e.target.value)}
-                InputLabelProps={{ shrink: true }}
-                sx={{ flex: 1 }}
-                disabled={!selectedReceiverForUpdateDetails}
-                inputProps={etaBounds(
-                  selectedReceiverForUpdateDetails?.trackingEta ||
-                    selectedReceiverForUpdateDetails?.eta,
-                  true,
-                )}
-              />
-            </Box>
+
+              <FormControl fullWidth size="small">
+                <InputLabel>Item</InputLabel>
+                <Select
+                  value={selectedReceiverForUpdateDetails?.itemRef || ""}
+                  label="Item"
+                  onChange={handleShippingChange}
+                  disabled={!selectedReceiverForUpdate}
+                  renderValue={(val) => {
+                    const it = selectedReceiverForUpdate?.shippingdetails?.find(
+                      (r) => r.itemRef === val,
+                    );
+                    return it
+                      ? `${it.category || "-"} — ${it.subcategory || "-"}`
+                      : val;
+                  }}
+                >
+                  {selectedReceiverForUpdate?.shippingdetails?.map((rec) => (
+                    <MenuItem key={rec.itemRef} value={rec.itemRef}>
+                      <Tooltip
+                        title={`Item Ref: ${rec.itemRef}`}
+                        placement="right"
+                        arrow
+                      >
+                        <Box sx={{ width: "100%" }}>
+                          <Typography variant="body2" fontWeight={600}>
+                            {rec.category || "-"} — {rec.subcategory || "-"}
+                          </Typography>
+                        </Box>
+                      </Tooltip>
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              {(selectedReceiverForUpdateDetails?.containerDetails?.length ||
+                0) > 1 && (
+                <FormControl fullWidth size="small">
+                  <InputLabel>Container</InputLabel>
+                  <Select
+                    value={selectedCid}
+                    label="Container"
+                    onChange={handleContainerChange}
+                  >
+                    {selectedReceiverForUpdateDetails.containerDetails.map(
+                      (cd) => (
+                        <MenuItem
+                          key={cd.container.cid}
+                          value={cd.container.cid}
+                        >
+                          {cd.container.container_number} ({cd.assign_total_box}{" "}
+                          boxes)
+                        </MenuItem>
+                      ),
+                    )}
+                  </Select>
+                </FormControl>
+              )}
+
+              <Divider />
+
+              <Grid container spacing={2}>
+                <Grid item size={{ xs: 12, sm: 6, md: 6 }}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Status</InputLabel>
+                    <Select
+                      value={selectedStatus}
+                      label="Status"
+                      onChange={handleStatusChange}
+                    >
+                      {statuses.map((status) => (
+                        <MenuItem key={status.id} value={status.order_status}>
+                          {status.order_status}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item size={{ xs: 12, sm: 6, md: 6 }}>
+                  <TextField
+                    label="ETA"
+                    type="date"
+                    size="small"
+                    fullWidth
+                    value={selectedEta}
+                    onChange={(e) => setSelectedEta(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                    disabled={!selectedReceiverForUpdateDetails}
+                    error={etaInvalid}
+                    helperText={
+                      etaInvalid
+                        ? `Pick a date between ${etaRange.min} and ${etaRange.max}`
+                        : ""
+                    }
+                    inputProps={etaRange}
+                  />
+                </Grid>
+              </Grid>
+            </Stack>
           </DialogContent>
-          <DialogActions>
-            <Button onClick={handleCloseStatusDialog}>Cancel</Button>
-            <Button
-              onClick={handleConfirmStatusUpdate}
-              disabled={isLoading || needsCid}
-              variant="contained"
-            >
-              Update Status
-            </Button>
-            <Button
-              onClick={handleNotify}
-              disabled={isLoading || needsCid}
-              variant="contained"
-            >
-              Notify
+          <DialogActions
+            sx={{
+              px: { xs: 2, sm: 3 },
+              py: 2,
+              gap: 1,
+              flexWrap: "wrap",
+              justifyContent: { xs: "stretch", sm: "flex-end" },
+              "& > :not(style)": { m: 0 },
+              "& .MuiButton-root": {
+                flex: { xs: "1 1 45%", sm: "0 0 auto" },
+                borderRadius: 2,
+                textTransform: "none",
+              },
+            }}
+          >
+            <Button onClick={handleCloseStatusDialog} color="inherit">
+              Cancel
             </Button>
             <Button
               onClick={handleUpdateEta}
@@ -7332,6 +7091,22 @@ const OrdersList = () => {
               sx={{ borderColor: "#f58220", color: "#f58220" }}
             >
               {etaSaving ? "Updating..." : "Update ETA"}
+            </Button>
+            <Button
+              onClick={handleNotify}
+              disabled={isLoading || needsCid}
+              variant="outlined"
+              sx={{ borderColor: "#0d6c6a", color: "#0d6c6a" }}
+            >
+              Notify
+            </Button>
+            <Button
+              onClick={handleConfirmStatusUpdate}
+              disabled={isLoading || needsCid}
+              variant="contained"
+              sx={{ bgcolor: "#0d6c6a", "&:hover": { bgcolor: "#0a5250" } }}
+            >
+              Update Status
             </Button>
           </DialogActions>
         </Dialog>

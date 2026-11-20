@@ -115,6 +115,7 @@ const printHtml = (
   { title = "Document", pageMargin = "10mm", extraCss = "" } = {},
 ) =>
   new Promise((resolve) => {
+    const safeTitle = String(title).replace(/[\\/:*?"<>|]/g, "-");
     const iframe = document.createElement("iframe");
     Object.assign(iframe.style, {
       position: "fixed",
@@ -128,7 +129,7 @@ const printHtml = (
 
     const doc = iframe.contentDocument;
     doc.open();
-    doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title>
+    doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${safeTitle}</title>
       <style>
         @page { size: A4; margin: ${pageMargin}; }
         html, body { margin: 0; padding: 0; background: #fff;
@@ -140,7 +141,13 @@ const printHtml = (
       </style></head><body>${html}</body></html>`);
     doc.close();
 
+    const prevTitle = document.title;
+    document.title = safeTitle;
+    let done = false;
     const cleanup = () => {
+      if (done) return;
+      done = true;
+      document.title = prevTitle;
       iframe.remove();
       resolve();
     };
@@ -207,6 +214,18 @@ const docTotalAed = (d) =>
       : 0;
 
 const fmtAed = (n) => (n == null ? "-" : fmtMoney(n, "AED"));
+
+const pickDate = (list, mode) => {
+  const ds = list
+    .filter(Boolean)
+    .map((x) => dayjs(x))
+    .filter((x) => x.isValid());
+  if (!ds.length) return "-";
+  const t = ds.reduce((a, b) =>
+    mode === "max" ? (b.isAfter(a) ? b : a) : b.isBefore(a) ? b : a,
+  );
+  return t.format("MMM DD, YYYY");
+};
 
 const docPaidAed = (d) => docTotalAed(d) - docBalanceAed(d);
 
@@ -804,124 +823,42 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
   };
 
   useEffect(() => {
-    const initData = async () => {
-      if (!places || places.length === 0) return;
-      try {
-        setLoading(true);
+    if (!places || places.length === 0) return;
+    const mapOptions = (items) =>
+      items.map((item) => ({
+        value: item.id?.toString() || "",
+        label: item.name || "",
+      }));
+    const byStatus = (key) =>
+      (statuses || [])
+        .filter((s) => s[key])
+        .sort((a, b) => a.sorting_number - b.sorting_number)
+        .map((s) => ({ value: s[key], label: s[key] }));
 
-        const [
-          thirdPartiesRes,
-          banksRes,
-          paymentTypesRes,
-          vesselsRes,
-          shippingLinesRes,
-          currenciesRes,
-        ] = await Promise.all([
-          api.get("api/options/thirdParty/crud"),
-          api.get("api/options/banks/crud"),
-          api.get("api/options/payment-types/crud"),
-          api.get("api/options/vessels/crud"),
-          api.get("api/options/shipping-lines"),
-          api.get("api/options/currencies"),
-        ]);
+    setOptions((prev) => ({
+      ...prev,
+      originOptions: mapOptions(
+        places.filter((p) => p.is_destination === true || p.is_origin === true),
+      ),
+      destinationOptions: mapOptions(
+        places.filter((p) => p.is_destination === true),
+      ),
+      statusOptions: byStatus("consignment_status"),
+      containerStatusOptions: byStatus("container_status"),
+    }));
+    setStatusOffsets(
+      (statuses || []).reduce((acc, row) => {
+        if (row.order_status) acc[row.order_status] = row.days_offset;
+        return acc;
+      }, {}),
+    );
+  }, [places, statuses]);
 
-        const third_parties = thirdPartiesRes?.data?.third_parties || [];
-        const banks = banksRes?.data?.banks || [];
-
-        const mapOptions = (items, valueKey = "id", labelKey = "name") =>
-          (items || []).map((item) => ({
-            value: (item[valueKey] || item.value)?.toString() || "",
-            label: item[labelKey] || item.label || item[valueKey] || "",
-          }));
-
-        const filteredDestinations = places.filter(
-          (place) => place.is_destination === true,
-        );
-
-        const filteredOrigins = places.filter(
-          (place) => place.is_destination === true || place.is_origin === true,
-        );
-
-        const paymentEnumMap = {
-          "AP (Advance Payment)": "Prepaid",
-          "DP (Docs against Payment)": "Collect",
-          "DA (30 Days Payment)": "Collect",
-          "DA (60 Days Payment)": "Collect",
-          "DA (90 Days Payment)": "Collect",
-          "DA (120 Days Payment)": "Collect",
-          "DA (180 Days Payment)": "Collect",
-        };
-
-        setOptions({
-          third_parties,
-          banks,
-          shipperOptions: third_parties
-            .filter((tp) => tp.type === "shipper")
-            .map((tp) => ({ value: tp.id.toString(), label: tp.company_name })),
-          consigneeOptions: third_parties
-            .filter((tp) => tp.type === "consignee")
-            .map((tp) => ({ value: tp.id.toString(), label: tp.company_name })),
-          originOptions: mapOptions(filteredOrigins, "id", "name"),
-          destinationOptions: mapOptions(filteredDestinations, "id", "name"),
-          bankOptions: mapOptions(banks, "id", "name"),
-          paymentTypeOptions: (paymentTypesRes?.data?.paymentTypes || []).map(
-            (pt) => ({
-              value: paymentEnumMap[pt.name] || "Collect",
-              label: pt.name,
-              id: pt.id,
-            }),
-          ),
-          vesselOptions: mapOptions(
-            vesselsRes?.data?.vessels || [],
-            "id",
-            "name",
-          ),
-          shippingLineOptions: mapOptions(
-            shippingLinesRes?.data?.shippingLineOptions || [],
-            "id",
-            "name",
-          ),
-          currencyOptions: mapOptions(
-            currenciesRes?.data?.currencyOptions || [],
-            "code",
-            "name",
-          ),
-
-          statusOptions: (statuses || [])
-            .filter((s) => s.consignment_status)
-            .sort((a, b) => a.sorting_number - b.sorting_number)
-            .map((s) => ({
-              value: s.consignment_status,
-              label: s.consignment_status,
-            })),
-          containerStatusOptions: (statuses || [])
-            .filter((s) => s.container_status)
-            .sort((a, b) => a.sorting_number - b.sorting_number)
-            .map((s) => ({
-              value: s.container_status,
-              label: s.container_status,
-            })),
-        });
-
-        const offsets = (statuses || []).reduce((acc, row) => {
-          if (row.order_status) acc[row.order_status] = row.days_offset;
-          return acc;
-        }, {});
-        setStatusOffsets(offsets);
-
-        if (mode === "edit" && effectiveConsignmentId) {
-          await loadConsignment(effectiveConsignmentId);
-        }
-      } catch (err) {
-        console.error("Error fetching options:", err);
-        toast.warning("Failed to load options. Using defaults.");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    initData();
-  }, [mode, effectiveConsignmentId, places]);
+  useEffect(() => {
+    if (!effectiveConsignmentId) return;
+    setLoading(true);
+    loadConsignment(effectiveConsignmentId).finally(() => setLoading(false));
+  }, [effectiveConsignmentId]);
 
   const loadConsignment = async (id) => {
     try {
@@ -969,6 +906,20 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       };
 
       setValues(mappedData);
+      const one = (value, label) =>
+        value ? [{ value: String(value), label: label || String(value) }] : [];
+      setOptions((prev) => ({
+        ...prev,
+        shipperOptions: one(mappedData.shipper, mappedData.shipperName),
+        consigneeOptions: one(mappedData.consignee, mappedData.consigneeName),
+        bankOptions: one(mappedData.bank, mappedData.bankName),
+        vesselOptions: one(mappedData.vessel, data?.vessel_name),
+        paymentTypeOptions: one(mappedData.paymentType, mappedData.paymentType),
+        currencyOptions: one(
+          mappedData.currency_code,
+          mappedData.currency_code,
+        ),
+      }));
       setAttachments(data?.attachments || []);
       if (data?.orders && data.orders.length > 0) {
         setSelectedOrders(data.orders.map((o) => o.id));
@@ -1336,21 +1287,6 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
   };
 
   useEffect(() => {
-    const fetchContainers = async () => {
-      setContainersLoading(true);
-      try {
-        const res = await api.get("/api/containers");
-        setContainers(res.data?.data || []);
-      } catch (err) {
-        console.error("❌ Error fetching containers:", err);
-      } finally {
-        setContainersLoading(false);
-      }
-    };
-    fetchContainers();
-  }, []);
-
-  useEffect(() => {
     const ids = (values.containers || [])
       .map((c) => c.id || c.cid)
       .filter((id) => id);
@@ -1371,6 +1307,8 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     }
     setSelectedOrders([]);
   };
+
+  const containerIdsKey = addedContainerIds.join(",");
 
   useEffect(() => {
     const itemUsesSelectedContainers = (shippingDetail, selectedCidsSet) => {
@@ -1514,16 +1452,7 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     };
 
     fetchOrders();
-  }, [
-    addedContainerIds,
-    filters?.booking_ref,
-    filters?.status,
-    orderPage,
-    orderRowsPerPage,
-    api,
-    values.origin,
-    values.destination,
-  ]);
+  }, [containerIdsKey]);
 
   const flatShipments = React.useMemo(() => {
     const seen = new Set();
@@ -1634,10 +1563,20 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
 
   const hblOrderOptions = useMemo(
     () =>
-      orders.map((o) => ({
-        value: o.id,
-        label: o.rgl_booking_number || `ORD-${o.id}`,
-      })),
+      orders.map((o) => {
+        const receivers = [
+          ...new Set(
+            (o.receivers || [])
+              .map((r) => r.receivername || r.receiver_name)
+              .filter(Boolean),
+          ),
+        ].join(", ");
+        const parties = [o.sender_name, receivers].filter(Boolean).join("-");
+        return {
+          value: o.id,
+          label: `${o.rgl_booking_number || `ORD-${o.id}`}${parties ? ` (${parties})` : ""}`,
+        };
+      }),
     [orders],
   );
 
@@ -2758,7 +2697,7 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     </div>`;
 
     await printHtml(tempElement.innerHTML, {
-      title: `Consignment_Note_${data.consignment_number}`,
+      title: `consignment-note-${data.consignment_number}`,
     });
   };
 
@@ -2774,16 +2713,20 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     .mk-label { display: block; font-size: 9px; color: #555; margin-bottom: 3px; line-height: 1.2; }
     .mk-content { font-size: 12px; font-weight: bold; text-transform: uppercase; line-height: 1.35; word-break: break-word; }
     .mk-cell { border-bottom: 1px solid #000; border-right: 1px solid #000; padding: 5px 7px; }
-    .mk-head { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px 10px 22px; border-bottom: 1px solid #000; border-top: 6px solid ${primary}; }
-    .mk-brand { display: flex; align-items: center; gap: 12px; }
-    .mk-brand-name { font-size: 15px; font-weight: bold; color: ${primary}; }
-    .mk-head-right { text-align: right; }
-    .mk-title { font-size: 20px; font-weight: bold; color: ${primary}; letter-spacing: .5px; }
-    .mk-sub { font-size: 10px; font-weight: bold; color: ${secondary}; letter-spacing: 1px; }
-    .mk-no { font-size: 12px; margin-top: 3px; }
-    .mk-no span { font-size: 9px; color: #555; }
+    .mk-head { display: grid; grid-template-columns: 1.1fr 1.4fr .9fr; border-bottom: 1px solid #000; border-top: 4px solid ${primary}; }
+    .mk-head > div { padding: 8px 12px; display: flex; flex-direction: column; justify-content: center; }
+    .mk-head > div + div { border-left: 1px solid #000; }
+    .mk-brand { align-items: flex-start; }
+    .mk-head-mid { align-items: center; text-align: center; }
+    .mk-title { font-size: 17px; font-weight: bold; color: #000; white-space: nowrap; letter-spacing: .5px; }
+    .mk-sub { font-size: 10px; font-weight: bold; color: ${secondary}; letter-spacing: 1.5px; margin-top: 3px; }
+    .mk-head-no .mk-content { font-size: 15px; }
     .mk-upper { display: grid; grid-template-columns: 1.1fr 1fr; }
+    .mk-upper > div { display: flex; flex-direction: column; }
+    .mk-upper > div:first-child { border-right: 1px solid #000; }
+    .mk-upper > div:first-child > .mk-cell { border-right: none; }
     .mk-upper > div:last-child .mk-cell { border-right: none; }
+    .mk-upper > div > .mk-cell:last-child { flex: 1; }
     .mk-two { display: grid; grid-template-columns: 1fr 1fr; }
     .mk-two .mk-cell:last-child { border-right: none; }
     .mk-small { font-size: 10px; line-height: 1.45; color: #333; text-align: justify; }
@@ -2795,7 +2738,7 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     .mk-dcol { padding: 6px 8px; border-right: 1px solid #000; }
     .mk-dcol.mk-last { border-right: none; }
     .mk-dtext { text-transform: none; }
-    .mk-line { display: grid; grid-template-columns: 1fr 1.6fr .6fr .9fr; gap: 6px; font-size: 11px; font-weight: bold; padding: 4px 0; border-bottom: 1px dotted #bbb; }
+    .mk-line { display: grid; grid-template-columns: 1.5fr 1.6fr .6fr .9fr; gap: 6px; font-size: 11px; font-weight: bold; padding: 4px 0; border-bottom: 1px dotted #bbb; }
     .mk-cont { margin-top: 10px; font-size: 10px; color: ${secondary}; font-weight: bold; }
     .mk-frow { display: grid; grid-template-columns: 2.2fr 1fr 1fr .8fr 1fr 1fr; }
     .mk-frow > div { border-right: 1px solid #000; padding: 4px 6px; }
@@ -2803,6 +2746,11 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     .mk-fhead { font-size: 9px; color: #555; border-bottom: 1px solid #000; }
     .mk-fbody { border-bottom: 1px solid #000; }
     .mk-foot { display: grid; grid-template-columns: 1fr 1fr; }
+    .mk-foot > div { display: flex; flex-direction: column; }
+    .mk-foot > div:first-child { border-right: 1px solid #000; }
+    .mk-foot > div:first-child > .mk-cell { border-right: none; }
+    .mk-foot > div:first-child > :last-child { flex: 1; }
+    .mk-foot > div:first-child > :last-child .mk-cell { border-bottom: none; }
     .mk-foot > div:last-child .mk-cell { border-right: none; }
     .mk-sign { padding: 8px 10px; }
     .mk-signname { font-size: 12px; font-weight: bold; color: ${primary}; margin: 24px 0 4px; }
@@ -2826,7 +2774,7 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     const totalPages = 2;
 
     const rowHtml = (r) =>
-      `<div class="mk-line"><span>${r.marks}</span><span>${r.desc}</span><span>${r.pkgs} PKG</span><span>${Number(r.weight).toFixed(3)} KGS</span></div>`;
+      `<div class="mk-line"><span>${r.orderNo ? r.orderNo + " " : ""}${r.marks}</span><span>${r.desc}</span><span>${r.pkgs} PKG</span><span>${Number(r.weight).toFixed(3)} KGS</span></div>`;
 
     const freight = (h) => `
       <div class="mk-frow mk-fhead"><div>Freight &amp; Charges</div><div>Rate</div><div>Unit</div><div>Currency</div><div>Prepaid</div><div>Collect</div></div>
@@ -2840,11 +2788,14 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     <div class="mk-page">
       <div class="mk-frame">
         <div class="mk-head">
-          <div class="mk-brand">${logo}<span class="mk-brand-name">${o.companyName}</span></div>
-          <div class="mk-head-right">
+          <div class="mk-brand">${logo}</div>
+          <div class="mk-head-mid">
             <div class="mk-title">${o.title}</div>
             <div class="mk-sub">NON-NEGOTIABLE COPY</div>
-            <div class="mk-no"><span>Consignment</span> <b>${e(o.consignmentNo)}</b></div>
+          </div>
+          <div class="mk-head-no">
+            <span class="mk-label">HBL No.</span>
+            <div class="mk-content">${e(o.orderNumber)}</div>
           </div>
         </div>
 
@@ -2858,10 +2809,7 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
               <div class="mk-content">Same as Consignee</div></div>
           </div>
           <div>
-            <div class="mk-two">
-              <div class="mk-cell" style="min-height:44px;"><span class="mk-label">Order Reference</span><div class="mk-content">${e(o.orderNumber)}</div></div>
-              <div class="mk-cell" style="min-height:44px;"><span class="mk-label">HBL No.</span><div class="mk-content">${e(o.orderNumber)}</div></div>
-            </div>
+            <div class="mk-cell" style="min-height:44px;"><span class="mk-label">Consignment No.</span><div class="mk-content">${e(o.consignmentNo)}</div></div>
          <div class="mk-cell" style="min-height:44px;"><span class="mk-label">Issue Date</span><div class="mk-content" style="font-size:11px;">${e(o.issueDate)}</div></div>
             <div class="mk-cell" style="min-height:118px;"><div class="mk-small">
               This contract is subject to the standard terms, conditions and exceptions of ${o.companyName}, including the limitation of liability and the law and jurisdiction clauses. Full terms are printed on page 2.
@@ -3111,6 +3059,7 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
           wt = parseFloat(item.weight) || 0;
         }
         return {
+          orderNo: receiverGroup.orderNumber,
           marks: item.type || "N/A",
           desc: item.subcategory
             ? `${item.category || "N/A"} - ${item.subcategory}`
@@ -3161,7 +3110,9 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       allPagesHtml.push(...pages);
     }
     await printHtml(allPagesHtml.join(""), {
-      title: `HBL_${data.consignment_number}`,
+      title: hblFilter?.orderId
+        ? `HBL-${receiverGroups[0].orderNumber}`
+        : `HBL-${data.consignment_number}`,
       pageMargin: "0",
       extraCss: `
     ${maerskCss("#f37021", "#008a45")}
@@ -3737,7 +3688,7 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
 </div>`;
 
     await printHtml(tempElement.innerHTML, {
-      title: `Manifest_${data.consignment_number}_ContainerWise`,
+      title: `manifest${groupBySubcategory ? "-subcategory" : ""}-${data.consignment_number}`,
     });
   };
 
@@ -4424,7 +4375,7 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     `;
 
     await printHtml(tempElement.innerHTML, {
-      title: `Manifest_${data.consignment_number}_Containers`,
+      title: `container-orders-${data.consignment_number}`,
     });
   };
   const isDark = theme.palette.mode === "dark";
@@ -4623,19 +4574,22 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     })),
   );
 
-  const lastSyncedAt = (() => {
-    const times = [...allInvoices, ...allBills]
-      .map((d) => d.synced_at)
-      .filter(Boolean)
-      .map((d) => new Date(d).getTime())
-      .filter(Number.isFinite);
-    return times.length ? new Date(Math.max(...times)) : null;
+  const lastSync = (() => {
+    let best = null;
+    [...allInvoices, ...allBills].forEach((d) => {
+      if (!d.synced_at) return;
+      const t = new Date(d.synced_at).getTime();
+      if (Number.isFinite(t) && (!best || t > best.at.getTime())) {
+        best = { at: new Date(t), by: d.synced_by };
+      }
+    });
+    return best;
   })();
 
   const financeTable = (docs, partyLabel, partyKey, kind) => {
     const groups = Object.values(
       docs.reduce((m, d) => {
-        const k = d.formNumber || "N/A";
+        const k = d.formNumber || values.consignment_number || "N/A";
         (m[k] ||= { key: k, docs: [] }).docs.push(d);
         return m;
       }, {}),
@@ -4681,12 +4635,15 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
               <TableCell align="right" sx={headCell}>
                 Total
               </TableCell>
+              <TableCell align="center" sx={headCell}>
+                Preview
+              </TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {groups.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} align="center" sx={{ py: 4 }}>
+                <TableCell colSpan={10} align="center" sx={{ py: 4 }}>
                   <Typography variant="body2" color="text.secondary">
                     No {kind.toLowerCase()}s found
                   </Typography>
@@ -4698,6 +4655,15 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                   const k = `f-${kind}-${g.key}`;
                   const open = expandedForms[k] ?? true;
                   const gl = g.docs.filter((d) => d.status !== "void");
+                  const paidCnt = gl.filter((d) => d.status === "paid").length;
+                  const currencies = [...new Set(gl.map((d) => d.currency))];
+                  const fcaTxt =
+                    currencies.length === 1 && currencies[0] !== "AED"
+                      ? fmtMoney(
+                          sumBy(gl, (d) => d.total),
+                          currencies[0],
+                        )
+                      : "-";
                   return [
                     <TableRow
                       key={k}
@@ -4724,7 +4690,7 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                           {g.key}
                         </Box>
                       </TableCell>
-                      <TableCell colSpan={4}>
+                      <TableCell>
                         <Chip
                           size="small"
                           label={`${g.docs.length} ${kind.toLowerCase()}${g.docs.length > 1 ? "s" : ""}`}
@@ -4735,7 +4701,35 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                           }}
                         />
                       </TableCell>
-                      <TableCell />
+                      <TableCell sx={{ fontWeight: 600 }}>
+                        {!open
+                          ? pickDate(
+                              gl.map((d) => d.date),
+                              "max",
+                            )
+                          : ""}
+                      </TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>
+                        {!open
+                          ? pickDate(
+                              gl.map((d) => d.dueDate),
+                              "min",
+                            )
+                          : ""}
+                      </TableCell>
+                      <TableCell>
+                        {!open && (
+                          <Chip
+                            label={`Paid (${paidCnt}/${gl.length})`}
+                            size="small"
+                            variant="outlined"
+                            color="success"
+                          />
+                        )}
+                      </TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700 }}>
+                        {!open ? fcaTxt : ""}
+                      </TableCell>
                       <TableCell align="right" sx={{ fontWeight: 700 }}>
                         {fmtMoney(sumBy(gl, docPaidAed), "AED")}
                       </TableCell>
@@ -4745,6 +4739,7 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                       <TableCell align="right" sx={{ fontWeight: 700 }}>
                         {fmtMoney(sumBy(gl, docTotalAed), "AED")}
                       </TableCell>
+                      <TableCell />
                     </TableRow>,
                     ...(open
                       ? g.docs.map((d) => (
@@ -4787,6 +4782,19 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                             <TableCell align="right" sx={{ fontWeight: 600 }}>
                               {fmtAed(d.totalAed)}
                             </TableCell>
+                            <TableCell align="center">
+                              <IconButton
+                                size="small"
+                                disabled={pdfLoadingId === d.id}
+                                onClick={() => openDocPdf(kind, d)}
+                              >
+                                {pdfLoadingId === d.id ? (
+                                  <CircularProgress size={18} />
+                                ) : (
+                                  <VisibilityIcon fontSize="small" />
+                                )}
+                              </IconButton>
+                            </TableCell>
                           </TableRow>
                         ))
                       : []),
@@ -4819,6 +4827,7 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                   >
                     {fmtMoney(grandTotal, "AED")}
                   </TableCell>
+                  <TableCell />
                 </TableRow>
               </>
             )}
@@ -4985,7 +4994,7 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
           gridTemplateColumns: {
             xs: "repeat(2, 1fr)",
             sm: "repeat(3, 1fr)",
-            lg: "repeat(6, 1fr)",
+            lg: "repeat(5, 1fr)",
           },
           gap: 1.5,
         }}
@@ -5015,7 +5024,7 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
           color="#7c3aed"
           icon={<CreditCardOutlinedIcon />}
           value={fmtMoney(billingTotals.paidOut, "AED")}
-          label="Total Paid"
+          label="Total Bills Paid"
           sub={`${payments} Payments`}
         />
         <FinStatCard
@@ -5024,13 +5033,6 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
           value={fmtMoney(netProfit, "AED")}
           label="Net Profit"
           sub={`${marginTxt} Margin`}
-        />
-        <FinStatCard
-          color="#e11d48"
-          icon={<PieChartOutlineIcon />}
-          value={marginTxt}
-          label="Profit Margin"
-          sub={`${fmtMoney(netProfit, "AED")} Profit`}
         />
       </Box>
     );
@@ -5060,7 +5062,7 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         `/api/orders/consignment-mbl/${effectiveConsignmentId}`,
       );
       await printHtml(buildMblPages(data, company, mblVariant).join(""), {
-        title: `MBL_${values.consignment_number}`,
+        title: `MBL-${values.consignment_number}`,
         pageMargin: "0",
         extraCss: mblCss(company),
       });
@@ -6117,8 +6119,10 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                               color="text.secondary"
                             >
                               Last synced:{" "}
-                              {lastSyncedAt
-                                ? dayjs(lastSyncedAt).format("MMM DD, YYYY")
+                              {lastSync
+                                ? `${dayjs(lastSync.at).format("MMM DD, YYYY hh:mm A")}${
+                                    lastSync.by ? ` by ${lastSync.by}` : ""
+                                  }`
                                 : "N/A"}
                             </Typography>
                           </Box>
