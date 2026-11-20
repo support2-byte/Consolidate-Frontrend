@@ -36,6 +36,9 @@ import {
   Divider,
   Tabs,
   Tab,
+  useMediaQuery,
+  useTheme,
+  Autocomplete,
 } from "@mui/material";
 import XLSX from "xlsx-js-style";
 import Avatar from "@mui/material/Avatar";
@@ -51,7 +54,6 @@ import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
 import Tooltip from "@mui/material/Tooltip";
 import List from "@mui/material/List";
 import AssignmentIcon from "@mui/icons-material/Assignment";
-import { Autocomplete } from "@mui/material";
 import CargoIcon from "@mui/icons-material/LocalShipping";
 import { styled } from "@mui/material/styles";
 import VisibilityIcon from "@mui/icons-material/Visibility";
@@ -148,6 +150,8 @@ const StatusChip = ({ status, height, size }) => {
 
 const OrdersList = () => {
   const navigate = useNavigate();
+  const theme = useTheme();
+  const fullScreen = useMediaQuery(theme.breakpoints.down("sm"));
   const { places, statuses, companies, customers } = useContext(AppContext);
   const { isLoading, setIsLoading } = useLoading();
   const [rawOrders, setOrders] = useState([]);
@@ -272,7 +276,7 @@ const OrdersList = () => {
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
   };
 
-  const etaBounds = (currentEta, minIsToday = false) => {
+  const etaBounds = (currentEta) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     let base = today;
@@ -283,10 +287,15 @@ const OrdersList = () => {
     }
     const max = new Date(base);
     max.setDate(max.getDate() + 30);
-    return {
-      min: toLocalISO(minIsToday ? today : base),
-      max: toLocalISO(max),
-    };
+    return { min: toLocalISO(base), max: toLocalISO(max) };
+  };
+
+  const getCurrentEta = () => {
+    const d = selectedReceiverForUpdateDetails;
+    const cd = selectedCid
+      ? d?.containerDetails?.find((c) => c.container.cid === selectedCid)
+      : null;
+    return cd?.eta || d?.trackingEta || d?.eta;
   };
 
   const toDateInput = (v) => toLocalISO(v);
@@ -297,12 +306,8 @@ const OrdersList = () => {
     const d = new Date();
     d.setDate(d.getDate() + matched.days_offset);
     const calc = toLocalISO(d);
-    const { max } = etaBounds(
-      selectedReceiverForUpdateDetails?.trackingEta ||
-        selectedReceiverForUpdateDetails?.eta,
-      true,
-    );
-    return calc > max ? max : calc;
+    const { min, max } = etaBounds(getCurrentEta());
+    return calc < min ? min : calc > max ? max : calc;
   };
 
   const handleOpenActionMenu = (e, order) => {
@@ -5829,6 +5834,10 @@ const OrdersList = () => {
     (selectedReceiverForUpdateDetails?.containerDetails?.length || 0) > 1 &&
     !selectedCid;
 
+  const etaRange = etaBounds(getCurrentEta());
+  const etaInvalid =
+    !!selectedEta && (selectedEta < etaRange.min || selectedEta > etaRange.max);
+
   if (isLoading) {
     return (
       <Paper sx={{ p: 3, borderRadius: 3, boxShadow: 3, bgcolor: "#fafafa" }}>
@@ -6889,109 +6898,186 @@ const OrdersList = () => {
           onClose={handleCloseStatusDialog}
           maxWidth="sm"
           fullWidth
+          fullScreen={fullScreen}
+          PaperProps={{ sx: { borderRadius: fullScreen ? 0 : 3 } }}
         >
-          <DialogTitle>Update Receiver Status</DialogTitle>
-          <DialogContent>
-            <Typography variant="body2" color="text.secondary" mb={2}>
-              Select receiver and new status for order "
-              {selectedOrderForUpdate?.booking_ref}". Notifications will be sent
-              based on rules.
-            </Typography>
-            <FormControl fullWidth margin="dense">
-              <InputLabel>Receiver</InputLabel>
-              <Select
-                value={selectedReceiverForUpdate?.id || ""}
-                label="Receiver"
-                onChange={handleReceiverChange}
-              >
-                {selectedOrderForUpdate?.receivers?.map((rec) => (
-                  <MenuItem key={rec.id} value={rec.id}>
-                    {rec.receiverName} | (Current: {rec.status})
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <FormControl fullWidth margin="dense">
-              <InputLabel>Items</InputLabel>
-              <Select
-                value={selectedReceiverForUpdateDetails?.itemRef || ""}
-                label="Receiver"
-                onChange={handleShippingChange}
-              >
-                {selectedReceiverForUpdate?.shippingdetails?.map((rec) => (
-                  <MenuItem key={rec.itemRef} value={rec.itemRef}>
-                    {rec.itemRef} (Category: {rec.category})
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            {(selectedReceiverForUpdateDetails?.containerDetails?.length || 0) >
-              1 && (
-              <FormControl fullWidth margin="dense">
-                <InputLabel>Container</InputLabel>
+          <DialogTitle
+            sx={{
+              bgcolor: "#0d6c6a",
+              color: "#fff",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              py: 1.5,
+            }}
+          >
+            <Box>
+              <Typography variant="h6" fontWeight="bold" lineHeight={1.2}>
+                Update Status
+              </Typography>
+              <Typography variant="body2" sx={{ opacity: 0.85, mt: 1 }}>
+                Order: {selectedOrderForUpdate?.rgl_booking_number || "-"}
+              </Typography>
+            </Box>
+            <IconButton
+              onClick={handleCloseStatusDialog}
+              size="small"
+              sx={{ color: "#fff" }}
+            >
+              <CloseIcon />
+            </IconButton>
+          </DialogTitle>
+          <DialogContent sx={{ pt: "20px !important", px: { xs: 2, sm: 3 } }}>
+            <Alert severity="info" sx={{ mb: 2, borderRadius: 2 }}>
+              Notifications will be sent based on configured rules.
+            </Alert>
+
+            <Stack spacing={2}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Receiver</InputLabel>
                 <Select
-                  value={selectedCid}
-                  label="Container"
-                  onChange={handleContainerChange}
+                  value={selectedReceiverForUpdate?.id || ""}
+                  label="Receiver"
+                  onChange={handleReceiverChange}
                 >
-                  {selectedReceiverForUpdateDetails.containerDetails.map(
-                    (cd) => (
-                      <MenuItem key={cd.container.cid} value={cd.container.cid}>
-                        {cd.container.container_number} ({cd.assign_total_box}{" "}
-                        boxes)
-                      </MenuItem>
-                    ),
-                  )}
-                </Select>
-              </FormControl>
-            )}
-            <Box sx={{ display: "flex", gap: 2, alignItems: "flex-start" }}>
-              <FormControl fullWidth margin="dense" sx={{ flex: 1 }}>
-                <InputLabel>Status</InputLabel>
-                <Select
-                  value={selectedStatus}
-                  label="Status"
-                  onChange={handleStatusChange}
-                >
-                  {statuses.map((status) => (
-                    <MenuItem key={status.id} value={status.order_status}>
-                      {status.order_status}
+                  {selectedOrderForUpdate?.receivers?.map((rec) => (
+                    <MenuItem key={rec.id} value={rec.id}>
+                      <Stack
+                        direction="row"
+                        justifyContent="space-between"
+                        alignItems="center"
+                        sx={{ width: "100%", gap: 1 }}
+                      >
+                        <Typography variant="body2" noWrap>
+                          {rec.receiverName}
+                        </Typography>
+                        <StatusChip
+                          status={rec.status}
+                          size="small"
+                          height={18}
+                        />
+                      </Stack>
                     </MenuItem>
                   ))}
                 </Select>
               </FormControl>
-              <TextField
-                label="ETA"
-                type="date"
-                margin="dense"
-                value={selectedEta}
-                onChange={(e) => setSelectedEta(e.target.value)}
-                InputLabelProps={{ shrink: true }}
-                sx={{ flex: 1 }}
-                disabled={!selectedReceiverForUpdateDetails}
-                inputProps={etaBounds(
-                  selectedReceiverForUpdateDetails?.trackingEta ||
-                    selectedReceiverForUpdateDetails?.eta,
-                  true,
-                )}
-              />
-            </Box>
+
+              <FormControl fullWidth size="small">
+                <InputLabel>Item</InputLabel>
+                <Select
+                  value={selectedReceiverForUpdateDetails?.itemRef || ""}
+                  label="Item"
+                  onChange={handleShippingChange}
+                  disabled={!selectedReceiverForUpdate}
+                  renderValue={(val) => {
+                    const it = selectedReceiverForUpdate?.shippingdetails?.find(
+                      (r) => r.itemRef === val,
+                    );
+                    return it
+                      ? `${it.category || "-"} — ${it.subcategory || "-"}`
+                      : val;
+                  }}
+                >
+                  {selectedReceiverForUpdate?.shippingdetails?.map((rec) => (
+                    <MenuItem key={rec.itemRef} value={rec.itemRef}>
+                      <Tooltip
+                        title={`Item Ref: ${rec.itemRef}`}
+                        placement="right"
+                        arrow
+                      >
+                        <Box sx={{ width: "100%" }}>
+                          <Typography variant="body2" fontWeight={600}>
+                            {rec.category || "-"} — {rec.subcategory || "-"}
+                          </Typography>
+                        </Box>
+                      </Tooltip>
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              {(selectedReceiverForUpdateDetails?.containerDetails?.length ||
+                0) > 1 && (
+                <FormControl fullWidth size="small">
+                  <InputLabel>Container</InputLabel>
+                  <Select
+                    value={selectedCid}
+                    label="Container"
+                    onChange={handleContainerChange}
+                  >
+                    {selectedReceiverForUpdateDetails.containerDetails.map(
+                      (cd) => (
+                        <MenuItem
+                          key={cd.container.cid}
+                          value={cd.container.cid}
+                        >
+                          {cd.container.container_number} ({cd.assign_total_box}{" "}
+                          boxes)
+                        </MenuItem>
+                      ),
+                    )}
+                  </Select>
+                </FormControl>
+              )}
+
+              <Divider />
+
+              <Grid container spacing={2}>
+                <Grid item size={{ xs: 12, sm: 6, md: 6 }}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Status</InputLabel>
+                    <Select
+                      value={selectedStatus}
+                      label="Status"
+                      onChange={handleStatusChange}
+                    >
+                      {statuses.map((status) => (
+                        <MenuItem key={status.id} value={status.order_status}>
+                          {status.order_status}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item size={{ xs: 12, sm: 6, md: 6 }}>
+                  <TextField
+                    label="ETA"
+                    type="date"
+                    size="small"
+                    fullWidth
+                    value={selectedEta}
+                    onChange={(e) => setSelectedEta(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                    disabled={!selectedReceiverForUpdateDetails}
+                    error={etaInvalid}
+                    helperText={
+                      etaInvalid
+                        ? `Pick a date between ${etaRange.min} and ${etaRange.max}`
+                        : ""
+                    }
+                    inputProps={etaRange}
+                  />
+                </Grid>
+              </Grid>
+            </Stack>
           </DialogContent>
-          <DialogActions>
-            <Button onClick={handleCloseStatusDialog}>Cancel</Button>
-            <Button
-              onClick={handleConfirmStatusUpdate}
-              disabled={isLoading || needsCid}
-              variant="contained"
-            >
-              Update Status
-            </Button>
-            <Button
-              onClick={handleNotify}
-              disabled={isLoading || needsCid}
-              variant="contained"
-            >
-              Notify
+          <DialogActions
+            sx={{
+              px: { xs: 2, sm: 3 },
+              py: 2,
+              gap: 1,
+              flexWrap: "wrap",
+              justifyContent: { xs: "stretch", sm: "flex-end" },
+              "& > :not(style)": { m: 0 },
+              "& .MuiButton-root": {
+                flex: { xs: "1 1 45%", sm: "0 0 auto" },
+                borderRadius: 2,
+                textTransform: "none",
+              },
+            }}
+          >
+            <Button onClick={handleCloseStatusDialog} color="inherit">
+              Cancel
             </Button>
             <Button
               onClick={handleUpdateEta}
@@ -7005,6 +7091,22 @@ const OrdersList = () => {
               sx={{ borderColor: "#f58220", color: "#f58220" }}
             >
               {etaSaving ? "Updating..." : "Update ETA"}
+            </Button>
+            <Button
+              onClick={handleNotify}
+              disabled={isLoading || needsCid}
+              variant="outlined"
+              sx={{ borderColor: "#0d6c6a", color: "#0d6c6a" }}
+            >
+              Notify
+            </Button>
+            <Button
+              onClick={handleConfirmStatusUpdate}
+              disabled={isLoading || needsCid}
+              variant="contained"
+              sx={{ bgcolor: "#0d6c6a", "&:hover": { bgcolor: "#0a5250" } }}
+            >
+              Update Status
             </Button>
           </DialogActions>
         </Dialog>

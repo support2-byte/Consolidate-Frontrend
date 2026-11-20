@@ -2505,29 +2505,17 @@ const OrderModalView = ({
           >
             <LocalShippingIcon sx={{ fontSize: 22 }} />
             <Typography variant="h6" fontWeight={700} noWrap>
-              {selectedOrder?.booking_ref || "Order Details"}
+              {selectedOrder?.rgl_booking_number || "Order Details"}
             </Typography>
-            {selectedOrder?.status && (
+            {selectedOrder?.created_at && (
               <Chip
-                label={selectedOrder.status}
-                size="small"
-                sx={{
-                  bgcolor: statusColor,
-                  color: "#fff",
-                  fontWeight: 700,
-                  fontSize: 11,
-                }}
-              />
-            )}
-            {(selectedOrder?.receivers || []).length > 0 && (
-              <Chip
-                label={`${selectedOrder.receivers.length} Receiver${selectedOrder.receivers.length > 1 ? "s" : ""}`}
+                label={`Created Date: ${formatDate(selectedOrder.created_at)}`}
                 size="small"
                 variant="outlined"
                 sx={{
                   borderColor: "rgba(255,255,255,0.5)",
                   color: T.white,
-                  fontSize: 11,
+                  fontSize: 12,
                 }}
               />
             )}

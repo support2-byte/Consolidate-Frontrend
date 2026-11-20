@@ -46,7 +46,11 @@ export const mblCss = (company) => {
   .mk-dcol.mk-last { border-right: none; }
   .mk-dtext { text-transform: none; }
   .mk-crow { margin-top: 8px; font-size: 11px; font-weight: bold; }
-  .mk-line { display: grid; grid-template-columns: 2fr .7fr .9fr; gap: 6px; font-size: 10.5px; padding: 2px 0 2px 10px; border-bottom: 1px dotted #bbb; font-weight: normal; }
+  .mk-tbl-head, .mk-line { display: grid; grid-template-columns: 1.3fr 2fr .9fr 1.1fr; gap: 8px; padding: 2px 0 2px 10px; }
+  .mk-tbl-head > span, .mk-line > span { min-width: 0; word-break: break-word; }
+  .mk-tbl-head > span:nth-child(n+3), .mk-line > span:nth-child(n+3) { text-align: right; }
+  .mk-tbl-head { font-size: 8.5px; color: #555; font-weight: normal; margin-top: 3px; }
+  .mk-line { font-size: 10.5px; font-weight: normal; }
   .mk-cont { margin-top: 10px; font-size: 10px; color: ${secondary}; font-weight: bold; }
   .mk-frow { display: grid; grid-template-columns: 2.2fr 1fr 1fr .8fr 1fr 1fr; }
   .mk-frow > div { border-right: 1px solid #000; padding: 4px 6px; }
@@ -77,7 +81,7 @@ export const mblCss = (company) => {
   }`;
 };
 
-const ROWS_P1 = 10;
+const ROWS_P1 = 6;
 const ROWS_CONT = 38;
 
 export const buildMblPages = (data, company, variant = "original") => {
@@ -103,10 +107,13 @@ export const buildMblPages = (data, company, variant = "original") => {
         ? `<div class="mk-wm" style="font-size:52px;">CERTIFIED<br>TRUE COPY</div>`
         : "";
 
+  const tblHead = `<div class="mk-tbl-head"><span>Form No.</span><span>Category</span><span>QTY</span><span>Weight</span></div>`;
+
   const rows = [];
   containers.forEach((ct) => {
     rows.push(
       `<div class="mk-crow">${esc(ct.container_number)} ${esc(ct.size)}${esc(ct.type)} &nbsp; Seal: ${esc(c.seal_no) || "-"} &nbsp; ${ct.pkgs} PKGS &nbsp; ${ct.weight.toFixed(3)} KGS</div>`,
+      tblHead,
     );
     const merged = {};
     ct.items.forEach((i) => {
@@ -122,12 +129,9 @@ export const buildMblPages = (data, company, variant = "original") => {
       merged[key].pkgs += Number(i.pkgs) || 0;
       merged[key].weight += Number(i.weight) || 0;
     });
-    const seenOrders = new Set();
     Object.values(merged).forEach((m) => {
-      const showNo = m.order_no && !seenOrders.has(m.order_no);
-      if (m.order_no) seenOrders.add(m.order_no);
       rows.push(
-        `<div class="mk-line"><span>${showNo ? esc(m.order_no) + " | " : ""}${esc(m.category)}</span><span>${m.pkgs} ${esc(m.type)}</span><span>${m.weight.toFixed(3)} KGS</span></div>`,
+        `<div class="mk-line"><span>${esc(m.order_no)}</span><span>${esc(m.category)}</span><span>${m.pkgs} ${esc(m.type)}</span><span>${m.weight.toFixed(3)} KGS</span></div>`,
       );
     });
   });
@@ -170,7 +174,6 @@ export const buildMblPages = (data, company, variant = "original") => {
             <div class="mk-content">Same as Consignee</div></div>
         </div>
         <div>
-          <div class="mk-cell" style="min-height:48px;"><span class="mk-label">Booking No.</span><div class="mk-content" style="font-size:11px;">${esc(formNos)}</div></div>
           <div class="mk-cell" style="min-height:48px;"><span class="mk-label">Export References</span><div class="mk-content" style="font-size:11px;">${esc(c.eform)}${c.eform_date ? ` / ${esc(c.eform_date)}` : ""}${c.customs_crn ? `<br>CRN: ${esc(c.customs_crn)}` : ""}</div></div>
           <div class="mk-cell" style="min-height:150px;"><div class="mk-small">This contract is subject to the standard terms, conditions and exceptions of ${esc(companyName)}, including the limitation of liability and the law and jurisdiction clauses. Full terms are printed on page ${totalPages}.</div></div>
           <div class="mk-cell" style="min-height:48px;"><span class="mk-label">Carrier / Shipping Line</span><div class="mk-content" style="font-size:11px;">${esc(c.shipping_line_name)}</div></div>
@@ -233,7 +236,7 @@ export const buildMblPages = (data, company, variant = "original") => {
   <div class="mk-page">
     <div class="mk-frame">
       <div class="mk-p2head"><span>B/L: <b>${esc(c.consignment_number)}</b></span><span>Page: ${idx + 2}</span></div>
-      <div class="mk-terms" style="min-height:900px;">${chunk.join("")}</div>
+      <div class="mk-terms" style="min-height:900px;">${/^<div class="mk-(crow|tbl-head)"/.test(chunk[0]) ? "" : tblHead}${chunk.join("")}</div>
     </div>
     ${watermark}
     <div class="mk-pgno">Page ${idx + 2} of ${totalPages}</div>
