@@ -106,6 +106,8 @@ import logoPic from "../../../public/logo-2.png";
 import { useAuth } from "../../context/AuthContext";
 import { AppContext } from "../../context/AppContext";
 import { getStatusColors } from "../../Utlis/statusColors";
+import { buildMblPages, mblCss } from "../../documents/mblGenerator";
+import { buildHblPages, hblCss } from "../../documents/hblGenerator";
 
 applyPlugin(jsPDF);
 
@@ -114,6 +116,7 @@ const printHtml = (
   { title = "Document", pageMargin = "10mm", extraCss = "" } = {},
 ) =>
   new Promise((resolve) => {
+    const safeTitle = String(title).replace(/[\\/:*?"<>|]/g, "-");
     const iframe = document.createElement("iframe");
     Object.assign(iframe.style, {
       position: "fixed",
@@ -127,7 +130,7 @@ const printHtml = (
 
     const doc = iframe.contentDocument;
     doc.open();
-    doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title>
+    doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${safeTitle}</title>
       <style>
         @page { size: A4; margin: ${pageMargin}; }
         html, body { margin: 0; padding: 0; background: #fff;
@@ -139,7 +142,13 @@ const printHtml = (
       </style></head><body>${html}</body></html>`);
     doc.close();
 
+    const prevTitle = document.title;
+    document.title = safeTitle;
+    let done = false;
     const cleanup = () => {
+      if (done) return;
+      done = true;
+      document.title = prevTitle;
       iframe.remove();
       resolve();
     };
@@ -206,6 +215,18 @@ const docTotalAed = (d) =>
       : 0;
 
 const fmtAed = (n) => (n == null ? "-" : fmtMoney(n, "AED"));
+
+const pickDate = (list, mode) => {
+  const ds = list
+    .filter(Boolean)
+    .map((x) => dayjs(x))
+    .filter((x) => x.isValid());
+  if (!ds.length) return "-";
+  const t = ds.reduce((a, b) =>
+    mode === "max" ? (b.isAfter(a) ? b : a) : b.isBefore(a) ? b : a,
+  );
+  return t.format("MMM DD, YYYY");
+};
 
 const docPaidAed = (d) => docTotalAed(d) - docBalanceAed(d);
 
@@ -607,6 +628,10 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
   const [hblModalOpen, setHblModalOpen] = useState(false);
   const [hblOrderId, setHblOrderId] = useState("");
   const [hblItemId, setHblItemId] = useState("all");
+  const [hblCompanyId, setHblCompanyId] = useState("");
+  const [mblModalOpen, setMblModalOpen] = useState(false);
+  const [mblCompanyId, setMblCompanyId] = useState("");
+  const [mblVariant, setMblVariant] = useState("original");
 
   const runAction = async (key, fn) => {
     if (busyAction) return;
@@ -636,7 +661,7 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
 
   const user_id = context.user.id;
   const currentDate = dayjs();
-  const { places, statuses } = useContext(AppContext);
+  const { places, statuses, companies } = useContext(AppContext);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const { consignmentId: urlConsignmentId } = useParams();
@@ -800,124 +825,42 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
   };
 
   useEffect(() => {
-    const initData = async () => {
-      if (!places || places.length === 0) return;
-      try {
-        setLoading(true);
+    if (!places || places.length === 0) return;
+    const mapOptions = (items) =>
+      items.map((item) => ({
+        value: item.id?.toString() || "",
+        label: item.name || "",
+      }));
+    const byStatus = (key) =>
+      (statuses || [])
+        .filter((s) => s[key])
+        .sort((a, b) => a.sorting_number - b.sorting_number)
+        .map((s) => ({ value: s[key], label: s[key] }));
 
-        const [
-          thirdPartiesRes,
-          banksRes,
-          paymentTypesRes,
-          vesselsRes,
-          shippingLinesRes,
-          currenciesRes,
-        ] = await Promise.all([
-          api.get("api/options/thirdParty/crud"),
-          api.get("api/options/banks/crud"),
-          api.get("api/options/payment-types/crud"),
-          api.get("api/options/vessels/crud"),
-          api.get("api/options/shipping-lines"),
-          api.get("api/options/currencies"),
-        ]);
+    setOptions((prev) => ({
+      ...prev,
+      originOptions: mapOptions(
+        places.filter((p) => p.is_destination === true || p.is_origin === true),
+      ),
+      destinationOptions: mapOptions(
+        places.filter((p) => p.is_destination === true),
+      ),
+      statusOptions: byStatus("consignment_status"),
+      containerStatusOptions: byStatus("container_status"),
+    }));
+    setStatusOffsets(
+      (statuses || []).reduce((acc, row) => {
+        if (row.order_status) acc[row.order_status] = row.days_offset;
+        return acc;
+      }, {}),
+    );
+  }, [places, statuses]);
 
-        const third_parties = thirdPartiesRes?.data?.third_parties || [];
-        const banks = banksRes?.data?.banks || [];
-
-        const mapOptions = (items, valueKey = "id", labelKey = "name") =>
-          (items || []).map((item) => ({
-            value: (item[valueKey] || item.value)?.toString() || "",
-            label: item[labelKey] || item.label || item[valueKey] || "",
-          }));
-
-        const filteredDestinations = places.filter(
-          (place) => place.is_destination === true,
-        );
-
-        const filteredOrigins = places.filter(
-          (place) => place.is_destination === true || place.is_origin === true,
-        );
-
-        const paymentEnumMap = {
-          "AP (Advance Payment)": "Prepaid",
-          "DP (Docs against Payment)": "Collect",
-          "DA (30 Days Payment)": "Collect",
-          "DA (60 Days Payment)": "Collect",
-          "DA (90 Days Payment)": "Collect",
-          "DA (120 Days Payment)": "Collect",
-          "DA (180 Days Payment)": "Collect",
-        };
-
-        setOptions({
-          third_parties,
-          banks,
-          shipperOptions: third_parties
-            .filter((tp) => tp.type === "shipper")
-            .map((tp) => ({ value: tp.id.toString(), label: tp.company_name })),
-          consigneeOptions: third_parties
-            .filter((tp) => tp.type === "consignee")
-            .map((tp) => ({ value: tp.id.toString(), label: tp.company_name })),
-          originOptions: mapOptions(filteredOrigins, "id", "name"),
-          destinationOptions: mapOptions(filteredDestinations, "id", "name"),
-          bankOptions: mapOptions(banks, "id", "name"),
-          paymentTypeOptions: (paymentTypesRes?.data?.paymentTypes || []).map(
-            (pt) => ({
-              value: paymentEnumMap[pt.name] || "Collect",
-              label: pt.name,
-              id: pt.id,
-            }),
-          ),
-          vesselOptions: mapOptions(
-            vesselsRes?.data?.vessels || [],
-            "id",
-            "name",
-          ),
-          shippingLineOptions: mapOptions(
-            shippingLinesRes?.data?.shippingLineOptions || [],
-            "id",
-            "name",
-          ),
-          currencyOptions: mapOptions(
-            currenciesRes?.data?.currencyOptions || [],
-            "code",
-            "name",
-          ),
-
-          statusOptions: (statuses || [])
-            .filter((s) => s.consignment_status)
-            .sort((a, b) => a.sorting_number - b.sorting_number)
-            .map((s) => ({
-              value: s.consignment_status,
-              label: s.consignment_status,
-            })),
-          containerStatusOptions: (statuses || [])
-            .filter((s) => s.container_status)
-            .sort((a, b) => a.sorting_number - b.sorting_number)
-            .map((s) => ({
-              value: s.container_status,
-              label: s.container_status,
-            })),
-        });
-
-        const offsets = (statuses || []).reduce((acc, row) => {
-          if (row.order_status) acc[row.order_status] = row.days_offset;
-          return acc;
-        }, {});
-        setStatusOffsets(offsets);
-
-        if (mode === "edit" && effectiveConsignmentId) {
-          await loadConsignment(effectiveConsignmentId);
-        }
-      } catch (err) {
-        console.error("Error fetching options:", err);
-        toast.warning("Failed to load options. Using defaults.");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    initData();
-  }, [mode, effectiveConsignmentId, places]);
+  useEffect(() => {
+    if (!effectiveConsignmentId) return;
+    setLoading(true);
+    loadConsignment(effectiveConsignmentId).finally(() => setLoading(false));
+  }, [effectiveConsignmentId]);
 
   const loadConsignment = async (id) => {
     try {
@@ -965,6 +908,20 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       };
 
       setValues(mappedData);
+      const one = (value, label) =>
+        value ? [{ value: String(value), label: label || String(value) }] : [];
+      setOptions((prev) => ({
+        ...prev,
+        shipperOptions: one(mappedData.shipper, mappedData.shipperName),
+        consigneeOptions: one(mappedData.consignee, mappedData.consigneeName),
+        bankOptions: one(mappedData.bank, mappedData.bankName),
+        vesselOptions: one(mappedData.vessel, data?.vessel_name),
+        paymentTypeOptions: one(mappedData.paymentType, mappedData.paymentType),
+        currencyOptions: one(
+          mappedData.currency_code,
+          mappedData.currency_code,
+        ),
+      }));
       setAttachments(data?.attachments || []);
       if (data?.orders && data.orders.length > 0) {
         setSelectedOrders(data.orders.map((o) => o.id));
@@ -1332,21 +1289,6 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
   };
 
   useEffect(() => {
-    const fetchContainers = async () => {
-      setContainersLoading(true);
-      try {
-        const res = await api.get("/api/containers");
-        setContainers(res.data?.data || []);
-      } catch (err) {
-        console.error("❌ Error fetching containers:", err);
-      } finally {
-        setContainersLoading(false);
-      }
-    };
-    fetchContainers();
-  }, []);
-
-  useEffect(() => {
     const ids = (values.containers || [])
       .map((c) => c.id || c.cid)
       .filter((id) => id);
@@ -1367,6 +1309,8 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     }
     setSelectedOrders([]);
   };
+
+  const containerIdsKey = addedContainerIds.join(",");
 
   useEffect(() => {
     const itemUsesSelectedContainers = (shippingDetail, selectedCidsSet) => {
@@ -1510,16 +1454,7 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     };
 
     fetchOrders();
-  }, [
-    addedContainerIds,
-    filters?.booking_ref,
-    filters?.status,
-    orderPage,
-    orderRowsPerPage,
-    api,
-    values.origin,
-    values.destination,
-  ]);
+  }, [containerIdsKey]);
 
   const flatShipments = React.useMemo(() => {
     const seen = new Set();
@@ -1630,10 +1565,20 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
 
   const hblOrderOptions = useMemo(
     () =>
-      orders.map((o) => ({
-        value: o.id,
-        label: o.rgl_booking_number || `ORD-${o.id}`,
-      })),
+      orders.map((o) => {
+        const receivers = [
+          ...new Set(
+            (o.receivers || [])
+              .map((r) => r.receivername || r.receiver_name)
+              .filter(Boolean),
+          ),
+        ].join(", ");
+        const parties = [o.sender_name, receivers].filter(Boolean).join("-");
+        return {
+          value: o.id,
+          label: `${o.rgl_booking_number || `ORD-${o.id}`}${parties ? ` (${parties})` : ""}`,
+        };
+      }),
     [orders],
   );
 
@@ -2754,416 +2699,7 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     </div>`;
 
     await printHtml(tempElement.innerHTML, {
-      title: `Consignment_Note_${data.consignment_number}`,
-    });
-  };
-
-  const maerskCss = (primary, secondary) => {
-    const tintBg = (hex, op = 0.1) => {
-      const c = (hex || "#cccccc").replace("#", "");
-      return `rgba(${parseInt(c.substring(0, 2), 16)}, ${parseInt(c.substring(2, 4), 16)}, ${parseInt(c.substring(4, 6), 16)}, ${op})`;
-    };
-    return `
-    .mk-page { width: 794px; min-height: 1123px; padding: 24px; background: #fff; box-sizing: border-box; font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #111; position: relative; }
-    .mk-page * { box-sizing: border-box; }
-    .mk-frame { border: 1.5px solid #000; border-top-left-radius: 26px; border-bottom-right-radius: 26px; overflow: hidden; }
-    .mk-label { display: block; font-size: 9px; color: #555; margin-bottom: 3px; line-height: 1.2; }
-    .mk-content { font-size: 12px; font-weight: bold; text-transform: uppercase; line-height: 1.35; word-break: break-word; }
-    .mk-cell { border-bottom: 1px solid #000; border-right: 1px solid #000; padding: 5px 7px; }
-    .mk-head { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px 10px 22px; border-bottom: 1px solid #000; border-top: 6px solid ${primary}; }
-    .mk-brand { display: flex; align-items: center; gap: 12px; }
-    .mk-brand-name { font-size: 15px; font-weight: bold; color: ${primary}; }
-    .mk-head-right { text-align: right; }
-    .mk-title { font-size: 20px; font-weight: bold; color: ${primary}; letter-spacing: .5px; }
-    .mk-sub { font-size: 10px; font-weight: bold; color: ${secondary}; letter-spacing: 1px; }
-    .mk-no { font-size: 12px; margin-top: 3px; }
-    .mk-no span { font-size: 9px; color: #555; }
-    .mk-upper { display: grid; grid-template-columns: 1.1fr 1fr; }
-    .mk-upper > div:last-child .mk-cell { border-right: none; }
-    .mk-two { display: grid; grid-template-columns: 1fr 1fr; }
-    .mk-two .mk-cell:last-child { border-right: none; }
-    .mk-small { font-size: 10px; line-height: 1.45; color: #333; text-align: justify; }
-    .mk-route { display: grid; grid-template-columns: 1.3fr .7fr 1fr; }
-    .mk-route .mk-cell { min-height: 40px; }
-    .mk-route .mk-cell:nth-child(3n) { border-right: none; }
-    .mk-band { text-align: center; font-weight: bold; font-size: 12px; padding: 5px; letter-spacing: .6px; background: ${tintBg(primary)}; border-bottom: 1px solid #000; }
-    .mk-desc { display: grid; grid-template-columns: 1fr 150px 120px; min-height: 340px; border-bottom: 1px solid #000; }
-    .mk-dcol { padding: 6px 8px; border-right: 1px solid #000; }
-    .mk-dcol.mk-last { border-right: none; }
-    .mk-dtext { text-transform: none; }
-    .mk-line { display: grid; grid-template-columns: 1fr 1.6fr .6fr .9fr; gap: 6px; font-size: 11px; font-weight: bold; padding: 4px 0; border-bottom: 1px dotted #bbb; }
-    .mk-cont { margin-top: 10px; font-size: 10px; color: ${secondary}; font-weight: bold; }
-    .mk-frow { display: grid; grid-template-columns: 2.2fr 1fr 1fr .8fr 1fr 1fr; }
-    .mk-frow > div { border-right: 1px solid #000; padding: 4px 6px; }
-    .mk-frow > div:last-child { border-right: none; }
-    .mk-fhead { font-size: 9px; color: #555; border-bottom: 1px solid #000; }
-    .mk-fbody { border-bottom: 1px solid #000; }
-    .mk-foot { display: grid; grid-template-columns: 1fr 1fr; }
-    .mk-foot > div:last-child .mk-cell { border-right: none; }
-    .mk-sign { padding: 8px 10px; }
-    .mk-signname { font-size: 12px; font-weight: bold; color: ${primary}; margin: 24px 0 4px; }
-    .mk-line-sig { border-top: 1px solid #000; margin-bottom: 3px; }
-    .mk-p2head { display: flex; justify-content: space-between; padding: 10px 18px; font-size: 12px; border-bottom: 1px solid #000; border-top: 6px solid ${primary}; }
-    .mk-terms { padding: 14px 18px; min-height: 640px; font-size: 11px; line-height: 1.55; border-bottom: 1px solid #000; }
-    .mk-terms ol { margin: 8px 0; padding-left: 18px; }
-    .mk-terms li { margin-bottom: 6px; }
-    .mk-pgno { font-size: 9px; color: #555; margin-top: 6px; }
-  `;
-  };
-
-  const buildMaerskHBLPages = (o) => {
-    const e = (v) => (v === undefined || v === null || v === "" ? "" : v);
-    const addr = (a) =>
-      e(a) && a !== "N/A" ? String(a).replace(/, /g, ",<br>") : "";
-    const ROWS_P1 = 10;
-    const rows = o.rows || [];
-    const p1Rows = rows.slice(0, ROWS_P1);
-    const overflow = rows.slice(ROWS_P1);
-    const totalPages = 2;
-
-    const rowHtml = (r) =>
-      `<div class="mk-line"><span>${r.marks}</span><span>${r.desc}</span><span>${r.pkgs} PKG</span><span>${Number(r.weight).toFixed(3)} KGS</span></div>`;
-
-    const freight = (h) => `
-      <div class="mk-frow mk-fhead"><div>Freight &amp; Charges</div><div>Rate</div><div>Unit</div><div>Currency</div><div>Prepaid</div><div>Collect</div></div>
-      <div class="mk-frow mk-fbody" style="min-height:${h}px;"><div></div><div></div><div></div><div></div><div></div><div></div></div>`;
-
-    const logo = o.logoSrc
-      ? `<img src="${o.logoSrc}" alt="${o.companyName}" style="max-height:48px;max-width:170px;object-fit:contain;">`
-      : "";
-
-    const page1 = `
-    <div class="mk-page">
-      <div class="mk-frame">
-        <div class="mk-head">
-          <div class="mk-brand">${logo}<span class="mk-brand-name">${o.companyName}</span></div>
-          <div class="mk-head-right">
-            <div class="mk-title">${o.title}</div>
-            <div class="mk-sub">NON-NEGOTIABLE COPY</div>
-            <div class="mk-no"><span>Consignment</span> <b>${e(o.consignmentNo)}</b></div>
-          </div>
-        </div>
-
-        <div class="mk-upper">
-          <div>
-            <div class="mk-cell" style="min-height:92px;"><span class="mk-label">Shipper</span>
-              <div class="mk-content">${e(o.shipperName)}<br>${addr(o.shipperAddress)}</div></div>
-            <div class="mk-cell" style="min-height:92px;"><span class="mk-label">Consignee</span>
-              <div class="mk-content">${e(o.consigneeName)}<br>${addr(o.consigneeAddress)}</div></div>
-            <div class="mk-cell" style="min-height:60px;"><span class="mk-label">Notify Party</span>
-              <div class="mk-content">Same as Consignee</div></div>
-          </div>
-          <div>
-            <div class="mk-two">
-              <div class="mk-cell" style="min-height:44px;"><span class="mk-label">Order Reference</span><div class="mk-content">${e(o.orderNumber)}</div></div>
-              <div class="mk-cell" style="min-height:44px;"><span class="mk-label">HBL No.</span><div class="mk-content">${e(o.orderNumber)}</div></div>
-            </div>
-         <div class="mk-cell" style="min-height:44px;"><span class="mk-label">Issue Date</span><div class="mk-content" style="font-size:11px;">${e(o.issueDate)}</div></div>
-            <div class="mk-cell" style="min-height:118px;"><div class="mk-small">
-              This contract is subject to the standard terms, conditions and exceptions of ${o.companyName}, including the limitation of liability and the law and jurisdiction clauses. Full terms are printed on page 2.
-              <br><br>${e(o.contactLine)}
-            </div></div>
-            <div class="mk-cell" style="min-height:44px;"><span class="mk-label">Receiver</span><div class="mk-content" style="font-size:11px;">${e(o.receiverName)}</div></div>
-          </div>
-        </div>
-
-        <div class="mk-route">
-          <div class="mk-cell"><span class="mk-label">Vessel</span><div class="mk-content">${e(o.vessel)}</div></div>
-          <div class="mk-cell"><span class="mk-label">Voyage No.</span><div class="mk-content">${e(o.voyage)}</div></div>
-          <div class="mk-cell"><span class="mk-label">Incoterms / Mode</span><div class="mk-content">SEAFREIGHT</div></div>
-          <div class="mk-cell"><span class="mk-label">Port of Loading</span><div class="mk-content">${e(o.pol)}</div></div>
-          <div class="mk-cell"><span class="mk-label">Port of Discharge</span><div class="mk-content">${e(o.pod)}</div></div>
-          <div class="mk-cell"><span class="mk-label">Final Destination</span><div class="mk-content">${e(o.pdel)}</div></div>
-        </div>
-
-        <div class="mk-band">PARTICULARS FURNISHED BY SHIPPER</div>
-
-        <div class="mk-desc">
-          <div class="mk-dcol">
-            <span class="mk-label">Kind of Packages; Description of Goods; Marks and Numbers; Container No./Seal No.</span>
-            <div class="mk-content mk-dtext">
-              1 CONTAINER SAID TO CONTAIN ${o.totalPkgs} PACKAGES<br><br>
-              ${e(o.containerNo)}${o.containerSize ? " | " + o.containerSize : ""} &nbsp; Seal: ${e(o.sealNo) || "-"}<br><br>
-              ${p1Rows.map(rowHtml).join("")}
-              ${overflow.length ? `<div class="mk-cont">CONTINUED ON PAGE 2 ...</div>` : ""}
-            </div>
-          </div>
-          <div class="mk-dcol"><span class="mk-label">Weight</span><div class="mk-content" style="margin-top:14px;">${Number(o.totalWeight).toFixed(3)} KGS</div></div>
-          <div class="mk-dcol mk-last"><span class="mk-label">Measurement</span><div class="mk-content" style="margin-top:14px;">0.000 CBM</div></div>
-        </div>
-
-        ${freight(90)}
-
-        <div class="mk-foot">
-          <div>
-            <div class="mk-cell"><span class="mk-label">Carrier's Receipt. Total number of containers or packages received</span><div class="mk-content">1 container / ${o.totalPkgs} packages</div></div>
-            <div class="mk-two">
-              <div class="mk-cell"><span class="mk-label">Place of Issue</span><div class="mk-content">${e(o.pol)}</div></div>
-              <div class="mk-cell"><span class="mk-label">Date of Issue</span><div class="mk-content" style="font-size:11px;">${e(o.issueDate)}</div></div>
-            </div>
-          </div>
-          <div>
-            <div class="mk-cell" style="min-height:58px;"><div class="mk-small">Shipped, as far as ascertained by reasonable means of checking, in apparent good order and condition unless otherwise stated herein.</div></div>
-            <div class="mk-sign">
-              <span class="mk-label">Signed for the Carrier</span>
-              <div class="mk-signname">${o.companyName}</div>
-              <div class="mk-line-sig"></div>
-              <span class="mk-label">Authorised Signature &nbsp;|&nbsp; Generated: ${e(o.generated)}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="mk-pgno">This transport document has ${totalPages} numbered pages &nbsp;|&nbsp; Page 1 of ${totalPages}</div>
-    </div>`;
-
-    const cn = o.companyName;
-    const page2 = `
-    <div class="mk-page">
-      <div class="mk-frame">
-        <div class="mk-p2head"><span>HBL: <b>${e(o.orderNumber)}</b></span><span>Page: 2</span></div>
-        <div class="mk-terms">
-          ${overflow.length ? overflow.map(rowHtml).join("") + "<br>" : ""}
-          <strong>By confirming this order for shipment, the Shipper/Consignee agrees to the following terms:</strong>
-          <ol>
-            <li>Carriage is performed under ${cn}'s standard terms and applicable international conventions. All cargo details supplied must be true and complete.</li>
-            <li>Transit times are estimates only. Delays may occur due to weather, customs, port congestion, operational issues or carrier schedules.</li>
-            <li>Customs scanning, inspections, dog checks, or port delays may incur extra charges payable by the Merchant.</li>
-            <li>In case of loss/damage, liability shall not exceed the freight value or USD 50 per package unless a higher value is declared and agreed in writing beforehand.</li>
-            <li>The Merchant confirms lawful ownership of goods and accepts full responsibility for any illegal, prohibited or undeclared items shipped.</li>
-            <li>${cn} is not liable for any damage during customs/port inspections at origin, transit or destination.</li>
-            <li>Cargo is carried at Merchant's risk unless the Merchant arranges separate insurance. ${cn} is not liable for indirect or consequential losses.</li>
-            <li>Claims must be notified immediately in writing and within legal time limits. Late claims may be void.</li>
-            <li>${cn} may use third-party carriers or subcontractors; all their protections and liability limits apply equally to ${cn}.</li>
-            <li>This HBL applies only to order ref ${e(o.orderNumber)}.</li>
-            <li>Governed by UAE law; disputes fall under Dubai courts unless agreed otherwise.</li>
-          </ol>
-          <strong>SHIPPER'S LOAD, STOW, WEIGHT AND COUNT</strong>
-        </div>
-        ${freight(150)}
-      </div>
-      <div class="mk-pgno">Page 2 of ${totalPages}</div>
-    </div>`;
-
-    return [page1, page2];
-  };
-
-  const generateshipmentsAndOrdersPDFWithCanvas = async (
-    data,
-    allReceivers,
-    selectedOrderObjects = includedOrders,
-    hblFilter = null,
-  ) => {
-    if (!data.consignment_number) {
-      toast.warning(
-        "Please enter a consignment number to generate the manifest.",
-      );
-      return;
-    }
-
-    let receiverGroups = [];
-
-    if (allReceivers && allReceivers.length > 0) {
-      allReceivers.forEach((order) => {
-        if (order.receivers && order.receivers.length > 0) {
-          order.receivers.forEach((receiver) => {
-            const items = receiver.shippingdetails || [];
-            if (items.length > 0) {
-              items.forEach((item) => {
-                receiverGroups.push({
-                  orderId: order.id,
-                  orderNumber: order.rgl_booking_number || `ORD-${order.id}`,
-                  sender: order.sender_name || "N/A",
-                  receiver: receiver.receivername || "N/A",
-                  receiverData: receiver,
-                  orderData: order,
-                  shippingDetails: [item],
-                });
-              });
-            } else {
-              receiverGroups.push({
-                orderId: order.id,
-                orderNumber: order.rgl_booking_number || `ORD-${order.id}`,
-                sender: order.sender_name || "N/A",
-                receiver: receiver.receivername || "N/A",
-                receiverData: receiver,
-                orderData: order,
-                shippingDetails: [],
-              });
-            }
-          });
-        }
-      });
-    }
-
-    if (hblFilter?.orderId) {
-      receiverGroups = receiverGroups.filter(
-        (g) =>
-          g.orderId === hblFilter.orderId &&
-          (!hblFilter.itemId || g.shippingDetails[0]?.id === hblFilter.itemId),
-      );
-    }
-    if (receiverGroups.length === 0) {
-      toast.warning("No items found for the selected order/item.");
-      return;
-    }
-
-    const formatDateForPDF = (dateStr) => {
-      if (!dateStr) return "N/A";
-      const date = new Date(dateStr);
-      if (isNaN(date.getTime())) return "N/A";
-      return date
-        .toLocaleDateString("en-GB", {
-          day: "2-digit",
-          month: "short",
-          year: "numeric",
-        })
-        .toUpperCase();
-    };
-
-    const getVesselName = (vesselId) => {
-      if (!vesselId) return "N/A";
-      const vesselOption = options.vesselOptions?.find(
-        (v) => v.value === vesselId.toString(),
-      );
-      return vesselOption?.label || `Vessel ${vesselId}`;
-    };
-
-    const vesselName = getVesselName(data.vessel);
-
-    const logoBase64 = await loadImageAsBase64(logoPic);
-
-    const commonData = {
-      consignment_number: data.consignment_number || "N/A",
-      originName: data.originName || "N/A",
-      destinationName: data.destinationName || "N/A",
-      shipperName: data.shipperName || "N/A",
-      shipperAddress: data.shipperAddress || "N/A",
-      consigneeName: data.consigneeName || "N/A",
-      consigneeAddress: data.consigneeAddress || "N/A",
-      bankName: data.bankName || "N/A",
-      sealNo: data.seal_no || "N/A",
-      created_at: data.created_at || "N/A",
-      generated_date: new Date()
-        .toLocaleDateString("en-GB", {
-          day: "2-digit",
-          month: "short",
-          year: "numeric",
-        })
-        .toUpperCase(),
-      generated_time: new Date().toLocaleTimeString("en-GB", {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-      voyage: data.voyage || "N/A",
-    };
-
-    const allPagesHtml = [];
-    for (let i = 0; i < receiverGroups.length; i++) {
-      const receiverGroup = receiverGroups[i];
-      const receiver = receiverGroup.receiverData;
-      const shippingDetails = receiverGroup.shippingDetails;
-
-      let receiverPackages = 0;
-      let receiverWeight = 0;
-      let itemRef = "";
-
-      shippingDetails.forEach((item) => {
-        let packagesForItem = 0;
-        let weightForItem = 0;
-
-        if (item.containerDetails && item.containerDetails.length > 0) {
-          item.containerDetails.forEach((containerDetail) => {
-            packagesForItem += Number(containerDetail.assign_total_box) || 0;
-            weightForItem += Number(containerDetail.assign_weight) || 0;
-          });
-        } else {
-          packagesForItem = parseInt(item.totalNumber) || 0;
-          weightForItem = parseFloat(item.weight) || 0;
-        }
-
-        receiverPackages += packagesForItem;
-        receiverWeight += weightForItem;
-
-        if (item.itemRef && !itemRef.includes(item.itemRef)) {
-          itemRef += (itemRef ? ", " : "") + item.itemRef;
-        }
-      });
-
-      const containerInfo =
-        data.containers && data.containers.length > 0
-          ? data.containers[0]
-          : { containerNo: "N/A", seal_no: "N/A" };
-
-      const rows = shippingDetails.map((item) => {
-        let pkgs = 0;
-        let wt = 0;
-        if (item.containerDetails && item.containerDetails.length > 0) {
-          item.containerDetails.forEach((cd) => {
-            pkgs += Number(cd.assign_total_box) || 0;
-            wt += Number(cd.assign_weight) || 0;
-          });
-        } else {
-          pkgs = parseInt(item.totalNumber) || 0;
-          wt = parseFloat(item.weight) || 0;
-        }
-        return {
-          marks: item.type || "N/A",
-          desc: item.subcategory
-            ? `${item.category || "N/A"} - ${item.subcategory}`
-            : item.category || "N/A",
-          pkgs,
-          weight: wt,
-        };
-      });
-
-      const pages = buildMaerskHBLPages({
-        companyName: "ROYAL GULF SHIPPING & LOGISTICS LLC",
-        logoSrc: logoBase64 || "",
-        title: "HOUSE BILL OF LADING",
-        consignmentNo: commonData.consignment_number,
-        contactLine: "Ph: +971-4-3331785 | www.royalgulfshipping.com",
-        orderNumber: receiverGroup.orderNumber,
-        blNo: "",
-        itemRef,
-        issueDate: new Date(commonData.created_at).toLocaleString("en-US", {
-          month: "numeric",
-          day: "numeric",
-          year: "numeric",
-          hour: "numeric",
-          minute: "2-digit",
-          hour12: true,
-        }),
-        shipperName: commonData.shipperName,
-        shipperAddress: commonData.shipperAddress,
-        consigneeName: commonData.consigneeName,
-        consigneeAddress: commonData.consigneeAddress,
-        receiverName: receiverGroup.receiver,
-        vessel: vesselName,
-        voyage: commonData.voyage,
-        pol: commonData.originName,
-        pod: commonData.destinationName,
-        pdel: commonData.destinationName,
-        containerNo: containerInfo.containerNo,
-        containerSize: containerInfo.size ? `${containerInfo.size}ft` : "",
-        sealNo: commonData.sealNo,
-        totalPkgs: receiverPackages,
-        totalWeight: receiverWeight,
-        rows,
-        generated: `${commonData.generated_date} ${commonData.generated_time}`,
-        primary: "#f37021",
-        secondary: "#008a45",
-      });
-
-      allPagesHtml.push(...pages);
-    }
-    await printHtml(allPagesHtml.join(""), {
-      title: `HBL_${data.consignment_number}`,
-      pageMargin: "0",
-      extraCss: `
-    ${maerskCss("#f37021", "#008a45")}
-    .mk-page { height: 1122px; min-height: 0; page-break-after: always; break-after: page; }
-    .mk-page:last-child { page-break-after: auto; break-after: auto; }
-  `,
+      title: `consignment-note-${data.consignment_number}`,
     });
   };
 
@@ -3733,7 +3269,7 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
 </div>`;
 
     await printHtml(tempElement.innerHTML, {
-      title: `Manifest_${data.consignment_number}_ContainerWise`,
+      title: `manifest${groupBySubcategory ? "-subcategory" : ""}-${data.consignment_number}`,
     });
   };
 
@@ -4420,7 +3956,7 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     `;
 
     await printHtml(tempElement.innerHTML, {
-      title: `Manifest_${data.consignment_number}_Containers`,
+      title: `container-orders-${data.consignment_number}`,
     });
   };
   const isDark = theme.palette.mode === "dark";
@@ -4524,7 +4060,19 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       run: async () => {
         setHblOrderId("");
         setHblItemId("all");
+        setHblCompanyId("");
         setHblModalOpen(true);
+      },
+    },
+    {
+      icon: "📄",
+      title: "MBL (Master Bill of Lading)",
+      text: "Master bill of lading for the whole consignment, with all containers and cargo.",
+      label: "Print",
+      run: async () => {
+        setMblCompanyId("");
+        setMblVariant("original");
+        setMblModalOpen(true);
       },
     },
     {
@@ -4608,19 +4156,22 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     })),
   );
 
-  const lastSyncedAt = (() => {
-    const times = [...allInvoices, ...allBills]
-      .map((d) => d.synced_at)
-      .filter(Boolean)
-      .map((d) => new Date(d).getTime())
-      .filter(Number.isFinite);
-    return times.length ? new Date(Math.max(...times)) : null;
+  const lastSync = (() => {
+    let best = null;
+    [...allInvoices, ...allBills].forEach((d) => {
+      if (!d.synced_at) return;
+      const t = new Date(d.synced_at).getTime();
+      if (Number.isFinite(t) && (!best || t > best.at.getTime())) {
+        best = { at: new Date(t), by: d.synced_by };
+      }
+    });
+    return best;
   })();
 
   const financeTable = (docs, partyLabel, partyKey, kind) => {
     const groups = Object.values(
       docs.reduce((m, d) => {
-        const k = d.formNumber || "N/A";
+        const k = d.formNumber || values.consignment_number || "N/A";
         (m[k] ||= { key: k, docs: [] }).docs.push(d);
         return m;
       }, {}),
@@ -4666,12 +4217,15 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
               <TableCell align="right" sx={headCell}>
                 Total
               </TableCell>
+              <TableCell align="center" sx={headCell}>
+                Preview
+              </TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {groups.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} align="center" sx={{ py: 4 }}>
+                <TableCell colSpan={10} align="center" sx={{ py: 4 }}>
                   <Typography variant="body2" color="text.secondary">
                     No {kind.toLowerCase()}s found
                   </Typography>
@@ -4683,6 +4237,15 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                   const k = `f-${kind}-${g.key}`;
                   const open = expandedForms[k] ?? true;
                   const gl = g.docs.filter((d) => d.status !== "void");
+                  const paidCnt = gl.filter((d) => d.status === "paid").length;
+                  const currencies = [...new Set(gl.map((d) => d.currency))];
+                  const fcaTxt =
+                    currencies.length === 1 && currencies[0] !== "AED"
+                      ? fmtMoney(
+                          sumBy(gl, (d) => d.total),
+                          currencies[0],
+                        )
+                      : "-";
                   return [
                     <TableRow
                       key={k}
@@ -4709,7 +4272,7 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                           {g.key}
                         </Box>
                       </TableCell>
-                      <TableCell colSpan={4}>
+                      <TableCell>
                         <Chip
                           size="small"
                           label={`${g.docs.length} ${kind.toLowerCase()}${g.docs.length > 1 ? "s" : ""}`}
@@ -4720,7 +4283,35 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                           }}
                         />
                       </TableCell>
-                      <TableCell />
+                      <TableCell sx={{ fontWeight: 600 }}>
+                        {!open
+                          ? pickDate(
+                              gl.map((d) => d.date),
+                              "max",
+                            )
+                          : ""}
+                      </TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>
+                        {!open
+                          ? pickDate(
+                              gl.map((d) => d.dueDate),
+                              "min",
+                            )
+                          : ""}
+                      </TableCell>
+                      <TableCell>
+                        {!open && (
+                          <Chip
+                            label={`Paid (${paidCnt}/${gl.length})`}
+                            size="small"
+                            variant="outlined"
+                            color="success"
+                          />
+                        )}
+                      </TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700 }}>
+                        {!open ? fcaTxt : ""}
+                      </TableCell>
                       <TableCell align="right" sx={{ fontWeight: 700 }}>
                         {fmtMoney(sumBy(gl, docPaidAed), "AED")}
                       </TableCell>
@@ -4730,6 +4321,7 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                       <TableCell align="right" sx={{ fontWeight: 700 }}>
                         {fmtMoney(sumBy(gl, docTotalAed), "AED")}
                       </TableCell>
+                      <TableCell />
                     </TableRow>,
                     ...(open
                       ? g.docs.map((d) => (
@@ -4772,6 +4364,19 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                             <TableCell align="right" sx={{ fontWeight: 600 }}>
                               {fmtAed(d.totalAed)}
                             </TableCell>
+                            <TableCell align="center">
+                              <IconButton
+                                size="small"
+                                disabled={pdfLoadingId === d.id}
+                                onClick={() => openDocPdf(kind, d)}
+                              >
+                                {pdfLoadingId === d.id ? (
+                                  <CircularProgress size={18} />
+                                ) : (
+                                  <VisibilityIcon fontSize="small" />
+                                )}
+                              </IconButton>
+                            </TableCell>
                           </TableRow>
                         ))
                       : []),
@@ -4804,6 +4409,7 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                   >
                     {fmtMoney(grandTotal, "AED")}
                   </TableCell>
+                  <TableCell />
                 </TableRow>
               </>
             )}
@@ -4970,7 +4576,7 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
           gridTemplateColumns: {
             xs: "repeat(2, 1fr)",
             sm: "repeat(3, 1fr)",
-            lg: "repeat(6, 1fr)",
+            lg: "repeat(5, 1fr)",
           },
           gap: 1.5,
         }}
@@ -5000,7 +4606,7 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
           color="#7c3aed"
           icon={<CreditCardOutlinedIcon />}
           value={fmtMoney(billingTotals.paidOut, "AED")}
-          label="Total Paid"
+          label="Total Bills Paid"
           sub={`${payments} Payments`}
         />
         <FinStatCard
@@ -5010,23 +4616,52 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
           label="Net Profit"
           sub={`${marginTxt} Margin`}
         />
-        <FinStatCard
-          color="#e11d48"
-          icon={<PieChartOutlineIcon />}
-          value={marginTxt}
-          label="Profit Margin"
-          sub={`${fmtMoney(netProfit, "AED")} Profit`}
-        />
       </Box>
     );
   };
 
+  const buildHblOrders = (hblFilter) => {
+    const vesselName =
+      options.vesselOptions?.find((v) => v.value === String(values.vessel))
+        ?.label || "";
+    const consignment = {
+      consignment_number: values.consignment_number,
+      mbl_number: values.mbl_number,
+      vessel: vesselName,
+      voyage: values.voyage,
+      eform: values.eform,
+      eform_date: values.eform_date
+        ? dayjs(values.eform_date).format("YYYY-MM-DD")
+        : "",
+      seal_no: values.seal_no,
+    };
+    return orders
+      .filter((o) => !hblFilter?.orderId || o.id === hblFilter.orderId)
+      .map((o) => ({
+        ...o,
+        consignment,
+        sender_name: o.sender_name || o.sender?.name || "",
+        sender_address: o.sender_address || o.sender?.address || "",
+        place_of_loading: values.originName,
+        place_of_discharge: values.destinationName,
+        place_of_delivery: values.destinationName,
+        receivers: (o.receivers || [])
+          .map((r) => ({
+            ...r,
+            shippingdetails: (r.shippingdetails || []).filter(
+              (d) => !hblFilter?.itemId || d.id === hblFilter.itemId,
+            ),
+          }))
+          .filter((r) => r.shippingdetails.length > 0),
+      }))
+      .filter((o) => o.receivers.length > 0);
+  };
+
   const printHbl = (all = false) =>
     runAction(all ? "hbl-all" : "hbl-one", async () => {
-      await generateshipmentsAndOrdersPDFWithCanvas(
-        values,
-        orders,
-        includedOrders,
+      const company = (companies || []).find((c) => c.id === hblCompanyId);
+      if (!company) return;
+      const hblOrders = buildHblOrders(
         all
           ? null
           : {
@@ -5034,8 +4669,37 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
               itemId: hblItemId === "all" ? null : hblItemId,
             },
       );
+      if (!hblOrders.length) {
+        toast.warning("No items found for the selected order/item.");
+        return;
+      }
+      await printHtml(
+        buildHblPages(hblOrders, company, (x) => x || "N/A").join(""),
+        {
+          title: all
+            ? `HBL-${values.consignment_number}`
+            : `HBL-${hblOrders[0].rgl_booking_number || hblOrders[0].id}`,
+          pageMargin: "0",
+          extraCss: hblCss(company),
+        },
+      );
       logPrint("HBL (Shipments & Orders)");
       setHblModalOpen(false);
+    });
+
+  const printMbl = () =>
+    runAction("mbl", async () => {
+      const company = (companies || []).find((c) => c.id === mblCompanyId);
+      const { data } = await api.get(
+        `/api/orders/consignment-mbl/${effectiveConsignmentId}`,
+      );
+      await printHtml(buildMblPages(data, company, mblVariant).join(""), {
+        title: `MBL-${values.consignment_number}`,
+        pageMargin: "0",
+        extraCss: mblCss(company),
+      });
+      logPrint("MBL");
+      setMblModalOpen(false);
     });
 
   const statusColors = getStatusColors(values.status);
@@ -6087,8 +5751,10 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                               color="text.secondary"
                             >
                               Last synced:{" "}
-                              {lastSyncedAt
-                                ? dayjs(lastSyncedAt).format("MMM DD, YYYY")
+                              {lastSync
+                                ? `${dayjs(lastSync.at).format("MMM DD, YYYY hh:mm A")}${
+                                    lastSync.by ? ` by ${lastSync.by}` : ""
+                                  }`
                                 : "N/A"}
                             </Typography>
                           </Box>
@@ -6442,6 +6108,21 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                 <DialogContent>
                   <Stack spacing={2} sx={{ mt: 1 }}>
                     <FormControl fullWidth>
+                      <InputLabel id="hbl-company-label">Company</InputLabel>
+                      <Select
+                        labelId="hbl-company-label"
+                        label="Company"
+                        value={hblCompanyId}
+                        onChange={(e) => setHblCompanyId(e.target.value)}
+                      >
+                        {(companies || []).map((c) => (
+                          <MenuItem key={c.id} value={c.id}>
+                            {c.company}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    <FormControl fullWidth>
                       <InputLabel id="hbl-order-label">
                         Order Form Number
                       </InputLabel>
@@ -6490,7 +6171,7 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                   <LoadingBtn
                     variant="outlined"
                     onClick={() => printHbl(true)}
-                    disabled={!!busyAction}
+                    disabled={!hblCompanyId || !!busyAction}
                     loading={busyAction === "hbl-all"}
                     sx={outlineBtn}
                   >
@@ -6499,8 +6180,70 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                   <LoadingBtn
                     variant="contained"
                     onClick={() => printHbl(false)}
-                    disabled={!hblOrderId || !!busyAction}
+                    disabled={!hblCompanyId || !hblOrderId || !!busyAction}
                     loading={busyAction === "hbl-one"}
+                    sx={{
+                      backgroundColor: orange,
+                      "&:hover": { backgroundColor: "#e65100" },
+                    }}
+                  >
+                    Print
+                  </LoadingBtn>
+                </DialogActions>
+              </Dialog>
+              <Dialog
+                open={mblModalOpen}
+                onClose={() => !busyAction && setMblModalOpen(false)}
+                maxWidth="xs"
+                fullWidth
+              >
+                <DialogTitle>Print MBL</DialogTitle>
+                <DialogContent>
+                  <Stack spacing={2} sx={{ mt: 1 }}>
+                    <FormControl fullWidth>
+                      <InputLabel id="mbl-company-label">Company</InputLabel>
+                      <Select
+                        labelId="mbl-company-label"
+                        label="Company"
+                        value={mblCompanyId}
+                        onChange={(e) => setMblCompanyId(e.target.value)}
+                      >
+                        {(companies || []).map((c) => (
+                          <MenuItem key={c.id} value={c.id}>
+                            {c.company}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    <FormControl fullWidth>
+                      <InputLabel id="mbl-variant-label">Variant</InputLabel>
+                      <Select
+                        labelId="mbl-variant-label"
+                        label="Variant"
+                        value={mblVariant}
+                        onChange={(e) => setMblVariant(e.target.value)}
+                      >
+                        <MenuItem value="original">Original</MenuItem>
+                        <MenuItem value="copy">Copy</MenuItem>
+                        <MenuItem value="certified">
+                          Certified True Copy
+                        </MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Stack>
+                </DialogContent>
+                <DialogActions>
+                  <Button
+                    onClick={() => setMblModalOpen(false)}
+                    disabled={!!busyAction}
+                  >
+                    Cancel
+                  </Button>
+                  <LoadingBtn
+                    variant="contained"
+                    onClick={printMbl}
+                    disabled={!mblCompanyId || !!busyAction}
+                    loading={busyAction === "mbl"}
                     sx={{
                       backgroundColor: orange,
                       "&:hover": { backgroundColor: "#e65100" },

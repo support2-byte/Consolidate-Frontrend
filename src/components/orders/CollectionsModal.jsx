@@ -19,6 +19,7 @@ import {
   Grid,
   Chip,
   Divider,
+  Tooltip,
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import CloseIcon from "@mui/icons-material/Close";
@@ -149,6 +150,16 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
   if (!order) return null;
 
   const receivers = order.receivers || [];
+
+  const allItems = receivers.flatMap((r) => r.shippingdetails || []);
+  const orderTotalQty = allItems.reduce(
+    (s, i) => s + (Number(i.totalNumber) || 0),
+    0,
+  );
+  const orderTotalWeight = allItems.reduce(
+    (s, i) => s + (Number(i.weight) || 0),
+    0,
+  );
 
   const handleCheckPayment = async () => {
     setCheckingPayment(true);
@@ -472,42 +483,63 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
             borderRadius: 2,
             p: 2,
             mb: 3,
+            display: "grid",
+            gap: 2,
+            gridTemplateColumns: {
+              xs: "repeat(2, 1fr)",
+              md: "repeat(3, 1fr)",
+              lg: "repeat(6, 1fr)",
+            },
           }}
         >
-          <Grid container spacing={2}>
-            <Grid size={{ xs: 6, sm: 2 }}>
+          {[
+            ["Order Booking Ref", order.booking_ref || "—"],
+            ["Form Number", order.rgl_booking_number || "—"],
+            ["Place of Loading", getPlaceName(order.place_of_loading) || "—"],
+            ["Place of Delivery", getPlaceName(order.place_of_delivery) || "—"],
+          ].map(([label, value]) => (
+            <Box key={label} sx={{ minWidth: 0 }}>
               <Typography variant="caption" color="text.secondary">
-                Order Booking Ref
+                {label}
               </Typography>
-              <Typography variant="body2" fontWeight="bold">
-                {order.booking_ref || "—"}
+              <Typography
+                variant="body2"
+                fontWeight="bold"
+                sx={{ wordBreak: "break-word" }}
+              >
+                {value}
               </Typography>
-            </Grid>
-            <Grid size={{ xs: 6, sm: 2 }}>
+            </Box>
+          ))}
+
+          {[
+            ["Total Qty", orderTotalQty.toLocaleString()],
+            [
+              "Total Weight",
+              `${orderTotalWeight.toLocaleString(undefined, {
+                maximumFractionDigits: 2,
+              })} kg`,
+            ],
+          ].map(([label, value]) => (
+            <Box
+              key={label}
+              sx={{
+                minWidth: 0,
+                px: 1.5,
+                py: 0.75,
+                borderRadius: 1.5,
+                bgcolor: "#fff",
+                border: "1px solid #fbd9ae",
+              }}
+            >
               <Typography variant="caption" color="text.secondary">
-                Form Number
+                {label}
               </Typography>
-              <Typography variant="body2" fontWeight="bold">
-                {order.rgl_booking_number || "—"}
+              <Typography variant="body2" fontWeight="bold" color="#d96f10">
+                {value}
               </Typography>
-            </Grid>
-            <Grid size={{ xs: 6, sm: 4 }}>
-              <Typography variant="caption" color="text.secondary">
-                Place of Loading
-              </Typography>
-              <Typography variant="body2" fontWeight="bold">
-                {getPlaceName(order.place_of_loading) || "—"}
-              </Typography>
-            </Grid>
-            <Grid size={{ xs: 6, sm: 4 }}>
-              <Typography variant="caption" color="text.secondary">
-                Place of Delivery
-              </Typography>
-              <Typography variant="body2" fontWeight="bold">
-                {getPlaceName(order.place_of_delivery) || "—"}
-              </Typography>
-            </Grid>
-          </Grid>
+            </Box>
+          ))}
         </Box>
 
         <Stack direction="row" alignItems="center" spacing={2} mb={3}>
@@ -790,6 +822,35 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
                   </Grid>
                 </Grid>
 
+                {c.receiverId && isApproved(c.receiverId) && (
+                  <Box
+                    sx={{
+                      mb: 1,
+                      px: 1.5,
+                      py: 1,
+                      borderRadius: 1.5,
+                      bgcolor: "#fff4e8",
+                      border: "1px dashed #f3c088",
+                    }}
+                  >
+                    <Typography
+                      variant="caption"
+                      sx={{ fontWeight: 700, color: "#d96f10" }}
+                    >
+                      Release approved without payment
+                    </Typography>
+                    <Typography variant="body2">
+                      By{" "}
+                      <strong>
+                        {approvals[c.receiverId]?.approvedByEmail ||
+                          "Unknown user"}
+                      </strong>
+                      {approvals[c.receiverId]?.approvedAt &&
+                        ` on ${new Date(approvals[c.receiverId].approvedAt).toLocaleString()}`}
+                    </Typography>
+                  </Box>
+                )}
+
                 <Grid container spacing={2} my={2}>
                   <Grid size={{ xs: 12, sm: 3 }}>
                     <FormControl fullWidth size="small">
@@ -925,7 +986,7 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
                     >
                       {[
                         "",
-                        "Item Ref",
+                        "Item",
                         "Delivered Date",
                         "Overstayed",
                         "Total Qty",
@@ -1007,9 +1068,17 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
                               "&.Mui-checked": { color: "#f58220" },
                             }}
                           />
-                          <Typography variant="body2" fontWeight={600}>
-                            {item.itemRef}
-                          </Typography>
+                          <Tooltip title={item.itemRef}>
+                            <Typography
+                              variant="body2"
+                              fontWeight={600}
+                              sx={{ wordBreak: "break-word" }}
+                            >
+                              {[item.category, item.subcategory]
+                                .filter(Boolean)
+                                .join(" › ") || "Unnamed item"}
+                            </Typography>
+                          </Tooltip>
                           <Typography variant="body2">
                             {item.status === "Shipment Delivered"
                               ? fmtShortDate(item.eta)

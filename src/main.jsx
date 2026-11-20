@@ -21,7 +21,6 @@ import ContainerForm from "./pages/Containers/AddContainer";
 import ContainerReleases from "./pages/Containers/ContainerReleases";
 import NotificationSettings from "./pages/SystemData/NotificationSetting";
 import Vendors from "./pages/Vendors/Vendors";
-import Orders from "./pages/Orders/Orders";
 import Consignments from "./pages/Consignments/Consignments";
 import AddConsignment from "./pages/Consignments/AddConsignment";
 import CustomerAdd from "./pages/Customers/AddCustomer";
@@ -61,6 +60,7 @@ import ZohoInvoicesPage from "./pages/ZohoInvoicesPage";
 import ETAMonitoringPage from "./pages/ETAMonitoringPage";
 import AdminNotificationsPage from "./pages/AdminNotificationsPage";
 import ViewConsignmentPage from "./pages/Consignments/ViewConsignment";
+import OrdersList from "./pages/Orders/Orders";
 
 const router = createBrowserRouter([
   { path: "/login", element: <Login /> },
@@ -152,7 +152,7 @@ const router = createBrowserRouter([
         path: "orders",
         element: (
           <ProtectedRoute permission={{ module: "orders", action: "view" }}>
-            <Orders />
+            <OrdersList />
           </ProtectedRoute>
         ),
       },

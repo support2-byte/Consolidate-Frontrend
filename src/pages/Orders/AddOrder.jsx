@@ -154,8 +154,18 @@ const CustomSelect = ({
   </FormControl>
 );
 
+const types = ["Package", "Box", "Bags"];
+
 const OrderForm = () => {
-  const { places, customers, statuses: rawStatuses } = useContext(AppContext);
+  const {
+    places,
+    customers,
+    statuses: rawStatuses,
+    thirdParties,
+    categories: rawCategories,
+    subCategories: rawSubCategories,
+    ensure,
+  } = useContext(AppContext);
   const { isLoading, setIsLoading } = useLoading();
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewSrc, setPreviewSrc] = useState("");
@@ -167,19 +177,37 @@ const OrderForm = () => {
   const [expanded, setExpanded] = useState(new Set(["panel1"]));
   const [containers, setContainers] = useState([]);
   const [loadingContainers, setLoadingContainers] = useState(false);
-  const [categories, setCategories] = useState([]);
-  const [categorySubMap, setCategorySubMap] = useState({});
-  const [types, setTypes] = useState([]);
-  const [filterPlaces, setFilterPlaces] = useState([]);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [previewSd, setPreviewSd] = useState({});
-  const [companies, setCompanies] = useState([]);
   const orderId = location.state?.orderId;
   const [isEditMode, setIsEditMode] = useState(!!orderId);
   const containerOptions = location.state?.containers || [];
 
   const [searchTerm, setSearchTerm] = useState("");
   const [searchTerm3, setSearchTerm3] = useState("");
+
+  const filterPlaces = useMemo(
+    () => places.map((p) => ({ value: p.id.toString(), label: p.name })),
+    [places],
+  );
+  const companies = useMemo(
+    () =>
+      thirdParties.map((c) => ({
+        value: c.id.toString(),
+        label: c.company_name,
+      })),
+    [thirdParties],
+  );
+  const { categories, categorySubMap } = useMemo(() => {
+    const active = rawCategories.filter((c) => c.status !== false);
+    const map = {};
+    active.forEach((cat) => {
+      map[cat.name] = rawSubCategories
+        .filter((s) => s.category_id === cat.id && s.status === true)
+        .map((s) => s.name);
+    });
+    return { categories: active.map((c) => c.name), categorySubMap: map };
+  }, [rawCategories, rawSubCategories]);
 
   const options2 = useMemo(() => {
     if (!searchTerm) return customers;
@@ -761,12 +789,16 @@ const OrderForm = () => {
   };
 
   useEffect(() => {
-    fetchOptions();
+    ensure(["categories", "subCategories"]);
+  }, [ensure]);
+
+  useEffect(() => {
     fetchContainers();
-    if (orderId) {
-      fetchOrder(orderId);
-    }
-  }, [orderId, places]);
+  }, []);
+
+  useEffect(() => {
+    if (orderId) fetchOrder(orderId);
+  }, [orderId]);
 
   useEffect(() => {
     if (Object.keys(errors).length > 0) {
@@ -1143,22 +1175,24 @@ const OrderForm = () => {
       ],
     }));
   };
-  const removeReceiver = async (order) => {
-    try {
-      const response = await api.delete(
-        `/api/orders/${orderId}/receivers/${order.id}`,
-      );
-
+  const removeReceiver = async (rec) => {
+    if (!rec.id || !orderId) {
       setFormData((prev) => ({
         ...prev,
-        receivers: response.data.receivers,
+        receivers: prev.receivers.filter((r) => r !== rec),
       }));
+      return;
+    }
+    try {
+      await api.delete(`/api/orders/${orderId}/receivers/${rec.id}`);
+      await fetchOrder(orderId);
       toast.success("Receiver removed successfully");
     } catch (err) {
       console.error(
-        "[handleRemoveReceiver] Error:",
+        "[removeReceiver] Error:",
         err.response?.data || err.message,
       );
+      toast.error(err.response?.data?.error || "Failed to remove receiver");
     }
   };
 
@@ -1657,18 +1691,18 @@ const OrderForm = () => {
 
   const duplicateReceiver = (index) => {
     setFormData((prev) => ({
-      ...prev,
-      receivers: [
-        ...prev.receivers.slice(0, index + 1),
-        {
-          ...prev.receivers[index],
-          shippingDetails: prev.receivers[index].shippingDetails.map((sd) => ({
-            ...sd,
-          })),
-          isNew: true,
-        },
-        ...prev.receivers.slice(index + 1),
-      ],
+      ...prev.receivers[index],
+      id: undefined,
+      trackingId: undefined,
+      shippingDetails: prev.receivers[index].shippingDetails.map((sd) => ({
+        ...sd,
+        id: undefined,
+        itemRef: undefined,
+        item_ref: undefined,
+        trackingId: undefined,
+        containerDetails: [],
+      })),
+      isNew: true,
     }));
   };
   const handleReceiverChange = (index, field) => (e) => {
