@@ -46,9 +46,9 @@ export const mblCss = (company) => {
   .mk-dcol.mk-last { border-right: none; }
   .mk-dtext { text-transform: none; }
   .mk-crow { margin-top: 8px; font-size: 11px; font-weight: bold; }
-  .mk-tbl-head, .mk-line { display: grid; grid-template-columns: 1.3fr 2fr .9fr 1.1fr; gap: 8px; padding: 2px 0 2px 10px; }
+  .mk-tbl-head, .mk-line { display: grid; grid-template-columns: 1.2fr 1.2fr 1.8fr .9fr 1.1fr; gap: 8px; padding: 2px 0 2px 10px; }
   .mk-tbl-head > span, .mk-line > span { min-width: 0; word-break: break-word; }
-  .mk-tbl-head > span:nth-child(n+3), .mk-line > span:nth-child(n+3) { text-align: right; }
+  .mk-tbl-head > span:nth-child(n+4), .mk-line > span:nth-child(n+4) { text-align: right; }
   .mk-tbl-head { font-size: 8.5px; color: #555; font-weight: normal; margin-top: 3px; }
   .mk-line { font-size: 10.5px; font-weight: normal; }
   .mk-cont { margin-top: 10px; font-size: 10px; color: ${secondary}; font-weight: bold; }
@@ -107,7 +107,7 @@ export const buildMblPages = (data, company, variant = "original") => {
         ? `<div class="mk-wm" style="font-size:52px;">CERTIFIED<br>TRUE COPY</div>`
         : "";
 
-  const tblHead = `<div class="mk-tbl-head"><span>Form No.</span><span>Category</span><span>QTY</span><span>Weight</span></div>`;
+  const tblHead = `<div class="mk-tbl-head"><span>Form No.</span><span>Marks &amp; Nos.</span><span>Category</span><span>QTY</span><span>Weight</span></div>`;
 
   const rows = [];
   containers.forEach((ct) => {
@@ -117,10 +117,11 @@ export const buildMblPages = (data, company, variant = "original") => {
     );
     const merged = {};
     ct.items.forEach((i) => {
-      const key = `${i.order_no || ""}||${catName(i)}`;
+      const key = `${i.order_no || ""}||${i.marks || ""}||${catName(i)}`;
       if (!merged[key])
         merged[key] = {
           order_no: i.order_no,
+          marks: i.marks || "",
           category: catName(i),
           type: i.type,
           pkgs: 0,
@@ -131,7 +132,7 @@ export const buildMblPages = (data, company, variant = "original") => {
     });
     Object.values(merged).forEach((m) => {
       rows.push(
-        `<div class="mk-line"><span>${esc(m.order_no)}</span><span>${esc(m.category)}</span><span>${m.pkgs} ${esc(m.type)}</span><span>${m.weight.toFixed(3)} KGS</span></div>`,
+        `<div class="mk-line"><span>${esc(m.order_no)}</span><span>${nl(m.marks)}</span><span>${esc(m.category)}</span><span>${m.pkgs} ${esc(m.type)}</span><span>${m.weight.toFixed(3)} KGS</span></div>`,
       );
     });
   });
@@ -429,6 +430,11 @@ export const RickmersBillOfLading = (orderData) => {
         ),
       ),
     ].join(", ");
+    const marks = [
+      ...new Set(
+        cts.flatMap((ct) => ct.items.map((i) => i.marks).filter(Boolean)),
+      ),
+    ].join(", ");
     const voyage = c.voyage
       ? /^v/i.test(c.voyage)
         ? c.voyage
@@ -520,7 +526,7 @@ export const RickmersBillOfLading = (orderData) => {
         </tr>
         ${rows}
         <tr>
-          <td>NO MARKS</td>
+          <td>${marks ? up(marks) : "NO MARKS"}</td>
           <td>${totals.pkgs}<br>PKGS</td>
           <td></td>
           <td class="desc-cell">${up(goods)}<br><br>14 COMBINED FREE DAYS AT DESTINATION</td>

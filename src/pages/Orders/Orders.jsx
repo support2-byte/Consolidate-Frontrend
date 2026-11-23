@@ -5190,7 +5190,8 @@ const OrdersList = () => {
       year: "numeric",
     });
 
-    const marksAndNo = receiver?.receiver_marks_and_number || "N/A";
+    const marksAndNo =
+      receiver?.receiver_marks_and_number || receiver?.marksAndNumber || "N/A";
 
     const itemRows = shippingDetails.length
       ? shippingDetails

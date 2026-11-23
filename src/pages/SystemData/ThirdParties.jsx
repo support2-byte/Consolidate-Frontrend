@@ -1,4 +1,4 @@
-import React, { useState, useContext } from "react";
+import React, { useState, useContext, useMemo } from "react";
 import {
   Box,
   Typography,
@@ -23,18 +23,26 @@ import {
   CircularProgress,
   Chip,
   Tooltip,
+  InputAdornment,
+  MenuItem,
 } from "@mui/material";
 import { api } from "../../api";
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
-import DeleteIcon from "@mui/icons-material/Delete";
+import BlockIcon from "@mui/icons-material/Block";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import IconButton from "@mui/material/IconButton";
+import SearchIcon from "@mui/icons-material/Search";
 import { AppContext } from "../../context/AppContext";
 import { toast } from "react-toastify";
 
 const ThirdParties = () => {
-  const { thirdParties, thirdPartiesLoading, fetchThirdParties } =
-    useContext(AppContext);
+  const {
+    thirdParties,
+    thirdPartiesLoading,
+    fetchThirdParties,
+    setThirdParties,
+  } = useContext(AppContext);
 
   const [openDialog, setOpenDialog] = useState(false);
   const [editMode, setEditMode] = useState(false);
@@ -50,6 +58,32 @@ const ThirdParties = () => {
 
   const [dialogLoading, setDialogLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  const [searchTerm, setSearchTerm] = useState("");
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("active");
+
+  const isActive = (p) => p.is_active !== false;
+
+  const filteredParties = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    return (thirdParties || []).filter((p) => {
+      const matchesType = typeFilter === "all" || p.type === typeFilter;
+      const matchesStatus =
+        statusFilter === "all" ||
+        (statusFilter === "active" ? isActive(p) : !isActive(p));
+      const matchesSearch =
+        !q ||
+        [
+          p.company_name,
+          p.contact_name,
+          p.contact_email,
+          p.contact_phone,
+          p.address,
+        ].some((v) => (v || "").toLowerCase().includes(q));
+      return matchesType && matchesStatus && matchesSearch;
+    });
+  }, [thirdParties, searchTerm, typeFilter, statusFilter]);
 
   const validateForm = () => {
     if (!formData.company_name.trim()) {
@@ -139,7 +173,7 @@ const ThirdParties = () => {
         throw new Error(errorData.error || "Failed to save third party");
       }
 
-      await fetchThirdParties();
+      await fetchThirdParties({ silent: true });
       handleCloseDialog();
       toast.success(
         editMode
@@ -148,32 +182,47 @@ const ThirdParties = () => {
       );
     } catch (err) {
       console.error("Error saving third party:", err);
-      toast.error(err.message || "Failed to save third party.");
+      toast.error(
+        err.response?.data?.message ||
+          err.message ||
+          "Failed to save third party.",
+      );
     } finally {
       setDialogLoading(false);
     }
   };
 
-  const handleDelete = async (id) => {
+  const handleToggleActive = async (party) => {
+    const activate = !isActive(party);
     if (
       !window.confirm(
-        "Are you sure you want to delete this third party? This action cannot be undone.",
+        activate
+          ? `Activate "${party.company_name}"?`
+          : `Deactivate "${party.company_name}"? It will no longer be selectable in new records.`,
       )
     ) {
       return;
     }
     try {
-      const response = await api.delete(`api/options/thirdParty/${id}`);
-      if (response.status >= 400) {
-        const errorData = response.data;
-        throw new Error(errorData.error || "Failed to delete third party");
-      }
-
-      await fetchThirdParties();
-      toast.success("Third party deleted successfully!");
+      const res = await api.patch(`api/options/thirdParty/${party.id}/status`, {
+        is_active: activate,
+      });
+      const updated = res.data.third_party;
+      setThirdParties((prev) =>
+        prev.map((p) => (p.id === updated.id ? updated : p)),
+      );
+      toast.success(
+        activate
+          ? "Third party activated successfully!"
+          : "Third party deactivated successfully!",
+      );
     } catch (err) {
-      console.error("Error deleting third party:", err);
-      toast.error(err.message || "Failed to delete third party.");
+      console.error("Error updating status:", err);
+      toast.error(
+        err.response?.data?.message ||
+          err.message ||
+          "Failed to update status.",
+      );
     }
   };
 
@@ -239,6 +288,48 @@ const ThirdParties = () => {
         </Button>
       </Box>
 
+      <Box sx={{ display: "flex", gap: 2, mb: 2, flexWrap: "wrap" }}>
+        <TextField
+          size="small"
+          placeholder="Search company, contact, email, phone, address..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          sx={{ minWidth: 320, flex: 1 }}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon />
+              </InputAdornment>
+            ),
+          }}
+        />
+        <TextField
+          select
+          size="small"
+          label="Type"
+          value={typeFilter}
+          onChange={(e) => setTypeFilter(e.target.value)}
+          sx={{ minWidth: 200 }}
+        >
+          <MenuItem value="all">All Types</MenuItem>
+          <MenuItem value="shipper">Shipper</MenuItem>
+          <MenuItem value="consignee">Consignee</MenuItem>
+          <MenuItem value="transport_company">Transport Company</MenuItem>
+        </TextField>
+        <TextField
+          select
+          size="small"
+          label="Status"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          sx={{ minWidth: 160 }}
+        >
+          <MenuItem value="active">Active</MenuItem>
+          <MenuItem value="inactive">Inactive</MenuItem>
+          <MenuItem value="all">All</MenuItem>
+        </TextField>
+      </Box>
+
       <Paper sx={{ p: 2, overflowX: "auto", position: "relative" }}>
         {thirdPartiesLoading && (
           <Box
@@ -285,73 +376,104 @@ const ThirdParties = () => {
                 <strong>Type</strong>
               </TableCell>
               <TableCell sx={{ background: "#0d6c6a", color: "#fff" }}>
+                <strong>Status</strong>
+              </TableCell>
+              <TableCell sx={{ background: "#0d6c6a", color: "#fff" }}>
                 <strong>Actions</strong>
               </TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {thirdParties.length === 0 && !thirdPartiesLoading
-              ? renderEmptyState()
-              : thirdParties.map((party) => (
-                  <TableRow
-                    key={party.id}
-                    hover
-                    sx={{ "&:last-child td, &:last-child th": { border: 0 } }}
-                  >
-                    <TableCell>{party.id}</TableCell>
-                    <TableCell>
-                      <Typography variant="body1" fontWeight="medium">
-                        {party.company_name}
+            {filteredParties.length === 0 && !thirdPartiesLoading ? (
+              <TableRow>
+                <TableCell colSpan={8}>
+                  {thirdParties.length === 0 ? (
+                    renderEmptyState()
+                  ) : (
+                    <Typography
+                      align="center"
+                      color="textSecondary"
+                      sx={{ py: 3 }}
+                    >
+                      No results match your search/filter.
+                    </Typography>
+                  )}
+                </TableCell>
+              </TableRow>
+            ) : (
+              filteredParties.map((party) => (
+                <TableRow
+                  key={party.id}
+                  hover
+                  sx={{
+                    "&:last-child td, &:last-child th": { border: 0 },
+                    opacity: isActive(party) ? 1 : 0.55,
+                  }}
+                >
+                  <TableCell>{party.id}</TableCell>
+                  <TableCell>
+                    <Typography variant="body1" fontWeight="medium">
+                      {party.company_name}
+                    </Typography>
+                  </TableCell>
+                  <TableCell>{party.contact_name || "N/A"}</TableCell>
+                  <TableCell>{party.contact_email || "N/A"}</TableCell>
+                  <TableCell>{party.contact_phone || "N/A"}</TableCell>
+                  <TableCell sx={{ maxWidth: 200 }}>
+                    <Tooltip title={party.address || "N/A"}>
+                      <Typography variant="body2" noWrap>
+                        {party.address || "N/A"}
                       </Typography>
-                    </TableCell>
-                    <TableCell>{party.contact_name || "N/A"}</TableCell>
-                    <TableCell>{party.contact_email || "N/A"}</TableCell>
-                    <TableCell>{party.contact_phone || "N/A"}</TableCell>
-                    <TableCell sx={{ maxWidth: 200 }}>
-                      <Tooltip title={party.address || "N/A"}>
-                        <Typography variant="body2" noWrap>
-                          {party.address || "N/A"}
-                        </Typography>
-                      </Tooltip>
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={getTypeLabel(party.type)}
+                    </Tooltip>
+                  </TableCell>
+                  <TableCell>
+                    <Chip
+                      label={getTypeLabel(party.type)}
+                      size="small"
+                      color={
+                        party.type === "transport_company"
+                          ? "secondary"
+                          : "primary"
+                      }
+                      variant={party.type === "" ? "outlined" : "filled"}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Chip
+                      label={isActive(party) ? "Active" : "Inactive"}
+                      size="small"
+                      color={isActive(party) ? "success" : "default"}
+                      variant={isActive(party) ? "filled" : "outlined"}
+                    />
+                  </TableCell>
+                  <TableCell sx={{ whiteSpace: "nowrap" }}>
+                    <Tooltip title="Edit Third Party">
+                      <IconButton
                         size="small"
-                        color={
-                          party.type === "transport_company"
-                            ? "secondary"
-                            : "primary"
-                        }
-                        variant={party.type === "" ? "outlined" : "filled"}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Tooltip title="Edit Third Party">
-                        <IconButton
-                          size="small"
-                          onClick={() => handleOpenDialog(party)}
-                        >
-                          <EditIcon />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Delete Third Party">
-                        <IconButton
-                          size="small"
-                          color="error"
-                          onClick={() => handleDelete(party.id)}
-                        >
-                          <DeleteIcon />
-                        </IconButton>
-                      </Tooltip>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                        onClick={() => handleOpenDialog(party)}
+                      >
+                        <EditIcon />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip
+                      title={isActive(party) ? "Deactivate" : "Activate"}
+                    >
+                      <IconButton
+                        size="small"
+                        color={isActive(party) ? "error" : "success"}
+                        onClick={() => handleToggleActive(party)}
+                      >
+                        {isActive(party) ? <BlockIcon /> : <CheckCircleIcon />}
+                      </IconButton>
+                    </Tooltip>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
           </TableBody>
         </Table>
       </Paper>
 
-      {/* Dialog for Add/Edit */}
       <Dialog
         open={openDialog}
         onClose={handleCloseDialog}

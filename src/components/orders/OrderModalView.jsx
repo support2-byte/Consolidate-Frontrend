@@ -2384,13 +2384,6 @@ const OrderModalView = ({
               label="Net Profit"
               sub={`${margin} Margin`}
             />
-            <FinStatCard
-              color="#e11d48"
-              icon={<PieChartOutlineIcon />}
-              value={margin}
-              label="Profit Margin"
-              sub={`${fmtMoney(billing.expectedProfit, "AED")} Profit`}
-            />
           </Box>
         )}
 

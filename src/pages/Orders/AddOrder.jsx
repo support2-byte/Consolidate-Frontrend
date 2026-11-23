@@ -161,6 +161,7 @@ const OrderForm = () => {
     places,
     customers,
     statuses: rawStatuses,
+    activeThirdParties,
     thirdParties,
     categories: rawCategories,
     subCategories: rawSubCategories,
@@ -190,14 +191,7 @@ const OrderForm = () => {
     () => places.map((p) => ({ value: p.id.toString(), label: p.name })),
     [places],
   );
-  const companies = useMemo(
-    () =>
-      thirdParties.map((c) => ({
-        value: c.id.toString(),
-        label: c.company_name,
-      })),
-    [thirdParties],
-  );
+
   const { categories, categorySubMap } = useMemo(() => {
     const active = rawCategories.filter((c) => c.status !== false);
     const map = {};
@@ -369,6 +363,26 @@ const OrderForm = () => {
     dropOffDetails: {},
     sendEmailNotification: true,
   });
+
+  const companies = useMemo(() => {
+    const list = activeThirdParties.map((c) => ({
+      value: c.id.toString(),
+      label: c.company_name,
+    }));
+    const selected = formData.thirdPartyTransport;
+    if (selected && !list.some((c) => c.value === String(selected))) {
+      const current = thirdParties.find(
+        (t) => String(t.id) === String(selected),
+      );
+      if (current) {
+        list.push({
+          value: current.id.toString(),
+          label: `${current.company_name} (Inactive)`,
+        });
+      }
+    }
+    return list;
+  }, [activeThirdParties, thirdParties, formData.thirdPartyTransport]);
 
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importForms, setImportForms] = useState([]);
@@ -724,68 +738,6 @@ const OrderForm = () => {
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
-  };
-
-  const fetchOptions = async () => {
-    if (!places || places.length === 0) return;
-    try {
-      setIsLoading(true);
-      const [companiesRes, categoriesRes, subcategoriesRes] = await Promise.all(
-        [
-          api.get("api/options/thirdParty/crud"),
-          api.get("api/options/categories/crud"),
-          api.get("api/options/subcategories/crud"),
-        ],
-      );
-
-      setFilterPlaces(
-        places.map((p) => ({ value: p.id.toString(), label: p.name })),
-      );
-      const thirdParties = companiesRes?.data?.third_parties || [];
-      setCompanies(
-        thirdParties.map((c) => ({
-          value: c.id.toString(),
-          label: c.company_name,
-        })),
-      );
-      const fetchedCategories = (categoriesRes?.data?.categories || []).filter(
-        (c) => c.status !== false,
-      );
-      setCategories(fetchedCategories.map((c) => c.name));
-
-      const fetchedSubcategories = subcategoriesRes?.data?.subCategories || [];
-
-      const subMap = {};
-      fetchedCategories.forEach((cat) => {
-        subMap[cat.name] = fetchedSubcategories
-          .filter((s) => s.category_id === cat.id && s.status === true)
-          .map((s) => s.name);
-      });
-      setCategorySubMap(subMap);
-      setTypes(["Package", "Box", "Bags"]);
-    } catch (error) {
-      console.error("Error fetching options:", error);
-      toast.error(
-        error.response?.data?.error ||
-          error.message ||
-          "Failed to fetch options",
-      );
-
-      setCategories(["Electronics", "Clothing", "Books"]);
-      setCategorySubMap({
-        Electronics: ["Smartphones", "Laptops", "Accessories"],
-        Clothing: ["Men's Wear", "Women's Wear", "Kids Wear"],
-        Books: ["Fiction", "Non-Fiction", "Technical"],
-      });
-      setTypes(["Package", "Box", "Bags"]);
-      setStatuses(["Created", "In Transit", "Delivered", "Cancelled"]);
-      setCompanies([
-        { value: "", label: "Select 3rd party company" },
-        { value: "Company A", label: "Company A" },
-      ]);
-    } finally {
-      setIsLoading(false);
-    }
   };
 
   useEffect(() => {
