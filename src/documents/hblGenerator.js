@@ -67,7 +67,7 @@ const fmtSize = (size, type) => {
   const t = String(type ?? "")
     .trim()
     .toUpperCase();
-  if (!s) return "40'HC";
+  if (!s) return "";
   if (/^\d+$/.test(s)) return `${s}'${t}`;
   return s;
 };
@@ -206,19 +206,32 @@ const collect = (orderData, company, getPlaceName, tpl) => {
       ];
     }
 
+    const bySize = {};
+    containers.forEach((c) => {
+      bySize[c.size || ""] = (bySize[c.size || ""] || 0) + 1;
+    });
+    const countLabel = Object.entries(bySize)
+      .map(([s, n]) => `${pad2(n)}${s ? `X${s}` : ""}`)
+      .join(" + ");
+
     return {
       consignee: {
         name: r.receiverName || r.receivername || r.receiver_name || "N/A",
         address:
           r.receiverAddress || r.receiveraddress || r.receiver_address || "",
       },
-      marks: r.marksandnumber || r.marksAndNumber || "",
+      marks:
+        r.receiver_marks_and_number ||
+        r.marksandnumber ||
+        r.marksAndNumber ||
+        r.receiverMarksAndNumber ||
+        "",
       containers,
       totalPkgs,
       totalWeight,
       unit: unitFor(types),
       goods: goods.join(", ") || "N/A",
-      countLabel: `${pad2(containers.length)}X${containers[0].size}`,
+      countLabel,
     };
   });
 
@@ -317,6 +330,7 @@ const CLASSIC_CSS = `
 .cl-cl span { position: absolute; top: 2px; white-space: nowrap; }
 .cl-body { position: absolute; top: 485px; left: 0; right: 0; height: 440px; }
 .cl-body .t { position: absolute; font-size: 11px; line-height: 1.3; text-transform: uppercase; }
+.cl-body .t.mk { font-size: 9.5px; line-height: 1.25; overflow-wrap: anywhere; word-break: break-word; }
 .cl-note { position: absolute; left: 65.5%; top: 182px; width: 25%; border: 2px solid #000; padding: 3px 5px; font-family: "Courier New", monospace; font-weight: bold; font-size: 7.4px; line-height: 1.45; }
 .cl-ct { position: absolute; left: 3%; top: 252px; width: 90%; }
 .cl-ct .r { display: grid; font-size: 11.5px; line-height: 1.4; }
@@ -430,7 +444,7 @@ const classicPage = (d, g) => {
   const body = `
   <div class="cl-body">
     ${!m && d.logo ? `<img class="cl-wm" src="${esc(d.logo)}" alt="">` : ""}
-    ${g.marks ? `<div class="t" style="left:1.5%;top:20px;width:15%">${esc(g.marks)}</div>` : ""}
+    ${g.marks ? `<div class="t mk" style="left:1%;top:20px;width:15%">${br(g.marks)}</div>` : ""}
     <div class="t" style="left:17.5%;top:${m ? 22 : 14}px;width:10%;text-align:center">${m ? `${g.totalPkgs}<br>PKGS` : `${g.totalPkgs}<br>${esc(g.unit)}`}</div>
     ${desc}
     <div class="t" style="left:79.5%;top:${m ? 22 : 14}px;width:18%">GROSS WT<br><b>${fmtWt(g.totalWeight)} KGS</b></div>
@@ -509,6 +523,7 @@ const CAS_CSS = `
 .cs-vl { top: 583px; height: 177px; width: 1px; background: #000; }
 .cs-body { position: absolute; top: 601px; left: 0; right: 0; height: 159px; border-bottom: 1px solid #000; }
 .cs-body .t { position: absolute; font-size: 11.5px; line-height: 1.35; text-transform: uppercase; }
+.cs-body .t.mk { font-size: 9.5px; line-height: 1.25; overflow-wrap: anywhere; word-break: break-word; }
 .cs-dv { position: absolute; top: 760px; left: 0; right: 0; height: 22px; font-size: 6.4px; font-weight: bold; text-align: center; line-height: 1.2; padding-top: 3px; }
 .cs-dv em { position: absolute; right: 0; top: 4px; font-style: normal; font-size: 5.4px; }
 .cs-ft { position: absolute; top: 782px; left: 0; width: 62%; height: 224px; border: 1px solid #000; }
@@ -583,7 +598,7 @@ const casPage = (d, g) => {
 
   const body = `
   <div class="cs-body">
-    ${g.marks ? `<div class="t" style="left:4%;top:14px">${esc(g.marks)}</div>` : ""}
+    ${g.marks ? `<div class="t mk" style="left:1%;top:14px;width:12%">${br(g.marks)}</div>` : ""}
     <div class="t" style="left:13.4%;width:9.4%;top:8px;text-align:center">${g.totalPkgs}<br>${esc(g.unit)}</div>
     <div class="t" style="left:24%;top:15px;width:44%"><b><u>${g.countLabel} ${d.loadType} CONTAINER SAID TO CONTAIN</u></b></div>
     <div class="t" style="left:24%;top:54px;width:44%">${esc(g.goods)}</div>
@@ -639,7 +654,7 @@ const RK_CSS = `
 .rk-pg small { display: block; font-size: 6.6px; font-weight: bold; }
 .rk-pg b { display: block; font-size: 12px; font-family: "Courier New", monospace; margin-top: 4px; }
 .rk-grid { position: absolute; top: 74px; left: 0; right: 0; height: 367px; border: 1px solid ${RK}; display: flex; }
-.rk-lc { width: 56.4%; border-right: 1px solid ${RK}; }
+.rk-lc { width: 56.4%; border-right: 1px solid ${RK}; display: flex; flex-direction: column; }
 .rk-rc { width: 43.6%; }
 .rk-r { display: flex; }
 .rk-f { position: relative; border-bottom: 1px solid ${RK}; padding: 3px 6px 2px; overflow: hidden; }
@@ -647,9 +662,10 @@ const RK_CSS = `
 .rk-l { display: block; font: 5.6px Arial, sans-serif; color: ${RK}; text-transform: uppercase; line-height: 1.15; margin-bottom: 2px; }
 .rk-v { font-size: 12px; line-height: 1.4; letter-spacing: .4px; text-transform: uppercase; }
 .rk-cl { font: 6.4px/1.18 Arial, sans-serif; color: ${RK}; text-align: justify; }
-.rk-hz { position: absolute; top: 477px; left: 0; right: 0; font: 6px Arial, sans-serif; color: ${RK}; }
-.rk-hz span { position: absolute; left: 18px; top: 3px; font-size: 9px; }
-.rk-hz i { position: absolute; left: 0; top: 3px; font-style: normal; font-size: 5.4px; }
+.rk-hz { position: absolute; top: 468px; left: 0; right: 0; display: flex; align-items: center; font: 6px Arial, sans-serif; color: ${RK}; }
+.rk-hz i { flex: 0 0 auto; font-style: normal; font-size: 5.4px; }
+.rk-hz span { flex: 1; text-align: center; font-size: 9px; }
+.rk-mk { overflow-wrap: anywhere; word-break: break-word; font-size: 10px; }
 .rk-tbl { position: absolute; left: 0; right: 0; top: 484px; height: 262px; }
 .rk-vl { position: absolute; top: 0; bottom: 0; width: 1px; background: ${RK}; }
 .rk-th { position: relative; height: 24px; border-bottom: 1px solid ${RK}; font: 4.6px/1.15 Arial, sans-serif; color: ${RK}; text-align: center; text-transform: uppercase; }
@@ -681,9 +697,26 @@ const rickmersPages = (d, g) => {
   const P = (n, a) =>
     `<div class="rk-v">${esc(n)}${a ? `<br>${br(a)}` : ""}</div>`;
   const lt = d.loadType;
-  const digits = (c) => (String(c.size).match(/\d+/) || ["40"])[0];
-  const first = g.containers[0];
+  const ft = (c) => {
+    const n = (String(c.size || "").match(/\d+/) || [""])[0];
+    return n ? `${n}FT` : "";
+  };
+  const rkCount = (() => {
+    const m = {};
+    g.containers.forEach((c) => {
+      m[ft(c)] = (m[ft(c)] || 0) + 1;
+    });
+    return Object.entries(m)
+      .map(([f, n]) => (f ? `${n}X${f}` : `${n}`))
+      .join(" + ");
+  })();
   const vesselTxt = [d.vessel, d.voyage].filter(Boolean).join(" ") || "N/A";
+  const fit = (t, big = 12) => {
+    const n = String(t || "").length;
+    return n > 40 ? big - 3 : n > 26 ? big - 1.5 : big;
+  };
+  const VF = (t) =>
+    `<div class="rk-v" style="font-size:${fit(t)}px;line-height:1.25">${esc(t)}</div>`;
 
   const head = (n) => `
   <div class="rk-hd">
@@ -712,7 +745,7 @@ const rickmersPages = (d, g) => {
       <div style="width:20.4%">${esc(c.no)}</div>
       <div style="width:10.3%">/ ${esc(c.seal)}</div>
       <div style="width:1.3%"></div>
-      <div style="width:38.2%">/ ${c.pkgs} PKGS /${lt} / ${lt}/1X${digits(c)}FT</div>
+      <div style="width:38.2%">/ ${c.pkgs} PKGS /${lt} / ${lt}${ft(c) ? `/1X${ft(c)}` : ""}</div>
       <div style="width:14.8%">/ ${fmtWt(c.weight)}KGS</div>
       <div style="width:15%">/</div>
     </div>`,
@@ -724,12 +757,12 @@ const rickmersPages = (d, g) => {
   ${head(1)}
   <div class="rk-grid">
     <div class="rk-lc">
-      ${F("Shipper/Exporter", P(d.shipper.name, d.shipper.address), "height:85px")}
-      ${F("Consignee", P(g.consignee.name, g.consignee.address), "height:94px")}
-      ${F("Notify Party (It is agreed that no responsibility shall be attached to the Carrier or its Agents for failure to notify)", V("SAME AS CONSIGNEE"), "height:93px")}
-      <div class="rk-r" style="height:30px">${F("Pre-carriage by", "", "width:50%")}${F("Place of receipt", V(d.por), "width:50%")}</div>
-      <div class="rk-r" style="height:33px">${F("Ocean Vessel Voyage No. Flag", `<div class="rk-v" style="font-size:9px">${esc(vesselTxt)}</div>`, "width:50%")}${F("Port of loading", V(d.pol), "width:50%")}</div>
-      <div class="rk-r" style="height:32px">${F("Port of discharge", V(d.pod), "width:50%;border-bottom:0")}${F("Place of delivery", V(d.pdel), "width:50%;border-bottom:0")}</div>
+      ${F("Shipper/Exporter", P(d.shipper.name, d.shipper.address), "flex:85 1 0;min-height:0")}
+      ${F("Consignee", P(g.consignee.name, g.consignee.address), "flex:94 1 0;min-height:0")}
+      ${F("Notify Party (It is agreed that no responsibility shall be attached to the Carrier or its Agents for failure to notify)", V("SAME AS CONSIGNEE"), "flex:93 1 0;min-height:0")}
+      <div class="rk-r" style="flex:0 0 auto;min-height:30px">${F("Pre-carriage by", "", "width:50%")}${F("Place of receipt", VF(d.por), "width:50%")}</div>
+      <div class="rk-r" style="flex:0 0 auto;min-height:33px">${F("Ocean Vessel Voyage No. Flag", `<div class="rk-v" style="font-size:9px">${esc(vesselTxt)}</div>`, "width:50%")}${F("Port of loading", VF(d.pol), "width:50%")}</div>
+      <div class="rk-r" style="flex:0 0 auto;min-height:32px">${F("Port of discharge", VF(d.pod), "width:50%;border-bottom:0")}${F("Place of delivery", VF(d.pdel), "width:50%;border-bottom:0")}</div>
     </div>
     <div class="rk-rc">
       <div class="rk-r" style="height:29px">${F("Booking No.", V(d.bookingRef), "width:53%")}${F("Sea Waybill No.", `<div class="rk-v" style="font-size:12.5px">${esc(d.orderNumber)}</div>`, "width:47%")}</div>
@@ -740,15 +773,15 @@ const rickmersPages = (d, g) => {
       ${F("Type of movement (if mixed, use description of packages and goods field)", `<div class="rk-v" style="display:flex;justify-content:space-between"><span>${lt} / ${lt}</span><span>CY / CY</span></div>`, "height:32px;border-bottom:0")}
     </div>
   </div>
-  <div class="rk-hz"><i>(CHECK "HM" COLUMN IF HAZARDOUS MATERIAL)</i><span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;PARTICULARS DECLARED BY SHIPPER BUT NOT ACKNOWLEDGED BY THE CARRIER</span></div>
+    <div class="rk-hz"><i>(CHECK "HM" COLUMN IF HAZARDOUS MATERIAL)</i><span>PARTICULARS DECLARED BY SHIPPER BUT NOT ACKNOWLEDGED BY THE CARRIER</span></div>
   <div class="rk-tbl">
     ${vlines}${thead}
     <div class="rk-crs">${contRows}</div>
     <div class="rk-bd">
-      <div style="width:20.4%">${esc(g.marks || "NO MARKS")}</div>
+      <div class="rk-mk" style="width:20.4%">${br(g.marks || "NO MARKS")}</div>
       <div style="width:10.3%;text-align:center">${g.totalPkgs}<br>${esc(g.unit)}</div>
       <div style="width:1.3%"></div>
-      <div style="width:38.2%">SHIPPER'S LOAD AND COUNT<br>${g.containers.length}X${digits(first)}FT CONTAINER(S)<br><br>${esc(g.goods)}${d.freeDays ? `<br><br><br><br>${d.freeDays} COMBINED FREE DAYS AT<br>DESTINATION` : ""}</div>
+      <div style="width:38.2%">SHIPPER'S LOAD AND COUNT<br>${rkCount} CONTAINER(S)<br><br>${esc(g.goods)}${d.freeDays ? `<br><br><br><br>${d.freeDays} COMBINED FREE DAYS AT<br>DESTINATION` : ""}</div>
     </div>
   </div>
   <div class="rk-cont">** TO BE CONTINUED ON ATTACHED LIST **</div>
@@ -774,10 +807,10 @@ const rickmersPages = (d, g) => {
     <div class="rk-v a" style="left:40%;top:56px;font-size:11.4px">PREPAID</div>
 
     <div class="rk-b" style="left:85%;top:0;width:15%;height:72px;padding:3px 4px;font:7.4px Arial,sans-serif;color:#111;border-width:1px 1px 1px 1px">[0] ORIGINAL BILLS(S) HAVE BEEN SIGNED.</div>
-    <div class="rk-b" style="left:85%;top:72px;width:15%;height:33px;padding:2px 4px"><span class="rk-l">Date cargo received</span></div>
-    <div class="rk-b" style="left:85%;top:105px;width:15%;height:28px;padding:2px 4px"><span class="rk-l">Date laden on board</span><div class="rk-v" style="font-size:11px;line-height:1">${fmtMon(d.issued)}</div></div>
-    <div class="rk-b" style="left:85%;top:133px;width:15%;height:28px;padding:2px 4px"><span class="rk-l">Place of Bill(s) issue</span><div class="rk-v" style="font-size:11px;line-height:1">${esc(d.placeOfIssue)}</div></div>
-    <div class="rk-b" style="left:85%;top:161px;width:15%;height:28px;padding:2px 4px"><span class="rk-l">Dated</span></div>
+    <div class="rk-b" style="left:85%;top:72px;width:15%;height:26px;padding:2px 4px"><span class="rk-l">Date cargo received</span></div>
+    <div class="rk-b" style="left:85%;top:98px;width:15%;height:26px;padding:2px 4px"><span class="rk-l">Date laden on board</span><div class="rk-v" style="font-size:10px;line-height:1">${fmtMon(d.issued)}</div></div>
+    <div class="rk-b" style="left:85%;top:124px;width:15%;height:38px;padding:2px 4px"><span class="rk-l">Place of Bill(s) issue</span><div class="rk-v" style="font-size:${fit(d.placeOfIssue, 10)}px;line-height:1.1">${esc(d.placeOfIssue)}</div></div>
+    <div class="rk-b" style="left:85%;top:162px;width:15%;height:27px;padding:2px 4px"><span class="rk-l">Dated</span></div>
 
     <div class="rk-b" style="left:0;top:189px;width:38.3%;height:48px"><div class="rk-terms">The printed terms and conditions on this Bill are available at its website at www.rickmerscontainerline.com</div></div>
     <div class="rk-b" style="left:38.3%;top:189px;width:15.1%;height:48px"></div>
