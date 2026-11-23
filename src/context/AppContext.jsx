@@ -12,7 +12,7 @@ import { useAuth } from "./AuthContext";
 
 export const AppContext = createContext(null);
 
-const CACHE_PREFIX = "appctx:v1:";
+const CACHE_PREFIX = "appctx:v2:";
 const CACHE_TTL_MS = 10 * 60 * 1000;
 
 const readCache = (key) => {
@@ -301,6 +301,11 @@ export const AppProvider = ({ children }) => {
 
   const systemSettings = state.systemSettings.data;
 
+  const activeThirdParties = useMemo(
+    () => state.thirdParties.data.filter((p) => p.is_active !== false),
+    [state.thirdParties.data],
+  );
+
   const getSystemRate = useCallback(
     (key, fallback = 0) => {
       const setting = systemSettings.find((s) => s.key === key);
@@ -384,6 +389,7 @@ export const AppProvider = ({ children }) => {
       fetchCompanies: fetchers.companies,
 
       thirdParties: state.thirdParties.data,
+      activeThirdParties,
       setThirdParties: setters.thirdParties,
       thirdPartiesLoading: state.thirdParties.loading,
       fetchThirdParties: fetchers.thirdParties,
