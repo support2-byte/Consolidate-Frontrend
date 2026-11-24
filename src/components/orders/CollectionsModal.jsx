@@ -20,6 +20,8 @@ import {
   Chip,
   Divider,
   Tooltip,
+  LinearProgress,
+  CircularProgress,
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import CloseIcon from "@mui/icons-material/Close";
@@ -28,6 +30,9 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import DownloadIcon from "@mui/icons-material/Download";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import SyncIcon from "@mui/icons-material/Sync";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import AccessTimeIcon from "@mui/icons-material/AccessTime";
 import CreateInvoiceModal from "./CreateInvoiceModal";
 import { toast } from "react-toastify";
 import { api } from "../../api";
@@ -55,6 +60,38 @@ const downloadFromUrl = async (url, filename) => {
   } catch {
     window.open(url, "_blank");
   }
+};
+
+const fmtDMY = (v) => {
+  if (!v) return "—";
+  const s = String(v);
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(s)
+    ? new Date(`${s}T00:00:00`)
+    : new Date(v);
+  return isNaN(d.getTime())
+    ? "—"
+    : d
+        .toLocaleDateString("en-GB", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        })
+        .replace(/ /g, "-");
+};
+
+const fmtDT = (v) => {
+  if (!v) return "—";
+  const d = new Date(v);
+  return isNaN(d.getTime())
+    ? "—"
+    : d.toLocaleString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      });
 };
 
 const emptyCollection = (idx) => ({
@@ -86,6 +123,8 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
   const [payments, setPayments] = useState(null);
   const [approvals, setApprovals] = useState({});
   const [checkingPayment, setCheckingPayment] = useState(false);
+  const [paymentMeta, setPaymentMeta] = useState({});
+  const [lastSync, setLastSync] = useState(null);
   const isPaid = (receiverId) => payments?.[receiverId] === "paid";
   const isApproved = (receiverId) => approvals?.[receiverId]?.approved === true;
   const canRelease = (receiverId) =>
@@ -124,23 +163,28 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
   useEffect(() => {
     if (!open || !order?.id) return;
     let active = true;
+
     const loadPayments = async () => {
       setPayments(null);
       setApprovals({});
+      setPaymentMeta({});
+      setLastSync(null);
       try {
         const { data } = await api.get(
           `/api/zoho-invoice/order/${order.id}/payment-status`,
         );
-        if (active) {
-          setPayments(data.receiverPayments || {});
-          setApprovals(data.receiverApprovals || {});
-        }
+        if (!active) return;
+        setPayments(data.receiverPayments || {});
+        setApprovals(data.receiverApprovals || {});
+        setPaymentMeta(data.receiverPaymentMeta || {});
+        setLastSync(data.lastSync || null);
       } catch {
         if (!active) return;
         setPayments({});
         toast.error("Failed to verify payment status.");
       }
     };
+
     loadPayments();
     return () => {
       active = false;
@@ -161,6 +205,60 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
     0,
   );
 
+  const itemsDelivered = allItems.reduce(
+    (s, i) => s + (Number(i.deliveredQty) || 0),
+    0,
+  );
+  const collectedQty = Math.min(
+    Math.max(Number(order.order_qty_delivered) || 0, itemsDelivered),
+    orderTotalQty,
+  );
+  const collectedPct =
+    orderTotalQty > 0 ? Math.round((collectedQty / orderTotalQty) * 100) : 0;
+  const remainingQty = Math.max(0, orderTotalQty - collectedQty);
+
+  const renderPayChip = (receiverId) => {
+    if (payments === null)
+      return (
+        <Chip size="small" label="Checking…" sx={{ fontSize: "0.7rem" }} />
+      );
+    const st = payments?.[receiverId];
+    const m = paymentMeta?.[receiverId];
+    const base = { size: "small", sx: { fontWeight: 700, fontSize: "0.7rem" } };
+    if (st === "paid")
+      return (
+        <Chip
+          {...base}
+          icon={<CheckCircleIcon style={{ color: "#2e7d32", fontSize: 16 }} />}
+          label={m?.paidDate ? `Paid · ${fmtDMY(m.paidDate)}` : "Paid"}
+          sx={{ ...base.sx, bgcolor: "#e8f5e9", color: "#2e7d32" }}
+        />
+      );
+    if (st === "partially_paid")
+      return (
+        <Chip
+          {...base}
+          label={`Partially paid · ${Number(m?.balance || 0).toLocaleString()} due`}
+          sx={{ ...base.sx, bgcolor: "#fff8e1", color: "#b26a00" }}
+        />
+      );
+    if (st === "unpaid")
+      return (
+        <Chip
+          {...base}
+          label="Pending"
+          sx={{ ...base.sx, bgcolor: "#fff3e0", color: "#ef6c00" }}
+        />
+      );
+    return (
+      <Chip
+        {...base}
+        label="No invoice"
+        sx={{ ...base.sx, bgcolor: "#eceff1", color: "#546e7a" }}
+      />
+    );
+  };
+
   const handleCheckPayment = async () => {
     setCheckingPayment(true);
     try {
@@ -171,17 +269,30 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
       const approved = data.receiverApprovals || {};
       setPayments(result);
       setApprovals(approved);
-      const releasedCount = receivers.filter(
-        (r) => result[r.id] === "paid" || approved[r.id]?.approved,
+      setPaymentMeta(data.receiverPaymentMeta || {});
+      setLastSync(data.lastSync || null);
+
+      const paidCount = receivers.filter((r) => result[r.id] === "paid").length;
+      const approvedOnly = receivers.filter(
+        (r) => result[r.id] !== "paid" && approved[r.id]?.approved,
       ).length;
-      if (releasedCount > 0) {
+
+      if (paidCount > 0) {
         toast.success(
-          `Payment verified or approved for ${releasedCount} of ${receivers.length} receiver(s).`,
+          `Zoho synced: ${paidCount} of ${receivers.length} receiver(s) paid.`,
+        );
+      } else if (approvedOnly > 0) {
+        toast.info(
+          `Not paid in Zoho. Release is approved for ${approvedOnly} receiver(s).`,
         );
       } else {
-        toast.warning("Payment is not completed for this order.");
+        toast.warning(
+          data.lastSync?.message || "Payment is not completed for this order.",
+        );
       }
     } catch (err) {
+      if (err?.response?.data?.lastSync)
+        setLastSync(err.response.data.lastSync);
       toast.error(
         err?.response?.data?.message || "Failed to check payment status.",
       );
@@ -542,22 +653,228 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
           ))}
         </Box>
 
-        <Stack direction="row" alignItems="center" spacing={2} mb={3}>
-          <Button
-            variant="outlined"
-            onClick={handleCheckPayment}
-            disabled={checkingPayment || !order.rgl_booking_number}
-            sx={{ borderColor: "#0d6c6a", color: "#0d6c6a" }}
+        <Box
+          sx={{
+            mb: 2,
+            p: 2,
+            borderRadius: 2,
+            border: "1px solid #cfe9e7",
+            bgcolor: "#f5fbfa",
+          }}
+        >
+          <Stack
+            direction="row"
+            justifyContent="space-between"
+            alignItems="baseline"
+            mb={1}
           >
-            {checkingPayment ? "Checking..." : "Check Payment Status"}
-          </Button>
-          {payments && receivers.length > 0 && (
-            <Typography variant="caption" color="text.secondary">
-              {receivers.filter((r) => isPaid(r.id)).length} of{" "}
-              {receivers.length} receiver(s) paid
+            <Typography
+              variant="caption"
+              sx={{
+                fontWeight: 800,
+                color: "#0d6c6a",
+                letterSpacing: 0.6,
+                textTransform: "uppercase",
+              }}
+            >
+              Collected
             </Typography>
-          )}
-        </Stack>
+            <Typography variant="body2" fontWeight={800}>
+              {collectedQty.toLocaleString()}
+              <Typography
+                component="span"
+                variant="body2"
+                color="text.secondary"
+              >
+                {" "}
+                / {orderTotalQty.toLocaleString()} pkgs · {collectedPct}%
+              </Typography>
+            </Typography>
+          </Stack>
+          <LinearProgress
+            variant="determinate"
+            value={collectedPct}
+            sx={{
+              height: 8,
+              borderRadius: 4,
+              bgcolor: "#d7ebe9",
+              "& .MuiLinearProgress-bar": {
+                borderRadius: 4,
+                bgcolor: collectedPct >= 100 ? "#16a34a" : "#0d6c6a",
+              },
+            }}
+          />
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ mt: 0.75, display: "block" }}
+          >
+            {remainingQty === 0
+              ? "Everything on this order has been collected."
+              : `${remainingQty.toLocaleString()} pkgs still to be collected`}
+          </Typography>
+        </Box>
+
+        <Box
+          sx={{
+            mb: 3,
+            borderRadius: 2,
+            border: "1px solid #e5e7eb",
+            overflow: "hidden",
+            bgcolor: "#fff",
+          }}
+        >
+          <Stack
+            direction="row"
+            alignItems="center"
+            justifyContent="space-between"
+            sx={{
+              px: 2,
+              py: 1.25,
+              bgcolor: "#f7f8fa",
+              borderBottom: "1px solid #e5e7eb",
+            }}
+          >
+            <Stack direction="row" alignItems="center" spacing={1.25}>
+              <Typography
+                variant="caption"
+                sx={{
+                  fontWeight: 800,
+                  letterSpacing: 0.6,
+                  textTransform: "uppercase",
+                  color: "text.secondary",
+                }}
+              >
+                Payment status
+              </Typography>
+              {payments && receivers.length > 0 && (
+                <Chip
+                  size="small"
+                  label={`${receivers.filter((r) => isPaid(r.id)).length} of ${receivers.length} paid`}
+                  sx={{
+                    height: 20,
+                    fontSize: "0.68rem",
+                    fontWeight: 700,
+                    bgcolor: "#e0f2f1",
+                    color: "#0d6c6a",
+                  }}
+                />
+              )}
+            </Stack>
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={handleCheckPayment}
+              disabled={checkingPayment || !order.rgl_booking_number}
+              startIcon={
+                checkingPayment ? (
+                  <CircularProgress size={14} color="inherit" />
+                ) : (
+                  <SyncIcon fontSize="small" />
+                )
+              }
+              sx={{
+                borderColor: "#0d6c6a",
+                color: "#0d6c6a",
+                textTransform: "none",
+                fontWeight: 700,
+              }}
+            >
+              {checkingPayment ? "Syncing…" : "Sync from Zoho"}
+            </Button>
+          </Stack>
+
+          <Box sx={{ px: 2, py: 1, borderBottom: "1px solid #f0f0f0" }}>
+            {lastSync ? (
+              <Stack
+                direction="row"
+                alignItems="center"
+                spacing={1}
+                flexWrap="wrap"
+                useFlexGap
+              >
+                <AccessTimeIcon
+                  sx={{ fontSize: 15, color: "text.secondary" }}
+                />
+                <Typography variant="caption" color="text.secondary">
+                  Last synced by{" "}
+                  <strong style={{ color: "#333" }}>
+                    {lastSync.syncedByEmail || "Unknown user"}
+                  </strong>{" "}
+                  on {fmtDT(lastSync.syncedAt)}
+                </Typography>
+                <Chip
+                  size="small"
+                  label={lastSync.message || lastSync.status}
+                  sx={{
+                    height: 20,
+                    fontSize: "0.68rem",
+                    fontWeight: 700,
+                    bgcolor:
+                      lastSync.status !== "success"
+                        ? "#ffebee"
+                        : lastSync.paidAfter > lastSync.paidBefore
+                          ? "#e8f5e9"
+                          : "#eceff1",
+                    color:
+                      lastSync.status !== "success"
+                        ? "#c62828"
+                        : lastSync.paidAfter > lastSync.paidBefore
+                          ? "#2e7d32"
+                          : "#546e7a",
+                  }}
+                />
+              </Stack>
+            ) : (
+              <Typography variant="caption" color="text.secondary">
+                Not synced from Zoho yet. Click “Sync from Zoho” to check for
+                new payments.
+              </Typography>
+            )}
+          </Box>
+
+          {receivers.map((r) => (
+            <Stack
+              key={r.id}
+              direction="row"
+              alignItems="center"
+              justifyContent="space-between"
+              spacing={1}
+              sx={{
+                px: 2,
+                py: 1,
+                borderBottom: "1px solid #f5f5f5",
+                "&:last-child": { borderBottom: "none" },
+              }}
+            >
+              <Typography
+                variant="body2"
+                fontWeight={600}
+                noWrap
+                sx={{ minWidth: 0 }}
+              >
+                {r.receiver_name || "Unnamed Receiver"}
+              </Typography>
+              <Stack direction="row" spacing={0.75} alignItems="center">
+                {isApproved(r.id) && !isPaid(r.id) && (
+                  <Chip
+                    size="small"
+                    label="Release approved"
+                    variant="outlined"
+                    sx={{
+                      height: 22,
+                      fontSize: "0.68rem",
+                      fontWeight: 700,
+                      borderColor: "#f3c088",
+                      color: "#d96f10",
+                    }}
+                  />
+                )}
+                {renderPayChip(r.id)}
+              </Stack>
+            </Stack>
+          ))}
+        </Box>
         {receivers.some((r) => r.collections?.length > 0) && (
           <Box
             sx={{

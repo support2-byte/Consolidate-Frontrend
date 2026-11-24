@@ -259,7 +259,7 @@ const collect = (orderData, company, getPlaceName, tpl) => {
     payableAt:
       order.freight_payable_at || (tpl === "messiah" ? "LONDON" : "DUBAI"),
     loadType: String(
-      order.load_type || consignment.load_type || "FCL",
+      order.load_type || consignment.load_type || "",
     ).toUpperCase(),
     freeDays,
     eform: consignment.eform || order.eform || "",
@@ -314,7 +314,7 @@ const CLASSIC_CSS = `
 .cl-r { display: flex; }
 .cl-cols2 { display: flex; }
 .cl-lc { width: 57%; }
-.cl-rc { width: 43%; border-left: 2px solid #000; }
+.cl-rc { width: 43%; border-left: 1px solid #000; }
 .cl-f { position: relative; border-bottom: 1px solid #555; border-right: 1px solid #555; padding: 3px 6px 2px; overflow: hidden; }
 .cl-lc > .cl-f { border-right: 0; }
 .cl-r > .cl-f:last-child { border-right: 0; }
@@ -367,7 +367,7 @@ const classicPage = (d, g) => {
 
   const notify = V("SAME AS CONSIGNEE");
   const vesselTxt = d.vessel
-    ? `${d.vessel}${m && d.voyage ? ` / ${d.voyage}` : ""}`
+    ? `${d.vessel}${d.voyage ? ` / ${d.voyage}` : ""}`
     : m
       ? "N/A"
       : "******";
@@ -386,13 +386,13 @@ const classicPage = (d, g) => {
       </div>
       <div class="cl-rc">
         <div class="cl-r" style="height:34px">
-          ${F("B/L No. (also to be used as payment ref.)", V(d.orderNumber), "width:58%")}
-          ${F("Booking Number", V(d.bookingRef), "width:42%")}
+          ${F("B/L No. (also to be used as payment ref.)", V(d.orderNumber), "width:58%;border-bottom:1px solid #000")}
+          ${F("Booking Number", V(d.bookingRef), "width:42%;border-bottom:1px solid #000")}
         </div>
-        ${F("Export Reference", "", "height:52px;border-top:2px solid #000")}
+        ${F("Export Reference", "", "height:52px")}
         ${F("Forwarding Agent", V(d.forwarder), "height:60px")}
         ${F("Point (State) of Origin or FTZ Number", "", "height:22px")}
-        ${F("Destination Agent", V(d.destAgent), "height:116px;border-bottom:2px solid #000")}
+        ${F("Destination Agent", V(d.destAgent), "height:116px;border-bottom:1px solid #000")}
       </div>
     </div>
     <div class="cl-r" style="height:31px">
@@ -431,12 +431,12 @@ const classicPage = (d, g) => {
 
   const cols = m ? "27.7% 16.3% 14.5% 12.3% 1fr" : "26% 1fr";
   const cHead = m
-    ? `<div class="r h" style="grid-template-columns:${cols}"><span>CONTAINER NO. &nbsp;SIZE</span><span>SEAL NO.</span><span>PKGS</span><span>NET WT</span><span>GROSS WT</span></div>`
+    ? `<div class="r h" style="grid-template-columns:${cols}"><span>CONTAINER NO. &nbsp;SIZE</span><span>SEAL NO.</span><span>PKGS</span><span>GROSS WT</span></div>`
     : `<div class="r h" style="grid-template-columns:${cols}"><span>CONTAINER NO. &nbsp;SIZE</span><span>SEAL NO.</span></div>`;
   const cRows = g.containers
     .map((c) =>
       m
-        ? `<div class="r" style="grid-template-columns:${cols}"><span>${esc(c.no)} / ${esc(c.size)}</span><span>${esc(c.seal)}</span><span>${c.pkgs} PKG</span><span></span><span>${fmtWt(c.weight, 3)} KGS</span></div>`
+        ? `<div class="r" style="grid-template-columns:${cols}"><span>${esc(c.no)} / ${esc(c.size)}</span><span>${esc(c.seal)}</span><span>${c.pkgs} PKG</span><span>${fmtWt(c.weight, 3)} KGS</span></div>`
         : `<div class="r" style="grid-template-columns:${cols}"><span>${esc(c.no)} / ${esc(c.size)}</span><span>${esc(c.seal)}</span></div>`,
     )
     .join("");
@@ -448,7 +448,7 @@ const classicPage = (d, g) => {
     <div class="t" style="left:17.5%;top:${m ? 22 : 14}px;width:10%;text-align:center">${m ? `${g.totalPkgs}<br>PKGS` : `${g.totalPkgs}<br>${esc(g.unit)}`}</div>
     ${desc}
     <div class="t" style="left:79.5%;top:${m ? 22 : 14}px;width:18%">GROSS WT<br><b>${fmtWt(g.totalWeight)} KGS</b></div>
-    <div class="t" style="left:${m ? 83.4 : 81}%;top:${m ? 135 : 126}px">${m ? "CY/CY" : `${d.loadType}/${d.loadType}`}</div>
+    <div class="t" style="left:${m ? 83.4 : 81}%;top:${m ? 135 : 126}px">${m ? "" : `${d.loadType}/${d.loadType}`}</div>
     <div class="cl-note">${TERMINAL_NOTE.map(esc).join("<br>")}</div>
     <div class="cl-ct">${cHead}${cRows}</div>
   </div>`;
@@ -558,6 +558,12 @@ const casPage = (d, g) => {
   const V = (v) => `<div class="cs-v">${esc(v)}</div>`;
   const vesselTxt = [d.vessel, d.voyage].filter(Boolean).join(" ") || "N/A";
 
+  const contNos = g.containers.map((c) => c.no).filter((n) => n && n !== "N/A");
+  const contFont = contNos.length > 3 ? 7 : contNos.length > 1 ? 9 : 11;
+  const contHdr = contNos.length
+    ? `<div class="cs-v cs-b" style="font-size:${contFont}px;line-height:1.2">${contNos.map(esc).join("<br>")}</div>`
+    : "";
+
   const logo = d.logo
     ? `<img class="a" src="${esc(d.logo)}" alt="" style="left:0;top:0;height:62px;max-width:90px;object-fit:contain">`
     : `<div class="cs-logo">cas<i></i></div>`;
@@ -573,7 +579,7 @@ const casPage = (d, g) => {
       <div class="cs-r" style="height:68px">${F("Foreign port of unloading", V(d.pod), "width:48%;border-bottom:0")}${F("* Place of delivery by on-carrier", V(d.pdel), "width:52%;border-bottom:0")}</div>
     </div>
     <div class="cs-rc">
-      <div class="cs-r" style="height:49px">${F("Bill of Lading Number", `<div class="cs-v cs-b" style="font-size:13px;margin-top:3px">${esc(d.orderNumber)}</div>`, "width:58%")}${F("Container Number", "", "width:42%")}</div>
+      <div class="cs-r" style="height:49px">${F("Bill of Lading Number", `<div class="cs-v cs-b" style="font-size:13px;margin-top:3px">${esc(d.orderNumber)}</div>`, "width:58%")}${F("Container Number", contHdr, "width:42%")}</div>
       ${F("Export References", "", "height:43px")}
       ${F("Forwarding Agent", `<div class="cs-v cs-b">${esc(d.forwarder)}</div>`, "height:62px")}
       ${F("Point (State) of Origin or FTZ Number", "", "height:28px")}
@@ -604,7 +610,7 @@ const casPage = (d, g) => {
     <div class="t" style="left:24%;top:54px;width:44%">${esc(g.goods)}</div>
     ${d.mbl ? `<div class="t" style="left:24%;top:103px;width:44%">MBL# ${esc(d.mbl)}</div>` : ""}
     <div class="t" style="left:70%;top:8px;width:14%;text-align:center">GROSS WT<br><b>${fmtWt(g.totalWeight)} KGS</b></div>
-    <div class="t" style="left:90%;top:70px;font-size:12px">${"CY/CY"}</div>
+    <div class="t" style="left:90%;top:70px;font-size:12px"></div>
   </div>
   <div class="cs-dv">DECLARED VALUE (For AD VALOREM purpose only).<br>(Refer to clause 5 on reverse hereof) in US $<em>* APPLICABLE ONLY WHEN DOCUMENT USED AS A COMBINED TRANSPORT BILL OF LADING.</em></div>`;
 
@@ -770,7 +776,7 @@ const rickmersPages = (d, g) => {
       ${F("Forwarding Agent-References<br>FMC No.", V(d.forwarder), "height:63px")}
       <div class="rk-f" style="height:150px;padding:2px 3px"><div class="rk-cl">${esc(RK_CLAUSE)}</div></div>
       ${F("Final Destination (for the Merchant's reference only)", "", "height:37px")}
-      ${F("Type of movement (if mixed, use description of packages and goods field)", `<div class="rk-v" style="display:flex;justify-content:space-between"><span>${lt} / ${lt}</span><span>CY / CY</span></div>`, "height:32px;border-bottom:0")}
+      ${F("Type of movement (if mixed, use description of packages and goods field)", `<div class="rk-v" style="display:flex;justify-content:space-between"><span>${lt} / ${lt}</span><span></span></div>`, "height:32px;border-bottom:0")}
     </div>
   </div>
     <div class="rk-hz"><i>(CHECK "HM" COLUMN IF HAZARDOUS MATERIAL)</i><span>PARTICULARS DECLARED BY SHIPPER BUT NOT ACKNOWLEDGED BY THE CARRIER</span></div>

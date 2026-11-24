@@ -201,6 +201,17 @@ const docStatusColor = (s) =>
 const fmtStatus = (s = "") =>
   s.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
 
+const overdueDays = (d, rfd) => {
+  if (d.status !== "overdue" || !rfd) return null;
+  const n = dayjs().startOf("day").diff(dayjs(rfd).startOf("day"), "day");
+  return n > 0 ? n : null;
+};
+
+const statusLabel = (d, rfd) => {
+  const n = overdueDays(d, rfd);
+  return n ? `Overdue (${n}d)` : fmtStatus(d.status);
+};
+
 const fmtMoney = (n, cur) =>
   `${cur} ${Number(n).toLocaleString(undefined, {
     minimumFractionDigits: 2,
@@ -816,7 +827,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
 
       setEtaSuggestion(suggestedEta);
 
-      if (!eta || !eta.trim()) {
+      if (!eta || (typeof eta === "string" && !eta.trim())) {
         setEta(suggestedEta);
         setValues((prev) => ({ ...prev, eta: suggestedEta }));
       }
@@ -4615,6 +4626,13 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     const grandPaid = sumBy(live, docPaidAed);
     const headCell = { bgcolor: FIN.teal, color: "#fff", fontWeight: "bold" };
 
+    const rfdByForm = Object.fromEntries(
+      orders.map((o) => [String(o.rgl_booking_number), o.rfd_date]),
+    );
+    const rfdOf = (key) => rfdByForm[String(key)] || null;
+    const rfdTxt = (key) =>
+      rfdOf(key) ? dayjs(rfdOf(key)).format("MMM DD, YYYY") : "-";
+
     return (
       <TableContainer
         sx={{
@@ -4627,24 +4645,29 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         <Table size="small" sx={{ minWidth: 1100 }}>
           <TableHead>
             <TableRow>
-              {[`${kind} No`, partyLabel, "Date", "Due Date", "Status"].map(
-                (h) => (
-                  <TableCell key={h} sx={headCell}>
-                    {h}
-                  </TableCell>
-                ),
-              )}
+              {[
+                `Form No / ${kind} No`,
+                partyLabel,
+                "Date",
+                "Due Date",
+                "RFD Date",
+                "Status",
+              ].map((h) => (
+                <TableCell key={h} sx={headCell}>
+                  {h}
+                </TableCell>
+              ))}
               <TableCell align="right" sx={headCell}>
                 Total (FCA)
               </TableCell>
               <TableCell align="right" sx={headCell}>
-                Paid (AED)
+                Paid
               </TableCell>
               <TableCell align="right" sx={headCell}>
-                Balance (AED)
+                Balance
               </TableCell>
               <TableCell align="right" sx={headCell}>
-                Total (AED)
+                Total
               </TableCell>
               <TableCell align="center" sx={headCell}>
                 Preview
@@ -4654,7 +4677,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
           <TableBody>
             {groups.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} align="center" sx={{ py: 4 }}>
+                <TableCell colSpan={11} align="center" sx={{ py: 4 }}>
                   <Typography variant="body2" color="text.secondary">
                     No {kind.toLowerCase()}s found
                   </Typography>
@@ -4728,6 +4751,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                             )
                           : ""}
                       </TableCell>
+                      <TableCell>{rfdTxt(g.key)}</TableCell>
                       <TableCell>
                         {!open && (
                           <Chip
@@ -4769,9 +4793,10 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                                 ? dayjs(d.dueDate).format("MMM DD, YYYY")
                                 : "-"}
                             </TableCell>
+                            <TableCell>{rfdTxt(g.key)}</TableCell>
                             <TableCell>
                               <Chip
-                                label={fmtStatus(d.status)}
+                                label={statusLabel(d, rfdOf(g.key))}
                                 size="small"
                                 variant="outlined"
                                 color={docStatusColor(d.status)}
@@ -4813,7 +4838,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                 })}
                 <TableRow sx={{ bgcolor: FIN.tealLight }}>
                   <TableCell
-                    colSpan={5}
+                    colSpan={6}
                     align="right"
                     sx={{ fontWeight: 700, color: FIN.tealDark }}
                   >
@@ -5263,7 +5288,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                         <Box sx={span(3)}>
                           <DatePicker
                             label="ETA"
-                            value={eta ? dayjs(eta) : dayjs(etaSuggestion)}
+                            value={values.eta ? dayjs(values.eta) : null}
                             onChange={(value) => {
                               if (value && value?.isValid()) {
                                 const formatted = value.format("YYYY-MM-DD");
@@ -5277,7 +5302,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                               }
                             }}
                             inputFormat="YYYY-MM-DD"
-                            readOnly={true}
                             slotProps={{
                               textField: {
                                 fullWidth: true,
