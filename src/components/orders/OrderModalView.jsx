@@ -85,6 +85,10 @@ import {
   pdfAddFooters,
   pdfDrawSectionHeader,
 } from "../../Utlis/containerBuilder";
+import HistoryIcon from "@mui/icons-material/History";
+import { getStatusColors } from "../../Utlis/statusColors";
+import dayjs from "dayjs";
+
 applyPlugin(jsPDF);
 
 const PAYMENT_STATUS = {
@@ -208,6 +212,17 @@ const docStatusColor = (s) =>
         ? "default"
         : "warning";
 
+const overdueDays = (d, rfd) => {
+  if (d.status !== "overdue" || !rfd) return null;
+  const n = dayjs().startOf("day").diff(dayjs(rfd).startOf("day"), "day");
+  return n > 0 ? n : null;
+};
+
+const statusLabel = (d, rfd) => {
+  const n = overdueDays(d, rfd);
+  return n ? `Overdue (${n}d)` : fmtStatus(d.status);
+};
+
 const fmtStatus = (s = "") =>
   s.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
 
@@ -247,6 +262,9 @@ const OrderModalView = ({
   const [syncingZoho, setSyncingZoho] = useState(false);
   const [previewFile, setPreviewFile] = useState(null);
 
+  const [previewDoc, setPreviewDoc] = useState(null);
+  const [pdfLoadingId, setPdfLoadingId] = useState(null);
+
   const { companies } = useContext(AppContext);
   const [hblCompanyId, setHblCompanyId] = useState("");
   const [hblHtml, setHblHtml] = useState("");
@@ -256,6 +274,8 @@ const OrderModalView = ({
   const [shipView, setShipView] = useState("container");
   const [financeView, setFinanceView] = useState("invoices");
   const [expanded, setExpanded] = useState({});
+  const [trackingTab, setTrackingTab] = useState(0);
+
   const toggleExpand = (key) => setExpanded((p) => ({ ...p, [key]: !p[key] }));
 
   const resolveFileUrl = (file) => {
@@ -335,14 +355,15 @@ const OrderModalView = ({
   };
 
   const pickDate = (list, mode) => {
-    const ts = list
+    const ds = list
       .filter(Boolean)
-      .map((x) => new Date(x).getTime())
-      .filter(Number.isFinite);
-    if (!ts.length) return "-";
-    return formatDate(
-      new Date(mode === "max" ? Math.max(...ts) : Math.min(...ts)),
+      .map((x) => dayjs(x))
+      .filter((x) => x.isValid());
+    if (!ds.length) return "-";
+    const t = ds.reduce((a, b) =>
+      mode === "max" ? (b.isAfter(a) ? b : a) : b.isBefore(a) ? b : a,
     );
+    return t.format("MMM DD, YYYY");
   };
 
   const getLastSync = () => {
@@ -367,6 +388,7 @@ const OrderModalView = ({
       });
       setAssignments(init);
       setTabValue(0);
+      setTrackingTab(0);
       setExpanded({});
       setHblHtml("");
       setHblCompanyId("");
@@ -440,6 +462,31 @@ const OrderModalView = ({
     }
   };
 
+  const openDocPdf = async (kind, doc) => {
+    setPdfLoadingId(doc.id);
+    try {
+      const path =
+        kind === "Bill"
+          ? `/api/zoho-invoice/bill/${doc.id}/pdf`
+          : `/api/zoho-invoice/${doc.id}/pdf`;
+      const { data } = await api.get(path, { responseType: "blob" });
+      setPreviewDoc({
+        kind,
+        doc,
+        url: URL.createObjectURL(new Blob([data], { type: "application/pdf" })),
+      });
+    } catch {
+      toast.error("Failed to load PDF.");
+    } finally {
+      setPdfLoadingId(null);
+    }
+  };
+
+  const closePreview = () => {
+    if (previewDoc?.url) URL.revokeObjectURL(previewDoc.url);
+    setPreviewDoc(null);
+  };
+
   const handleToggleApproval = async (receiverId, approved) => {
     setApprovingId(receiverId);
     try {
@@ -495,16 +542,135 @@ const OrderModalView = ({
     if (!order) return;
     const doc = new jsPDF("p", "mm", "a4");
     const pw = doc.internal.pageSize.getWidth();
+    const ph = doc.internal.pageSize.getHeight();
     const m = 14;
     const { teal, orange, lightGrey, borderGrey } = BRAND;
-    let y;
+    const BOTTOM = ph - 20;
+    let y = 0;
 
-    const PAGE_BOTTOM = 270;
-    const checkPageBreak = (needed = 20) => {
-      if (y + needed > PAGE_BOTTOM) {
+    const ensure = (needed = 20) => {
+      if (y + needed > BOTTOM) {
         doc.addPage();
         y = 20;
       }
+    };
+    const val = (v) =>
+      v === null || v === undefined || v === "" ? "N/A" : String(v);
+    const dt = (v) => (v ? formatDate(v) : "N/A");
+    const zebra = (data) => {
+      if (data.section === "body" && data.row.index % 2 === 1)
+        data.cell.styles.fillColor = lightGrey;
+    };
+    const tableOpts = {
+      ...manifestTableStyles,
+      styles: {
+        ...manifestTableStyles.styles,
+        fontSize: 8,
+        overflow: "linebreak",
+      },
+      margin: { left: m, right: m },
+    };
+    const subTitle = (text) => {
+      ensure(20);
+      doc
+        .setFont("helvetica", "bold")
+        .setFontSize(9)
+        .setTextColor(...teal);
+      doc.text(text, m, y);
+      y += 4;
+    };
+    const table = (head, body, extra = {}) => {
+      autoTable(doc, {
+        startY: y,
+        head: [head],
+        body,
+        ...tableOpts,
+        didParseCell: zebra,
+        ...extra,
+      });
+      y = doc.lastAutoTable.finalY + 6;
+    };
+    const empty = (text) => {
+      ensure(10);
+      doc
+        .setFont("helvetica", "italic")
+        .setFontSize(9)
+        .setTextColor(120, 120, 120);
+      doc.text(text, m, y + 2);
+      y += 10;
+    };
+    const section = (title) => {
+      ensure(30);
+      y = pdfDrawSectionHeader(doc, title, y, m);
+    };
+    const kv = (title, pairs) => {
+      section(title);
+      const colW = (pw - m * 2 - 10) / 2;
+      for (let i = 0; i < pairs.length; i += 2) {
+        const row = pairs.slice(i, i + 2).map(([label, v], ci) => ({
+          label,
+          lines: doc.splitTextToSize(val(v), colW),
+          x: m + ci * (colW + 10),
+        }));
+        const h = 4 + Math.max(...row.map((c) => c.lines.length)) * 4 + 3;
+        ensure(h);
+        row.forEach((c) => {
+          doc
+            .setFont("helvetica", "bold")
+            .setFontSize(9)
+            .setTextColor(...teal);
+          doc.text(c.label, c.x, y);
+          doc.setFont("helvetica", "normal").setTextColor(50, 50, 50);
+          doc.text(c.lines, c.x, y + 4);
+        });
+        y += h;
+      }
+      y += 3;
+    };
+    const fileTable = (title, files) => {
+      section(title);
+      if (!files.length) return empty("No files uploaded");
+      const urls = files.map(resolveFileUrl);
+      table(
+        ["#", "File", "Type", "Size", "Link"],
+        files.map((f, i) => [
+          i + 1,
+          f.originalname || "File",
+          f.mimetype || "N/A",
+          `${((f.size || 0) / 1024).toFixed(1)} KB`,
+          urls[i] ? "Open file" : "N/A",
+        ]),
+        {
+          didParseCell(data) {
+            zebra(data);
+            if (
+              data.section === "body" &&
+              data.column.index === 4 &&
+              urls[data.row.index]
+            ) {
+              data.cell.styles.textColor = teal;
+              data.cell.styles.fontStyle = "bold";
+            }
+          },
+          didDrawCell(data) {
+            if (
+              data.section === "body" &&
+              data.column.index === 4 &&
+              urls[data.row.index]
+            ) {
+              doc.link(
+                data.cell.x,
+                data.cell.y,
+                data.cell.width,
+                data.cell.height,
+                {
+                  url: urls[data.row.index],
+                },
+              );
+            }
+          },
+        },
+      );
     };
 
     const logo = await loadImageAsBase64("./logo-2.png");
@@ -514,13 +680,12 @@ const OrderModalView = ({
       .setFont("helvetica", "bold")
       .setFontSize(10)
       .setTextColor(...orange);
-    doc.text(`Booking Ref: ${order.booking_ref}`, pw - m, 8, {
+    doc.text(`Booking Ref: ${val(order.booking_ref)}`, pw - m, 8, {
       align: "right",
     });
-
     doc.setFont("helvetica", "normal").setFontSize(8).setTextColor(60, 60, 60);
     [
-      `Status: ${order.status || "N/A"}`,
+      `Status: ${val(order.status)}`,
       `Generated: ${new Date().toLocaleString()}`,
     ].forEach((line, i) =>
       doc.text(line, pw - m, 13 + i * 4, { align: "right" }),
@@ -536,7 +701,6 @@ const OrderModalView = ({
       .setFontSize(7.5)
       .setTextColor(120, 120, 120);
     doc.text("Dubai • London • Karachi • Shenzhen", m, 27.5);
-
     doc
       .setFont("helvetica", "bold")
       .setFontSize(14)
@@ -546,21 +710,18 @@ const OrderModalView = ({
       .setDrawColor(...teal)
       .setLineWidth(0.6)
       .line(m, 37, pw - m, 37);
-
     y = 44;
-
-    const primaryDropOff = order.receivers?.[0]?.drop_off_details?.[0];
 
     const cards = [
       ["Order Form Number", order.rgl_booking_number],
+      ["Tracking ID", order.tracking_id],
       ["Status", order.status],
+      ["Transport Type", order.transport_type],
       [
-        "Drop Method",
-        order.drop_method || primaryDropOff?.drop_method || "N/A",
+        "Created At",
+        order.created_at ? new Date(order.created_at).toLocaleString() : null,
       ],
-      ["Point of Origin", getPlaceName(order.point_of_origin)],
       ["Total Assigned Qty", order.total_assigned_qty],
-      ["Collection Scope", order.collection_scope],
     ];
     const cw = (pw - m * 2 - 6) / 2;
     const ch = 16;
@@ -575,75 +736,57 @@ const OrderModalView = ({
       doc
         .setFont("helvetica", "bold")
         .setFontSize(9)
-        .setTextColor(255, 255, 255)
-        .text(item[0], x + 2, cy + 4);
-      doc
-        .setFont("helvetica", "normal")
-        .setTextColor(50, 50, 50)
-        .text(String(item[1] ?? "N/A"), x + 3, cy + 11);
+        .setTextColor(255, 255, 255);
+      doc.text(item[0], x + 2, cy + 4);
+      doc.setFont("helvetica", "normal").setTextColor(50, 50, 50);
+      doc.text(doc.splitTextToSize(val(item[1]), cw - 6)[0], x + 3, cy + 11);
     });
     y += Math.ceil(cards.length / 2) * (ch + 6) + 5;
 
-    const drawKV = (y, title, details) => {
-      y = pdfDrawSectionHeader(doc, title, y, m);
-      const colW = (pw - m * 2 - 10) / 2;
-      const rh = 8;
-      details.forEach((pair, i) => {
-        const col = i % 2,
-          row = Math.floor(i / 2);
-        const x = m + col * (colW + 10),
-          dy = y + row * rh;
-        doc
-          .setFont("helvetica", "bold")
-          .setFontSize(9)
-          .setTextColor(...teal)
-          .text(pair[0], x, dy);
-        doc
-          .setFont("helvetica", "normal")
-          .setFontSize(9)
-          .setTextColor(50, 50, 50)
-          .text(String(pair[1] || "N/A"), x, dy + 4);
-      });
-      return y + Math.ceil(details.length / 2) * rh + 6;
-    };
-
-    checkPageBreak(30);
-    y = drawKV(y, "ORDER INFORMATION", [
+    // ── Order info ──────────────────────────────────────────
+    kv("ORDER INFORMATION", [
       ["Booking Ref", order.booking_ref],
       ["RGL Booking #", order.rgl_booking_number],
+      ["Point of Origin", getPlaceName(order.point_of_origin)],
       ["Place of Loading", getPlaceName(order.place_of_loading)],
-      ["Final Destination", getPlaceName(order.final_destination)],
       ["Place of Delivery", getPlaceName(order.place_of_delivery)],
+      ["Final Destination", getPlaceName(order.final_destination)],
+      ["Shipping Line", order.shipping_line],
+      ["Collection Scope", order.collection_scope],
     ]);
 
-    checkPageBreak(30);
-    y = drawKV(y, "SENDER INFORMATION", [
+    // ── Sender ──────────────────────────────────────────────
+    kv("SENDER INFORMATION", [
       ["Sender Name", order.sender_name],
       ["Contact Number", order.sender_contact],
       ["Email", order.sender_email],
-      ["Address", order.sender_address],
       ["Sender Ref", order.sender_ref],
+      ["Address", order.sender_address],
+      ["Remarks", order.sender_remarks],
     ]);
 
-    if (order.receivers?.length) {
-      checkPageBreak(20);
-      y = pdfDrawSectionHeader(doc, "RECEIVERS", y, m);
-      autoTable(doc, {
-        startY: y,
-        head: [
-          [
-            "Receiver",
-            "Status",
-            "ETA",
-            "ETD",
-            "Qty",
-            "Weight",
-            "Contact",
-            "Address",
-          ],
+    // ── Receivers, items, containers ────────────────────────
+    const receivers = order.receivers || [];
+    section("RECEIVERS");
+    if (!receivers.length) empty("No receivers found");
+    else {
+      table(
+        [
+          "Receiver",
+          "Tracking ID",
+          "Status",
+          "ETA",
+          "ETD",
+          "Qty",
+          "Weight",
+          "Contact",
+          "Address",
         ],
-        body: order.receivers.map((r) => [
+        receivers.map((r) => [
           r.receiver_name,
+          r.tracking_id ||
+            (r.shippingDetails || r.shippingdetails || [])[0]?.trackingId ||
+            "N/A",
           r.status,
           r.eta ? formatDate(r.eta) : "N/A",
           r.etd ? formatDate(r.etd) : "N/A",
@@ -652,119 +795,201 @@ const OrderModalView = ({
           r.receiver_contact,
           r.receiver_address,
         ]),
-        ...manifestTableStyles,
-        margin: { left: m, right: m },
-        didParseCell(data) {
-          if (data.section === "body" && data.row.index % 2 === 1)
-            data.cell.styles.fillColor = lightGrey;
-        },
-      });
-      y = doc.lastAutoTable.finalY + 6;
+      );
 
-      for (const rec of order.receivers) {
-        if (!rec.shippingdetails?.length) continue;
-        checkPageBreak(30);
-        doc
-          .setFont("helvetica", "bold")
-          .setFontSize(9)
-          .setTextColor(...teal)
-          .text(`Products for: ${rec.receiver_name}`, m, y);
-        y += 6;
-
-        autoTable(doc, {
-          startY: y,
-          head: [
-            [
-              "Category",
-              "Subcategory",
-              "Type",
-              "Total",
-              "Weight",
-              "Pickup",
-              "Delivery",
-              "Status",
-            ],
+      for (const rec of receivers) {
+        const items = rec.shippingDetails || rec.shippingdetails || [];
+        if (!items.length) continue;
+        subTitle(`Items for: ${val(rec.receiver_name)}`);
+        table(
+          [
+            "Item Ref",
+            "Category",
+            "Subcategory",
+            "Type",
+            "Qty",
+            "Weight",
+            "Status",
+            "ETA",
           ],
-          body: rec.shippingdetails.map((s) => [
+          items.map((s) => [
+            s.itemRef,
             s.category,
             s.subcategory,
             s.type,
             s.totalNumber,
             s.weight,
-            s.pickupLocation,
-            s.deliveryAddress,
             s.status,
+            s.eta ? formatDate(s.eta) : "N/A",
           ]),
-          ...manifestTableStyles,
-          styles: { ...manifestTableStyles.styles, fontSize: 8 },
-          margin: { left: m, right: m },
-          didParseCell(data) {
-            if (data.section === "body" && data.row.index % 2 === 1)
-              data.cell.styles.fillColor = lightGrey;
-          },
-        });
-        y = doc.lastAutoTable.finalY + 6;
-
-        rec.shippingdetails.forEach((sd, di) => {
+        );
+        items.forEach((sd) => {
           if (!sd.containerDetails?.length) return;
-          checkPageBreak(30);
-          doc
-            .setFont("helvetica", "bold")
-            .setFontSize(9)
-            .setTextColor(...teal)
-            .text(`Container Assignments – Item ${di + 1}`, m, y);
-          y += 4;
-
-          autoTable(doc, {
-            startY: y,
-            head: [
-              [
-                "Status",
-                "Container #",
-                "Assigned Weight",
-                "Assigned Boxes",
-                "Remaining",
-              ],
+          subTitle(`Container Assignments – ${sd.itemRef || itemLabel(sd)}`);
+          table(
+            [
+              "Container #",
+              "Consignment #",
+              "Boxes",
+              "Weight",
+              "Status",
+              "ETA",
+              "Remaining",
             ],
-            body: sd.containerDetails.map((cd) => [
-              cd.status,
+            sd.containerDetails.map((cd) => [
               cd.container?.container_number || "N/A",
-              cd.assign_weight,
+              cd.consignment_number || "N/A",
               cd.assign_total_box,
+              cd.assign_weight,
+              cd.item_status || cd.status,
+              cd.eta ? formatDate(cd.eta) : "N/A",
               cd.remaining_items,
             ]),
-            ...manifestTableStyles,
-            styles: { ...manifestTableStyles.styles, fontSize: 8 },
-            margin: { left: m, right: m },
-          });
-          y = doc.lastAutoTable.finalY + 6;
+          );
         });
       }
     }
-    checkPageBreak(26);
+
+    // ── Transport / third party / drop-off ──────────────────
+    kv("TRANSPORT DETAILS", [
+      ["Transport Type", order.transport_type],
+      ["Third Party Transport", order.third_party_transport],
+      ["Driver Name", order.driver_name],
+      ["Driver Contact", order.driver_contact],
+      ["Driver NIC", order.driver_nic],
+      ["Pickup Location", order.driver_pickup_location],
+      ["Truck Number", order.truck_number],
+    ]);
+
+    const dropRows = receivers.flatMap((r) =>
+      (r.drop_off_details || []).map((d) => [
+        r.receiver_name,
+        d.drop_method,
+        d.dropoff_name,
+        d.drop_off_cnic,
+        d.drop_off_mobile,
+        d.plate_no,
+        d.drop_date ? formatDate(d.drop_date) : "N/A",
+      ]),
+    );
+    if (dropRows.length) {
+      section("DROP-OFF DETAILS");
+      table(
+        [
+          "Receiver",
+          "Method",
+          "Name",
+          "CNIC / ID",
+          "Mobile",
+          "Plate No",
+          "Drop Date",
+        ],
+        dropRows,
+      );
+    }
+
+    section("COLLECTIONS");
+    const colRows = receivers.flatMap((r) =>
+      (r.collections || []).map((c) => [
+        r.receiver_name,
+        c.collectionMethod,
+        c.collectionScope,
+        c.clientReceiverId,
+        c.clientReceiverMobile,
+        c.plateNo,
+        c.deliveryDate ? formatDate(c.deliveryDate) : "N/A",
+        (c.items || [])
+          .map((it) => `${it.itemRef} (${it.qtyDelivered})`)
+          .join(", ") || "N/A",
+      ]),
+    );
+    if (!colRows.length) empty("No collections recorded");
+    else
+      table(
+        [
+          "Receiver",
+          "Method",
+          "Scope",
+          "ID / CNIC",
+          "Phone",
+          "Plate No",
+          "Delivery Date",
+          "Items Collected",
+        ],
+        colRows,
+      );
+
+    const gatepasses = [
+      ...(order.gatepass || []),
+      ...receivers.flatMap((r) =>
+        (r.collections || []).flatMap((c) => c.gatepass || []),
+      ),
+    ];
+    fileTable("ATTACHMENTS", order.attachments || []);
+    fileTable("GATEPASS", gatepasses);
+
+    const tracking = order.tracking || [];
+    if (tracking.length) {
+      section("TRACKING HISTORY");
+      table(
+        [
+          "Status",
+          "Module",
+          "Container #",
+          "Consignment #",
+          "Created",
+          "Created By",
+          "ETA",
+          "ETD",
+        ],
+        tracking.map((t) => [
+          t.status,
+          t.module,
+          t.container_number,
+          t.consignment_number,
+          fmtDMY(t.created_time),
+          t.created_by_name || t.created_by,
+          fmtDMY(t.eta),
+          fmtDMY(t.etd),
+        ]),
+      );
+    }
+
+    if (canViewJobDetails && billing) {
+      const billsList = (billing.vendorBills || []).filter(
+        (d) => d.status !== "void",
+      );
+      const billsPaid = billsList.reduce((s, d) => s + docPaidAed(d), 0);
+      kv("FINANCE SUMMARY (AED)", [
+        ["Total Invoice", fmtMoney(billing.invoiceTotal, "AED")],
+        ["Total Bills", fmtMoney(billing.vendorTotal, "AED")],
+        ["Total Received", fmtMoney(billing.received, "AED")],
+        ["Total Bills Paid", fmtMoney(billsPaid, "AED")],
+        ["Net Profit", fmtMoney(billing.expectedProfit, "AED")],
+      ]);
+    }
+
     if (order.order_remarks) {
+      const lines = doc.splitTextToSize(order.order_remarks, pw - m * 2 - 6);
+      const h = 12 + lines.length * 4;
+      ensure(h + 4);
       doc
         .setFillColor(...lightGrey)
-        .roundedRect(m, y, pw - m * 2, 20, 2, 2, "F");
+        .roundedRect(m, y, pw - m * 2, h, 2, 2, "F");
       doc
         .setFont("helvetica", "bold")
         .setFontSize(10)
-        .setTextColor(...teal)
-        .text("Order Remarks", m + 3, y + 6);
+        .setTextColor(...teal);
+      doc.text("Order Remarks", m + 3, y + 6);
       doc
         .setFont("helvetica", "normal")
         .setFontSize(9)
         .setTextColor(50, 50, 50);
-      doc.text(
-        doc.splitTextToSize(order.order_remarks, pw - m * 2 - 6),
-        m + 3,
-        y + 11,
-      );
-      y += 26;
+      doc.text(lines, m + 3, y + 11);
+      y += h + 4;
     }
 
     pdfAddFooters(doc, pw, m, `Booking Ref: ${order.booking_ref || "N/A"}`);
-
     doc.save(`Order_${order.booking_ref || "Unknown"}.pdf`);
   };
 
@@ -1141,7 +1366,10 @@ const OrderModalView = ({
       cds.forEach((cd) => {
         const no = cd.container?.container_number || "Unknown";
         if (!map[no]) map[no] = { no, status: cd.status, eta: null, rows: [] };
-        if (!map[no].eta && cd.eta) map[no].eta = cd.eta;
+        if (!map[no].eta && cd.eta) {
+          map[no].eta = cd.eta;
+          map[no].etaStatus = cd.item_status;
+        }
         map[no].rows.push({ rec, item, cd, split: cds.length > 1 });
       });
     });
@@ -1150,6 +1378,13 @@ const OrderModalView = ({
 
   const itemLabel = (item) =>
     [item.category, item.subcategory].filter(Boolean).join(" › ") || "Item";
+
+  const etaLabel = (status) =>
+    status === "Shipment Delivered"
+      ? "Delivered"
+      : status === "Ready for Loading" || status === "Ready for Delivery"
+        ? "RFD"
+        : "ETA";
 
   const sumBy = (rows, fn) => rows.reduce((s, r) => s + Number(fn(r) || 0), 0);
 
@@ -1269,7 +1504,10 @@ const OrderModalView = ({
                 ["Tracking ID", item.trackingId],
                 ["Type", item.type],
                 ["Status", item.status],
-                ["ETA", isMulti(item) ? "See container assignments" : item.eta],
+                [
+                  etaLabel(inThis?.item_status || item.status),
+                  isMulti(item) ? "See container assignments" : item.eta,
+                ],
                 ["ETD", item.etd],
                 ["Total Number", item.totalNumber],
                 ["Weight", item.weight ? `${item.weight} kg` : null],
@@ -1283,6 +1521,16 @@ const OrderModalView = ({
                     : null,
                 ],
                 ...(paymentOf(rec.id) ? [["Payment", paymentOf(rec.id)]] : []),
+                ...(item.rfdDate
+                  ? [
+                      [
+                        "RFD By",
+                        item.rfdByEmail && item.rfdBy !== item.rfdByEmail
+                          ? `${item.rfdBy} (${item.rfdByEmail})`
+                          : item.rfdByEmail || item.rfdBy,
+                      ],
+                    ]
+                  : []),
               ].map(([label, val]) => (
                 <Grid item xs={12} sm={6} md={4} key={label}>
                   <FieldCard label={label} value={val} />
@@ -1492,7 +1740,11 @@ const OrderModalView = ({
             {summaryChip(`${boxes} boxes`, "#fff", T.tealDark)}
             {summaryChip(`${weight.toLocaleString()} kg`, "#fff", T.tealDark)}
             {g.eta &&
-              summaryChip(`ETA ${formatDate(g.eta)}`, "#e3f2fd", "#1565c0")}
+              summaryChip(
+                `${etaLabel(g.etaStatus)} ${formatDate(g.eta)}`,
+                "#e3f2fd",
+                "#1565c0",
+              )}
           </>,
         )}
         <Collapse in={!!expanded[key]} unmountOnExit>
@@ -2032,6 +2284,238 @@ const OrderModalView = ({
     </Box>
   );
 
+  const fmtDMY = (value) => {
+    if (!value) return "-";
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return "-";
+    const dd = String(d.getDate()).padStart(2, "0");
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    return `${dd}/${mm}/${d.getFullYear()}`;
+  };
+
+  const getModuleColors = (module) => {
+    switch (module?.toLowerCase()) {
+      case "orders":
+        return { bg: "#e3f2fd", text: "#1565c0" };
+      case "containers":
+        return { bg: "#fff3e0", text: "#e65100" };
+      case "consignments":
+        return { bg: "#e8f5e9", text: "#2e7d32" };
+      default:
+        return { bg: "#f5f5f5", text: "#616161" };
+    }
+  };
+
+  const buildTrackingGroups = () => {
+    const { items } = buildShipmentData();
+    const rows = selectedOrder?.tracking || [];
+
+    const labelCount = {};
+    items.forEach(({ item }) => {
+      const l = itemLabel(item);
+      labelCount[l] = (labelCount[l] || 0) + 1;
+    });
+    const labelSeen = {};
+
+    const groups = {};
+    items.forEach(({ item }) => {
+      const base = itemLabel(item);
+      labelSeen[base] = (labelSeen[base] || 0) + 1;
+      const label =
+        labelCount[base] > 1 ? `${base} (${labelSeen[base]})` : base;
+      const key = item.itemRef || `id-${item.id}`;
+      groups[key] = { key, label, rows: [] };
+    });
+
+    const other = { key: "other", label: "Order Level", rows: [] };
+    rows.forEach((r) => {
+      if (r.item_ref && groups[r.item_ref]) groups[r.item_ref].rows.push(r);
+      else other.rows.push(r);
+    });
+
+    const list = Object.values(groups);
+    if (other.rows.length) list.push(other);
+    return list;
+  };
+
+  const renderTracking = () => {
+    const groups = buildTrackingGroups();
+    if (!groups.length)
+      return (
+        <Alert severity="info" sx={{ borderRadius: 2 }}>
+          No shipping items found for this order.
+        </Alert>
+      );
+
+    const active = groups[Math.min(trackingTab, groups.length - 1)];
+    const head = { bgcolor: T.teal, color: "#fff", fontWeight: 600 };
+
+    return (
+      <Stack spacing={2}>
+        <Tabs
+          value={Math.min(trackingTab, groups.length - 1)}
+          onChange={(_, v) => setTrackingTab(v)}
+          variant="scrollable"
+          scrollButtons="auto"
+          sx={{
+            borderBottom: 1,
+            borderColor: "divider",
+            "& .MuiTab-root": {
+              textTransform: "none",
+              fontWeight: 600,
+              fontSize: 13,
+            },
+            "& .Mui-selected": { color: `${T.teal} !important` },
+          }}
+          TabIndicatorProps={{ style: { backgroundColor: T.teal } }}
+        >
+          {groups.map((g) => (
+            <Tab
+              key={g.key}
+              label={
+                <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                  {g.label}
+                  <Chip
+                    size="small"
+                    label={g.rows.length}
+                    sx={{
+                      bgcolor: T.tealMid,
+                      color: T.tealDark,
+                      fontWeight: 700,
+                      height: 20,
+                    }}
+                  />
+                </Box>
+              }
+            />
+          ))}
+        </Tabs>
+
+        <TableContainer
+          sx={{
+            border: 1,
+            borderColor: "divider",
+            borderRadius: 2,
+            bgcolor: T.white,
+          }}
+        >
+          <Table size="small" sx={{ minWidth: 900 }}>
+            <TableHead>
+              <TableRow>
+                {[
+                  "Status",
+                  "Module",
+                  "Container Number",
+                  "Consignment Number",
+                  "Created Time",
+                  "Created By",
+                  "ETA",
+                  "ETD",
+                ].map((h) => (
+                  <TableCell key={h} sx={head}>
+                    {h}
+                  </TableCell>
+                ))}
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {active.rows.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={8}
+                    align="center"
+                    sx={{ py: 5, color: "text.secondary" }}
+                  >
+                    No tracking records for this item.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                active.rows.map((row) => {
+                  const sc = getStatusColors(row.status);
+                  const mc = getModuleColors(row.module);
+                  return (
+                    <TableRow key={row.id} hover>
+                      <TableCell>
+                        {row.status ? (
+                          <Chip
+                            label={row.status}
+                            size="small"
+                            sx={{
+                              bgcolor: sc.bg,
+                              color: sc.text,
+                              fontWeight: 600,
+                            }}
+                          />
+                        ) : (
+                          "-"
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {row.module ? (
+                          <Chip
+                            label={row.module}
+                            size="small"
+                            sx={{
+                              bgcolor: mc.bg,
+                              color: mc.text,
+                              fontWeight: 600,
+                            }}
+                          />
+                        ) : (
+                          "-"
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {row.container_number ? (
+                          <Link
+                            href={containerHref(row.container_number)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            underline="hover"
+                            sx={{ color: T.teal, fontWeight: 600 }}
+                          >
+                            {row.container_number}
+                          </Link>
+                        ) : (
+                          "-"
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {row.consignment_number ? (
+                          row.consignment_id ? (
+                            <Link
+                              href={consignmentHref(row.consignment_id)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              underline="hover"
+                              sx={{ color: T.teal, fontWeight: 600 }}
+                            >
+                              {row.consignment_number}
+                            </Link>
+                          ) : (
+                            row.consignment_number
+                          )
+                        ) : (
+                          "-"
+                        )}
+                      </TableCell>
+                      <TableCell>{fmtDMY(row.created_time)}</TableCell>
+                      <TableCell>
+                        {row.created_by_name || row.created_by || "-"}
+                      </TableCell>
+                      <TableCell>{fmtDMY(row.eta)}</TableCell>
+                      <TableCell>{fmtDMY(row.etd)}</TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Stack>
+    );
+  };
+
   const docBalanceAed = (d) =>
     d.currency === "AED"
       ? Number(d.balance || 0)
@@ -2085,13 +2569,22 @@ const OrderModalView = ({
       }, {}),
     );
 
+  const getOrderRfd = () => {
+    const { items } = buildShipmentData();
+    const dates = items.map(({ item }) => item.rfdDate);
+    if (!dates.length || dates.some((d) => !d)) return null;
+    return new Date(Math.max(...dates.map((d) => new Date(d).getTime())));
+  };
+
   const jobTable = (docs, partyLabel, partyKey, kind) => {
     const groups = groupByForm(docs);
     const live = docs.filter((d) => d.status !== "void");
-    const grandTotal = live.reduce((s, d) => s + docTotalAed(d), 0);
-    const grandBalance = live.reduce((s, d) => s + docBalanceAed(d), 0);
-    const grandPaid = live.reduce((s, d) => s + docPaidAed(d), 0);
+    const grandTotal = sumBy(live, docTotalAed);
+    const grandBalance = sumBy(live, docBalanceAed);
+    const grandPaid = sumBy(live, docPaidAed);
     const headCell = { bgcolor: T.teal, color: "#fff", fontWeight: "bold" };
+    const rfdDate = selectedOrder?.rfd_date || getOrderRfd();
+    const rfdTxt = rfdDate ? dayjs(rfdDate).format("MMM DD, YYYY") : "-";
 
     return (
       <TableContainer
@@ -2099,7 +2592,7 @@ const OrderModalView = ({
           border: 1,
           borderColor: "divider",
           borderRadius: 2,
-          bgcolor: T.white,
+          bgcolor: "background.paper",
         }}
       >
         <Table size="small" sx={{ minWidth: 1100 }}>
@@ -2110,6 +2603,7 @@ const OrderModalView = ({
                 partyLabel,
                 "Date",
                 "Due Date",
+                "RFD Date",
                 "Status",
               ].map((h) => (
                 <TableCell key={h} sx={headCell}>
@@ -2120,20 +2614,23 @@ const OrderModalView = ({
                 Total (FCA)
               </TableCell>
               <TableCell align="right" sx={headCell}>
-                Paid (AED)
+                Paid
               </TableCell>
               <TableCell align="right" sx={headCell}>
-                Balance (AED)
+                Balance
               </TableCell>
               <TableCell align="right" sx={headCell}>
-                Total (AED)
+                Total
+              </TableCell>
+              <TableCell align="center" sx={headCell}>
+                Preview
               </TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {groups.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} align="center" sx={{ py: 4 }}>
+                <TableCell colSpan={11} align="center" sx={{ py: 4 }}>
                   <Typography variant="body2" color="text.secondary">
                     No {kind.toLowerCase()}s found
                   </Typography>
@@ -2205,6 +2702,9 @@ const OrderModalView = ({
                             )
                           : ""}
                       </TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>
+                        {!open ? rfdTxt : ""}
+                      </TableCell>
                       <TableCell>
                         {!open && (
                           <Chip
@@ -2227,6 +2727,7 @@ const OrderModalView = ({
                       <TableCell align="right" sx={{ fontWeight: 700 }}>
                         {fmtMoney(sumBy(gl, docTotalAed), "AED")}
                       </TableCell>
+                      <TableCell />
                     </TableRow>,
                     ...(open
                       ? g.docs.map((d) => (
@@ -2236,14 +2737,19 @@ const OrderModalView = ({
                             </TableCell>
                             <TableCell>{d[partyKey]}</TableCell>
                             <TableCell>
-                              {d.date ? formatDate(d.date) : "-"}
+                              {d.date
+                                ? dayjs(d.date).format("MMM DD, YYYY")
+                                : "-"}
                             </TableCell>
                             <TableCell>
-                              {d.dueDate ? formatDate(d.dueDate) : "-"}
+                              {d.dueDate
+                                ? dayjs(d.dueDate).format("MMM DD, YYYY")
+                                : "-"}
                             </TableCell>
+                            <TableCell>{rfdTxt}</TableCell>
                             <TableCell>
                               <Chip
-                                label={fmtStatus(d.status)}
+                                label={statusLabel(d, rfdDate)}
                                 size="small"
                                 variant="outlined"
                                 color={docStatusColor(d.status)}
@@ -2265,6 +2771,19 @@ const OrderModalView = ({
                             <TableCell align="right" sx={{ fontWeight: 600 }}>
                               {fmtAed(d.totalAed)}
                             </TableCell>
+                            <TableCell align="center">
+                              <IconButton
+                                size="small"
+                                disabled={pdfLoadingId === d.id}
+                                onClick={() => openDocPdf(kind, d)}
+                              >
+                                {pdfLoadingId === d.id ? (
+                                  <CircularProgress size={18} />
+                                ) : (
+                                  <VisibilityIcon fontSize="small" />
+                                )}
+                              </IconButton>
+                            </TableCell>
                           </TableRow>
                         ))
                       : []),
@@ -2272,11 +2791,11 @@ const OrderModalView = ({
                 })}
                 <TableRow sx={{ bgcolor: T.tealLight }}>
                   <TableCell
-                    colSpan={5}
+                    colSpan={6}
                     align="right"
                     sx={{ fontWeight: 700, color: T.tealDark }}
                   >
-                    Grand Total (AED)
+                    Grand Total
                   </TableCell>
                   <TableCell />
                   <TableCell
@@ -2297,6 +2816,7 @@ const OrderModalView = ({
                   >
                     {fmtMoney(grandTotal, "AED")}
                   </TableCell>
+                  <TableCell />
                 </TableRow>
               </>
             )}
@@ -2316,9 +2836,11 @@ const OrderModalView = ({
         </Typography>
       );
     }
+    const netProfit =
+      Number(billing.invoiceTotal || 0) - Number(billing.vendorTotal || 0);
     const margin =
-      billing.invoiceTotal > 0 && billing.expectedProfit !== null
-        ? `${((billing.expectedProfit / billing.invoiceTotal) * 100).toFixed(1)}%`
+      billing.invoiceTotal > 0
+        ? `${((netProfit / billing.invoiceTotal) * 100).toFixed(1)}%`
         : "-";
     const invoices = billing.invoices || [];
     const bills = billing.vendorBills || [];
@@ -2338,7 +2860,7 @@ const OrderModalView = ({
               gridTemplateColumns: {
                 xs: "repeat(2, 1fr)",
                 sm: "repeat(3, 1fr)",
-                lg: "repeat(6, 1fr)",
+                lg: "repeat(5, 1fr)",
               },
               gap: 1.5,
             }}
@@ -2371,7 +2893,7 @@ const OrderModalView = ({
               color="#7c3aed"
               icon={<CreditCardOutlinedIcon />}
               value={fmtMoney(billing.paidOut, "AED")}
-              label="Total Paid"
+              label="Total Bills Paid"
               sub={`${
                 bills.filter((d) => d.status !== "void" && docPaidAed(d) > 0)
                   .length
@@ -2380,7 +2902,7 @@ const OrderModalView = ({
             <FinStatCard
               color="#059669"
               icon={<TrendingUpIcon />}
-              value={fmtMoney(billing.expectedProfit, "AED")}
+              value={fmtMoney(netProfit, "AED")}
               label="Net Profit"
               sub={`${margin} Margin`}
             />
@@ -2443,6 +2965,10 @@ const OrderModalView = ({
       icon: <InventoryIcon sx={{ fontSize: 18, color: T.teal }} />,
     },
     {
+      label: "Tracking",
+      icon: <HistoryIcon sx={{ fontSize: 18, color: T.teal }} />,
+    },
+    {
       label: "Transport",
       icon: <DriveEtaIcon sx={{ fontSize: 18, color: T.teal }} />,
     },
@@ -2472,7 +2998,6 @@ const OrderModalView = ({
             borderRadius: 3,
             overflow: "hidden",
             boxShadow: "0 20px 60px rgba(0,0,0,0.15)",
-            maxHeight: "92vh",
           },
         }}
       >
@@ -2602,30 +3127,31 @@ const OrderModalView = ({
                       title="Order Information"
                     />
                     <FieldGrid
-                      cols={3}
+                      cols={4}
                       copyKeys={["Tracking ID", "RGL Booking #"]}
                       data={{
                         "Tracking ID": selectedOrder.tracking_id,
                         "Booking Ref": selectedOrder.booking_ref,
                         "RGL Booking #": selectedOrder.rgl_booking_number,
                         Status: selectedOrder.status,
+                        "Point of Origin": getPlaceName(
+                          selectedOrder.point_of_origin,
+                        ),
                         "Place of Loading": getPlaceName(
                           selectedOrder.place_of_loading,
-                        ),
-                        "Final Destination": getPlaceName(
-                          selectedOrder.final_destination,
                         ),
                         "Place of Delivery": getPlaceName(
                           selectedOrder.place_of_delivery,
                         ),
-                        "Point of Origin": getPlaceName(
-                          selectedOrder.point_of_origin,
+                        "Final Destination": getPlaceName(
+                          selectedOrder.final_destination,
                         ),
+
                         "Shipping Line": selectedOrder.shipping_line,
-                        "Collection Scope": selectedOrder.collection_scope,
                         "Transport Type": selectedOrder.transport_type,
+                        "Collection Scope": selectedOrder.collection_scope,
                         "Total Assigned Qty": selectedOrder.total_assigned_qty,
-                        "Order Remarks": selectedOrder.order_remarks,
+
                         "Created At": new Date(
                           selectedOrder.created_at,
                         ).toLocaleString("en-US", {
@@ -2635,6 +3161,7 @@ const OrderModalView = ({
                           hour: "2-digit",
                           minute: "2-digit",
                         }),
+                        "Order Remarks": selectedOrder.order_remarks,
                       }}
                     />
                   </CardContent>
@@ -2703,8 +3230,24 @@ const OrderModalView = ({
                   </CardContent>
                 </Card>
               </TabPanel>
-
               <TabPanel value={tabValue} index={3}>
+                <Card
+                  variant="outlined"
+                  sx={{ borderRadius: 2.5, border: `1px solid ${T.grey200}` }}
+                >
+                  <CardContent sx={{ p: 3 }}>
+                    <SectionHeader
+                      icon={
+                        <HistoryIcon sx={{ color: T.teal, fontSize: 20 }} />
+                      }
+                      title="Tracking History"
+                      count={(selectedOrder.tracking || []).length}
+                    />
+                    {renderTracking()}
+                  </CardContent>
+                </Card>
+              </TabPanel>
+              <TabPanel value={tabValue} index={4}>
                 <Stack spacing={3}>
                   {selectedOrder.transport_type !== "Drop Off" && (
                     <Card
@@ -2780,7 +3323,7 @@ const OrderModalView = ({
                 </Stack>
               </TabPanel>
 
-              <TabPanel value={tabValue} index={4}>
+              <TabPanel value={tabValue} index={5}>
                 <Grid container spacing={2.5}>
                   <Grid item xs={12} md={6}>
                     <Paper
@@ -2916,7 +3459,7 @@ const OrderModalView = ({
               </TabPanel>
 
               {canViewJobDetails && (
-                <TabPanel value={tabValue} index={5}>
+                <TabPanel value={tabValue} index={6}>
                   <Card
                     variant="outlined"
                     sx={{
@@ -2967,16 +3510,9 @@ const OrderModalView = ({
                           <Typography variant="caption" color="text.secondary">
                             Last synced:{" "}
                             {lastSync
-                              ? `${new Date(lastSync.at).toLocaleString(
-                                  "en-US",
-                                  {
-                                    month: "short",
-                                    day: "numeric",
-                                    year: "numeric",
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                  },
-                                )}${lastSync.by ? ` by ${lastSync.by}` : ""}`
+                              ? `${dayjs(lastSync.at).format("MMM DD, YYYY hh:mm A")}${
+                                  lastSync.by ? ` by ${lastSync.by}` : ""
+                                }`
                               : "N/A"}
                           </Typography>
                         </Box>
@@ -3138,6 +3674,30 @@ const OrderModalView = ({
             style={{ width: "100%", height: "75vh", border: 0 }}
           />
         </DialogContent>
+      </Dialog>
+      <Dialog
+        open={Boolean(previewDoc)}
+        onClose={closePreview}
+        maxWidth="lg"
+        fullWidth
+      >
+        {previewDoc && (
+          <>
+            <DialogTitle>
+              {previewDoc.kind} Preview · {previewDoc.doc.number}
+            </DialogTitle>
+            <DialogContent dividers sx={{ p: 0 }}>
+              <iframe
+                title="document-preview"
+                src={previewDoc.url}
+                style={{ width: "100%", height: "75vh", border: 0 }}
+              />
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={closePreview}>Close</Button>
+            </DialogActions>
+          </>
+        )}
       </Dialog>
     </>
   );

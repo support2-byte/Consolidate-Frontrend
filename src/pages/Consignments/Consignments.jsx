@@ -355,6 +355,7 @@ export default function Consignments() {
             onChange={handleFilterChange}
           >
             <MenuItem value="">All</MenuItem>
+            <MenuItem value="Partially Delivered">Partially Delivered</MenuItem>
             {consignmentStatuses.map((s) => (
               <MenuItem key={s.id} value={s.consignment_status}>
                 {s.consignment_status}
@@ -374,9 +375,6 @@ export default function Consignments() {
         <Table sx={{ width: "100%", tableLayout: "fixed" }}>
           <TableHead>
             <TableRow>
-              <StyledTableHeadCell padding="checkbox" sx={{ width: 50 }}>
-                <Checkbox />
-              </StyledTableHeadCell>
               <StyledTableHeadCell sx={{ width: 140 }}>
                 Consignment #
               </StyledTableHeadCell>
@@ -423,9 +421,6 @@ export default function Consignments() {
             ) : (
               consignments.map((row) => (
                 <StyledTableRow key={row.id} hover>
-                  <TableCell padding="checkbox">
-                    <Checkbox />
-                  </TableCell>
                   <TableCell sx={{ fontSize: 12, wordBreak: "break-word" }}>
                     {row.consignment_number || "N/A"}
                   </TableCell>
