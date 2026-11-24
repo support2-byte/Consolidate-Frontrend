@@ -58,6 +58,7 @@ import {
   Collapse,
   ToggleButton,
   ToggleButtonGroup,
+  Link,
 } from "@mui/material";
 import { toast } from "react-toastify";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
@@ -73,6 +74,7 @@ import AddIcon from "@mui/icons-material/Add";
 import DeleteIconMui from "@mui/icons-material/Delete";
 import DescriptionIcon from "@mui/icons-material/Description";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import DateRangeIcon from "@mui/icons-material/DateRange";
 import DirectionsBoatIcon from "@mui/icons-material/DirectionsBoat";
 import BusinessIcon from "@mui/icons-material/Business";
@@ -185,6 +187,17 @@ const docStatusColor = (s) =>
 
 const fmtStatus = (s = "") =>
   s.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
+
+const overdueDays = (d, rfd) => {
+  if (d.status !== "overdue" || !rfd) return null;
+  const n = dayjs().startOf("day").diff(dayjs(rfd).startOf("day"), "day");
+  return n > 0 ? n : null;
+};
+
+const statusLabel = (d, rfd) => {
+  const n = overdueDays(d, rfd);
+  return n ? `Overdue (${n}d)` : fmtStatus(d.status);
+};
 
 const fmtMoney = (n, cur) =>
   `${cur} ${Number(n).toLocaleString(undefined, {
@@ -453,6 +466,14 @@ const renderGroupedManifestRows = (groups, t) => {
     .join("");
 };
 
+const copyText = async (text) => {
+  try {
+    await navigator.clipboard.writeText(String(text));
+    toast.success("Copied");
+  } catch {
+    toast.error("Copy failed");
+  }
+};
 const CustomTextField = ({
   name,
   value,
@@ -467,33 +488,58 @@ const CustomTextField = ({
   readOnly,
   tooltip,
   required = false,
+  copyable = false,
   error,
   helperText,
   ...props
-}) => (
-  <TooltipMui title={tooltip || ""}>
-    <TextField
-      name={name}
-      value={value}
-      onChange={onChange}
-      onBlur={onBlur}
-      label={`${label}${required ? "*" : ""}`}
-      type={type}
-      multiline={multiline}
-      rows={rows}
-      fullWidth
-      error={error}
-      helperText={helperText}
-      InputProps={{
-        startAdornment,
-        endAdornment,
-        readOnly,
-        sx: readOnly ? { backgroundColor: "action.hover" } : undefined,
-      }}
-      {...props}
-    />
-  </TooltipMui>
-);
+}) => {
+  const hasValue =
+    value !== undefined && value !== null && String(value).trim() !== "";
+  return (
+    <TooltipMui title={tooltip || ""}>
+      <TextField
+        name={name}
+        value={value}
+        onChange={onChange}
+        onBlur={onBlur}
+        label={`${label}${required ? "*" : ""}`}
+        type={type}
+        multiline={multiline}
+        rows={rows}
+        fullWidth
+        error={error}
+        helperText={helperText}
+        InputProps={{
+          startAdornment,
+          endAdornment: copyable ? (
+            <>
+              {endAdornment}
+              <InputAdornment position="end">
+                <IconButton
+                  size="small"
+                  edge="end"
+                  title="Copy"
+                  disabled={!hasValue}
+                  onClick={() => copyText(value)}
+                >
+                  <ContentCopyIcon fontSize="small" />
+                </IconButton>
+              </InputAdornment>
+            </>
+          ) : (
+            endAdornment
+          ),
+          readOnly: readOnly || copyable,
+          sx:
+            readOnly || copyable
+              ? { backgroundColor: "action.hover" }
+              : undefined,
+        }}
+        {...props}
+      />
+    </TooltipMui>
+  );
+};
 
 const CustomSelect = ({
   name,
@@ -812,7 +858,7 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
 
       setEtaSuggestion(suggestedEta);
 
-      if (!eta || !eta.trim()) {
+      if (!eta || (typeof eta === "string" && !eta.trim())) {
         setEta(suggestedEta);
         setValues((prev) => ({ ...prev, eta: suggestedEta }));
       }
@@ -4182,6 +4228,13 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     const grandPaid = sumBy(live, docPaidAed);
     const headCell = { bgcolor: FIN.teal, color: "#fff", fontWeight: "bold" };
 
+    const rfdByForm = Object.fromEntries(
+      orders.map((o) => [String(o.rgl_booking_number), o.rfd_date]),
+    );
+    const rfdOf = (key) => rfdByForm[String(key)] || null;
+    const rfdTxt = (key) =>
+      rfdOf(key) ? dayjs(rfdOf(key)).format("MMM DD, YYYY") : "-";
+
     return (
       <TableContainer
         sx={{
@@ -4199,6 +4252,7 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                 partyLabel,
                 "Date",
                 "Due Date",
+                "RFD Date",
                 "Status",
               ].map((h) => (
                 <TableCell key={h} sx={headCell}>
@@ -4225,7 +4279,7 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
           <TableBody>
             {groups.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} align="center" sx={{ py: 4 }}>
+                <TableCell colSpan={11} align="center" sx={{ py: 4 }}>
                   <Typography variant="body2" color="text.secondary">
                     No {kind.toLowerCase()}s found
                   </Typography>
@@ -4299,6 +4353,9 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                             )
                           : ""}
                       </TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>
+                        {!open ? rfdTxt(g.key) : ""}
+                      </TableCell>
                       <TableCell>
                         {!open && (
                           <Chip
@@ -4340,9 +4397,10 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                                 ? dayjs(d.dueDate).format("MMM DD, YYYY")
                                 : "-"}
                             </TableCell>
+                            <TableCell>{rfdTxt(g.key)}</TableCell>
                             <TableCell>
                               <Chip
-                                label={fmtStatus(d.status)}
+                                label={statusLabel(d, rfdOf(g.key))}
                                 size="small"
                                 variant="outlined"
                                 color={docStatusColor(d.status)}
@@ -4384,7 +4442,7 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                 })}
                 <TableRow sx={{ bgcolor: FIN.tealLight }}>
                   <TableCell
-                    colSpan={5}
+                    colSpan={6}
                     align="right"
                     sx={{ fontWeight: 700, color: FIN.tealDark }}
                   >
@@ -4863,7 +4921,7 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                 }}
               >
                 {tab === "details" && (
-                  <Box ref={lockRef}>
+                  <Box>
                     <Box sx={gridSx}>
                       <Box sx={span(3)}>
                         <CustomTextField
@@ -4887,6 +4945,7 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                               ? errors.consignment_number
                               : "Enter unique consignment number"
                           }
+                          copyable
                         />
                       </Box>
                       <Box sx={span(3)}>
@@ -4908,7 +4967,7 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                           tooltip="Format: ABC-123456"
                         />
                       </Box>
-                      <Box sx={span(3)}>
+                      <Box sx={span(3)} ref={lockRef}>
                         <CustomDatePicker
                           name="eform_date"
                           tooltip="Select Date"
@@ -4939,7 +4998,7 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                         />
                       </Box>
                       {mode === "edit" && (
-                        <Box sx={span(3)}>
+                        <Box sx={span(3)} ref={lockRef}>
                           <DatePicker
                             label="ETA"
                             value={eta ? dayjs(eta) : dayjs(etaSuggestion)}
@@ -4977,7 +5036,10 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                         </Box>
                       )}
 
-                      <Box sx={{ ...span(6), display: "flex", gap: 1 }}>
+                      <Box
+                        sx={{ ...span(6), display: "flex", gap: 1 }}
+                        ref={lockRef}
+                      >
                         <CustomSelect
                           name="status"
                           value={values.status}
@@ -5029,39 +5091,19 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
 
                       {sectionTitle("Parties")}
                       <Box sx={span(6)}>
-                        <CustomSelect
-                          name="shipper"
-                          value={values.shipper}
-                          onChange={handlePartyChange}
-                          onBlur={() => handleSelectBlur("shipper")}
+                        <CustomTextField
+                          name="shipperName"
+                          value={values.shipperName || ""}
                           label="Shipper"
-                          options={options.shipperOptions || []}
-                          required
-                          error={touched.shipper && Boolean(errors.shipper)}
-                          helperText={
-                            touched.shipper && errors.shipper
-                              ? errors.shipper
-                              : ""
-                          }
-                          tooltip="Select shipper"
+                          copyable
                         />
                       </Box>
                       <Box sx={span(6)}>
-                        <CustomSelect
-                          name="consignee"
-                          value={values.consignee}
-                          onChange={handlePartyChange}
-                          onBlur={() => handleSelectBlur("consignee")}
+                        <CustomTextField
+                          name="consigneeName"
+                          value={values.consigneeName || ""}
                           label="Consignee"
-                          options={options.consigneeOptions || []}
-                          required
-                          error={touched.consignee && Boolean(errors.consignee)}
-                          helperText={
-                            touched.consignee && errors.consignee
-                              ? errors.consignee
-                              : ""
-                          }
-                          tooltip="Select consignee"
+                          copyable
                         />
                       </Box>
                       <Box sx={span(6)}>
@@ -5085,47 +5127,19 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
 
                       {sectionTitle("Route & Vessel")}
                       <Box sx={span(6)}>
-                        <CustomSelect
-                          name="origin"
-                          value={values.origin}
-                          onChange={handleLocationChange}
-                          onBlur={() => handleSelectBlur("origin")}
+                        <CustomTextField
+                          name="originName"
+                          value={values.originName || ""}
                           label="Origin"
-                          options={options.originOptions || []}
-                          disabled={
-                            !options.originOptions ||
-                            options.originOptions.length === 0
-                          }
-                          required
-                          error={touched.origin && Boolean(errors.origin)}
-                          helperText={
-                            touched.origin && errors.origin ? errors.origin : ""
-                          }
-                          tooltip="Select origin port"
+                          copyable
                         />
                       </Box>
                       <Box sx={span(6)}>
-                        <CustomSelect
-                          name="destination"
-                          value={values.destination}
-                          onChange={handleLocationChange}
-                          onBlur={() => handleSelectBlur("destination")}
+                        <CustomTextField
+                          name="destinationName"
+                          value={values.destinationName || ""}
                           label="Destination"
-                          options={options.destinationOptions || []}
-                          disabled={
-                            !options.destinationOptions ||
-                            options.destinationOptions.length === 0
-                          }
-                          required
-                          error={
-                            touched.destination && Boolean(errors.destination)
-                          }
-                          helperText={
-                            touched.destination && errors.destination
-                              ? errors.destination
-                              : ""
-                          }
-                          tooltip="Select destination port"
+                          copyable
                         />
                       </Box>
                       <Box sx={span(3)}>
@@ -5137,22 +5151,19 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                           label="Shipping Line"
                           type="text"
                           placeholder="e.g., Maersk, MSC, COSCO"
+                          copyable
                         />
                       </Box>
                       <Box sx={span(3)}>
-                        <CustomSelect
-                          name="vessel"
-                          value={values.vessel ?? ""}
-                          onChange={handleChange}
-                          onBlur={() => handleSelectBlur("vessel")}
-                          label="Vessel"
-                          options={options.vesselOptions || []}
-                          required
-                          error={touched.vessel && Boolean(errors.vessel)}
-                          helperText={
-                            touched.vessel && errors.vessel ? errors.vessel : ""
+                        <CustomTextField
+                          name="vesselName"
+                          value={
+                            options.vesselOptions?.find(
+                              (v) => v.value === String(values.vessel),
+                            )?.label || ""
                           }
-                          tooltip="Select vessel"
+                          label="Vessel"
+                          copyable
                         />
                       </Box>
                       <Box sx={span(3)}>
@@ -5171,6 +5182,8 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                             touched.voyage && errors.voyage ? errors.voyage : ""
                           }
                           tooltip="Enter voyage number (min 3 chars)"
+                          readOnly
+                          copyable
                         />
                       </Box>
                       <Box sx={span(3)}>
@@ -5182,11 +5195,13 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                           startAdornment={
                             <LocalPrintshopIcon sx={{ mr: 1, color: orange }} />
                           }
+                          readOnly
+                          copyable
                         />
                       </Box>
 
                       {sectionTitle("Payment & Weight")}
-                      <Box sx={span(3)}>
+                      <Box sx={span(3)} ref={lockRef}>
                         <FormControl fullWidth error={!!errors.paymentType}>
                           <InputLabel id="paymentType-label">
                             Payment Terms*
@@ -5251,6 +5266,7 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                                     : ""
                                 }
                                 onChange={handleChange}
+                                readOnly
                               >
                                 {(options.currencyOptions || [])?.length > 0 ? (
                                   (options.currencyOptions || []).map((opt) => (
@@ -5268,15 +5284,19 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                             touched.consignment_value &&
                             Boolean(errors.consignment_value)
                           }
+                          readOnly
+                          copyable
                           helperText={
                             touched.consignment_value &&
                             errors.consignment_value
                               ? errors.consignment_value
                               : ""
                           }
+                          readOnly
+                          copyable
                         />
                       </Box>
-                      <Box sx={span(3)}>
+                      <Box sx={span(3)} ref={lockRef}>
                         <CustomSelect
                           name="bank"
                           value={values.bank}
@@ -5523,7 +5543,22 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                                       </IconButton>
                                     </TableCell>
                                     <TableCell>{row.bookingRef}</TableCell>
-                                    <TableCell>{row.formNo}</TableCell>
+                                    <TableCell>
+                                      {row.formNo && row.formNo !== "-" ? (
+                                        <Link
+                                          href={`/orders?search=${encodeURIComponent(row.formNo)}`}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          underline="hover"
+                                          onClick={(e) => e.stopPropagation()}
+                                          sx={{ fontWeight: 600, color: teal }}
+                                        >
+                                          {row.formNo}
+                                        </Link>
+                                      ) : (
+                                        row.formNo
+                                      )}
+                                    </TableCell>
                                     <TableCell>
                                       {String(row.pol).substring(0, 15)}
                                     </TableCell>
