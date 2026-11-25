@@ -28,6 +28,7 @@ import {
   Select,
   MenuItem,
   Checkbox,
+  FormControlLabel,
   IconButton,
   Tooltip,
   Dialog,
@@ -210,6 +211,15 @@ export default function Consignments() {
     setPage(0);
   };
 
+  const partiallyDelivered = filters.status === "Partially Delivered";
+  const handlePartiallyDeliveredToggle = (e) => {
+    setFilters((prev) => ({
+      ...prev,
+      status: e.target.checked ? "Partially Delivered" : "",
+    }));
+    setPage(0);
+  };
+
   const handleChangePage = (event, newPage) => setPage(newPage);
 
   const handleChangeRowsPerPage = (event) => {
@@ -346,16 +356,15 @@ export default function Consignments() {
           fullWidth
         />
 
-        <FormControl size="small" fullWidth>
+        <FormControl size="small" fullWidth disabled={partiallyDelivered}>
           <InputLabel>Status</InputLabel>
           <Select
             name="status"
-            value={filters.status}
+            value={partiallyDelivered ? "" : filters.status}
             label="Status"
             onChange={handleFilterChange}
           >
             <MenuItem value="">All</MenuItem>
-            <MenuItem value="Partially Delivered">Partially Delivered</MenuItem>
             {consignmentStatuses.map((s) => (
               <MenuItem key={s.id} value={s.consignment_status}>
                 {s.consignment_status}
@@ -363,6 +372,18 @@ export default function Consignments() {
             ))}
           </Select>
         </FormControl>
+
+        <FormControlLabel
+          sx={{ whiteSpace: "nowrap", m: 0 }}
+          control={
+            <Checkbox
+              size="small"
+              checked={partiallyDelivered}
+              onChange={handlePartiallyDeliveredToggle}
+            />
+          }
+          label="Partially Delivered"
+        />
       </Stack>
 
       <TableContainer
