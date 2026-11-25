@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useContext } from "react";
+import dayjs from "dayjs";
 import {
   Dialog,
   DialogTitle,
@@ -94,6 +95,12 @@ const fmtDT = (v) => {
       });
 };
 
+const overdueDaysSince = (rfd) => {
+  if (!rfd) return null;
+  const n = dayjs().startOf("day").diff(dayjs(rfd).startOf("day"), "day") + 1;
+  return n > 0 ? n : null;
+};
+
 const emptyCollection = (idx) => ({
   _key: `c-${Date.now()}-${idx}`,
   collectionMethod: "",
@@ -125,6 +132,7 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
   const [checkingPayment, setCheckingPayment] = useState(false);
   const [paymentMeta, setPaymentMeta] = useState({});
   const [lastSync, setLastSync] = useState(null);
+  const [billingInvoices, setBillingInvoices] = useState([]);
   const isPaid = (receiverId) => payments?.[receiverId] === "paid";
   const isApproved = (receiverId) => approvals?.[receiverId]?.approved === true;
   const canRelease = (receiverId) =>
@@ -191,6 +199,23 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
     };
   }, [open, order?.id]);
 
+  const loadInvoices = async () => {
+    if (!order?.id) return;
+    try {
+      const { data } = await api.get(
+        `/api/zoho-invoice/order/${order.id}/billing`,
+      );
+      setBillingInvoices(data?.row?.invoices || []);
+    } catch {
+      setBillingInvoices([]);
+    }
+  };
+
+  useEffect(() => {
+    if (open && order?.id) loadInvoices();
+    else setBillingInvoices([]);
+  }, [open, order?.id]);
+
   if (!order) return null;
 
   const receivers = order.receivers || [];
@@ -216,6 +241,26 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
   const collectedPct =
     orderTotalQty > 0 ? Math.round((collectedQty / orderTotalQty) * 100) : 0;
   const remainingQty = Math.max(0, orderTotalQty - collectedQty);
+
+  const rfdDate = (() => {
+    if (order.rfd_date) return order.rfd_date;
+    if (!allItems.length || allItems.some((i) => !i.rfdDate)) return null;
+    return new Date(
+      Math.max(...allItems.map((i) => new Date(i.rfdDate).getTime())),
+    );
+  })();
+  const hasOverdueInvoice = billingInvoices.some((d) => d.status === "overdue");
+  const rfdOverdueDays = hasOverdueInvoice ? overdueDaysSince(rfdDate) : null;
+
+  const paidCount = receivers.filter((r) => isPaid(r.id)).length;
+  const notClearedCount = receivers.filter((r) => !canRelease(r.id)).length;
+  const paymentSummary = !receivers.length
+    ? ""
+    : paidCount === receivers.length
+      ? "All paid"
+      : notClearedCount === 0
+        ? "All cleared for release"
+        : `${notClearedCount} awaiting payment`;
 
   const renderPayChip = (receiverId) => {
     if (payments === null)
@@ -246,7 +291,7 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
       return (
         <Chip
           {...base}
-          label="Pending"
+          label="Unpaid"
           sx={{ ...base.sx, bgcolor: "#fff3e0", color: "#ef6c00" }}
         />
       );
@@ -272,6 +317,7 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
       setPaymentMeta(data.receiverPaymentMeta || {});
       setLastSync(data.lastSync || null);
 
+      loadInvoices();
       const paidCount = receivers.filter((r) => result[r.id] === "paid").length;
       const approvedOnly = receivers.filter(
         (r) => result[r.id] !== "paid" && approved[r.id]?.approved,
@@ -599,7 +645,7 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
             gridTemplateColumns: {
               xs: "repeat(2, 1fr)",
               md: "repeat(3, 1fr)",
-              lg: "repeat(6, 1fr)",
+              lg: "repeat(7, 1fr)",
             },
           }}
         >
@@ -622,6 +668,25 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
               </Typography>
             </Box>
           ))}
+
+          <Box sx={{ minWidth: 0 }}>
+            <Typography variant="caption" color="text.secondary">
+              RFD Date
+            </Typography>
+            <Typography variant="body2" fontWeight="bold">
+              {rfdDate ? dayjs(rfdDate).format("MMM DD, YYYY") : "—"}
+            </Typography>
+            {rfdOverdueDays && (
+              <Typography
+                variant="caption"
+                display="block"
+                sx={{ color: "error.main", fontWeight: 600, mt: 0.25 }}
+              >
+                Overdue by {rfdOverdueDays}{" "}
+                {rfdOverdueDays === 1 ? "day" : "days"} · late charges may apply
+              </Typography>
+            )}
+          </Box>
 
           {[
             ["Total Qty", orderTotalQty.toLocaleString()],
@@ -750,7 +815,7 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
               {payments && receivers.length > 0 && (
                 <Chip
                   size="small"
-                  label={`${receivers.filter((r) => isPaid(r.id)).length} of ${receivers.length} paid`}
+                  label={paymentSummary}
                   sx={{
                     height: 20,
                     fontSize: "0.68rem",
@@ -799,7 +864,9 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
                 <Typography variant="caption" color="text.secondary">
                   Last synced by{" "}
                   <strong style={{ color: "#333" }}>
-                    {lastSync.syncedByEmail || "Unknown user"}
+                    {lastSync.syncedByName ||
+                      lastSync.syncedByEmail ||
+                      "System"}
                   </strong>{" "}
                   on {fmtDT(lastSync.syncedAt)}
                 </Typography>
@@ -833,47 +900,66 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
             )}
           </Box>
 
-          {receivers.map((r) => (
-            <Stack
-              key={r.id}
-              direction="row"
-              alignItems="center"
-              justifyContent="space-between"
-              spacing={1}
-              sx={{
-                px: 2,
-                py: 1,
-                borderBottom: "1px solid #f5f5f5",
-                "&:last-child": { borderBottom: "none" },
-              }}
-            >
-              <Typography
-                variant="body2"
-                fontWeight={600}
-                noWrap
-                sx={{ minWidth: 0 }}
+          {receivers.map((r) => {
+            const ap = approvals?.[r.id];
+            const paid = isPaid(r.id);
+            const approved = isApproved(r.id);
+            const approverName = ap?.approvedByName || ap?.approvedByEmail;
+            return (
+              <Stack
+                key={r.id}
+                direction="row"
+                alignItems="center"
+                justifyContent="space-between"
+                spacing={1}
+                sx={{
+                  px: 2,
+                  py: 1,
+                  borderBottom: "1px solid #f5f5f5",
+                  "&:last-child": { borderBottom: "none" },
+                }}
               >
-                {r.receiver_name || "Unnamed Receiver"}
-              </Typography>
-              <Stack direction="row" spacing={0.75} alignItems="center">
-                {isApproved(r.id) && !isPaid(r.id) && (
-                  <Chip
-                    size="small"
-                    label="Release approved"
-                    variant="outlined"
-                    sx={{
-                      height: 22,
-                      fontSize: "0.68rem",
-                      fontWeight: 700,
-                      borderColor: "#f3c088",
-                      color: "#d96f10",
-                    }}
-                  />
-                )}
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography variant="body2" fontWeight={600} noWrap>
+                    {r.receiver_name || "Unnamed Receiver"}
+                  </Typography>
+                  {payments !== null && (
+                    <Typography
+                      variant="caption"
+                      display="block"
+                      sx={{
+                        fontWeight: 600,
+                        color: canRelease(r.id) ? "#2e7d32" : "#c62828",
+                      }}
+                    >
+                      {paid
+                        ? "Cleared for release · payment received"
+                        : approved
+                          ? "Cleared for release · approved without payment"
+                          : "Not cleared for release · payment or approval required"}
+                    </Typography>
+                  )}
+                  {approved && !paid && (
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      display="block"
+                    >
+                      Approved
+                      {approverName && (
+                        <>
+                          {" "}
+                          by <strong>{approverName}</strong>
+                        </>
+                      )}
+                      {ap?.approvedAt && ` on ${fmtDT(ap.approvedAt)}`}
+                    </Typography>
+                  )}
+                </Box>
                 {renderPayChip(r.id)}
               </Stack>
-            </Stack>
-          ))}
+            );
+          })}
         </Box>
         {receivers.some((r) => r.collections?.length > 0) && (
           <Box
@@ -952,6 +1038,23 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
                             >
                               {(c.items || []).length} item(s) •{" "}
                               {fmtDate(c.deliveryDate)}
+                            </Typography>
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                              display="block"
+                            >
+                              Added
+                              {(c.createdByName || c.createdBy) && (
+                                <>
+                                  {" "}
+                                  by{" "}
+                                  <strong>
+                                    {c.createdByName || c.createdBy}
+                                  </strong>
+                                </>
+                              )}
+                              {c.createdAt && ` on ${fmtDT(c.createdAt)}`}
                             </Typography>
 
                             {c.items?.length > 0 && (
@@ -1159,11 +1262,12 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
                     <Typography variant="body2">
                       By{" "}
                       <strong>
-                        {approvals[c.receiverId]?.approvedByEmail ||
-                          "Unknown user"}
+                        {approvals[c.receiverId]?.approvedByName ||
+                          approvals[c.receiverId]?.approvedByEmail ||
+                          "—"}
                       </strong>
                       {approvals[c.receiverId]?.approvedAt &&
-                        ` on ${new Date(approvals[c.receiverId].approvedAt).toLocaleString()}`}
+                        ` on ${fmtDT(approvals[c.receiverId].approvedAt)}`}
                     </Typography>
                   </Box>
                 )}
