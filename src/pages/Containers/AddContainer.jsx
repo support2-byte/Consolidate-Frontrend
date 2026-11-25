@@ -18,7 +18,7 @@ import {
   TablePagination,
 } from "@mui/material";
 import AddCircleIcon from "@mui/icons-material/AddCircle";
-
+import ContainerQuickUpdateModal from "../../components/containers/ContainerQuickUpdateModal";
 import { useContainerData } from "../../hooks/useContainerData";
 import { usePDFGenerators } from "../../hooks/usePDFGenerators";
 import ContainerTableRow from "../../components/containers/ContainerTableRow";
@@ -29,7 +29,7 @@ import { AppContext } from "../../context/AppContext";
 
 const ContainerModule = ({ propContainers = [] }) => {
   const state = useContainerData(propContainers);
-  const { places } = useContext(AppContext);
+  const { places, statuses } = useContext(AppContext);
 
   const {
     generateFullManifestPDF,
@@ -327,6 +327,21 @@ const ContainerModule = ({ propContainers = [] }) => {
           onGenerateUnassignedManifest={() =>
             generateUnassignedManifestPDF(unassignedOrders, selectedContainerNo)
           }
+        />
+
+        <ContainerQuickUpdateModal
+          open={editingId !== null}
+          cid={editingId}
+          containerNo={
+            containers.find((c) => c.cid === editingId)?.container_number
+          }
+          tempData={tempData}
+          setTempData={setTempData}
+          jobStatusOptions={jobStatusOptions}
+          statuses={statuses}
+          places={places}
+          onSave={handleQuickSave}
+          onClose={handleQuickCancel}
         />
 
         <Backdrop

@@ -116,6 +116,223 @@ import { buildHblPages, hblCss } from "../../documents/hblGenerator";
 
 applyPlugin(jsPDF);
 
+// ---- shared document preview / direct PDF download -------------------------
+const buildDocHtml = (
+  html,
+  { title = "Document", pageMargin = "10mm", extraCss = "" } = {},
+) => {
+  const safeTitle = String(title).replace(/[\\/:*?"<>|]/g, "-");
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${safeTitle}</title>
+      <style>
+        @page { size: A4; margin: ${pageMargin}; }
+        html, body { margin: 0; padding: 0; background: #fff;
+          -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        tr { page-break-inside: avoid; break-inside: avoid; }
+        thead { display: table-header-group; }
+        .section { page-break-inside: auto !important; }
+        ${extraCss}
+      </style></head><body>${html}</body></html>`;
+};
+
+const saveBlob = (blob, title) => {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${String(title).replace(/[\\/:*?"<>|]/g, "-")}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+};
+
+const htmlToPdfBlob = async (doc) => {
+  const MM = 96 / 25.4;
+  const A4W = 210;
+  const A4H = 297;
+  const m = doc.perChild ? 0 : Number(doc.marginMm ?? 10);
+  const pageWpx = Math.round(A4W * MM);
+  const bodyWpx = Math.round((A4W - 2 * m) * MM);
+
+  const iframe = document.createElement("iframe");
+  Object.assign(iframe.style, {
+    position: "fixed",
+    left: "0",
+    top: "0",
+    width: `${pageWpx}px`,
+    height: "1200px",
+    border: "0",
+    opacity: "0",
+    pointerEvents: "none",
+    zIndex: "-1",
+  });
+  document.body.appendChild(iframe);
+  try {
+    await new Promise((resolve) => {
+      iframe.onload = resolve;
+      iframe.srcdoc = doc.html;
+    });
+    const idoc = iframe.contentDocument;
+    const body = idoc.body;
+    body.style.margin = "0";
+    body.style.width = `${doc.perChild ? pageWpx : bodyWpx}px`;
+    if (idoc.fonts?.ready) await idoc.fonts.ready;
+    await Promise.all(
+      Array.from(idoc.images).map((img) =>
+        img.complete
+          ? null
+          : new Promise((r) => {
+              img.onload = img.onerror = r;
+            }),
+      ),
+    );
+
+    const pdf = new jsPDF({
+      unit: "mm",
+      format: "a4",
+      orientation: "portrait",
+    });
+    let first = true;
+    const addSlice = (canvas, sy, sh, xMm, yMm, wMm) => {
+      const part = document.createElement("canvas");
+      part.width = canvas.width;
+      part.height = sh;
+      const ctx = part.getContext("2d");
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(0, 0, part.width, part.height);
+      ctx.drawImage(canvas, 0, sy, canvas.width, sh, 0, 0, canvas.width, sh);
+      if (!first) pdf.addPage();
+      first = false;
+      pdf.addImage(
+        part.toDataURL("image/jpeg", 0.95),
+        "JPEG",
+        xMm,
+        yMm,
+        wMm,
+        (sh * wMm) / canvas.width,
+      );
+    };
+
+    if (doc.perChild) {
+      // Documents that are already built as fixed pages (HBL, MBL)
+      const nodes = Array.from(body.children).filter(
+        (el) => !/^(STYLE|SCRIPT)$/.test(el.tagName),
+      );
+      for (const el of nodes) {
+        const canvas = await html2canvas(el, {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: "#ffffff",
+          logging: false,
+        });
+        const pagePx = Math.floor((canvas.width * A4H) / A4W);
+        for (let y = 0; y < canvas.height; y += pagePx) {
+          const sliceH = Math.min(pagePx, canvas.height - y);
+          if (sliceH < 4) break;
+          addSlice(canvas, y, sliceH, 0, 0, A4W);
+        }
+      }
+    } else {
+      // Flowing documents (manifests, notes): split into pages without
+      // cutting through a line of text, honouring forced page breaks.
+      const total = Math.ceil(body.getBoundingClientRect().height);
+      iframe.style.height = `${total + 20}px`;
+      const top0 = body.getBoundingClientRect().top;
+
+      const rects = [];
+      const walker = idoc.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+      let n;
+      while ((n = walker.nextNode())) {
+        if (!n.nodeValue.trim()) continue;
+        const range = idoc.createRange();
+        range.selectNodeContents(n);
+        for (const r of range.getClientRects()) {
+          if (r.height > 0)
+            rects.push({ top: r.top - top0, bottom: r.bottom - top0 });
+        }
+      }
+      const forced = [];
+      body.querySelectorAll("*").forEach((el) => {
+        const cs = idoc.defaultView.getComputedStyle(el);
+        if (
+          cs.breakBefore === "page" ||
+          cs.breakBefore === "always" ||
+          cs.pageBreakBefore === "always"
+        ) {
+          const t = el.getBoundingClientRect().top - top0;
+          if (t > 1) forced.push(t);
+        }
+      });
+      forced.sort((a, b) => a - b);
+
+      const pageHpx = (A4H - 2 * m) * MM;
+      const snap = (limit, start) => {
+        let y = limit;
+        let moved = true;
+        while (moved) {
+          moved = false;
+          for (const r of rects) {
+            if (r.top > start + 1 && r.top < y - 0.5 && r.bottom > y + 0.5) {
+              y = r.top;
+              moved = true;
+            }
+          }
+        }
+        return y;
+      };
+
+      const pages = [];
+      let y0 = 0;
+      while (y0 < total - 1) {
+        let limit = y0 + pageHpx;
+        const f = forced.find((t) => t > y0 + 1 && t < limit);
+        let y1;
+        if (f !== undefined) y1 = f;
+        else y1 = limit >= total ? total : snap(limit, y0);
+        if (y1 <= y0 + 1) y1 = Math.min(limit, total);
+        pages.push([y0, y1]);
+        y0 = y1;
+      }
+
+      // Render in chunks so a long document never exceeds canvas limits
+      const MAX_CHUNK = 9000;
+      let i = 0;
+      while (i < pages.length) {
+        const cStart = pages[i][0];
+        let j = i;
+        while (j + 1 < pages.length && pages[j + 1][1] - cStart <= MAX_CHUNK)
+          j++;
+        const cEnd = pages[j][1];
+        const canvas = await html2canvas(body, {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: "#ffffff",
+          logging: false,
+          x: 0,
+          y: cStart,
+          width: body.offsetWidth,
+          height: Math.ceil(cEnd - cStart),
+          windowWidth: pageWpx,
+          windowHeight: total + 20,
+          scrollX: 0,
+          scrollY: 0,
+        });
+        const sc = canvas.width / body.offsetWidth;
+        for (let k = i; k <= j; k++) {
+          const [a, b] = pages[k];
+          const sy = Math.round((a - cStart) * sc);
+          const sh = Math.min(canvas.height - sy, Math.round((b - a) * sc));
+          if (sh < 4) continue;
+          addSlice(canvas, sy, sh, m, m, A4W - 2 * m);
+        }
+        i = j + 1;
+      }
+    }
+    return pdf.output("blob");
+  } finally {
+    iframe.remove();
+  }
+};
+
 const printHtml = (
   html,
   { title = "Document", pageMargin = "10mm", extraCss = "" } = {},
@@ -714,6 +931,56 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       .catch(() => {});
   };
 
+  const docModeRef = useRef("preview");
+
+  const downloadDoc = async (doc) => {
+    if (!doc || docDownloading) return;
+    setDocDownloading(true);
+    try {
+      const blob = doc.blob || (await htmlToPdfBlob(doc));
+      saveBlob(blob, doc.title);
+      logPrint(doc.logType);
+    } catch (err) {
+      console.error("Document download failed:", err);
+      toast.error(`Failed to download ${doc.heading || "document"}.`);
+    } finally {
+      setDocDownloading(false);
+    }
+  };
+
+  const closeDoc = () =>
+    setDocPreview((prev) => {
+      if (prev?.url) URL.revokeObjectURL(prev.url);
+      return null;
+    });
+
+  // The preview is the real generated PDF, so it matches the download exactly
+  const deliverDoc = async (doc, mode) => {
+    if (mode === "download") return downloadDoc(doc);
+    try {
+      const blob = await htmlToPdfBlob(doc);
+      setDocPreview({ ...doc, blob, url: URL.createObjectURL(blob) });
+    } catch (err) {
+      console.error("Document preview failed:", err);
+      toast.error(`Failed to preview ${doc.heading || "document"}.`);
+    }
+  };
+
+  // Replaces printHtml: previews the document, or downloads it straight
+  // away, depending on which button started it.
+  const showDoc = (html, opts = {}) =>
+    deliverDoc(
+      {
+        html: buildDocHtml(html, opts),
+        title: opts.title || "Document",
+        heading: opts.heading || "Document",
+        logType: opts.logType || opts.heading || "Document",
+        marginMm: parseFloat(opts.pageMargin ?? "10mm") || 0,
+        perChild: !!opts.perChild,
+      },
+      docModeRef.current,
+    );
+
   const user_id = context.user.id;
   const currentDate = dayjs();
   const {
@@ -814,9 +1081,8 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
   const [filters, setFilters] = useState({ status: "", booking_ref: "" });
   const [containerErrors, setContainerErrors] = useState({});
   const [hblModalOpen, setHblModalOpen] = useState(false);
-  const [hblPreview, setHblPreview] = useState(null);
-  const [hblDownloading, setHblDownloading] = useState(false);
-  const hblFrameRef = useRef(null);
+  const [docPreview, setDocPreview] = useState(null);
+  const [docDownloading, setDocDownloading] = useState(false);
   const [hblOrderId, setHblOrderId] = useState("");
   const [hblItemId, setHblItemId] = useState("all");
   const [hblCompanyId, setHblCompanyId] = useState("");
@@ -3210,8 +3476,10 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
             </div>
         </div>
     </div>`;
-    await printHtml(tempElement.innerHTML, {
+    await showDoc(tempElement.innerHTML, {
       title: `consignment-note-${data.consignment_number}`,
+      heading: "Consignment Note",
+      logType: "Consignment Note",
     });
   };
 
@@ -3780,8 +4048,10 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         </div>
     </div>`;
 
-    await printHtml(tempElement.innerHTML, {
+    await showDoc(tempElement.innerHTML, {
       title: `manifest${groupBySubcategory ? "-subcategory" : ""}-${data.consignment_number}`,
+      heading: groupBySubcategory ? "Manifest with Subcategory" : "Manifest",
+      logType: groupBySubcategory ? "Manifest with Subcategory" : "Manifest",
     });
   };
 
@@ -4467,8 +4737,10 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     </div>
     `;
 
-    await printHtml(tempElement.innerHTML, {
+    await showDoc(tempElement.innerHTML, {
       title: `container-orders-${data.consignment_number}`,
+      heading: "Container & Orders PDF",
+      logType: "Container & Orders PDF",
     });
   };
 
@@ -4567,7 +4839,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       icon: "📄",
       title: "HBL (Shipments & Orders)",
       text: "House bill of lading with all shipments and orders in this consignment.",
-      label: "Download",
       run: async () => {
         setHblOrderId("");
         setHblItemId("all");
@@ -4579,7 +4850,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       icon: "📄",
       title: "MBL (Master Bill of Lading)",
       text: "Master bill of lading for the whole consignment, with all containers and cargo.",
-      label: "Download",
       run: async () => {
         setMblCompanyId("");
         setMblVariant("original");
@@ -4590,35 +4860,32 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       icon: "🖨️",
       title: "Print Manifest",
       text: "Cargo manifest listing every shipment.",
-      label: "Download",
-      run: async () => {
+      run: async (mode) => {
+        docModeRef.current = mode;
         await generateManifestPDFWithCanvas(values, orders);
-        logPrint("Manifest");
       },
     },
     {
       icon: "🖨️",
       title: "Print Manifest with Subcategory",
       text: "Manifest with items grouped by product subcategory.",
-      label: "Download",
-      run: async () => {
+      run: async (mode) => {
+        docModeRef.current = mode;
         await generateManifestPDFWithCanvas(
           values,
           orders,
           includedOrders,
           true,
         );
-        logPrint("Manifest with Subcategory");
       },
     },
     {
       icon: "📄",
       title: "Container & Orders PDF",
       text: "Each container with the orders loaded in it.",
-      label: "Download",
-      run: async () => {
+      run: async (mode) => {
+        docModeRef.current = mode;
         await generateContainersAndOrdersPDFWithCanvas(values, orders);
-        logPrint("Container & Orders PDF");
       },
     },
   ];
@@ -5115,97 +5382,38 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     return { html, title };
   };
 
-  const previewHbl = (all = false) =>
-    runAction(all ? "hbl-all" : "hbl-one", async () => {
+  const hblOutput = (all, mode) =>
+    runAction(`hbl-${all ? "all" : "one"}-${mode}`, async () => {
       const doc = buildHblDoc(all);
       if (!doc) return;
-      setHblPreview(doc);
+      await deliverDoc(
+        {
+          ...doc,
+          heading: "House Bill of Lading",
+          logType: "HBL (Shipments & Orders)",
+          marginMm: 0,
+          perChild: true,
+        },
+        mode,
+      );
       setHblModalOpen(false);
     });
 
-  const downloadHbl = async () => {
-    const doc = hblFrameRef.current?.contentDocument;
-    if (!doc || !hblPreview || hblDownloading) return;
-    setHblDownloading(true);
-    try {
-      if (doc.fonts?.ready) await doc.fonts.ready;
-      const pdf = new jsPDF({
-        unit: "mm",
-        format: "a4",
-        orientation: "portrait",
-      });
-      const PW = 210;
-      const PH = 297;
-      const nodes = Array.from(doc.body.children).filter(
-        (el) => !/^(STYLE|SCRIPT)$/.test(el.tagName),
-      );
-      let first = true;
-      for (const el of nodes) {
-        const canvas = await html2canvas(el, {
-          scale: 2,
-          useCORS: true,
-          backgroundColor: "#ffffff",
-          logging: false,
-        });
-        const pagePx = Math.floor((canvas.width * PH) / PW);
-        for (let y = 0; y < canvas.height; y += pagePx) {
-          const sliceH = Math.min(pagePx, canvas.height - y);
-          if (sliceH < 4) break;
-          const part = document.createElement("canvas");
-          part.width = canvas.width;
-          part.height = sliceH;
-          const ctx = part.getContext("2d");
-          ctx.fillStyle = "#fff";
-          ctx.fillRect(0, 0, part.width, part.height);
-          ctx.drawImage(
-            canvas,
-            0,
-            y,
-            canvas.width,
-            sliceH,
-            0,
-            0,
-            canvas.width,
-            sliceH,
-          );
-          if (!first) pdf.addPage();
-          first = false;
-          pdf.addImage(
-            part.toDataURL("image/jpeg", 0.95),
-            "JPEG",
-            0,
-            0,
-            PW,
-            (sliceH * PW) / canvas.width,
-          );
-        }
-      }
-      pdf.save(`${hblPreview.title}.pdf`);
-      logPrint("HBL (Shipments & Orders)");
-    } catch (err) {
-      console.error("HBL download failed:", err);
-      toast.error("Failed to download HBL.");
-    } finally {
-      setHblDownloading(false);
-    }
-  };
-
-  const printMbl = () =>
-    runAction("mbl", async () => {
-      if (!effectiveConsignmentId) {
-        toast.warning("Save the consignment first to print the MBL.");
-        return;
-      }
+  const mblOutput = (mode) =>
+    runAction(`mbl-${mode}`, async () => {
       const company = (companies || []).find((c) => c.id === mblCompanyId);
       const { data } = await api.get(
         `/api/orders/consignment-mbl/${effectiveConsignmentId}`,
       );
-      await printHtml(buildMblPages(data, company, mblVariant).join(""), {
+      docModeRef.current = mode;
+      await showDoc(buildMblPages(data, company, mblVariant).join(""), {
         title: `MBL-${values.consignment_number}`,
         pageMargin: "0",
         extraCss: mblCss(company),
+        heading: "Master Bill of Lading",
+        logType: "MBL",
+        perChild: true,
       });
-      logPrint("MBL");
       setMblModalOpen(false);
     });
 
@@ -5268,11 +5476,11 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                   loading={busyAction === "note-pdf"}
                   onClick={() =>
                     runAction("note-pdf", async () => {
+                      docModeRef.current = "preview";
                       await generateConsignmentNotePDFWithCanvas(
                         values,
                         includedOrders,
                       );
-                      logPrint("Consignment Note");
                     })
                   }
                   disabled={
@@ -6486,17 +6694,49 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                         >
                           {doc.text}
                         </Typography>
-                        <LoadingBtn
-                          variant="outlined"
-                          loading={busyAction === doc.title}
-                          onClick={() => runAction(doc.title, doc.run)}
-                          disabled={
-                            saving || !!busyAction || !values.consignment_number
-                          }
-                          sx={outlineBtn}
-                        >
-                          {doc.label}
-                        </LoadingBtn>
+                        <Box sx={{ display: "flex", gap: 1 }}>
+                          <LoadingBtn
+                            variant="outlined"
+                            size="small"
+                            loading={busyAction === `${doc.title}-preview`}
+                            onClick={() =>
+                              runAction(`${doc.title}-preview`, () =>
+                                doc.run("preview"),
+                              )
+                            }
+                            disabled={
+                              saving ||
+                              !!busyAction ||
+                              !values.consignment_number
+                            }
+                            sx={outlineBtn}
+                            fullWidth
+                          >
+                            Preview
+                          </LoadingBtn>
+                          <LoadingBtn
+                            variant="contained"
+                            size="small"
+                            loading={busyAction === `${doc.title}-download`}
+                            onClick={() =>
+                              runAction(`${doc.title}-download`, () =>
+                                doc.run("download"),
+                              )
+                            }
+                            disabled={
+                              saving ||
+                              !!busyAction ||
+                              !values.consignment_number
+                            }
+                            sx={{
+                              backgroundColor: orange,
+                              "&:hover": { backgroundColor: "#e65100" },
+                            }}
+                            fullWidth
+                          >
+                            Download
+                          </LoadingBtn>
+                        </Box>
                       </Box>
                     ))}
                   </Box>
@@ -6862,18 +7102,27 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                   </Button>
                   <LoadingBtn
                     variant="outlined"
-                    onClick={() => previewHbl(true)}
+                    onClick={() => hblOutput(true, "preview")}
                     disabled={!hblCompanyId || !!busyAction}
-                    loading={busyAction === "hbl-all"}
+                    loading={busyAction === "hbl-all-preview"}
                     sx={outlineBtn}
                   >
                     Preview All
                   </LoadingBtn>
                   <LoadingBtn
+                    variant="outlined"
+                    onClick={() => hblOutput(true, "download")}
+                    disabled={!hblCompanyId || !!busyAction}
+                    loading={busyAction === "hbl-all-download"}
+                    sx={outlineBtn}
+                  >
+                    Download All
+                  </LoadingBtn>
+                  <LoadingBtn
                     variant="contained"
-                    onClick={() => previewHbl(false)}
+                    onClick={() => hblOutput(false, "preview")}
                     disabled={!hblCompanyId || !hblOrderId || !!busyAction}
-                    loading={busyAction === "hbl-one"}
+                    loading={busyAction === "hbl-one-preview"}
                     sx={{
                       backgroundColor: orange,
                       "&:hover": { backgroundColor: "#e65100" },
@@ -6881,11 +7130,23 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                   >
                     Preview
                   </LoadingBtn>
+                  <LoadingBtn
+                    variant="contained"
+                    onClick={() => hblOutput(false, "download")}
+                    disabled={!hblCompanyId || !hblOrderId || !!busyAction}
+                    loading={busyAction === "hbl-one-download"}
+                    sx={{
+                      backgroundColor: orange,
+                      "&:hover": { backgroundColor: "#e65100" },
+                    }}
+                  >
+                    Download
+                  </LoadingBtn>
                 </DialogActions>
               </Dialog>
               <Dialog
-                open={Boolean(hblPreview)}
-                onClose={() => setHblPreview(null)}
+                open={Boolean(docPreview)}
+                onClose={closeDoc}
                 maxWidth="lg"
                 fullWidth
               >
@@ -6896,14 +7157,16 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                     alignItems: "center",
                   }}
                 >
-                  <Typography fontWeight={700}>House Bill of Lading</Typography>
+                  <Typography fontWeight={700}>
+                    {docPreview?.heading}
+                  </Typography>
                   <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                     <LoadingBtn
                       variant="contained"
                       size="small"
-                      loading={hblDownloading}
+                      loading={docDownloading}
                       startIcon={<DownloadIcon />}
-                      onClick={downloadHbl}
+                      onClick={() => downloadDoc(docPreview)}
                       sx={{
                         backgroundColor: orange,
                         "&:hover": { backgroundColor: "#e65100" },
@@ -6911,17 +7174,16 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                     >
                       Download
                     </LoadingBtn>
-                    <IconButton onClick={() => setHblPreview(null)}>
+                    <IconButton onClick={closeDoc}>
                       <CloseIcon />
                     </IconButton>
                   </Box>
                 </DialogTitle>
-                <DialogContent dividers sx={{ p: 0, bgcolor: "#f5f5f5" }}>
-                  {hblPreview && (
+                <DialogContent dividers sx={{ p: 0, bgcolor: "#e9e9e9" }}>
+                  {docPreview && (
                     <iframe
-                      ref={hblFrameRef}
-                      title="hbl-preview"
-                      srcDoc={hblPreview.html}
+                      title="document-preview"
+                      src={`${docPreview.url}#view=FitH`}
                       style={{ width: "100%", height: "75vh", border: 0 }}
                     />
                   )}
@@ -6933,7 +7195,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                 maxWidth="xs"
                 fullWidth
               >
-                <DialogTitle>Download MBL</DialogTitle>
+                <DialogTitle>Master Bill of Lading</DialogTitle>
                 <DialogContent>
                   <Stack spacing={2} sx={{ mt: 1 }}>
                     <FormControl fullWidth>
@@ -6976,10 +7238,19 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                     Cancel
                   </Button>
                   <LoadingBtn
-                    variant="contained"
-                    onClick={printMbl}
+                    variant="outlined"
+                    onClick={() => mblOutput("preview")}
                     disabled={!mblCompanyId || !!busyAction}
-                    loading={busyAction === "mbl"}
+                    loading={busyAction === "mbl-preview"}
+                    sx={outlineBtn}
+                  >
+                    Preview
+                  </LoadingBtn>
+                  <LoadingBtn
+                    variant="contained"
+                    onClick={() => mblOutput("download")}
+                    disabled={!mblCompanyId || !!busyAction}
+                    loading={busyAction === "mbl-download"}
                     sx={{
                       backgroundColor: orange,
                       "&:hover": { backgroundColor: "#e65100" },
