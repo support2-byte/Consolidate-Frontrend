@@ -198,7 +198,7 @@ export default function DashboardLayout() {
       module: "tracking",
     },
     {
-      label: "Order Tracking",
+      label: "Order History",
       path: "/tracking-history",
       icon: <HistoryIcon />,
       module: "order-tracking",

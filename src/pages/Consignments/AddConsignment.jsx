@@ -89,6 +89,8 @@ import PieChartOutlineIcon from "@mui/icons-material/PieChartOutline";
 import { useBlocker } from "react-router-dom";
 import UpdateIcon from "@mui/icons-material/Update";
 import VisibilityIcon from "@mui/icons-material/Visibility";
+import DownloadIcon from "@mui/icons-material/Download";
+import CloseIcon from "@mui/icons-material/Close";
 import EditIcon from "@mui/icons-material/Edit";
 import SearchIcon from "@mui/icons-material/Search";
 import EmojiEventsIcon from "@mui/icons-material/EmojiEvents";
@@ -203,13 +205,44 @@ const fmtStatus = (s = "") =>
 
 const overdueDays = (d, rfd) => {
   if (d.status !== "overdue" || !rfd) return null;
-  const n = dayjs().startOf("day").diff(dayjs(rfd).startOf("day"), "day");
+  const n = dayjs().startOf("day").diff(dayjs(rfd).startOf("day"), "day") + 1;
   return n > 0 ? n : null;
 };
 
 const statusLabel = (d, rfd) => {
   const n = overdueDays(d, rfd);
   return n ? `Overdue (${n}d)` : fmtStatus(d.status);
+};
+
+const overdueNote = (d, kind, rfd) => {
+  const n = kind === "Invoice" ? overdueDays(d, rfd) : null;
+  if (!n) return null;
+  return (
+    <Typography
+      variant="caption"
+      display="block"
+      sx={{ color: "error.main", fontWeight: 600, mt: 0.25 }}
+    >
+      Overdue by {n} {n === 1 ? "day" : "days"} · late charges may apply
+    </Typography>
+  );
+};
+
+const fmtEtaDMY = (v) => {
+  if (!v) return "";
+  const s = String(v);
+  const d = /^\d{4}-\d{2}-\d{2}/.test(s)
+    ? new Date(`${s.slice(0, 10)}T00:00:00`)
+    : new Date(v);
+  return isNaN(d.getTime())
+    ? ""
+    : d
+        .toLocaleDateString("en-GB", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        })
+        .replace(/ /g, "-");
 };
 
 const fmtMoney = (n, cur) =>
@@ -781,6 +814,9 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
   const [filters, setFilters] = useState({ status: "", booking_ref: "" });
   const [containerErrors, setContainerErrors] = useState({});
   const [hblModalOpen, setHblModalOpen] = useState(false);
+  const [hblPreview, setHblPreview] = useState(null);
+  const [hblDownloading, setHblDownloading] = useState(false);
+  const hblFrameRef = useRef(null);
   const [hblOrderId, setHblOrderId] = useState("");
   const [hblItemId, setHblItemId] = useState("all");
   const [hblCompanyId, setHblCompanyId] = useState("");
@@ -1614,6 +1650,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
               itemRef: detail.itemRef || "",
               remainingItems: Number(detail.remainingItems || 0),
               receiverStatus: detail.status,
+              itemEta: detail.eta || "",
               containerNumber:
                 containerDetail.container?.container_number?.trim() || "-",
               containerStatus: containerDetail.status || "-",
@@ -1667,6 +1704,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
           items: new Set(),
           containers: new Set(),
           statuses: new Set(),
+          statusEtas: new Map(),
           weight: 0,
           boxes: 0,
           shipments: [],
@@ -1677,6 +1715,9 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       g.items.add(s.shippingDetailId);
       g.containers.add(s.containerNumber);
       g.statuses.add(s.receiverStatus);
+      const prevEta = g.statusEtas.get(s.receiverStatus);
+      if (s.itemEta && (!prevEta || s.itemEta < prevEta))
+        g.statusEtas.set(s.receiverStatus, s.itemEta);
       g.weight += Number(s.assignWeight) || 0;
       g.boxes += Number(s.assignBoxes) || 0;
       g.shipments.push(s);
@@ -1937,7 +1978,11 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                               {item.totalNumber ?? 0}, Weight:{" "}
                               {item.weight ?? 0}
                             </Typography>
-                            <StatusChip status={item.status} size="small" />
+                            <StatusChip
+                              status={item.status}
+                              eta={fmtEtaDMY(item.eta)}
+                              size="small"
+                            />
                           </Stack>
                           <Typography variant="caption" color="text.secondary">
                             Qty Total Assigned:{" "}
@@ -2678,19 +2723,40 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       color: theme.palette.common.white,
     },
   }));
-  const StatusChip = ({ status }) => {
+  const StatusChip = ({ status, size, eta }) => {
     const colors = getStatusColors(status);
     return (
       <Chip
-        label={status}
-        size="small"
+        label={
+          eta ? (
+            <Box
+              sx={{
+                display: "flex",
+                flexDirection: "column",
+                lineHeight: 1.25,
+              }}
+            >
+              <span>{status}</span>
+              <span
+                style={{ fontSize: "0.65rem", fontWeight: 600, opacity: 0.85 }}
+              >
+                {eta}
+              </span>
+            </Box>
+          ) : (
+            status
+          )
+        }
+        size={size || "small"}
         sx={{
-          height: 18,
+          height: eta ? "auto" : 18,
+          py: eta ? 0.5 : 0,
           fontSize: "0.85rem",
           marginLeft: 2,
-          padding: 2,
+          padding: eta ? undefined : 2,
           backgroundColor: colors.bg,
           color: colors.text,
+          "& .MuiChip-label": { whiteSpace: "normal", textAlign: "left" },
         }}
       />
     );
@@ -4501,7 +4567,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       icon: "📄",
       title: "HBL (Shipments & Orders)",
       text: "House bill of lading with all shipments and orders in this consignment.",
-      label: "Download PDF",
+      label: "Download",
       run: async () => {
         setHblOrderId("");
         setHblItemId("all");
@@ -4513,7 +4579,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       icon: "📄",
       title: "MBL (Master Bill of Lading)",
       text: "Master bill of lading for the whole consignment, with all containers and cargo.",
-      label: "Print",
+      label: "Download",
       run: async () => {
         setMblCompanyId("");
         setMblVariant("original");
@@ -4524,7 +4590,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       icon: "🖨️",
       title: "Print Manifest",
       text: "Cargo manifest listing every shipment.",
-      label: "Print",
+      label: "Download",
       run: async () => {
         await generateManifestPDFWithCanvas(values, orders);
         logPrint("Manifest");
@@ -4534,7 +4600,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       icon: "🖨️",
       title: "Print Manifest with Subcategory",
       text: "Manifest with items grouped by product subcategory.",
-      label: "Print",
+      label: "Download",
       run: async () => {
         await generateManifestPDFWithCanvas(
           values,
@@ -4549,7 +4615,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       icon: "📄",
       title: "Container & Orders PDF",
       text: "Each container with the orders loaded in it.",
-      label: "Download PDF",
+      label: "Download",
       run: async () => {
         await generateContainersAndOrdersPDFWithCanvas(values, orders);
         logPrint("Container & Orders PDF");
@@ -4687,7 +4753,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
               <>
                 {groups.map((g) => {
                   const k = `f-${kind}-${g.key}`;
-                  const open = expandedForms[k] ?? true;
+                  const open = expandedForms[k] ?? false;
                   const gl = g.docs.filter((d) => d.status !== "void");
                   const paidCnt = gl.filter((d) => d.status === "paid").length;
                   const currencies = [...new Set(gl.map((d) => d.currency))];
@@ -4793,7 +4859,10 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                                 ? dayjs(d.dueDate).format("MMM DD, YYYY")
                                 : "-"}
                             </TableCell>
-                            <TableCell>{rfdTxt(g.key)}</TableCell>
+                            <TableCell>
+                              {rfdTxt(g.key)}
+                              {overdueNote(d, kind, rfdOf(g.key))}
+                            </TableCell>
                             <TableCell>
                               <Chip
                                 label={statusLabel(d, rfdOf(g.key))}
@@ -5014,35 +5083,112 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       .filter((o) => o.receivers.length > 0);
   };
 
-  const printHbl = (all = false) =>
+  const buildHblDoc = (all) => {
+    const company = (companies || []).find((c) => c.id === hblCompanyId);
+    if (!company) return null;
+    const hblOrders = buildHblOrders(
+      all
+        ? null
+        : {
+            orderId: hblOrderId,
+            itemId: hblItemId === "all" ? null : hblItemId,
+          },
+    );
+    if (!hblOrders.length) {
+      toast.warning("No items found for the selected order/item.");
+      return null;
+    }
+    const title = all
+      ? `HBL-${values.consignment_number}`
+      : `HBL-${hblOrders[0].rgl_booking_number || hblOrders[0].id}`;
+    const pages = buildHblPages(hblOrders, company, (x) => x || "N/A").join("");
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title>
+      <style>
+        @page { size: A4; margin: 0; }
+        html, body { margin: 0; padding: 0; background: #fff;
+          -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        tr { page-break-inside: avoid; break-inside: avoid; }
+        thead { display: table-header-group; }
+        .section { page-break-inside: auto !important; }
+        ${hblCss(company)}
+      </style></head><body>${pages}</body></html>`;
+    return { html, title };
+  };
+
+  const previewHbl = (all = false) =>
     runAction(all ? "hbl-all" : "hbl-one", async () => {
-      const company = (companies || []).find((c) => c.id === hblCompanyId);
-      if (!company) return;
-      const hblOrders = buildHblOrders(
-        all
-          ? null
-          : {
-              orderId: hblOrderId,
-              itemId: hblItemId === "all" ? null : hblItemId,
-            },
-      );
-      if (!hblOrders.length) {
-        toast.warning("No items found for the selected order/item.");
-        return;
-      }
-      await printHtml(
-        buildHblPages(hblOrders, company, (x) => x || "N/A").join(""),
-        {
-          title: all
-            ? `HBL-${values.consignment_number}`
-            : `HBL-${hblOrders[0].rgl_booking_number || hblOrders[0].id}`,
-          pageMargin: "0",
-          extraCss: hblCss(company),
-        },
-      );
-      logPrint("HBL (Shipments & Orders)");
+      const doc = buildHblDoc(all);
+      if (!doc) return;
+      setHblPreview(doc);
       setHblModalOpen(false);
     });
+
+  const downloadHbl = async () => {
+    const doc = hblFrameRef.current?.contentDocument;
+    if (!doc || !hblPreview || hblDownloading) return;
+    setHblDownloading(true);
+    try {
+      if (doc.fonts?.ready) await doc.fonts.ready;
+      const pdf = new jsPDF({
+        unit: "mm",
+        format: "a4",
+        orientation: "portrait",
+      });
+      const PW = 210;
+      const PH = 297;
+      const nodes = Array.from(doc.body.children).filter(
+        (el) => !/^(STYLE|SCRIPT)$/.test(el.tagName),
+      );
+      let first = true;
+      for (const el of nodes) {
+        const canvas = await html2canvas(el, {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: "#ffffff",
+          logging: false,
+        });
+        const pagePx = Math.floor((canvas.width * PH) / PW);
+        for (let y = 0; y < canvas.height; y += pagePx) {
+          const sliceH = Math.min(pagePx, canvas.height - y);
+          if (sliceH < 4) break;
+          const part = document.createElement("canvas");
+          part.width = canvas.width;
+          part.height = sliceH;
+          const ctx = part.getContext("2d");
+          ctx.fillStyle = "#fff";
+          ctx.fillRect(0, 0, part.width, part.height);
+          ctx.drawImage(
+            canvas,
+            0,
+            y,
+            canvas.width,
+            sliceH,
+            0,
+            0,
+            canvas.width,
+            sliceH,
+          );
+          if (!first) pdf.addPage();
+          first = false;
+          pdf.addImage(
+            part.toDataURL("image/jpeg", 0.95),
+            "JPEG",
+            0,
+            0,
+            PW,
+            (sliceH * PW) / canvas.width,
+          );
+        }
+      }
+      pdf.save(`${hblPreview.title}.pdf`);
+      logPrint("HBL (Shipments & Orders)");
+    } catch (err) {
+      console.error("HBL download failed:", err);
+      toast.error("Failed to download HBL.");
+    } finally {
+      setHblDownloading(false);
+    }
+  };
 
   const printMbl = () =>
     runAction("mbl", async () => {
@@ -6012,6 +6158,9 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                                         <StatusChip
                                           key={st}
                                           status={st}
+                                          eta={fmtEtaDMY(
+                                            row.statusEtas.get(st),
+                                          )}
                                           size="small"
                                         />
                                       ))}
@@ -6103,6 +6252,9 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                                                       status={
                                                         shipment.receiverStatus
                                                       }
+                                                      eta={fmtEtaDMY(
+                                                        shipment.itemEta,
+                                                      )}
                                                       size="small"
                                                     />
                                                   </TableCell>
@@ -6644,7 +6796,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                 maxWidth="xs"
                 fullWidth
               >
-                <DialogTitle>Print HBL</DialogTitle>
+                <DialogTitle>House Bill of Lading</DialogTitle>
                 <DialogContent>
                   <Stack spacing={2} sx={{ mt: 1 }}>
                     <FormControl fullWidth>
@@ -6710,16 +6862,16 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                   </Button>
                   <LoadingBtn
                     variant="outlined"
-                    onClick={() => printHbl(true)}
+                    onClick={() => previewHbl(true)}
                     disabled={!hblCompanyId || !!busyAction}
                     loading={busyAction === "hbl-all"}
                     sx={outlineBtn}
                   >
-                    Print All
+                    Preview All
                   </LoadingBtn>
                   <LoadingBtn
                     variant="contained"
-                    onClick={() => printHbl(false)}
+                    onClick={() => previewHbl(false)}
                     disabled={!hblCompanyId || !hblOrderId || !!busyAction}
                     loading={busyAction === "hbl-one"}
                     sx={{
@@ -6727,9 +6879,53 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                       "&:hover": { backgroundColor: "#e65100" },
                     }}
                   >
-                    Print
+                    Preview
                   </LoadingBtn>
                 </DialogActions>
+              </Dialog>
+              <Dialog
+                open={Boolean(hblPreview)}
+                onClose={() => setHblPreview(null)}
+                maxWidth="lg"
+                fullWidth
+              >
+                <DialogTitle
+                  sx={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                  }}
+                >
+                  <Typography fontWeight={700}>House Bill of Lading</Typography>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                    <LoadingBtn
+                      variant="contained"
+                      size="small"
+                      loading={hblDownloading}
+                      startIcon={<DownloadIcon />}
+                      onClick={downloadHbl}
+                      sx={{
+                        backgroundColor: orange,
+                        "&:hover": { backgroundColor: "#e65100" },
+                      }}
+                    >
+                      Download
+                    </LoadingBtn>
+                    <IconButton onClick={() => setHblPreview(null)}>
+                      <CloseIcon />
+                    </IconButton>
+                  </Box>
+                </DialogTitle>
+                <DialogContent dividers sx={{ p: 0, bgcolor: "#f5f5f5" }}>
+                  {hblPreview && (
+                    <iframe
+                      ref={hblFrameRef}
+                      title="hbl-preview"
+                      srcDoc={hblPreview.html}
+                      style={{ width: "100%", height: "75vh", border: 0 }}
+                    />
+                  )}
+                </DialogContent>
               </Dialog>
               <Dialog
                 open={mblModalOpen}
@@ -6737,7 +6933,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                 maxWidth="xs"
                 fullWidth
               >
-                <DialogTitle>Print MBL</DialogTitle>
+                <DialogTitle>Download MBL</DialogTitle>
                 <DialogContent>
                   <Stack spacing={2} sx={{ mt: 1 }}>
                     <FormControl fullWidth>
@@ -6789,7 +6985,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                       "&:hover": { backgroundColor: "#e65100" },
                     }}
                   >
-                    Print
+                    Download
                   </LoadingBtn>
                 </DialogActions>
               </Dialog>
