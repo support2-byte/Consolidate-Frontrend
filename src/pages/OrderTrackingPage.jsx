@@ -134,7 +134,7 @@ export default function OrderTrackingPage() {
     <Box sx={{ p: 3 }}>
       <Box sx={{ mb: 3 }}>
         <Typography variant="h4" fontWeight="bold" color="#f58220">
-          Order Tracking History
+          Order Status History
         </Typography>
       </Box>
 
