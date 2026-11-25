@@ -1570,7 +1570,11 @@ const OrderModalView = ({
             )}
           {!item.containerDetails?.length &&
             summaryChip("Not assigned", T.orangeLight, T.orangeDark)}
-          {summaryChip(item.status || "Order Created", "#00695c", "#fff")}
+          {summaryChip(
+            inThis?.item_status || item.status || "Order Created",
+            "#00695c",
+            "#fff",
+          )}
         </Box>
 
         <Collapse in={!!expanded[ikey]} unmountOnExit>
@@ -1579,10 +1583,14 @@ const OrderModalView = ({
               {[
                 ["Tracking ID", item.trackingId],
                 ["Type", item.type],
-                ["Status", item.status],
+                ["Status", inThis?.item_status || item.status],
                 [
                   etaLabel(inThis?.item_status || item.status),
-                  isMulti(item) ? "See container assignments" : item.eta,
+                  inThis
+                    ? inThis.eta
+                    : isMulti(item)
+                      ? "See container assignments"
+                      : item.eta,
                 ],
                 ["ETD", item.etd],
                 ["Total Number", item.totalNumber],
@@ -2411,6 +2419,7 @@ const OrderModalView = ({
             key: `${rec.id}-${item.id}`,
             ref: item.itemRef || `id-${item.id}`,
             label: itemLabel(item),
+            containerDetails: item.containerDetails || [],
             rows: [],
           }),
         ),
@@ -2468,9 +2477,51 @@ const OrderModalView = ({
       return out; // newest first
     };
 
+    // A partial shipment gets one timeline per container. Events with no
+    // container (e.g. "Created") are shared by every shipment of the item.
+    const buildShipments = (i) => {
+      const cids = [];
+      i.containerDetails.forEach((cd) => {
+        const c = cd.container?.cid;
+        if (c != null && !cids.includes(Number(c))) cids.push(Number(c));
+      });
+      i.rows.forEach((r) => {
+        if (r.container_id != null && !cids.includes(Number(r.container_id)))
+          cids.push(Number(r.container_id));
+      });
+      if (cids.length < 2) return null;
+      return cids.map((cid, idx) => {
+        const cd = i.containerDetails.find(
+          (x) => Number(x.container?.cid) === cid,
+        );
+        const own = i.rows.filter((r) => Number(r.container_id) === cid);
+        const first = own[0];
+        const events = mergeEvents(
+          i.rows.filter(
+            (r) => r.container_id == null || Number(r.container_id) === cid,
+          ),
+        );
+        return {
+          key: `${i.key}-s${cid}`,
+          index: idx + 1,
+          container:
+            cd?.container?.container_number || first?.container_number || null,
+          consignment: {
+            no: cd?.consignment_number || first?.consignment_number || null,
+            id: cd?.consignment_id || first?.consignment_id || null,
+          },
+          events,
+        };
+      });
+    };
+
     const list = Object.values(groups)
       .map((g) => {
-        const its = g.items.map((i) => ({ ...i, events: mergeEvents(i.rows) }));
+        const its = g.items.map((i) => ({
+          ...i,
+          events: mergeEvents(i.rows),
+          shipments: buildShipments(i),
+        }));
         const all = its.flatMap((i) => i.events);
         return {
           ...g,
@@ -2507,7 +2558,7 @@ const OrderModalView = ({
     return `${m}m`;
   };
 
-  const renderEventTimeline = (events) => (
+  const renderEventTimeline = (events, hideRefs = false) => (
     <Box
       sx={{
         position: "relative",
@@ -2574,7 +2625,7 @@ const OrderModalView = ({
                   By {e.by}
                 </Typography>
               )}
-              {e.consignments.map((c) => (
+              {(hideRefs ? [] : e.consignments).map((c) => (
                 <Typography key={c.no} variant="caption" color={T.grey600}>
                   Consignment:{" "}
                   {c.id ? (
@@ -2592,7 +2643,7 @@ const OrderModalView = ({
                   )}
                 </Typography>
               ))}
-              {e.containers.map((c) => (
+              {(hideRefs ? [] : e.containers).map((c) => (
                 <Typography key={c} variant="caption" color={T.grey600}>
                   Container:{" "}
                   <Link
@@ -2703,6 +2754,7 @@ const OrderModalView = ({
                 >
                   {g.items.map((it) => {
                     const cur = it.events[0];
+                    const shipments = it.shipments;
                     return (
                       <Box key={it.key}>
                         {it.label && (
@@ -2725,13 +2777,108 @@ const OrderModalView = ({
                             )}
                             <Box sx={{ flex: 1 }} />
                             <Typography variant="caption" color={T.grey600}>
-                              {cur ? `${cur.status} · ` : ""}
-                              {it.events.length} update
-                              {it.events.length !== 1 ? "s" : ""}
+                              {shipments
+                                ? `Partial shipment · ${shipments.length} containers`
+                                : `${cur ? `${cur.status} · ` : ""}${it.events.length} update${it.events.length !== 1 ? "s" : ""}`}
                             </Typography>
                           </Box>
                         )}
-                        {it.events.length ? (
+                        {shipments ? (
+                          <Stack spacing={2}>
+                            {shipments.map((sh) => (
+                              <Box
+                                key={sh.key}
+                                sx={{
+                                  p: 1.5,
+                                  borderRadius: 2,
+                                  border: `1px solid ${T.grey200}`,
+                                  bgcolor: T.grey50,
+                                }}
+                              >
+                                <Box
+                                  sx={{
+                                    display: "flex",
+                                    alignItems: "baseline",
+                                    gap: 1.5,
+                                    flexWrap: "wrap",
+                                    mb: 1.25,
+                                  }}
+                                >
+                                  <Typography
+                                    sx={{
+                                      fontWeight: 700,
+                                      fontSize: 13,
+                                      color: T.tealDark,
+                                    }}
+                                  >
+                                    Shipment {sh.index} of {shipments.length}
+                                  </Typography>
+                                  {sh.container && (
+                                    <Typography
+                                      variant="caption"
+                                      color={T.grey600}
+                                    >
+                                      Container:{" "}
+                                      <Link
+                                        href={containerHref(sh.container)}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        underline="hover"
+                                        sx={{ color: T.teal, fontWeight: 600 }}
+                                      >
+                                        {sh.container}
+                                      </Link>
+                                    </Typography>
+                                  )}
+                                  {sh.consignment.no && (
+                                    <Typography
+                                      variant="caption"
+                                      color={T.grey600}
+                                    >
+                                      Consignment:{" "}
+                                      {sh.consignment.id ? (
+                                        <Link
+                                          href={consignmentHref(
+                                            sh.consignment.id,
+                                          )}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          underline="hover"
+                                          sx={{
+                                            color: T.teal,
+                                            fontWeight: 600,
+                                          }}
+                                        >
+                                          {sh.consignment.no}
+                                        </Link>
+                                      ) : (
+                                        <b>{sh.consignment.no}</b>
+                                      )}
+                                    </Typography>
+                                  )}
+                                  <Box sx={{ flex: 1 }} />
+                                  <Typography
+                                    variant="caption"
+                                    color={T.grey600}
+                                  >
+                                    {sh.events[0]
+                                      ? `${sh.events[0].status} · `
+                                      : ""}
+                                    {sh.events.length} update
+                                    {sh.events.length !== 1 ? "s" : ""}
+                                  </Typography>
+                                </Box>
+                                {sh.events.length ? (
+                                  renderEventTimeline(sh.events, true)
+                                ) : (
+                                  <Typography variant="body2" color={T.grey600}>
+                                    No status history recorded.
+                                  </Typography>
+                                )}
+                              </Box>
+                            ))}
+                          </Stack>
+                        ) : it.events.length ? (
                           renderEventTimeline(it.events)
                         ) : (
                           <Typography variant="body2" color={T.grey600}>
