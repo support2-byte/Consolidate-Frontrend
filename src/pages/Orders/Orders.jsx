@@ -174,14 +174,31 @@ const StatusChip = ({ status, height, size, eta }) => {
   const colors = getStatusColors(status);
   return (
     <Chip
-      label={eta ? `${status} (${eta})` : status}
+      label={
+        eta ? (
+          <Box
+            sx={{ display: "flex", flexDirection: "column", lineHeight: 1.25 }}
+          >
+            <span>{status}</span>
+            <span
+              style={{ fontSize: "0.6rem", fontWeight: 600, opacity: 0.85 }}
+            >
+              {eta}
+            </span>
+          </Box>
+        ) : (
+          status
+        )
+      }
       size={size}
       sx={{
-        height,
+        height: eta ? "auto" : height,
+        py: eta ? 0.5 : 0,
         fontSize: "0.65rem",
         marginLeft: 2,
         backgroundColor: colors.bg,
         color: colors.text,
+        "& .MuiChip-label": { whiteSpace: "normal", textAlign: "left" },
       }}
     />
   );
@@ -255,6 +272,7 @@ const OrdersList = () => {
   const [filters, setFilters] = useState({
     status: "",
     partial: false,
+    noTracking: false,
     search: new URLSearchParams(window.location.search).get("search") || "",
   });
   const [snackbar, setSnackbar] = useState({
@@ -605,6 +623,10 @@ const OrdersList = () => {
         params.partial = "true";
       }
 
+      if (filters.noTracking) {
+        params.noTracking = "true";
+      }
+
       if (filters.search?.trim()) {
         params.search = filters.search.trim();
       }
@@ -640,6 +662,7 @@ const OrdersList = () => {
         status: filters.status?.trim() || "",
         search: filters.search?.trim() || "",
         partial: filters.partial ? "true" : "",
+        noTracking: filters.noTracking ? "true" : "",
         page: page + 1,
         limit: rowsPerPage,
         includeContainer: true,
@@ -655,12 +678,163 @@ const OrdersList = () => {
 
   useEffect(() => {
     fetchOrders();
-  }, [page, rowsPerPage, filters.status, filters.partial]);
+  }, [page, rowsPerPage, filters.status, filters.partial, filters.noTracking]);
+
+  // ---- Tracking ID sync (tracking sheet -> orders / order_tracking_map) ----
+  const [openSync, setOpenSync] = useState(false);
+  const [syncFileName, setSyncFileName] = useState("");
+  const [syncRows, setSyncRows] = useState([]);
+  const [syncParseError, setSyncParseError] = useState("");
+  const [syncRunning, setSyncRunning] = useState(false);
+  const [syncResult, setSyncResult] = useState(null);
+
+  const normHeader = (v) =>
+    String(v ?? "")
+      .toLowerCase()
+      .replace(/[^a-z0-9#]/g, "");
+
+  const handleSyncFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setSyncFileName(file.name);
+    setSyncRows([]);
+    setSyncResult(null);
+    setSyncParseError("");
+    try {
+      const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+      const sheetName =
+        wb.SheetNames.find((n) => n.trim().toLowerCase() === "orders") ||
+        wb.SheetNames[0];
+      const grid = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {
+        header: 1,
+        raw: false,
+        defval: "",
+      });
+
+      let headerIdx = -1;
+      let refCol = -1;
+      let orderCol = -1;
+      for (let i = 0; i < Math.min(grid.length, 15); i++) {
+        const cells = grid[i].map(normHeader);
+        const r = cells.findIndex((c) => c === "refid");
+        const o = cells.findIndex((c) => c === "order#" || c === "order");
+        if (r !== -1 && o !== -1) {
+          headerIdx = i;
+          refCol = r;
+          orderCol = o;
+          break;
+        }
+      }
+      if (headerIdx === -1) {
+        setSyncParseError(
+          `Could not find "Ref ID" and "Order #" columns in sheet "${sheetName}".`,
+        );
+        return;
+      }
+
+      const seen = new Set();
+      const rows = [];
+      grid.slice(headerIdx + 1).forEach((row) => {
+        const refId = String(row[refCol] ?? "")
+          .trim()
+          .toUpperCase();
+        const orderNo = String(row[orderCol] ?? "")
+          .trim()
+          .toUpperCase();
+        if (!refId || !orderNo) return;
+        const k = `${refId}|${orderNo}`;
+        if (seen.has(k)) return;
+        seen.add(k);
+        rows.push({ refId, orderNo });
+      });
+      if (!rows.length) {
+        setSyncParseError("No rows with both Ref ID and Order # were found.");
+        return;
+      }
+      setSyncRows(rows);
+    } catch (err) {
+      console.error("Sync file parse failed:", err);
+      setSyncParseError("Could not read the file. Use .xlsx or .csv.");
+    }
+  };
+
+  const baseOfOrderNo = (no) => {
+    const m = /^(\d+)([A-Z])?$/.exec(no);
+    return m ? m[1] : no;
+  };
+
+  const runTrackingSync = async () => {
+    if (!syncRows.length) return;
+    setSyncRunning(true);
+    setSyncResult(null);
+    try {
+      // Keep every A/B part of a form number inside the same request.
+      const byBase = new Map();
+      syncRows.forEach((r) => {
+        const b = baseOfOrderNo(r.orderNo);
+        if (!byBase.has(b)) byBase.set(b, []);
+        byBase.get(b).push(r);
+      });
+      const chunks = [];
+      let cur = [];
+      byBase.forEach((rows) => {
+        if (cur.length + rows.length > 1000 && cur.length) {
+          chunks.push(cur);
+          cur = [];
+        }
+        cur.push(...rows);
+      });
+      if (cur.length) chunks.push(cur);
+
+      const total = {
+        updated: 0,
+        unchanged: 0,
+        mapInserted: 0,
+        mapUpdated: 0,
+        unmatched: [],
+        conflicts: [],
+      };
+      for (const rows of chunks) {
+        const { data } = await api.post("/api/orders/tracking-sync", { rows });
+        total.updated += data.updated || 0;
+        total.unchanged += data.unchanged || 0;
+        total.mapInserted += data.mapInserted || 0;
+        total.mapUpdated += data.mapUpdated || 0;
+        total.unmatched.push(...(data.unmatched || []));
+        total.conflicts.push(...(data.conflicts || []));
+      }
+      setSyncResult(total);
+      fetchOrders();
+    } catch (err) {
+      console.error("Tracking sync failed:", err);
+      setSnackbar({
+        open: true,
+        message:
+          err.response?.data?.details ||
+          err.response?.data?.message ||
+          "Tracking ID sync failed",
+        severity: "error",
+      });
+    } finally {
+      setSyncRunning(false);
+    }
+  };
+
+  const handleCloseSync = () => {
+    if (syncRunning) return;
+    setOpenSync(false);
+    setSyncFileName("");
+    setSyncRows([]);
+    setSyncResult(null);
+    setSyncParseError("");
+  };
 
   const handleClearSearch = async () => {
     setFilters({
       status: "",
       partial: false,
+      noTracking: false,
       search: "",
     });
 
@@ -1048,6 +1222,7 @@ const OrdersList = () => {
             status: filters.status?.trim() || "",
             search: filters.search?.trim() || "",
             partial: filters.partial ? "true" : "",
+            noTracking: filters.noTracking ? "true" : "",
           },
         });
         const pageOrders = response.data.data || [];
@@ -4225,6 +4400,34 @@ const OrdersList = () => {
     `;
   };
 
+  // Customs/undertaking templates read their party details from the
+  // `sender_*` fields. For receiver documents we feed them the (first)
+  // receiver's details under those same keys, so templates stay untouched.
+  const withParty = (role, generator) => (orderData, company, opts) => {
+    if (role !== "receiver" || !orderData) {
+      return generator(orderData, company, opts);
+    }
+    const rec = (orderData.receivers || [])[0] || {};
+    return generator(
+      {
+        ...orderData,
+        sender_name: rec.receiverName || "",
+        sender_company: rec.receiverName || "",
+        sender_contact: rec.receiverContact || "",
+        sender_address: rec.receiverAddress || "",
+        sender_email: rec.receiverEmail || "",
+        sender_cnic: "",
+        sender_passport_number: rec.passportNumber || "",
+        sender_trade_license: rec.tradeLicense || "",
+        sender_emirates_id: rec.emiratesId || "",
+        sender_kyc_approved: !!rec.kycApproved,
+        sender_signature_url: rec.signatureUrl || "",
+      },
+      company,
+      opts,
+    );
+  };
+
   const BRANDABLE_DOCUMENT_GENERATORS = {
     "WHARFAGE - CONSIGNMENT NOTE.pdf": WharfageConsignmentNote,
     "House Bill of Lading (HBL).pdf": (d, c) =>
@@ -4232,15 +4435,22 @@ const OrdersList = () => {
     "3rd Party Shipper Undertaking for ANF.pdf": PartyShipperUndertakingForANF,
     "3rd Party Shipper Indemnity for each order format.pdf":
       PartyShipperIndemnityForEachOrderFormat,
-    "Dubai Letter of Idemnity for Customs.pdf":
+    "Dubai Letter of Idemnity for Customs.pdf": withParty(
+      "receiver",
       DubaiLetterOfIndemnityForCustoms,
+    ),
     "Karachi Govt. Customs Stamp paper undertaking format.pdf":
       KarachiGovtCustomsStampPaperUndertakingFormat,
     "Karachi, Undertaking for Customs, Each sender should give.pdf":
       KarachiUndertakingForCustomsEachSenderShouldGive,
-    "Receiver Undertaking for Dubai Customs.pdf":
+    "Receiver Undertaking for Dubai Customs.pdf": withParty(
+      "receiver",
       ReceiverUndertakingForDubaiCustoms,
-    "Receiver Undertaking Dubai ANF.pdf": ReceiverUndertakingDubaiANF,
+    ),
+    "Receiver Undertaking Dubai ANF.pdf": withParty(
+      "receiver",
+      ReceiverUndertakingDubaiANF,
+    ),
     "Sender Undertaking for 3rd Party Shipper.pdf":
       SenderUndertakingForThirdPartyShipper,
   };
@@ -4865,6 +5075,86 @@ const OrdersList = () => {
               />
             )}
           </Box>
+          <Box
+            onClick={() => {
+              setFilters((prev) => ({ ...prev, noTracking: !prev.noTracking }));
+              setPage(0);
+            }}
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 0.5,
+              pl: 0.5,
+              pr: 1.5,
+              height: 40,
+              borderRadius: 2,
+              cursor: "pointer",
+              userSelect: "none",
+              border: "1.5px solid",
+              borderColor: filters.noTracking ? "#0d6c6a" : "#d0d5dd",
+              bgcolor: filters.noTracking ? "#e8f5f4" : "#fff",
+              transition: "all 0.2s ease",
+              "&:hover": { borderColor: "#0d6c6a", bgcolor: "#f3faf9" },
+            }}
+          >
+            <Checkbox
+              size="small"
+              checked={filters.noTracking}
+              disableRipple
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => {
+                setFilters((prev) => ({
+                  ...prev,
+                  noTracking: e.target.checked,
+                }));
+                setPage(0);
+              }}
+              sx={{
+                p: 0.75,
+                color: "#0d6c6a",
+                "&.Mui-checked": { color: "#0d6c6a" },
+              }}
+            />
+            <Typography
+              variant="body2"
+              sx={{
+                fontWeight: 700,
+                color: filters.noTracking ? "#0a5250" : "text.primary",
+              }}
+            >
+              No Tracking ID
+            </Typography>
+            {filters.noTracking && (
+              <Chip
+                size="small"
+                label={total}
+                sx={{
+                  height: 20,
+                  ml: 0.5,
+                  fontSize: "0.68rem",
+                  fontWeight: 800,
+                  bgcolor: "#0d6c6a",
+                  color: "#fff",
+                }}
+              />
+            )}
+          </Box>
+          <Button
+            variant="outlined"
+            startIcon={<UpdateIcon />}
+            onClick={() => setOpenSync(true)}
+            sx={{
+              height: 40,
+              borderRadius: 2,
+              textTransform: "none",
+              fontWeight: 700,
+              borderColor: "#f58220",
+              color: "#f58220",
+              "&:hover": { borderColor: "#f58220", bgcolor: "#fff4e8" },
+            }}
+          >
+            Sync Tracking IDs
+          </Button>
         </Stack>
 
         <TableContainer
@@ -5323,6 +5613,124 @@ const OrdersList = () => {
           companies={companies}
           getPlaceName={getPlaceName}
         />
+        <Dialog
+          open={openSync}
+          onClose={handleCloseSync}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle sx={{ bgcolor: "#0d6c6a", color: "#fff" }}>
+            Sync Tracking IDs from Tracking Sheet
+          </DialogTitle>
+          <DialogContent sx={{ pt: "20px !important" }}>
+            <Alert severity="info" sx={{ mb: 2, borderRadius: 2 }}>
+              Upload the tracking sheet export (.xlsx / .csv). Only the{" "}
+              <b>Ref ID</b> and <b>Order #</b> columns of the Orders tab are
+              used. Matching orders get their Tracking ID overwritten. Split
+              shipments (e.g. 38829A / 38829B) are added to the tracking map and
+              the order gets the A ref.
+            </Alert>
+            <Stack direction="row" spacing={2} alignItems="center">
+              <Button
+                variant="outlined"
+                component="label"
+                disabled={syncRunning}
+                startIcon={<FileDownloadIcon />}
+                sx={{ textTransform: "none" }}
+              >
+                Choose file
+                <input
+                  type="file"
+                  hidden
+                  accept=".xlsx,.xls,.csv"
+                  onChange={handleSyncFile}
+                />
+              </Button>
+              <Typography variant="body2" color="text.secondary" noWrap>
+                {syncFileName || "No file selected"}
+              </Typography>
+            </Stack>
+            {syncParseError && (
+              <Alert severity="error" sx={{ mt: 2, borderRadius: 2 }}>
+                {syncParseError}
+              </Alert>
+            )}
+            {!syncParseError && syncRows.length > 0 && !syncResult && (
+              <Alert severity="success" sx={{ mt: 2, borderRadius: 2 }}>
+                {syncRows.length} rows ready to sync.
+              </Alert>
+            )}
+            {syncResult && (
+              <Box sx={{ mt: 2 }}>
+                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                  <Chip
+                    color="success"
+                    label={`Updated: ${syncResult.updated}`}
+                  />
+                  <Chip label={`Already correct: ${syncResult.unchanged}`} />
+                  <Chip
+                    color="primary"
+                    variant="outlined"
+                    label={`Map added: ${syncResult.mapInserted}`}
+                  />
+                  <Chip
+                    color="primary"
+                    variant="outlined"
+                    label={`Map updated: ${syncResult.mapUpdated}`}
+                  />
+                  <Chip
+                    color="warning"
+                    variant="outlined"
+                    label={`Not in system: ${syncResult.unmatched.length}`}
+                  />
+                  <Chip
+                    color="error"
+                    variant="outlined"
+                    label={`Conflicts: ${syncResult.conflicts.length}`}
+                  />
+                </Stack>
+                {syncResult.conflicts.length > 0 && (
+                  <Alert severity="error" sx={{ mt: 2, borderRadius: 2 }}>
+                    <AlertTitle>Skipped (needs a manual look)</AlertTitle>
+                    {syncResult.conflicts.slice(0, 15).map((c, i) => (
+                      <div key={i}>
+                        {c.orderNo}: {c.reason}
+                      </div>
+                    ))}
+                    {syncResult.conflicts.length > 15 &&
+                      `…and ${syncResult.conflicts.length - 15} more`}
+                  </Alert>
+                )}
+                {syncResult.unmatched.length > 0 && (
+                  <Alert severity="warning" sx={{ mt: 2, borderRadius: 2 }}>
+                    <AlertTitle>Order # not found in system</AlertTitle>
+                    {syncResult.unmatched.slice(0, 30).join(", ")}
+                    {syncResult.unmatched.length > 30 &&
+                      ` …and ${syncResult.unmatched.length - 30} more`}
+                  </Alert>
+                )}
+              </Box>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseSync} disabled={syncRunning}>
+              {syncResult ? "Close" : "Cancel"}
+            </Button>
+            <Button
+              variant="contained"
+              onClick={runTrackingSync}
+              disabled={syncRunning || !syncRows.length}
+              startIcon={
+                syncRunning ? (
+                  <CircularProgress size={16} color="inherit" />
+                ) : null
+              }
+              sx={{ bgcolor: "#0d6c6a", "&:hover": { bgcolor: "#0a5250" } }}
+            >
+              {syncRunning ? "Syncing..." : "Sync Now"}
+            </Button>
+          </DialogActions>
+        </Dialog>
         <Dialog
           open={openDirectAssign}
           onClose={handleCloseDirectAssign}

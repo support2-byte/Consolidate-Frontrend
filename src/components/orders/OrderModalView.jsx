@@ -74,7 +74,6 @@ import { api } from "../../api";
 import { useAuth } from "../../context/AuthContext";
 import { AppContext } from "../../context/AppContext";
 import { HouseBillOfLading } from "../../documents/hblGenerator";
-import PrintIcon from "@mui/icons-material/Print";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { applyPlugin } from "jspdf-autotable";
@@ -115,8 +114,8 @@ const T = {
   white: "#ffffff",
 };
 
-const SectionHeader = ({ icon, title, count }) => (
-  <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 2.5 }}>
+const SectionHeader = ({ icon, title, count, action, mb = 2.5 }) => (
+  <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb }}>
     <Avatar sx={{ bgcolor: T.tealLight, width: 36, height: 36 }}>{icon}</Avatar>
     <Typography variant="h6" fontWeight={700} color={T.teal}>
       {title}
@@ -128,6 +127,7 @@ const SectionHeader = ({ icon, title, count }) => (
         sx={{ bgcolor: T.tealMid, color: T.tealDark, fontWeight: 700 }}
       />
     )}
+    {action && <Box sx={{ ml: "auto" }}>{action}</Box>}
   </Box>
 );
 
@@ -214,13 +214,27 @@ const docStatusColor = (s) =>
 
 const overdueDays = (d, rfd) => {
   if (d.status !== "overdue" || !rfd) return null;
-  const n = dayjs().startOf("day").diff(dayjs(rfd).startOf("day"), "day");
+  const n = dayjs().startOf("day").diff(dayjs(rfd).startOf("day"), "day") + 1;
   return n > 0 ? n : null;
 };
 
 const statusLabel = (d, rfd) => {
   const n = overdueDays(d, rfd);
   return n ? `Overdue (${n}d)` : fmtStatus(d.status);
+};
+
+const overdueNote = (d, kind, rfd) => {
+  const n = kind === "Invoice" ? overdueDays(d, rfd) : null;
+  if (!n) return null;
+  return (
+    <Typography
+      variant="caption"
+      display="block"
+      sx={{ color: "error.main", fontWeight: 600, mt: 0.25 }}
+    >
+      Overdue by {n} {n === 1 ? "day" : "days"} · late charges may apply
+    </Typography>
+  );
 };
 
 const fmtStatus = (s = "") =>
@@ -269,12 +283,12 @@ const OrderModalView = ({
   const [hblCompanyId, setHblCompanyId] = useState("");
   const [hblHtml, setHblHtml] = useState("");
   const [hblLoading, setHblLoading] = useState(false);
+  const [hblDownloading, setHblDownloading] = useState(false);
   const hblFrameRef = useRef(null);
 
   const [shipView, setShipView] = useState("container");
   const [financeView, setFinanceView] = useState("invoices");
   const [expanded, setExpanded] = useState({});
-  const [trackingTab, setTrackingTab] = useState(0);
 
   const toggleExpand = (key) => setExpanded((p) => ({ ...p, [key]: !p[key] }));
 
@@ -343,7 +357,73 @@ const OrderModalView = ({
     }
   };
 
-  const handlePrintHbl = () => hblFrameRef.current?.contentWindow?.print();
+  const handleDownloadHbl = async () => {
+    const doc = hblFrameRef.current?.contentDocument;
+    if (!doc || hblDownloading) return;
+    setHblDownloading(true);
+    try {
+      if (doc.fonts?.ready) await doc.fonts.ready;
+      const pdf = new jsPDF({
+        unit: "mm",
+        format: "a4",
+        orientation: "portrait",
+      });
+      const PW = 210;
+      const PH = 297;
+      const nodes = Array.from(doc.body.children).filter(
+        (el) => !/^(STYLE|SCRIPT)$/.test(el.tagName),
+      );
+      let first = true;
+      for (const el of nodes) {
+        const canvas = await html2canvas(el, {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: "#ffffff",
+          logging: false,
+        });
+        const pagePx = Math.floor((canvas.width * PH) / PW);
+        for (let y = 0; y < canvas.height; y += pagePx) {
+          const sliceH = Math.min(pagePx, canvas.height - y);
+          if (sliceH < 4) break;
+          const part = document.createElement("canvas");
+          part.width = canvas.width;
+          part.height = sliceH;
+          const ctx = part.getContext("2d");
+          ctx.fillStyle = "#fff";
+          ctx.fillRect(0, 0, part.width, part.height);
+          ctx.drawImage(
+            canvas,
+            0,
+            y,
+            canvas.width,
+            sliceH,
+            0,
+            0,
+            canvas.width,
+            sliceH,
+          );
+          if (!first) pdf.addPage();
+          first = false;
+          pdf.addImage(
+            part.toDataURL("image/jpeg", 0.95),
+            "JPEG",
+            0,
+            0,
+            PW,
+            (sliceH * PW) / canvas.width,
+          );
+        }
+      }
+      pdf.save(
+        `HBL-${selectedOrder?.rgl_booking_number || selectedOrder?.id}.pdf`,
+      );
+    } catch (err) {
+      console.error("HBL download failed:", err);
+      toast.error("Failed to download HBL.");
+    } finally {
+      setHblDownloading(false);
+    }
+  };
 
   const formatDate = (d) => {
     if (!d) return "N/A";
@@ -388,7 +468,6 @@ const OrderModalView = ({
       });
       setAssignments(init);
       setTabValue(0);
-      setTrackingTab(0);
       setExpanded({});
       setHblHtml("");
       setHblCompanyId("");
@@ -765,7 +844,6 @@ const OrderModalView = ({
       ["Remarks", order.sender_remarks],
     ]);
 
-    // ── Receivers, items, containers ────────────────────────
     const receivers = order.receivers || [];
     section("RECEIVERS");
     if (!receivers.length) empty("No receivers found");
@@ -776,7 +854,6 @@ const OrderModalView = ({
           "Tracking ID",
           "Status",
           "ETA",
-          "ETD",
           "Qty",
           "Weight",
           "Contact",
@@ -930,7 +1007,7 @@ const OrderModalView = ({
 
     const tracking = order.tracking || [];
     if (tracking.length) {
-      section("TRACKING HISTORY");
+      section("STATUS HISTORY");
       table(
         [
           "Status",
@@ -950,7 +1027,6 @@ const OrderModalView = ({
           fmtDMY(t.created_time),
           t.created_by_name || t.created_by,
           fmtDMY(t.eta),
-          fmtDMY(t.etd),
         ]),
       );
     }
@@ -2306,212 +2382,370 @@ const OrderModalView = ({
     }
   };
 
-  const buildTrackingGroups = () => {
+  // Status history is built per receiver -> per item. Container / consignment
+  // are optional details on an event (early statuses have neither), never the
+  // grouping key.
+  const buildHistoryGroups = () => {
     const { items } = buildShipmentData();
-    const rows = selectedOrder?.tracking || [];
+    const rows = [...(selectedOrder?.tracking || [])].sort(
+      (a, b) =>
+        new Date(b.created_time) - new Date(a.created_time) ||
+        (b.id || 0) - (a.id || 0),
+    );
 
-    const labelCount = {};
-    items.forEach(({ item }) => {
-      const l = itemLabel(item);
-      labelCount[l] = (labelCount[l] || 0) + 1;
+    const byReceiverRef = {};
+    const byRef = {};
+    items.forEach(({ rec, item }) => {
+      const ref = item.itemRef || `id-${item.id}`;
+      byReceiverRef[`${rec.id}|${ref}`] = { rec, item };
+      if (!byRef[ref]) byRef[ref] = { rec, item };
     });
-    const labelSeen = {};
 
     const groups = {};
-    items.forEach(({ item }) => {
-      const base = itemLabel(item);
-      labelSeen[base] = (labelSeen[base] || 0) + 1;
-      const label =
-        labelCount[base] > 1 ? `${base} (${labelSeen[base]})` : base;
-      const key = item.itemRef || `id-${item.id}`;
-      groups[key] = { key, label, rows: [] };
+    (selectedOrder?.receivers || []).forEach((rec) => {
+      groups[rec.id] = {
+        key: rec.id,
+        name: rec.receiver_name,
+        items: (rec.shippingDetails || rec.shippingdetails || []).map(
+          (item) => ({
+            key: `${rec.id}-${item.id}`,
+            ref: item.itemRef || `id-${item.id}`,
+            label: itemLabel(item),
+            rows: [],
+          }),
+        ),
+      };
     });
+    const orderLevel = { key: "order", name: "Order Level", rows: [] };
 
-    const other = { key: "other", label: "Order Level", rows: [] };
     rows.forEach((r) => {
-      if (r.item_ref && groups[r.item_ref]) groups[r.item_ref].rows.push(r);
-      else other.rows.push(r);
+      const hit =
+        byReceiverRef[`${r.receiver_id}|${r.item_ref}`] || byRef[r.item_ref];
+      const g = hit && groups[hit.rec.id];
+      const bucket = g?.items.find(
+        (i) => i.ref === (hit.item.itemRef || `id-${hit.item.id}`),
+      );
+      if (bucket) bucket.rows.push(r);
+      else orderLevel.rows.push(r);
     });
 
-    const list = Object.values(groups);
-    if (other.rows.length) list.push(other);
+    // Collapse the per-container duplicates of the same status into one event
+    const mergeEvents = (list) => {
+      const out = [];
+      list.forEach((r) => {
+        const minute = dayjs(r.created_time).format("YYYY-MM-DD HH:mm");
+        const prev = out.find(
+          (e) => e.status === r.status && e.minute === minute,
+        );
+        const target =
+          prev ||
+          (out.push({
+            id: r.id,
+            status: r.status,
+            minute,
+            created_time: r.created_time,
+            module: r.module,
+            by: r.created_by_name || "",
+            eta: r.eta,
+            containers: [],
+            consignments: [],
+          }),
+          out[out.length - 1]);
+        if (
+          r.container_number &&
+          !target.containers.includes(r.container_number)
+        )
+          target.containers.push(r.container_number);
+        if (
+          r.consignment_number &&
+          !target.consignments.some((c) => c.no === r.consignment_number)
+        )
+          target.consignments.push({
+            no: r.consignment_number,
+            id: r.consignment_id,
+          });
+      });
+      return out; // newest first
+    };
+
+    const list = Object.values(groups)
+      .map((g) => {
+        const its = g.items.map((i) => ({ ...i, events: mergeEvents(i.rows) }));
+        const all = its.flatMap((i) => i.events);
+        return {
+          ...g,
+          items: its,
+          eventCount: all.length,
+          latest: all.sort(
+            (a, b) => new Date(b.created_time) - new Date(a.created_time),
+          )[0],
+        };
+      })
+      .filter((g) => g.eventCount > 0);
+
+    if (orderLevel.rows.length) {
+      const events = mergeEvents(orderLevel.rows);
+      list.unshift({
+        key: "order",
+        name: "Order Level",
+        items: [{ key: "order-events", label: null, events }],
+        eventCount: events.length,
+        latest: events[0],
+      });
+    }
     return list;
   };
 
+  const elapsedText = (from, to) => {
+    const mins = dayjs(to).diff(dayjs(from), "minute");
+    if (!Number.isFinite(mins) || mins < 1) return null;
+    const d = Math.floor(mins / 1440);
+    const h = Math.floor((mins % 1440) / 60);
+    const m = mins % 60;
+    if (d) return `${d}d ${h}h`;
+    if (h) return `${h}h ${m}m`;
+    return `${m}m`;
+  };
+
+  const renderEventTimeline = (events) => (
+    <Box
+      sx={{
+        position: "relative",
+        ml: 1,
+        pl: 3,
+        borderLeft: `2px solid ${T.grey200}`,
+      }}
+    >
+      {events.map((e, i) => {
+        const prev = events[i + 1]; // older event
+        const took = prev
+          ? elapsedText(prev.created_time, e.created_time)
+          : null;
+        const linkSx = { color: T.teal, fontWeight: 600 };
+        return (
+          <Box
+            key={`${e.id}-${i}`}
+            sx={{
+              position: "relative",
+              pb: i === events.length - 1 ? 0 : 1.75,
+            }}
+          >
+            <Box
+              sx={{
+                position: "absolute",
+                left: -31,
+                top: 5,
+                width: 10,
+                height: 10,
+                borderRadius: "50%",
+                bgcolor: i === 0 ? T.teal : T.white,
+                border: `2px solid ${T.teal}`,
+              }}
+            />
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "baseline",
+                gap: 1.5,
+                flexWrap: "wrap",
+              }}
+            >
+              <Typography sx={{ fontWeight: 700, fontSize: 14, color: T.text }}>
+                {e.status || "-"}
+              </Typography>
+              <Typography variant="caption" color={T.grey600}>
+                {dayjs(e.created_time).isValid()
+                  ? dayjs(e.created_time).format("DD MMM YYYY, hh:mm A")
+                  : "-"}
+                {took ? ` · +${took}` : ""}
+              </Typography>
+            </Box>
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                gap: 2,
+                flexWrap: "wrap",
+                mt: 0.25,
+              }}
+            >
+              {e.by && e.by !== "-" && (
+                <Typography variant="caption" color={T.grey600}>
+                  By {e.by}
+                </Typography>
+              )}
+              {e.consignments.map((c) => (
+                <Typography key={c.no} variant="caption" color={T.grey600}>
+                  Consignment:{" "}
+                  {c.id ? (
+                    <Link
+                      href={consignmentHref(c.id)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      underline="hover"
+                      sx={linkSx}
+                    >
+                      {c.no}
+                    </Link>
+                  ) : (
+                    <b>{c.no}</b>
+                  )}
+                </Typography>
+              ))}
+              {e.containers.map((c) => (
+                <Typography key={c} variant="caption" color={T.grey600}>
+                  Container:{" "}
+                  <Link
+                    href={containerHref(c)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    underline="hover"
+                    sx={linkSx}
+                  >
+                    {c}
+                  </Link>
+                </Typography>
+              ))}
+            </Box>
+          </Box>
+        );
+      })}
+    </Box>
+  );
+
+  const renderHistoryToggle = () => {
+    const groups = buildHistoryGroups();
+    if (!groups.length) return null;
+    const keys = groups.map((g) => `h-${g.key}`);
+    const allOpen = keys.every((k) => expanded[k]);
+    return (
+      <Button
+        size="small"
+        onClick={() =>
+          setExpanded(
+            allOpen ? {} : Object.fromEntries(keys.map((k) => [k, true])),
+          )
+        }
+        sx={{ color: T.teal, textTransform: "none", fontWeight: 600 }}
+      >
+        {allOpen ? "Collapse all" : "Expand all"}
+      </Button>
+    );
+  };
+
   const renderTracking = () => {
-    const groups = buildTrackingGroups();
+    const groups = buildHistoryGroups();
     if (!groups.length)
       return (
         <Alert severity="info" sx={{ borderRadius: 2 }}>
-          No shipping items found for this order.
+          No status history for this order.
         </Alert>
       );
 
-    const active = groups[Math.min(trackingTab, groups.length - 1)];
-    const head = { bgcolor: T.teal, color: "#fff", fontWeight: 600 };
-
     return (
-      <Stack spacing={2}>
-        <Tabs
-          value={Math.min(trackingTab, groups.length - 1)}
-          onChange={(_, v) => setTrackingTab(v)}
-          variant="scrollable"
-          scrollButtons="auto"
-          sx={{
-            borderBottom: 1,
-            borderColor: "divider",
-            "& .MuiTab-root": {
-              textTransform: "none",
-              fontWeight: 600,
-              fontSize: 13,
-            },
-            "& .Mui-selected": { color: `${T.teal} !important` },
-          }}
-          TabIndicatorProps={{ style: { backgroundColor: T.teal } }}
-        >
-          {groups.map((g) => (
-            <Tab
-              key={g.key}
-              label={
-                <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                  {g.label}
-                  <Chip
-                    size="small"
-                    label={g.rows.length}
-                    sx={{
-                      bgcolor: T.tealMid,
-                      color: T.tealDark,
-                      fontWeight: 700,
-                      height: 20,
-                    }}
-                  />
-                </Box>
-              }
-            />
-          ))}
-        </Tabs>
+      <Stack spacing={1.5}>
+        {groups.map((g) => {
+          const key = `h-${g.key}`;
+          const itemCount = g.items.filter((i) => i.label).length;
+          const times = g.items
+            .flatMap((i) => i.events)
+            .map((e) => e.created_time)
+            .filter((t) => dayjs(t).isValid())
+            .sort((a, b) => new Date(a) - new Date(b));
+          const trip =
+            g.key !== "order" && times.length > 1
+              ? elapsedText(times[0], times[times.length - 1])
+              : null;
 
-        <TableContainer
-          sx={{
-            border: 1,
-            borderColor: "divider",
-            borderRadius: 2,
-            bgcolor: T.white,
-          }}
-        >
-          <Table size="small" sx={{ minWidth: 900 }}>
-            <TableHead>
-              <TableRow>
-                {[
-                  "Status",
-                  "Module",
-                  "Container Number",
-                  "Consignment Number",
-                  "Created Time",
-                  "Created By",
-                  "ETA",
-                  "ETD",
-                ].map((h) => (
-                  <TableCell key={h} sx={head}>
-                    {h}
-                  </TableCell>
-                ))}
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {active.rows.length === 0 ? (
-                <TableRow>
-                  <TableCell
-                    colSpan={8}
-                    align="center"
-                    sx={{ py: 5, color: "text.secondary" }}
+          return (
+            <Card
+              key={key}
+              variant="outlined"
+              sx={{ borderRadius: 2.5, border: `1px solid ${T.grey200}` }}
+            >
+              {groupHeader(
+                key,
+                T.tealLight,
+                T.tealMid,
+                <>
+                  <Typography
+                    fontWeight={700}
+                    color={T.tealDark}
+                    sx={{ fontSize: 16 }}
                   >
-                    No tracking records for this item.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                active.rows.map((row) => {
-                  const sc = getStatusColors(row.status);
-                  const mc = getModuleColors(row.module);
-                  return (
-                    <TableRow key={row.id} hover>
-                      <TableCell>
-                        {row.status ? (
-                          <Chip
-                            label={row.status}
-                            size="small"
-                            sx={{
-                              bgcolor: sc.bg,
-                              color: sc.text,
-                              fontWeight: 600,
-                            }}
-                          />
-                        ) : (
-                          "-"
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {row.module ? (
-                          <Chip
-                            label={row.module}
-                            size="small"
-                            sx={{
-                              bgcolor: mc.bg,
-                              color: mc.text,
-                              fontWeight: 600,
-                            }}
-                          />
-                        ) : (
-                          "-"
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {row.container_number ? (
-                          <Link
-                            href={containerHref(row.container_number)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            underline="hover"
-                            sx={{ color: T.teal, fontWeight: 600 }}
-                          >
-                            {row.container_number}
-                          </Link>
-                        ) : (
-                          "-"
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {row.consignment_number ? (
-                          row.consignment_id ? (
-                            <Link
-                              href={consignmentHref(row.consignment_id)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              underline="hover"
-                              sx={{ color: T.teal, fontWeight: 600 }}
-                            >
-                              {row.consignment_number}
-                            </Link>
-                          ) : (
-                            row.consignment_number
-                          )
-                        ) : (
-                          "-"
-                        )}
-                      </TableCell>
-                      <TableCell>{fmtDMY(row.created_time)}</TableCell>
-                      <TableCell>
-                        {row.created_by_name || row.created_by || "-"}
-                      </TableCell>
-                      <TableCell>{fmtDMY(row.eta)}</TableCell>
-                      <TableCell>{fmtDMY(row.etd)}</TableCell>
-                    </TableRow>
-                  );
-                })
+                    {g.name}
+                  </Typography>
+                  {itemCount > 0 && (
+                    <Typography variant="caption" color={T.grey600}>
+                      {itemCount} item{itemCount > 1 ? "s" : ""}
+                    </Typography>
+                  )}
+                  <Box sx={{ flex: 1 }} />
+                  {trip && (
+                    <Typography variant="body2" color={T.grey600}>
+                      Trip duration: <b>{trip}</b>
+                    </Typography>
+                  )}
+                  {g.latest?.status && (
+                    <Typography variant="body2" color={T.grey600}>
+                      Latest:{" "}
+                      <b style={{ color: T.tealDark }}>{g.latest.status}</b>
+                    </Typography>
+                  )}
+                </>,
               )}
-            </TableBody>
-          </Table>
-        </TableContainer>
+
+              <Collapse in={!!expanded[key]} unmountOnExit>
+                <Stack
+                  spacing={2}
+                  sx={{ p: 2.5 }}
+                  divider={<Divider flexItem />}
+                >
+                  {g.items.map((it) => {
+                    const cur = it.events[0];
+                    return (
+                      <Box key={it.key}>
+                        {it.label && (
+                          <Box
+                            sx={{
+                              display: "flex",
+                              alignItems: "baseline",
+                              gap: 1,
+                              flexWrap: "wrap",
+                              mb: 1.5,
+                            }}
+                          >
+                            <Typography fontWeight={700} color={T.text}>
+                              {it.label}
+                            </Typography>
+                            {!String(it.ref).startsWith("id-") && (
+                              <Typography variant="caption" color={T.grey600}>
+                                {it.ref}
+                              </Typography>
+                            )}
+                            <Box sx={{ flex: 1 }} />
+                            <Typography variant="caption" color={T.grey600}>
+                              {cur ? `${cur.status} · ` : ""}
+                              {it.events.length} update
+                              {it.events.length !== 1 ? "s" : ""}
+                            </Typography>
+                          </Box>
+                        )}
+                        {it.events.length ? (
+                          renderEventTimeline(it.events)
+                        ) : (
+                          <Typography variant="body2" color={T.grey600}>
+                            No status history recorded for this item.
+                          </Typography>
+                        )}
+                      </Box>
+                    );
+                  })}
+                </Stack>
+              </Collapse>
+            </Card>
+          );
+        })}
       </Stack>
     );
   };
@@ -2640,7 +2874,7 @@ const OrderModalView = ({
               <>
                 {groups.map((g) => {
                   const k = `f-${kind}-${g.key}`;
-                  const open = expanded[k] ?? true;
+                  const open = expanded[k] ?? false;
                   const gl = g.docs.filter((d) => d.status !== "void");
                   const paidCnt = gl.filter((d) => d.status === "paid").length;
                   const currencies = [...new Set(gl.map((d) => d.currency))];
@@ -2746,7 +2980,10 @@ const OrderModalView = ({
                                 ? dayjs(d.dueDate).format("MMM DD, YYYY")
                                 : "-"}
                             </TableCell>
-                            <TableCell>{rfdTxt}</TableCell>
+                            <TableCell>
+                              {rfdTxt}
+                              {overdueNote(d, kind, rfdDate)}
+                            </TableCell>
                             <TableCell>
                               <Chip
                                 label={statusLabel(d, rfdDate)}
@@ -2965,7 +3202,7 @@ const OrderModalView = ({
       icon: <InventoryIcon sx={{ fontSize: 18, color: T.teal }} />,
     },
     {
-      label: "Tracking",
+      label: "History",
       icon: <HistoryIcon sx={{ fontSize: 18, color: T.teal }} />,
     },
     {
@@ -3240,8 +3477,10 @@ const OrderModalView = ({
                       icon={
                         <HistoryIcon sx={{ color: T.teal, fontSize: 20 }} />
                       }
-                      title="Tracking History"
+                      title="Status History"
                       count={(selectedOrder.tracking || []).length}
+                      mb={1.5}
+                      action={renderHistoryToggle()}
                     />
                     {renderTracking()}
                   </CardContent>
@@ -3658,9 +3897,26 @@ const OrderModalView = ({
         >
           <Typography fontWeight={700}>House Bill of Lading</Typography>
           <Box>
-            <IconButton onClick={handlePrintHbl}>
-              <PrintIcon />
-            </IconButton>
+            <Button
+              variant="contained"
+              size="small"
+              disabled={hblDownloading}
+              onClick={handleDownloadHbl}
+              startIcon={
+                hblDownloading ? (
+                  <CircularProgress size={14} color="inherit" />
+                ) : (
+                  <DownloadIcon />
+                )
+              }
+              sx={{
+                mr: 1,
+                bgcolor: T.orange,
+                "&:hover": { bgcolor: T.orangeDark },
+              }}
+            >
+              Download
+            </Button>
             <IconButton onClick={() => setHblHtml("")}>
               <CloseIcon />
             </IconButton>
