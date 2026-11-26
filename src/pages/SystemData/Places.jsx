@@ -46,6 +46,7 @@ const initialState = {
   inputValue: "",
   formData: {
     name: "",
+    port: "",
     isLoading: false,
     isDestination: false,
     country: "",
@@ -67,6 +68,7 @@ const reducer = (state, action) => {
         formData: action.payload
           ? {
               name: action.payload.name || "",
+              port: action.payload.port || "",
               isLoading: action.payload.is_loading || false,
               isDestination: action.payload.is_destination || false,
               country: action.payload.country || "",
@@ -183,6 +185,7 @@ const Places = () => {
       dispatch({ type: "SET_DIALOG_LOADING", payload: true });
       const payload = {
         name: state.formData.name,
+        port: state.formData.port,
         is_loading: state.formData.isLoading,
         is_destination: state.formData.isDestination,
         country: state.formData.country,
@@ -330,6 +333,7 @@ const Places = () => {
               {[
                 "ID",
                 "Name",
+                "Port",
                 "Type",
                 "Country",
                 "Latitude",
@@ -363,6 +367,7 @@ const Places = () => {
                       {place.name}
                     </Typography>
                   </TableCell>
+                  <TableCell>{place.port || "—"}</TableCell>
                   <TableCell>
                     {getTypeLabel(place) === "None" ? (
                       <Chip label="None" size="small" variant="outlined" />
@@ -566,6 +571,21 @@ const Places = () => {
                 helperText={
                   !state.formData.country.trim() ? "Country is required" : ""
                 }
+              />
+            </Grid>
+            <Grid item size={4}>
+              <TextField
+                fullWidth
+                label="Port (short name)"
+                placeholder="e.g. Dubai"
+                value={state.formData.port}
+                onChange={(e) =>
+                  dispatch({
+                    type: "UPDATE_FORM",
+                    payload: { port: e.target.value },
+                  })
+                }
+                helperText="Shown on the tracking page. Falls back to Name if empty."
               />
             </Grid>
             <Grid item size={6}>
