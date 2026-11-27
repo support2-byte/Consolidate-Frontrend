@@ -1,4 +1,4 @@
-import logoRickmers from "../../public/RICKMERS-LOGO.jpg";
+import logoRickmers from "../assets/RICKMERS-LOGO.jpg";
 
 const esc = (v) =>
   String(v ?? "")
@@ -41,10 +41,11 @@ export const mblCss = (company) => {
   .mk-route { display: grid; grid-template-columns: 1fr 1fr 1fr; }
   .mk-route .mk-cell:nth-child(3n) { border-right: none; }
   .mk-band { text-align: center; font-weight: bold; font-size: 12px; padding: 5px; letter-spacing: .6px; background: ${tint(primary)}; border-bottom: 1px solid #000; }
-  .mk-desc { display: grid; grid-template-columns: 1fr 150px 120px; height: 250px; border-bottom: 1px solid #000; overflow: hidden; }
+  .mk-desc { display: grid; grid-template-columns: 1fr 150px 120px; min-height: 250px; border-bottom: 1px solid #000; }
   .mk-dcol { padding: 6px 8px; border-right: 1px solid #000; }
   .mk-dcol.mk-last { border-right: none; }
   .mk-dtext { text-transform: none; }
+  .mk-custom { margin: 0 0 14px; }
   .mk-crow { margin-top: 8px; font-size: 11px; font-weight: bold; }
   .mk-tbl-head, .mk-line { display: grid; grid-template-columns: 1.2fr 1.2fr 1.8fr .9fr 1.1fr; gap: 8px; padding: 2px 0 2px 10px; }
   .mk-tbl-head > span, .mk-line > span { min-width: 0; word-break: break-word; }
@@ -81,24 +82,24 @@ export const mblCss = (company) => {
   }`;
 };
 
-const ROWS_P1 = 6;
-const ROWS_CONT = 38;
+// Item lines shown per copy of the first page. When a consignment has more,
+// the whole first page is repeated with the next lines, then the terms page.
+const LINES_PER_PAGE = 3;
 
-export const buildMblPages = (data, company, variant = "original") => {
+export const buildMblPages = (
+  data,
+  company,
+  variant = "original",
+  opts = {},
+) => {
   const c = data.consignment || {};
   const containers = data.containers || [];
   const totals = data.totals || { containers: 0, pkgs: 0, weight: 0 };
   const companyName = company?.company || "";
   const issueDate = new Date().toISOString().slice(0, 10);
   const sob = data.shipped_on_board || "";
-  const formNos = (data.orders || [])
-    .map((o) => o.rgl_booking_number)
-    .filter(Boolean)
-    .join(", ");
+  const customText = String(opts?.customText ?? "").trim();
   const vesselLine = [c.vessel_name, c.voyage].filter(Boolean).join(" / ");
-  const goods = [
-    ...new Set(containers.flatMap((ct) => ct.items.map(catName))),
-  ].join(", ");
   const showSig = variant !== "copy" && company?.signature_url;
   const watermark =
     variant === "copy"
@@ -109,12 +110,9 @@ export const buildMblPages = (data, company, variant = "original") => {
 
   const tblHead = `<div class="mk-tbl-head"><span>Form No.</span><span>Marks &amp; Nos.</span><span>Category</span><span>QTY</span><span>Weight</span></div>`;
 
-  const rows = [];
+  // one entry per item line, in container order
+  const entries = [];
   containers.forEach((ct) => {
-    rows.push(
-      `<div class="mk-crow">${esc(ct.container_number)} ${esc(ct.size)}${esc(ct.type)} &nbsp; Seal: ${esc(c.seal_no) || "-"} &nbsp; ${ct.pkgs} PKGS &nbsp; ${ct.weight.toFixed(3)} KGS</div>`,
-      tblHead,
-    );
     const merged = {};
     ct.items.forEach((i) => {
       const key = `${i.order_no || ""}||${i.marks || ""}||${catName(i)}`;
@@ -130,18 +128,35 @@ export const buildMblPages = (data, company, variant = "original") => {
       merged[key].pkgs += Number(i.pkgs) || 0;
       merged[key].weight += Number(i.weight) || 0;
     });
-    Object.values(merged).forEach((m) => {
-      rows.push(
+    Object.values(merged).forEach((m, idx) =>
+      entries.push({ ct, m, first: idx === 0 }),
+    );
+  });
+
+  const chunks = [];
+  for (let n = 0; n < entries.length; n += LINES_PER_PAGE)
+    chunks.push(entries.slice(n, n + LINES_PER_PAGE));
+  if (!chunks.length) chunks.push([]);
+  const itemPages = chunks.length;
+  const totalPages = itemPages + 1; // + terms page
+
+  const chunkHtml = (chunk) => {
+    const out = [];
+    let lastCt = null;
+    chunk.forEach(({ ct, m, first }) => {
+      if (ct !== lastCt) {
+        out.push(
+          `<div class="mk-crow">${esc(ct.container_number)} ${esc(ct.size)}${esc(ct.type)} &nbsp; Seal: ${esc(c.seal_no) || "-"} &nbsp; ${ct.pkgs} PKGS &nbsp; ${ct.weight.toFixed(3)} KGS${first ? "" : " &nbsp; (continued)"}</div>`,
+          tblHead,
+        );
+        lastCt = ct;
+      }
+      out.push(
         `<div class="mk-line"><span>${esc(m.order_no)}</span><span>${nl(m.marks)}</span><span>${esc(m.category)}</span><span>${m.pkgs} ${esc(m.type)}</span><span>${m.weight.toFixed(3)} KGS</span></div>`,
       );
     });
-  });
-  const p1Rows = rows.slice(0, ROWS_P1);
-  const overflow = rows.slice(ROWS_P1);
-  const contChunks = [];
-  for (let n = 0; n < overflow.length; n += ROWS_CONT)
-    contChunks.push(overflow.slice(n, n + ROWS_CONT));
-  const totalPages = 2 + contChunks.length;
+    return out.join("");
+  };
 
   const freight = (h) => `
     <div class="mk-frow mk-fhead"><div>Freight &amp; Charges</div><div>Rate</div><div>Unit</div><div>Currency</div><div>Prepaid</div><div>Collect</div></div>
@@ -151,7 +166,7 @@ export const buildMblPages = (data, company, variant = "original") => {
     ? `<img src="${esc(company.logo_url)}" alt="${esc(companyName)}" style="max-height:48px;max-width:170px;object-fit:contain;">`
     : "";
 
-  const page1 = `
+  const makeItemPage = (pageNo, chunk) => `
   <div class="mk-page">
     <div class="mk-frame">
       <div class="mk-head">
@@ -194,10 +209,10 @@ export const buildMblPages = (data, company, variant = "original") => {
           <span class="mk-label">Kind of Packages; Description of goods; Marks and Numbers; Container No./Seal No.</span>
           <div class="mk-content mk-dtext">
             ${sob ? `SHIPPED ON BOARD ${esc(vesselLine)} ON ${esc(sob)} AT ${esc(c.origin)}<br><br>` : ""}
+            ${customText ? `<div class="mk-custom">${nl(customText)}</div>` : ""}
             ${totals.containers} CONTAINER(S) SAID TO CONTAIN ${totals.pkgs} PACKAGES<br>
-            ${esc(goods)}
-            ${p1Rows.join("")}
-            ${overflow.length ? `<div class="mk-cont">CONTINUED ON PAGE 2 ...</div>` : ""}
+            ${chunkHtml(chunk)}
+            ${pageNo < itemPages ? `<div class="mk-cont">CONTINUED ON PAGE ${pageNo + 1}/${totalPages} ...</div>` : ""}
           </div>
         </div>
         <div class="mk-dcol"><span class="mk-label">Weight</span><div class="mk-content" style="margin-top:14px;">${Number(totals.weight).toFixed(3)} KGS</div></div>
@@ -229,26 +244,14 @@ export const buildMblPages = (data, company, variant = "original") => {
       </div>
     </div>
     ${watermark}
-    <div class="mk-pgno">This transport document has ${totalPages} numbered pages &nbsp;|&nbsp; Page 1 of ${totalPages}</div>
+    <div class="mk-pgno">This transport document has ${totalPages} numbered pages &nbsp;|&nbsp; Page ${pageNo}/${totalPages}</div>
   </div>`;
-
-  const contPages = contChunks.map(
-    (chunk, idx) => `
-  <div class="mk-page">
-    <div class="mk-frame">
-      <div class="mk-p2head"><span>B/L: <b>${esc(c.consignment_number)}</b></span><span>Page: ${idx + 2}</span></div>
-      <div class="mk-terms" style="min-height:900px;">${/^<div class="mk-(crow|tbl-head)"/.test(chunk[0]) ? "" : tblHead}${chunk.join("")}</div>
-    </div>
-    ${watermark}
-    <div class="mk-pgno">Page ${idx + 2} of ${totalPages}</div>
-  </div>`,
-  );
 
   const cn = esc(companyName);
   const page2 = `
   <div class="mk-page">
     <div class="mk-frame">
-      <div class="mk-p2head"><span>B/L: <b>${esc(c.consignment_number)}</b></span><span>Page: ${totalPages}</span></div>
+      <div class="mk-p2head"><span>B/L: <b>${esc(c.consignment_number)}</b></span><span>Page ${totalPages}/${totalPages}</span></div>
       <div class="mk-terms">
         <strong>By accepting this document, the Merchant agrees to the following terms:</strong>
         <ol>
@@ -269,16 +272,20 @@ export const buildMblPages = (data, company, variant = "original") => {
       ${freight(150)}
     </div>
     ${watermark}
-    <div class="mk-pgno">Page ${totalPages} of ${totalPages}</div>
+    <div class="mk-pgno">Page ${totalPages}/${totalPages}</div>
   </div>`;
 
-  return [page1, page2];
+  return [...chunks.map((chunk, i) => makeItemPage(i + 1, chunk)), page2];
 };
 
 export const MasterBillOfLading = (orderData, company, opts = {}) => {
   const list = orderData?.mblList || [];
   const pages = list.length
-    ? list.flatMap((d) => buildMblPages(d, company, opts.variant))
+    ? list.flatMap((d) =>
+        buildMblPages(d, company, opts.variant, {
+          customText: opts.customText,
+        }),
+      )
     : [
         `<div class="mk-page"><div class="mk-content mk-dtext">No consignment is linked to this order yet.</div></div>`,
       ];

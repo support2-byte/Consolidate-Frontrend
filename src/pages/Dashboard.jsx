@@ -76,7 +76,10 @@ import {
   Settings,
   Megaphone,
   Monitor,
+  RefreshCcw,
 } from "lucide-react";
+import black_logo from "../assets/logo.png";
+import white_logo from "../assets/logo-2.png";
 
 const expandedWidth = 260;
 const collapsedWidth = 80;
@@ -90,7 +93,9 @@ export default function DashboardLayout() {
 
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
-  const [openAdmin, setOpenAdmin] = useState(true);
+  const [openAdmin, setOpenAdmin] = useState(false);
+  // All nav groups are collapsed by default
+  const [openGroups, setOpenGroups] = useState({});
   const [profileAnchorEl, setProfileAnchorEl] = useState(null);
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
   const [forgetPasswordOpen, setForgetPasswordOpen] = useState(false);
@@ -99,6 +104,9 @@ export default function DashboardLayout() {
   const handleProfileClick = (e) => setProfileAnchorEl(e.currentTarget);
   const handleProfileClose = () => setProfileAnchorEl(null);
   const handleForgetClose = () => setForgetPasswordOpen(false);
+
+  const toggleGroup = (key) =>
+    setOpenGroups((prev) => ({ ...prev, [key]: !prev[key] }));
 
   const handleLogoutClick = () => {
     setProfileAnchorEl(null);
@@ -111,129 +119,193 @@ export default function DashboardLayout() {
     navigate("/login");
   };
 
-  const navItems = [
+  const isVisible = (item) => !item.module || can(item.module, "view");
+
+  // type: "item"  -> standalone link
+  // type: "group" -> collapsible group with children
+  const navConfig = [
     {
+      type: "item",
       label: "Dashboard",
       path: "/",
       icon: <DashboardIcon />,
       module: "dashboard",
     },
-    { label: "Users", path: "/users", icon: <PersonIcon />, module: "users" },
-    // {
-    //   label: "Permissions",
-    //   path: "/permissions",
-    //   icon: <Lock />,
-    //   module: "permissions",
-    // },
     {
-      label: "Role Permissions",
-      path: "/role-permissions",
-      icon: <Lock />,
-      module: "role-permissions",
-    },
-    {
-      label: "Customers",
-      path: "/customers",
-      icon: <PeopleIcon />,
-      module: "customers",
-    },
-    {
-      label: "Authorize App Customers",
-      path: "/authorize-app-customers",
-      icon: <UserKey />,
-      module: "authorize-mobile-customers",
-    },
-    {
-      label: "Customer Request",
-      path: "/customer-request",
-      icon: <AddToHomeScreen />,
-      module: "customer-request",
-    },
-    {
-      label: "KYC",
-      path: "/kyc",
-      icon: <FingerPrintIcon />,
-      module: "kyc",
-    },
-    {
+      type: "item",
       label: "Vendors",
       path: "/vendors",
       icon: <PeopleIcon />,
       module: "vendors",
     },
     {
-      label: "Containers",
-      path: "/containers",
-      icon: <Container />,
-      module: "containers",
+      type: "group",
+      key: "customers",
+      label: "Customers",
+      icon: <PeopleIcon />,
+      children: [
+        {
+          label: "Customer List",
+          path: "/customers",
+          icon: <PeopleIcon />,
+          module: "customers",
+        },
+        {
+          label: "Authorize App Customers",
+          path: "/authorize-app-customers",
+          icon: <UserKey />,
+          module: "authorize-mobile-customers",
+        },
+        {
+          label: "Customer Request",
+          path: "/customer-request",
+          icon: <AddToHomeScreen />,
+          module: "customer-request",
+        },
+        {
+          label: "KYC",
+          path: "/kyc",
+          icon: <FingerPrintIcon />,
+          module: "kyc",
+        },
+      ],
     },
     {
-      label: "Container Release",
-      path: "/containers/release",
-      icon: <Cuboid />,
-      module: "release",
+      type: "group",
+      key: "user-management",
+      label: "User Management",
+      icon: <PersonIcon />,
+      children: [
+        {
+          label: "Users",
+          path: "/users",
+          icon: <PersonIcon />,
+          module: "users",
+        },
+        {
+          label: "Role Permissions",
+          path: "/role-permissions",
+          icon: <Lock />,
+          module: "role-permissions",
+        },
+      ],
     },
     {
-      label: "Orders",
-      path: "/orders",
+      type: "group",
+      key: "orders-management",
+      label: "Orders Management",
       icon: <ShoppingCartIcon />,
-      module: "orders",
+      children: [
+        {
+          label: "Orders",
+          path: "/orders",
+          icon: <ShoppingCartIcon />,
+          module: "orders",
+        },
+        {
+          label: "Consignments",
+          path: "/consignments",
+          icon: <Ship />,
+          module: "consignments",
+        },
+        {
+          label: "Tracking",
+          path: "/tracking",
+          icon: <TrackChangesIcon />,
+          module: "tracking",
+        },
+        {
+          label: "Order History",
+          path: "/tracking-history",
+          icon: <HistoryIcon />,
+          module: "order-tracking",
+        },
+        {
+          label: "ETA Monitoring",
+          path: "/eta-monitoring",
+          icon: <Monitor />,
+          module: "eta-monitoring",
+        },
+        {
+          label: "ETA Update",
+          path: "/admin-notification",
+          icon: <RefreshCcw />,
+          module: "admin-notification",
+        },
+      ],
     },
     {
+      type: "group",
+      key: "container-management",
+      label: "Container Management",
+      icon: <Container />,
+      children: [
+        {
+          label: "Containers",
+          path: "/containers",
+          icon: <Container />,
+          module: "containers",
+        },
+        {
+          label: "Container Releases",
+          path: "/containers/release",
+          icon: <Cuboid />,
+          module: "release",
+        },
+      ],
+    },
+    {
+      type: "item",
       label: "Booking Confirmations",
       path: "/booking-confirmations",
       icon: <BookIcon />,
       module: "booking-confirmations",
     },
     {
-      label: "Consignments",
-      path: "/consignments",
-      icon: <Ship />,
-      module: "consignments",
+      type: "group",
+      key: "finance-management",
+      label: "Finance Management",
+      icon: <Receipt />,
+      children: [
+        {
+          label: "Invoices",
+          path: "/invoices",
+          icon: <Receipt />,
+          module: "invoices",
+        },
+        {
+          label: "Zoho Books",
+          path: "/zoho-invoices",
+          icon: <Receipt />,
+          module: "zoho-invoices",
+        },
+        {
+          label: "Finance",
+          path: "/finance",
+          icon: <Receipt />,
+          module: "finance",
+        },
+      ],
     },
     {
-      label: "Tracking",
-      path: "/tracking",
-      icon: <TrackChangesIcon />,
-      module: "tracking",
-    },
-    {
-      label: "Order History",
-      path: "/tracking-history",
-      icon: <HistoryIcon />,
-      module: "order-tracking",
-    },
-    {
+      type: "item",
       label: "Email Notifications",
       path: "/notifications",
       icon: <NotificationsIcon />,
       module: "notifications",
     },
-    {
-      label: "Invoices",
-      path: "/invoices",
-      icon: <Receipt />,
-      module: "invoices",
-    },
-    {
-      label: "Zoho Invoices",
-      path: "/zoho-invoices",
-      icon: <Receipt />,
-      module: "zoho-invoices",
-    },
-    {
-      label: "ETA Monitoring",
-      path: "/eta-monitoring",
-      icon: <Monitor />,
-      module: "eta-monitoring",
-    },
-    {
-      label: "Admin Notification",
-      path: "/admin-notification",
-      icon: <Megaphone />,
-      module: "admin-notification",
-    },
-  ].filter((item) => !item.module || can(item.module, "view"));
+  ];
+
+  // Apply permission filtering; hide groups that end up empty
+  const navEntries = navConfig
+    .map((entry) =>
+      entry.type === "group"
+        ? { ...entry, children: entry.children.filter(isVisible) }
+        : entry,
+    )
+    .filter((entry) =>
+      entry.type === "group" ? entry.children.length > 0 : isVisible(entry),
+    );
 
   const adminSubItems = [
     {
@@ -323,6 +395,127 @@ export default function DashboardLayout() {
   ].filter((item) => !item.module || can(item.module, "view"));
 
   const drawerWidth = collapsed ? 80 : 260;
+
+  const linkSx = (extra = {}) => ({
+    minHeight: 48,
+    borderRadius: 2,
+    mb: 0.5,
+    justifyContent: collapsed ? "center" : "flex-start",
+    "&.Mui-selected": {
+      background: "#f58220",
+      color: "#fff",
+      "&:hover": {
+        background: "#ff9940",
+      },
+    },
+    "&:hover": {
+      background: mode === "dark" ? "#1e293b" : "#ffca89",
+    },
+    ...extra,
+  });
+
+  const renderNavLink = (item, nested = false) => (
+    <Tooltip
+      key={item.path}
+      title={collapsed ? item.label : ""}
+      placement="right"
+      arrow
+    >
+      <ListItemButton
+        component={RouterLink}
+        to={item.path}
+        selected={location.pathname === item.path}
+        sx={linkSx(nested ? { pl: 4, minHeight: 42 } : {})}
+      >
+        <ListItemIcon
+          sx={{
+            minWidth: collapsed ? 0 : 40,
+            color: "inherit",
+            justifyContent: "center",
+          }}
+        >
+          {item.icon}
+        </ListItemIcon>
+
+        {!collapsed && (
+          <ListItemText
+            primary={item.label}
+            primaryTypographyProps={{
+              fontSize: nested ? 13 : 14,
+              fontWeight: nested ? 500 : 600,
+            }}
+          />
+        )}
+      </ListItemButton>
+    </Tooltip>
+  );
+
+  const renderNavGroup = (group) => {
+    const isOpen = !!openGroups[group.key];
+    const hasActiveChild = group.children.some(
+      (c) => location.pathname === c.path,
+    );
+
+    const handleGroupClick = () => {
+      if (collapsed) {
+        // expand the sidebar and open this group
+        setCollapsed(false);
+        setOpenGroups((prev) => ({ ...prev, [group.key]: true }));
+      } else {
+        toggleGroup(group.key);
+      }
+    };
+
+    return (
+      <React.Fragment key={group.key}>
+        <Tooltip title={collapsed ? group.label : ""} placement="right" arrow>
+          <ListItemButton
+            onClick={handleGroupClick}
+            sx={{
+              minHeight: 48,
+              borderRadius: 2,
+              mb: 0.5,
+              justifyContent: collapsed ? "center" : "flex-start",
+              color: hasActiveChild ? "#f58220" : "inherit",
+              "&:hover": {
+                background: mode === "dark" ? "#1e293b" : "#ffca89",
+              },
+            }}
+          >
+            <ListItemIcon
+              sx={{
+                minWidth: collapsed ? 0 : 40,
+                color: "inherit",
+                justifyContent: "center",
+              }}
+            >
+              {group.icon}
+            </ListItemIcon>
+
+            {!collapsed && (
+              <>
+                <ListItemText
+                  primary={group.label}
+                  primaryTypographyProps={{
+                    fontSize: 14,
+                    fontWeight: 600,
+                  }}
+                />
+                {isOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+              </>
+            )}
+          </ListItemButton>
+        </Tooltip>
+
+        <Collapse in={isOpen && !collapsed} timeout="auto" unmountOnExit>
+          <List disablePadding>
+            {group.children.map((child) => renderNavLink(child, true))}
+          </List>
+        </Collapse>
+      </React.Fragment>
+    );
+  };
+
   const drawerContent = (
     <Box
       sx={{
@@ -340,7 +533,7 @@ export default function DashboardLayout() {
       >
         <Box
           component="img"
-          src={mode === "dark" ? "/logo.png" : "/logo-2.png"}
+          src={mode === "dark" ? black_logo : white_logo}
           alt="logo"
           sx={{
             width: collapsed ? 48 : 180,
@@ -363,57 +556,11 @@ export default function DashboardLayout() {
         }}
       >
         <List>
-          {navItems.map((item) => (
-            <Tooltip
-              key={item.path}
-              title={collapsed ? item.label : ""}
-              placement="right"
-              arrow
-            >
-              <ListItemButton
-                component={RouterLink}
-                to={item.path}
-                selected={location.pathname === item.path}
-                sx={{
-                  minHeight: 48,
-                  borderRadius: 2,
-                  mb: 0.5,
-                  justifyContent: collapsed ? "center" : "flex-start",
-                  "&.Mui-selected": {
-                    background: "#f58220",
-                    color: "#fff",
-                    "&:hover": {
-                      background: "#ff9940",
-                    },
-                  },
-
-                  "&:hover": {
-                    background: mode === "dark" ? "#1e293b" : "#ffca89",
-                  },
-                }}
-              >
-                <ListItemIcon
-                  sx={{
-                    minWidth: collapsed ? 0 : 40,
-                    color: "inherit",
-                    justifyContent: "center",
-                  }}
-                >
-                  {item.icon}
-                </ListItemIcon>
-
-                {!collapsed && (
-                  <ListItemText
-                    primary={item.label}
-                    primaryTypographyProps={{
-                      fontSize: 14,
-                      fontWeight: 600,
-                    }}
-                  />
-                )}
-              </ListItemButton>
-            </Tooltip>
-          ))}
+          {navEntries.map((entry) =>
+            entry.type === "group"
+              ? renderNavGroup(entry)
+              : renderNavLink(entry),
+          )}
 
           {adminSubItems.length > 0 && (
             <>

@@ -4,7 +4,6 @@ import {
   TextField,
   Button,
   Typography,
-  Paper,
   Box,
   FormControlLabel,
   Checkbox,
@@ -12,11 +11,17 @@ import {
   CircularProgress,
   InputAdornment,
   IconButton,
-  Backdrop,
+  Link,
 } from "@mui/material";
-import { Visibility, VisibilityOff } from "@mui/icons-material";
+import {
+  Visibility,
+  VisibilityOff,
+  EmailOutlined,
+  LockOutlined,
+} from "@mui/icons-material";
 import { useAuth } from "../context/AuthContext";
 import { toast } from "react-toastify";
+import AuthLayout from "../components/AppLayout";
 
 const ERROR_MESSAGES = {
   INVALID_CREDENTIALS: "Invalid email or password",
@@ -65,11 +70,14 @@ export default function Login() {
 
       toast.success("Login successful!");
 
-      const redirectTo = location.state?.from?.pathname || "/dashboard";
+      const from = location.state?.from;
+      const redirectTo = from
+        ? `${from.pathname}${from.search || ""}${from.hash || ""}`
+        : "/dashboard";
       navigate(redirectTo, { replace: true });
     } catch (err) {
-      const code = err.message;
-      const message = ERROR_MESSAGES[code] || "Login failed. Please try again.";
+      const message =
+        ERROR_MESSAGES[err.message] || "Login failed. Please try again.";
 
       setError(message);
       toast.error(message);
@@ -79,152 +87,130 @@ export default function Login() {
   };
 
   return (
-    <Box
-      sx={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        bgcolor: "background.default",
-        p: 2,
-        position: "relative",
-      }}
+    <AuthLayout
+      title="Welcome back"
+      subtitle="Sign in to continue to the Consolidate dashboard."
+      footer="Admin access only. Use your registered credentials."
     >
-      <Backdrop
-        sx={{ color: "#fff", zIndex: (theme) => theme.zIndex.drawer + 1 }}
-        open={loading}
-      >
-        <CircularProgress color="inherit" />
-      </Backdrop>
+      {error && (
+        <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>
+          {error}
+        </Alert>
+      )}
 
-      <Paper
-        elevation={6}
-        sx={{
-          maxWidth: 550,
-          width: "100%",
-          p: { xs: 3, sm: 5 },
-          borderRadius: 3,
-          textAlign: "center",
-        }}
-      >
-        <Box
-          component="img"
-          src="/logo-2.png"
-          alt="Logo"
-          sx={{ height: 70, mb: 3 }}
+      <Box component="form" onSubmit={handleSubmit} noValidate>
+        <TextField
+          fullWidth
+          label="Email"
+          type="email"
+          autoComplete="email"
+          autoFocus
+          value={credentials.email}
+          onChange={(e) =>
+            setCredentials({ ...credentials, email: e.target.value })
+          }
+          disabled={loading}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <EmailOutlined fontSize="small" color="action" />
+              </InputAdornment>
+            ),
+            sx: { borderRadius: 2 },
+          }}
+          sx={{ mb: 2.5 }}
         />
 
-        <Typography variant="h5" fontWeight="bold" gutterBottom>
-          Welcome Back
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 4 }}>
-          Sign in to continue to Consolidate Dashboard
-        </Typography>
-
-        {error && (
-          <Alert severity="error" sx={{ mb: 3 }}>
-            {error}
-          </Alert>
-        )}
-
-        <Box component="form" onSubmit={handleSubmit} noValidate>
-          <TextField
-            fullWidth
-            margin="normal"
-            label="Email"
-            type="email"
-            autoComplete="email"
-            autoFocus
-            value={credentials.email}
-            onChange={(e) =>
-              setCredentials({ ...credentials, email: e.target.value })
-            }
-            disabled={loading}
-            sx={{ mb: 2 }}
-          />
-
-          <TextField
-            fullWidth
-            margin="normal"
-            label="Password"
-            type={showPassword ? "text" : "password"}
-            autoComplete="current-password"
-            value={credentials.password}
-            onChange={(e) =>
-              setCredentials({ ...credentials, password: e.target.value })
-            }
-            disabled={loading}
-            InputProps={{
-              endAdornment: (
-                <InputAdornment position="end">
-                  <IconButton
-                    onClick={() => setShowPassword(!showPassword)}
-                    edge="end"
-                    disabled={loading}
-                  >
-                    {showPassword ? <VisibilityOff /> : <Visibility />}
-                  </IconButton>
-                </InputAdornment>
-              ),
-            }}
-            sx={{ mb: 1 }}
-          />
-
-          <Box
-            sx={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              mb: 3,
-            }}
-          >
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
-                  size="small"
+        <TextField
+          fullWidth
+          label="Password"
+          type={showPassword ? "text" : "password"}
+          autoComplete="current-password"
+          value={credentials.password}
+          onChange={(e) =>
+            setCredentials({ ...credentials, password: e.target.value })
+          }
+          disabled={loading}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <LockOutlined fontSize="small" color="action" />
+              </InputAdornment>
+            ),
+            endAdornment: (
+              <InputAdornment position="end">
+                <IconButton
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  onClick={() => setShowPassword(!showPassword)}
+                  edge="end"
                   disabled={loading}
-                />
-              }
-              label="Remember me"
-            />
-            <Typography
-              variant="body2"
-              color="error"
-              sx={{ cursor: "pointer" }}
-              onClick={() => navigate("/forgot-password")}
-            >
-              Forgot Password?
-            </Typography>
-          </Box>
+                >
+                  {showPassword ? <VisibilityOff /> : <Visibility />}
+                </IconButton>
+              </InputAdornment>
+            ),
+            sx: { borderRadius: 2 },
+          }}
+        />
 
-          <Button
-            type="submit"
-            fullWidth
-            variant="contained"
+        <Box
+          sx={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 1,
+            justifyContent: "space-between",
+            alignItems: "center",
+            mt: 1,
+            mb: 3,
+          }}
+        >
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                size="small"
+                disabled={loading}
+              />
+            }
+            label={<Typography variant="body2">Remember me</Typography>}
+          />
+          <Link
+            component="button"
+            type="button"
+            variant="body2"
+            underline="hover"
+            onClick={() => navigate("/forgot-password")}
             disabled={loading}
-            sx={{ py: 1.5, mt: 1 }}
           >
-            {loading ? (
-              <>
-                <CircularProgress size={20} sx={{ mr: 1 }} />
-                Signing in...
-              </>
-            ) : (
-              "Sign In"
-            )}
-          </Button>
+            Forgot password?
+          </Link>
         </Box>
 
-        <Typography
-          variant="caption"
-          color="text.secondary"
-          sx={{ mt: 3, display: "block" }}
+        <Button
+          type="submit"
+          fullWidth
+          size="large"
+          variant="contained"
+          disabled={loading}
+          sx={{
+            py: 1.5,
+            borderRadius: 2,
+            textTransform: "none",
+            fontWeight: 600,
+            fontSize: 16,
+          }}
         >
-          Admin access? Use your registered credentials.
-        </Typography>
-      </Paper>
-    </Box>
+          {loading ? (
+            <>
+              <CircularProgress size={20} color="inherit" sx={{ mr: 1.5 }} />
+              Signing in...
+            </>
+          ) : (
+            "Sign in"
+          )}
+        </Button>
+      </Box>
+    </AuthLayout>
   );
 }

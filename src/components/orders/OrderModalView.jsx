@@ -37,6 +37,7 @@ import {
   InputLabel,
   Divider,
   Tooltip,
+  TextField,
   Avatar,
   Checkbox,
   FormControlLabel,
@@ -215,13 +216,11 @@ const docStatusColor = (s) =>
 const overdueDays = (d, rfd) => {
   if (d.status !== "overdue" || !rfd) return null;
   const n = dayjs().startOf("day").diff(dayjs(rfd).startOf("day"), "day") + 1;
-  return n > 0 ? n : null;
+  // 3 days are free: day 4 after RFD is "overdue by 1 day"
+  return n > 3 ? n - 3 : null;
 };
 
-const statusLabel = (d, rfd) => {
-  const n = overdueDays(d, rfd);
-  return n ? `Overdue (${n}d)` : fmtStatus(d.status);
-};
+const statusLabel = (d) => fmtStatus(d.status);
 
 const overdueNote = (d, kind, rfd) => {
   const n = kind === "Invoice" ? overdueDays(d, rfd) : null;
@@ -282,6 +281,7 @@ const OrderModalView = ({
   const { companies } = useContext(AppContext);
   const [hblCompanyId, setHblCompanyId] = useState("");
   const [hblHtml, setHblHtml] = useState("");
+  const [hblCustomText, setHblCustomText] = useState("");
   const [hblLoading, setHblLoading] = useState(false);
   const [hblDownloading, setHblDownloading] = useState(false);
   const hblFrameRef = useRef(null);
@@ -349,7 +349,11 @@ const OrderModalView = ({
         sender_name: data.sender?.name || data.sender_name || "",
         sender_address: data.sender?.address || data.sender_address || "",
       };
-      setHblHtml(HouseBillOfLading(normalized, company, getPlaceName));
+      setHblHtml(
+        HouseBillOfLading(normalized, company, getPlaceName, {
+          customText: hblCustomText,
+        }),
+      );
     } catch {
       toast.error("Failed to load HBL data.");
     } finally {
@@ -471,6 +475,7 @@ const OrderModalView = ({
       setExpanded({});
       setHblHtml("");
       setHblCompanyId("");
+      setHblCustomText("");
     }
   }, [openModal, selectedOrder]);
 
@@ -1120,15 +1125,32 @@ const OrderModalView = ({
         </Box>
       );
 
+    const fmtUploaded = (v) => {
+      if (!v) return null;
+      const d = new Date(v);
+      return isNaN(d.getTime())
+        ? null
+        : d.toLocaleString("en-GB", {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true,
+          });
+    };
+
     return (
       <List disablePadding>
         {files.map((file, i) => {
           const url = resolveFileUrl(file);
+          const by = file?.uploadedByName || file?.uploadedBy || null;
+          const at = fmtUploaded(file?.uploadedAt);
           return (
             <ListItem
               key={file.id || i}
               divider={i !== files.length - 1}
-              sx={{ py: 1.5, px: 2 }}
+              sx={{ py: 1.5, px: 2, alignItems: "flex-start" }}
               secondaryAction={
                 <Stack direction="row" spacing={0.5}>
                   <Tooltip title={url ? "View" : "No file URL"}>
@@ -1162,17 +1184,59 @@ const OrderModalView = ({
                 </Stack>
               }
             >
-              <ListItemIcon>
+              <ListItemIcon sx={{ minWidth: 40, mt: 0.5 }}>
                 <AttachFileIcon sx={{ color: T.orange }} />
               </ListItemIcon>
               <ListItemText
-                sx={{ pr: 9 }}
+                sx={{ pr: 9, m: 0 }}
+                disableTypography
                 primary={
-                  <Typography fontWeight={600} noWrap>
+                  <Typography
+                    fontWeight={600}
+                    noWrap
+                    title={file?.originalname}
+                  >
                     {file?.originalname || "File"}
                   </Typography>
                 }
-                secondary={`${file?.mimetype || "Unknown"} • ${((file?.size || 0) / 1024).toFixed(1)} KB`}
+                secondary={
+                  <Box>
+                    <Typography variant="caption" sx={{ color: T.grey600 }}>
+                      {(file?.mimetype || "Unknown")
+                        .split("/")
+                        .pop()
+                        .toUpperCase()}
+                      {" • "}
+                      {((file?.size || 0) / 1024).toFixed(1)} KB
+                    </Typography>
+                    <Stack
+                      direction="row"
+                      flexWrap="wrap"
+                      columnGap={2}
+                      rowGap={0.25}
+                      sx={{ mt: 0.5 }}
+                    >
+                      <Stack direction="row" spacing={0.5} alignItems="center">
+                        <PersonIcon sx={{ fontSize: 14, color: T.teal }} />
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            color: by ? "text.primary" : T.grey600,
+                            fontWeight: by ? 600 : 400,
+                          }}
+                        >
+                          {by ? `Uploaded by ${by}` : "Uploader not recorded"}
+                        </Typography>
+                      </Stack>
+                      <Stack direction="row" spacing={0.5} alignItems="center">
+                        <EventIcon sx={{ fontSize: 14, color: T.teal }} />
+                        <Typography variant="caption" sx={{ color: T.grey600 }}>
+                          {at || "Date not recorded"}
+                        </Typography>
+                      </Stack>
+                    </Stack>
+                  </Box>
+                }
               />
             </ListItem>
           );
@@ -1458,7 +1522,7 @@ const OrderModalView = ({
   const etaLabel = (status) =>
     status === "Shipment Delivered"
       ? "Delivered"
-      : status === "Ready for Loading" || status === "Ready for Delivery"
+      : status === "Ready for Delivery"
         ? "RFD"
         : "ETA";
 
@@ -3839,6 +3903,20 @@ const OrderModalView = ({
                           Preview
                         </Button>
                       </Stack>
+                      <Box sx={{ px: 2, pb: 2 }}>
+                        <TextField
+                          fullWidth
+                          multiline
+                          minRows={2}
+                          maxRows={6}
+                          size="small"
+                          label="Custom text (optional)"
+                          placeholder="Type any extra text for the HBL"
+                          helperText="Appears in the goods description section of the HBL"
+                          value={hblCustomText}
+                          onChange={(e) => setHblCustomText(e.target.value)}
+                        />
+                      </Box>
                     </Paper>
                   </Grid>
                 </Grid>

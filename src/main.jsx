@@ -11,6 +11,7 @@ import { AuthProvider } from "./context/AuthContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import { AppProvider } from "./context/AppContext";
 import ProtectedRoute from "./routes/Protected";
+import SessionExpiredGate from "./components/SessionExpiredGate";
 
 import Login from "./pages/Login";
 import Register from "./pages/Register";
@@ -61,6 +62,7 @@ import ETAMonitoringPage from "./pages/ETAMonitoringPage";
 import AdminNotificationsPage from "./pages/AdminNotificationsPage";
 import ViewConsignmentPage from "./pages/Consignments/ViewConsignment";
 import OrdersList from "./pages/Orders/Orders";
+import FinanceOverview from "./pages/FinancePage";
 
 const router = createBrowserRouter([
   { path: "/login", element: <Login /> },
@@ -240,6 +242,14 @@ const router = createBrowserRouter([
             permission={{ module: "notifications", action: "view" }}
           >
             <NotificationSettings />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "finance",
+        element: (
+          <ProtectedRoute permission={{ module: "finance", action: "view" }}>
+            <FinanceOverview />
           </ProtectedRoute>
         ),
       },
@@ -537,6 +547,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
       <LoadingProvider>
         <ThemeProvider>
           <RouterProvider router={router} />
+          <SessionExpiredGate />
           <ToastContainer stacked position="bottom-right" theme="dark" />
         </ThemeProvider>
       </LoadingProvider>

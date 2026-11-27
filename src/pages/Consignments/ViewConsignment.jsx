@@ -106,7 +106,7 @@ import jsPDF from "jspdf";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import autoTable from "jspdf-autotable";
 import { applyPlugin } from "jspdf-autotable";
-import logoPic from "../../../public/logo-2.png";
+import logoPic from "../../assets/logo-2.png";
 import { useAuth } from "../../context/AuthContext";
 import { AppContext } from "../../context/AppContext";
 import { getStatusColors } from "../../Utlis/statusColors";
@@ -115,7 +115,6 @@ import { buildHblPages, hblCss } from "../../documents/hblGenerator";
 
 applyPlugin(jsPDF);
 
-// ---- shared document preview / direct PDF download -------------------------
 const buildDocHtml = (
   html,
   { title = "Document", pageMargin = "10mm", extraCss = "" } = {},
@@ -410,13 +409,13 @@ const fmtStatus = (s = "") =>
 const overdueDays = (d, rfd) => {
   if (d.status !== "overdue" || !rfd) return null;
   const n = dayjs().startOf("day").diff(dayjs(rfd).startOf("day"), "day") + 1;
-  return n > 0 ? n : null;
+  // the note under RFD Date only appears once the invoice is overdue by more than 3 days
+  // 3 days are free: day 4 after RFD is "overdue by 1 day"
+  return n > 3 ? n - 3 : null;
 };
 
-const statusLabel = (d, rfd) => {
-  const n = overdueDays(d, rfd);
-  return n ? `Overdue (${n}d)` : fmtStatus(d.status);
-};
+// status chip stays plain ("Overdue"); the day count is only in the note under RFD Date
+const statusLabel = (d) => fmtStatus(d.status);
 
 const overdueNote = (d, kind, rfd) => {
   const n = kind === "Invoice" ? overdueDays(d, rfd) : null;
@@ -930,6 +929,8 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
   const [mblModalOpen, setMblModalOpen] = useState(false);
   const [mblCompanyId, setMblCompanyId] = useState("");
   const [mblVariant, setMblVariant] = useState("original");
+  const [hblCustomText, setHblCustomText] = useState("");
+  const [mblCustomText, setMblCustomText] = useState("");
 
   const runAction = async (key, fn) => {
     if (busyAction) return;
@@ -4444,6 +4445,7 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         setHblOrderId("");
         setHblItemId("all");
         setHblCompanyId("");
+        setHblCustomText("");
         setHblModalOpen(true);
       },
     },
@@ -4454,6 +4456,7 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       run: async () => {
         setMblCompanyId("");
         setMblVariant("original");
+        setMblCustomText("");
         setMblModalOpen(true);
       },
     },
@@ -5069,7 +5072,9 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     const title = all
       ? `HBL-${values.consignment_number}`
       : `HBL-${hblOrders[0].rgl_booking_number || hblOrders[0].id}`;
-    const pages = buildHblPages(hblOrders, company, (x) => x || "N/A").join("");
+    const pages = buildHblPages(hblOrders, company, (x) => x || "N/A", {
+      customText: hblCustomText,
+    }).join("");
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title>
       <style>
         @page { size: A4; margin: 0; }
@@ -5107,14 +5112,19 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         `/api/orders/consignment-mbl/${effectiveConsignmentId}`,
       );
       docModeRef.current = mode;
-      await showDoc(buildMblPages(data, company, mblVariant).join(""), {
-        title: `MBL-${values.consignment_number}`,
-        pageMargin: "0",
-        extraCss: mblCss(company),
-        heading: "Master Bill of Lading",
-        logType: "MBL",
-        perChild: true,
-      });
+      await showDoc(
+        buildMblPages(data, company, mblVariant, {
+          customText: mblCustomText,
+        }).join(""),
+        {
+          title: `MBL-${values.consignment_number}`,
+          pageMargin: "0",
+          extraCss: mblCss(company),
+          heading: "Master Bill of Lading",
+          logType: "MBL",
+          perChild: true,
+        },
+      );
       setMblModalOpen(false);
     });
 
@@ -5650,8 +5660,6 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                               ? errors.consignment_value
                               : ""
                           }
-                          readOnly
-                          copyable
                         />
                       </Box>
                       <Box sx={span(3)} ref={lockRef}>
@@ -6590,6 +6598,18 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                         ))}
                       </Select>
                     </FormControl>
+                    <TextField
+                      fullWidth
+                      multiline
+                      minRows={3}
+                      maxRows={8}
+                      label="Custom text (optional)"
+                      placeholder="Type any extra text for the document"
+                      helperText="Appears in the goods description section of each HBL (all HBLs when using Preview/Download All)"
+                      value={hblCustomText}
+                      onChange={(e) => setHblCustomText(e.target.value)}
+                      disabled={!!busyAction}
+                    />
                   </Stack>
                 </DialogContent>
                 <DialogActions>
@@ -6727,6 +6747,18 @@ const ViewConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                         </MenuItem>
                       </Select>
                     </FormControl>
+                    <TextField
+                      fullWidth
+                      multiline
+                      minRows={3}
+                      maxRows={8}
+                      label="Custom text (optional)"
+                      placeholder="Type any extra text for the document"
+                      helperText="Shown between the Shipped on Board line and the container count, on every item page"
+                      value={mblCustomText}
+                      onChange={(e) => setMblCustomText(e.target.value)}
+                      disabled={!!busyAction}
+                    />
                   </Stack>
                 </DialogContent>
                 <DialogActions>
