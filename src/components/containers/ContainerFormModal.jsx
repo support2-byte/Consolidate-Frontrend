@@ -185,7 +185,11 @@ const ContainerFormModal = ({
             value={formData.derived_status}
             onChange={onChange}
           >
-            {CONTAINER_STATUS_OPTIONS.map((s) => (
+            {(formData.derived_status &&
+            !CONTAINER_STATUS_OPTIONS.includes(formData.derived_status)
+              ? [formData.derived_status, ...CONTAINER_STATUS_OPTIONS]
+              : CONTAINER_STATUS_OPTIONS
+            ).map((s) => (
               <MenuItem key={s} value={s}>
                 {s}
               </MenuItem>

@@ -7,6 +7,8 @@ export const api = axios.create({
 
 const SESSION_FLAG = "hasSession";
 
+export const AUTH_EXPIRED_EVENT = "auth:expired";
+
 export const setHasSession = () => {
   try {
     localStorage.setItem(SESSION_FLAG, "1");
@@ -27,55 +29,48 @@ export const hasSessionFlag = () => {
   }
 };
 
-let isRefreshing = false;
-let refreshQueue = [];
+// Requests that failed with 401 because the session went idle. They are held
+// here (their promises stay pending) while the re-login dialog is open, then
+// replayed after a successful login or rejected if the user gives up.
+let waiting = [];
 
-function resolveQueue(error = null) {
-  refreshQueue.forEach((cb) => cb(error));
-  refreshQueue = [];
+export function replayWaitingRequests() {
+  const queue = waiting;
+  waiting = [];
+  queue.forEach((item) => item.replay());
 }
 
+export function rejectWaitingRequests() {
+  const queue = waiting;
+  waiting = [];
+  queue.forEach((item) => item.fail());
+}
+
+// Pass { skipReauth: true } in a request config to opt out of the flow
+// (login, logout, initial session load).
 api.interceptors.response.use(
   (response) => response,
-  async (error) => {
-    const original = error.config;
+  (error) => {
+    const config = error.config;
 
-    if (
-      error.response?.status !== 401 ||
-      original._retry ||
-      original.url === "/auth/refresh"
-    ) {
-      if (error.response?.status === 401) {
-        clearHasSession();
-      }
-      return Promise.reject(error);
-    }
+    const shouldHold =
+      error.response?.status === 401 &&
+      config &&
+      !config.skipReauth &&
+      !config._replayed &&
+      hasSessionFlag();
 
-    if (isRefreshing) {
-      return new Promise((resolve, reject) => {
-        refreshQueue.push((err) => {
-          if (err) return reject(err);
-          resolve(api(original));
-        });
+    if (!shouldHold) return Promise.reject(error);
+
+    return new Promise((resolve, reject) => {
+      waiting.push({
+        replay: () => {
+          config._replayed = true;
+          api(config).then(resolve, reject);
+        },
+        fail: () => reject(error),
       });
-    }
-
-    original._retry = true;
-    isRefreshing = true;
-
-    try {
-      await api.post("/auth/refresh");
-      resolveQueue();
-      return api(original);
-    } catch (refreshError) {
-      resolveQueue(refreshError);
-      clearHasSession();
-      if (window.location.pathname !== "/login") {
-        window.location.href = "/login";
-      }
-      return Promise.reject(refreshError);
-    } finally {
-      isRefreshing = false;
-    }
+      window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
+    });
   },
 );

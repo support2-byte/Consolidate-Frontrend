@@ -45,7 +45,7 @@ import { api } from "../../api";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import html2canvas from "html2canvas";
-import logoPic from "../../../public/logo-2.png";
+import logoPic from "../../assets/logo-2.png";
 import { AppContext } from "../../context/AppContext";
 import { useLoading } from "../../context/LoadingContext";
 import { FieldRow } from "../../components/containers/FormFields";

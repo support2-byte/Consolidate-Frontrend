@@ -191,7 +191,7 @@ export default function ZohoInvoicesPage() {
           </Typography>
         </Box>
 
-        <Tooltip title="Refresh data">
+        {/* <Tooltip title="Refresh data">
           <IconButton
             onClick={() => setConfirmOpen(true)}
             disabled={tableLoading}
@@ -199,7 +199,7 @@ export default function ZohoInvoicesPage() {
           >
             <RefreshRoundedIcon />
           </IconButton>
-        </Tooltip>
+        </Tooltip> */}
       </Box>
 
       <Box

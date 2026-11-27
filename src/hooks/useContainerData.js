@@ -11,6 +11,14 @@ import { api } from "../api";
 import { toast } from "react-toastify";
 import { DEFAULT_FORM_DATA } from "../constants/containers";
 import { buildContainerPayload, validateForm } from "../Utlis/containerBuilder";
+import {
+  isLockedStatus,
+  containerEtaLockedMessage,
+  buildStatusRankMap,
+  isBackwardStatus,
+  isEtaInWindow,
+  etaWindow,
+} from "../constants/lockedStatuses";
 
 const initialFilters = {
   container_number: "",
@@ -18,6 +26,7 @@ const initialFilters = {
   container_type: "",
   owner_type: "",
   status: "",
+  eta_status: "",
   location: "",
 };
 
@@ -65,6 +74,8 @@ const initialUIState = {
     status: "",
     location: "",
     jobStatus: "",
+    eta: "",
+    etaOriginal: "",
   },
 };
 
@@ -212,6 +223,8 @@ const uiReducer = (state, action) => {
           status: "",
           location: "",
           jobStatus: "",
+          eta: "",
+          etaOriginal: "",
         },
       };
     case "UPDATE_TEMP_DATA":
@@ -317,6 +330,16 @@ export const useContainerData = (propContainers = []) => {
       ...new Set(masterStatuses.map((s) => s.container_status).filter(Boolean)),
     ],
     [masterStatuses],
+  );
+
+  // ETA statuses are forward-only: rank = sorting_number in `statuses`
+  const statusRankMap = useMemo(
+    () => buildStatusRankMap(masterStatuses),
+    [masterStatuses],
+  );
+  const isBackwardEtaStatus = useCallback(
+    (current, next) => isBackwardStatus(statusRankMap, current, next),
+    [statusRankMap],
   );
 
   const getPlaceName = useCallback(
@@ -434,8 +457,16 @@ export const useContainerData = (propContainers = []) => {
       );
     if (filters.owner_type)
       filtered = filtered.filter((c) => c.owner_type === filters.owner_type);
+    // Status = physical status shown in the grid (current_status)
     if (filters.status)
-      filtered = filtered.filter((c) => c.derived_status === filters.status);
+      filtered = filtered.filter((c) => c.current_status === filters.status);
+    // ETA Status = assignment status; "__none__" = containers with no ETA status
+    if (filters.eta_status === "__none__")
+      filtered = filtered.filter((c) => !c.assignment_status);
+    else if (filters.eta_status)
+      filtered = filtered.filter(
+        (c) => c.assignment_status === filters.eta_status,
+      );
     if (filters.location)
       filtered = filtered.filter((c) => c.location === filters.location);
 
@@ -452,6 +483,16 @@ export const useContainerData = (propContainers = []) => {
     dataState.currentPage,
     dataState.rowsPerPage,
   ]);
+
+  const sizeFilterOptions = useMemo(
+    () =>
+      [
+        ...new Set(
+          dataState.allContainers.map((c) => c.container_size).filter(Boolean),
+        ),
+      ].sort((a, b) => Number(a) - Number(b) || String(a).localeCompare(b)),
+    [dataState.allContainers],
+  );
 
   const fetchContainerById = useCallback(
     async (cid) => {
@@ -537,7 +578,9 @@ export const useContainerData = (propContainers = []) => {
         containerNo: container.container_number || "",
         size: container.container_size || "",
         type: container.container_type || "",
-        derived_status: container.status || "",
+        // getContainerById returns the computed status as `derived_status`;
+        // `status` is the ETA/assignment status, which is not a valid option here
+        derived_status: container.derived_status || "",
         location: container.location || "karachi_port",
         dateAdded: new Date().toISOString().split("T")[0],
         dateOfManufacture: container.manufacture_date
@@ -644,31 +687,80 @@ export const useContainerData = (propContainers = []) => {
         status: container.current_status || "",
         location: container.location || "",
         jobStatus: container.assignment_status || "",
+        eta: container.eta || "",
+        etaOriginal: container.eta || "",
       }),
     );
   }, []);
 
+  const [savingQuick, setSavingQuick] = useState(false);
+
   const handleQuickSave = useCallback(
     async (cid) => {
-      if (!uiState.tempData.status || !uiState.tempData.location) {
+      if (savingQuick) return;
+      const t = uiState.tempData;
+      if (!t.status || !t.location) {
         showToast("Status and Location are required", "error");
         return;
       }
+      // ETA status + ETA date are frozen once Delivered / Cancelled;
+      // physical status + location can still be saved.
+      const etaLocked = isLockedStatus(t.current_status);
+      const newEtaStatus =
+        t.jobStatus && t.jobStatus !== "Available" ? t.jobStatus : null;
+      const statusChanged = !!newEtaStatus && newEtaStatus !== t.current_status;
+      // a manual ETA only counts when the ETA status itself is not changing
+      // (a new ETA status calculates its own ETA)
+      const etaChanged =
+        !etaLocked && !statusChanged && !!t.eta && t.eta !== t.etaOriginal;
+
+      if (etaChanged && !isEtaInWindow(t.etaOriginal, t.eta)) {
+        const { min, max } = etaWindow(t.etaOriginal);
+        showToast(
+          `ETA must be between ${min} and ${max}. It can only move forward, up to 30 days.`,
+          "warning",
+        );
+        return;
+      }
+
+      setSavingQuick(true);
       try {
-        await api.put(`/api/containers/status/${cid}`, {
-          current_status: uiState.tempData.current_status,
-          derived_status: uiState.tempData.status,
-          location: uiState.tempData.location,
-          container_status: uiState.tempData.jobStatus || null,
+        const res = await api.put(`/api/containers/status/${cid}`, {
+          current_status: t.current_status,
+          derived_status: t.status,
+          location: t.location,
+          container_status: etaLocked ? null : newEtaStatus,
+          eta: etaChanged ? t.eta : undefined,
         });
-        showToast("Container updated successfully", "success");
+        showToast(
+          res.data?.message || "Container updated successfully",
+          "success",
+        );
         uiDispatch(uiActions.cancelQuickEdit());
         await fetchContainers();
       } catch (err) {
+        const data = err.response?.data;
+        if (data?.code && err.response.status < 500) {
+          showToast(
+            data.message ||
+              (data.code === "STATUS_LOCKED"
+                ? containerEtaLockedMessage(t.current_status)
+                : "Update not allowed"),
+            "warning",
+          );
+          // out-of-range ETA: keep the row open so it can be corrected
+          if (data.code !== "ETA_OUT_OF_RANGE" && data.code !== "ETA_INVALID") {
+            uiDispatch(uiActions.cancelQuickEdit());
+            await fetchContainers();
+          }
+          return;
+        }
         handleError(err, "Failed to update container");
+      } finally {
+        setSavingQuick(false);
       }
     },
-    [uiState.tempData, showToast, fetchContainers, handleError],
+    [uiState.tempData, savingQuick, showToast, fetchContainers, handleError],
   );
 
   const handleQuickCancel = useCallback(() => {
@@ -731,6 +823,7 @@ export const useContainerData = (propContainers = []) => {
     editingId: uiState.editingId,
     tempData: uiState.tempData,
     jobStatusOptions,
+    isBackwardEtaStatus,
     debouncedContainerNumber,
     selectedFiles,
     existingAttachments,
@@ -771,6 +864,8 @@ export const useContainerData = (propContainers = []) => {
     handleQuickEdit,
     handleQuickSave,
     handleQuickCancel,
+    savingQuick,
+    sizeFilterOptions,
     markReturned,
     openHistory,
     fetchContainers,

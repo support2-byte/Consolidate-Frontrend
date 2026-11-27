@@ -67,10 +67,14 @@ import SearchIcon from "@mui/icons-material/Search";
 import { useNavigate } from "react-router-dom";
 import OrderModalView from "../../components/orders/OrderModalView";
 import AssignModal from "./AssignContainer";
-import logoRickmers from "../../../public/RICKMERS-LOGO.jpg";
+import logoRickmers from "../../assets/RICKMERS-LOGO.jpg";
 import { api } from "../../api";
 import { Description } from "@mui/icons-material";
 import { AppContext } from "../../context/AppContext";
+import {
+  buildStatusRankMap,
+  isBackwardStatus,
+} from "../../constants/lockedStatuses";
 import { useLoading } from "../../context/LoadingContext";
 import CollectionsModal from "../../components/orders/CollectionsModal";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
@@ -325,6 +329,7 @@ const OrdersList = () => {
   const [openOrderConfirmEmail, setOpenOrderConfirmEmail] = useState(false);
   const printFrameRef = useRef(null);
   const [mblVariant, setMblVariant] = useState("original");
+  const [hblCustomText, setHblCustomText] = useState("");
 
   const toLocalISO = (v) => {
     if (!v) return "";
@@ -385,14 +390,6 @@ const OrdersList = () => {
   };
 
   const handleStatusUpdate = (orderId, order) => {
-    if (isOrderFullyDelivered(orderId)) {
-      setSnackbar({
-        open: true,
-        message: "This order is delivered. Status can no longer be updated.",
-        severity: "warning",
-      });
-      return;
-    }
     setSelectedCid("");
     setSelectedOrderForUpdate(orderId);
     setSelectedReceiverForUpdateDetails(null);
@@ -519,7 +516,6 @@ const OrdersList = () => {
   };
 
   const handleUpdateEta = async () => {
-    if (selectedItemDelivered) return;
     if (
       !selectedOrderForUpdate ||
       !selectedReceiverForUpdateDetails?.itemRef ||
@@ -560,7 +556,6 @@ const OrdersList = () => {
   };
 
   const handleNotify = async () => {
-    if (selectedItemDelivered) return;
     if (
       !selectedOrderForUpdate ||
       !selectedReceiverForUpdate ||
@@ -680,7 +675,6 @@ const OrdersList = () => {
     fetchOrders();
   }, [page, rowsPerPage, filters.status, filters.partial, filters.noTracking]);
 
-  // ---- Tracking ID sync (tracking sheet -> orders / order_tracking_map) ----
   const [openSync, setOpenSync] = useState(false);
   const [syncFileName, setSyncFileName] = useState("");
   const [syncRows, setSyncRows] = useState([]);
@@ -849,6 +843,7 @@ const OrdersList = () => {
     setActiveDocKey(null);
     setSelectedCompanyId("");
     setActiveOrderData(null);
+    setHblCustomText("");
 
     try {
       const { data } = await api.get(`/api/orders/pdf-data/${orderId}`);
@@ -2023,7 +2018,7 @@ const OrdersList = () => {
                                   </Tooltip>
                                 </Box>
                                 <Chip
-                                  label={`ETA: ${c.eta || item.trackingEta ? new Date(c.eta || item.trackingEta).toLocaleDateString() : "N/A"}`}
+                                  label={`ETA: ${fmtEtaDMY(c.eta || item.trackingEta) || "N/A"}`}
                                   size="small"
                                   sx={{
                                     height: 18,
@@ -4400,9 +4395,6 @@ const OrdersList = () => {
     `;
   };
 
-  // Customs/undertaking templates read their party details from the
-  // `sender_*` fields. For receiver documents we feed them the (first)
-  // receiver's details under those same keys, so templates stay untouched.
   const withParty = (role, generator) => (orderData, company, opts) => {
     if (role !== "receiver" || !orderData) {
       return generator(orderData, company, opts);
@@ -4430,8 +4422,8 @@ const OrdersList = () => {
 
   const BRANDABLE_DOCUMENT_GENERATORS = {
     "WHARFAGE - CONSIGNMENT NOTE.pdf": WharfageConsignmentNote,
-    "House Bill of Lading (HBL).pdf": (d, c) =>
-      HouseBillOfLading(d, c, getPlaceName),
+    "House Bill of Lading (HBL).pdf": (d, c, o) =>
+      HouseBillOfLading(d, c, getPlaceName, o),
     "3rd Party Shipper Undertaking for ANF.pdf": PartyShipperUndertakingForANF,
     "3rd Party Shipper Indemnity for each order format.pdf":
       PartyShipperIndemnityForEachOrderFormat,
@@ -4467,11 +4459,18 @@ const OrdersList = () => {
       return BRANDABLE_DOCUMENT_GENERATORS[activeDocKey](
         activeOrderData,
         activeCompany,
-        { variant: mblVariant },
+        { variant: mblVariant, customText: hblCustomText },
       );
     }
     return "";
-  }, [activeDocKey, activeOrderData, activeCompany, filterPlaces, mblVariant]);
+  }, [
+    activeDocKey,
+    activeOrderData,
+    activeCompany,
+    filterPlaces,
+    mblVariant,
+    hblCustomText,
+  ]);
 
   const handlePrintActiveDoc = () => {
     if (!activeDocHtml || !printFrameRef.current) return;
@@ -4503,6 +4502,13 @@ const OrdersList = () => {
   const etaRange = etaBounds(getCurrentEta());
   const etaInvalid =
     !!selectedEta && (selectedEta < etaRange.min || selectedEta > etaRange.max);
+
+  // item status is forward-only: earlier statuses are disabled
+  const statusRankMap = buildStatusRankMap(statuses);
+  const currentItemStatus =
+    selectedContainerDetail?.item_status ||
+    selectedReceiverForUpdateDetails?.status ||
+    "";
 
   if (isLoading) {
     return (
@@ -4807,6 +4813,22 @@ const OrdersList = () => {
                   Print
                 </Button>
               </Stack>
+              {activeDocKey === "House Bill of Lading (HBL).pdf" && (
+                <Box sx={{ px: 1.5, pb: 1.5 }}>
+                  <TextField
+                    fullWidth
+                    multiline
+                    minRows={2}
+                    maxRows={6}
+                    size="small"
+                    label="Custom text (optional)"
+                    placeholder="Type any extra text for the HBL"
+                    helperText="Appears in the goods description section of the HBL"
+                    value={hblCustomText}
+                    onChange={(e) => setHblCustomText(e.target.value)}
+                  />
+                </Box>
+              )}
               <Paper
                 variant="outlined"
                 sx={{
@@ -5157,6 +5179,39 @@ const OrdersList = () => {
           </Button>
         </Stack>
 
+        <TablePagination
+          rowsPerPageOptions={[5, 10, 25, 50, 75, 100, 125]}
+          component="div"
+          count={total}
+          rowsPerPage={rowsPerPage}
+          page={page}
+          onPageChange={handleChangePage}
+          onRowsPerPageChange={handleChangeRowsPerPage}
+          labelRowsPerPage="Rows per page:"
+          labelDisplayedRows={({ from, to, count }) =>
+            `${from}–${to} of ${count !== -1 ? count : `more than ${to}`}`
+          }
+          sx={{
+            borderTop: "1px solid rgba(224, 224, 224, 1)",
+            "& .MuiTablePagination-selectLabel, & .MuiTablePagination-displayedRows":
+              {
+                color: "#f58220",
+                fontWeight: "medium",
+                fontSize: "0.875rem",
+              },
+            "& .MuiTablePagination-select, & .MuiTablePagination-input": {
+              fontSize: "0.875rem",
+              borderRadius: 1,
+              "&:focus": { borderColor: "#0d6c6a" },
+            },
+            "& .MuiTablePagination-actions button": {
+              color: "#0d6c6a",
+              "& svg": { fontSize: "1.125rem" },
+              "&:hover": { backgroundColor: "rgba(13, 108, 106, 0.08)" },
+              "&:focus": { outline: "2px solid #0d6c6a" },
+            },
+          }}
+        />
         <TableContainer
           sx={{
             borderRadius: 2,
@@ -5175,6 +5230,7 @@ const OrdersList = () => {
               borderRadius: 3,
               display: "table-cell",
             },
+            mb: 4,
           }}
         >
           <Table
@@ -5302,19 +5358,17 @@ const OrdersList = () => {
                 return (
                   <StyledTableRow
                     key={order.id}
-                    onClick={() => handleClick(order.id)}
-                    role="checkbox"
-                    aria-checked={isItemSelected}
+                    onClick={() => handleView(order.id)}
                     selected={isItemSelected}
                     sx={{ cursor: "pointer" }}
                   >
-                    <StyledTableCell padding="checkbox">
+                    <StyledTableCell
+                      padding="checkbox"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <Checkbox
                         checked={isItemSelected}
-                        onChange={(event) => {
-                          handleClick(order.id);
-                          event.stopPropagation();
-                        }}
+                        onChange={() => handleClick(order.id)}
                         inputProps={{
                           "aria-labelledby": `enhanced-table-checkbox-${order.id}`,
                         }}
@@ -5375,51 +5429,73 @@ const OrdersList = () => {
                       )}
                     </StyledTableCell>
                     <TableCell colSpan={1.5}>
-                      <StyledTooltip
-                        title={<CombinedTooltip order={order} />}
-                        arrow
-                        placement="bottom-start"
-                        PopperProps={{
-                          sx: {
-                            "& .MuiTooltip-tooltip": {
-                              border: "1px solid #e0e0e0",
-                              background: "transparent",
-                              width: 600,
-                            },
-                          },
+                      <Box
+                        sx={{
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "flex-start",
+                          gap: 0.5,
                         }}
                       >
-                        <Typography
-                          variant="body2"
-                          noWrap
-                          sx={{ maxWidth: 150, cursor: "help" }}
+                        <StyledTooltip
+                          title={<CombinedTooltip order={order} />}
+                          arrow
+                          placement="bottom-start"
+                          PopperProps={{
+                            sx: {
+                              "& .MuiTooltip-tooltip": {
+                                border: "1px solid #e0e0e0",
+                                background: "transparent",
+                                width: 600,
+                              },
+                            },
+                          }}
                         >
-                          {order.receivers.length > 0 ? (
-                            <>
-                              {order.receivers.length > 1 && (
-                                <sup
-                                  style={{
-                                    padding: 4,
-                                    borderRadius: 50,
-                                    float: "left",
-                                    background: "#00695c",
-                                    color: "#fff",
-                                  }}
-                                >
-                                  ({order.receivers.length})
-                                </sup>
-                              )}
-                              <span style={{ padding: 0 }}>
-                                {order.receivers.map(
-                                  (r) => r.receiverName || "",
+                          <Typography
+                            variant="body2"
+                            noWrap
+                            sx={{ maxWidth: 150, cursor: "help" }}
+                          >
+                            {order.receivers.length > 0 ? (
+                              <>
+                                {order.receivers.length > 1 && (
+                                  <sup
+                                    style={{
+                                      padding: 4,
+                                      borderRadius: 50,
+                                      float: "left",
+                                      background: "#00695c",
+                                      color: "#fff",
+                                    }}
+                                  >
+                                    ({order.receivers.length})
+                                  </sup>
                                 )}
-                              </span>
-                            </>
-                          ) : (
-                            "-"
-                          )}
-                        </Typography>
-                      </StyledTooltip>
+                                <span style={{ padding: 0 }}>
+                                  {order.receivers.map(
+                                    (r) => r.receiverName || "",
+                                  )}
+                                </span>
+                              </>
+                            ) : (
+                              "-"
+                            )}
+                          </Typography>
+                        </StyledTooltip>
+                        {containerCount > 1 && (
+                          <Chip
+                            size="small"
+                            label={`${containerCount} container${containerCount > 1 ? "s" : ""}`}
+                            sx={{
+                              height: 20,
+                              fontSize: "0.65rem",
+                              fontWeight: 700,
+                              bgcolor: "#e8f5f4",
+                              color: "#0a5250",
+                            }}
+                          />
+                        )}
+                      </Box>
                     </TableCell>
                     <StyledTableCell>
                       {getPlaceName(order.place_of_delivery)}
@@ -5465,21 +5541,7 @@ const OrdersList = () => {
                           variant="caption"
                           sx={{ ml: 0.5, fontWeight: "bold" }}
                         >
-                          (+{leastStatusRemaining - 1}){" "}
-                          {containerCount > 1 && (
-                            <Chip
-                              size="small"
-                              label={`${containerCount} containers`}
-                              sx={{
-                                ml: 1,
-                                height: 20,
-                                fontSize: "0.65rem",
-                                fontWeight: 700,
-                                bgcolor: "#e8f5f4",
-                                color: "#0a5250",
-                              }}
-                            />
-                          )}
+                          (+{leastStatusRemaining - 1})
                         </Typography>
                       )}
                       {delayedCount > 0 && (
@@ -5517,39 +5579,7 @@ const OrdersList = () => {
             </TableBody>
           </Table>
         </TableContainer>
-        <TablePagination
-          rowsPerPageOptions={[5, 10, 25, 50, 75, 100, 125]}
-          component="div"
-          count={total}
-          rowsPerPage={rowsPerPage}
-          page={page}
-          onPageChange={handleChangePage}
-          onRowsPerPageChange={handleChangeRowsPerPage}
-          labelRowsPerPage="Rows per page:"
-          labelDisplayedRows={({ from, to, count }) =>
-            `${from}–${to} of ${count !== -1 ? count : `more than ${to}`}`
-          }
-          sx={{
-            borderTop: "1px solid rgba(224, 224, 224, 1)",
-            "& .MuiTablePagination-selectLabel, & .MuiTablePagination-displayedRows":
-              {
-                color: "#f58220",
-                fontWeight: "medium",
-                fontSize: "0.875rem",
-              },
-            "& .MuiTablePagination-select, & .MuiTablePagination-input": {
-              fontSize: "0.875rem",
-              borderRadius: 1,
-              "&:focus": { borderColor: "#0d6c6a" },
-            },
-            "& .MuiTablePagination-actions button": {
-              color: "#0d6c6a",
-              "& svg": { fontSize: "1.125rem" },
-              "&:hover": { backgroundColor: "rgba(13, 108, 106, 0.08)" },
-              "&:focus": { outline: "2px solid #0d6c6a" },
-            },
-          }}
-        />
+
         <OrderModalView
           openModal={openModal}
           handleCloseModal={handleCloseModal}
@@ -5856,7 +5886,8 @@ const OrdersList = () => {
             </Alert>
             {selectedItemDelivered && (
               <Alert severity="warning" sx={{ mb: 2, borderRadius: 2 }}>
-                This item is already delivered and cannot be updated.
+                This item is already delivered. Status is locked; you can still
+                update the ETA or send a notification.
               </Alert>
             )}
 
@@ -5907,11 +5938,7 @@ const OrdersList = () => {
                   }}
                 >
                   {selectedReceiverForUpdate?.shippingdetails?.map((rec) => (
-                    <MenuItem
-                      key={rec.itemRef}
-                      value={rec.itemRef}
-                      disabled={isItemDelivered(rec)}
-                    >
+                    <MenuItem key={rec.itemRef} value={rec.itemRef}>
                       <Tooltip
                         title={`Item Ref: ${rec.itemRef}`}
                         placement="right"
@@ -5956,7 +5983,6 @@ const OrdersList = () => {
                         <MenuItem
                           key={cd.container.cid}
                           value={cd.container.cid}
-                          disabled={isDelivered(cd.item_status)}
                         >
                           {cd.container.container_number} ({cd.assign_total_box}{" "}
                           boxes)
@@ -5977,9 +6003,18 @@ const OrdersList = () => {
                       value={selectedStatus}
                       label="Status"
                       onChange={handleStatusChange}
+                      disabled={selectedItemDelivered}
                     >
                       {statuses.map((status) => (
-                        <MenuItem key={status.id} value={status.order_status}>
+                        <MenuItem
+                          key={status.id}
+                          value={status.order_status}
+                          disabled={isBackwardStatus(
+                            statusRankMap,
+                            currentItemStatus,
+                            status.order_status,
+                          )}
+                        >
                           {status.order_status}
                         </MenuItem>
                       ))}
@@ -6049,7 +6084,7 @@ const OrdersList = () => {
             </Button>
             <Button
               onClick={handleConfirmStatusUpdate}
-              disabled={isLoading || needsCid}
+              disabled={isLoading || needsCid || selectedItemDelivered}
               variant="contained"
               sx={{ bgcolor: "#0d6c6a", "&:hover": { bgcolor: "#0a5250" } }}
             >
