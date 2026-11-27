@@ -173,7 +173,7 @@ export default function DashboardLayout() {
     {
       type: "group",
       key: "user-management",
-      label: "User Management",
+      label: "Users",
       icon: <PersonIcon />,
       children: [
         {
@@ -193,7 +193,7 @@ export default function DashboardLayout() {
     {
       type: "group",
       key: "orders-management",
-      label: "Orders Management",
+      label: "Orders",
       icon: <ShoppingCartIcon />,
       children: [
         {
@@ -237,7 +237,7 @@ export default function DashboardLayout() {
     {
       type: "group",
       key: "container-management",
-      label: "Container Management",
+      label: "Containers",
       icon: <Container />,
       children: [
         {
@@ -264,7 +264,7 @@ export default function DashboardLayout() {
     {
       type: "group",
       key: "finance-management",
-      label: "Finance Management",
+      label: "Finance",
       icon: <Receipt />,
       children: [
         {
@@ -296,7 +296,6 @@ export default function DashboardLayout() {
     },
   ];
 
-  // Apply permission filtering; hide groups that end up empty
   const navEntries = navConfig
     .map((entry) =>
       entry.type === "group"
