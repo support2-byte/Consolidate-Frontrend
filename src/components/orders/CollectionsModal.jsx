@@ -903,7 +903,7 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
           </Typography>
           <Tooltip title={markDisabledReason}>
             <span>
-              <Button
+              {/* <Button
                 size="small"
                 variant="outlined"
                 startIcon={<CheckCircleIcon fontSize="small" />}
@@ -918,7 +918,7 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
                 }}
               >
                 Mark as Collected
-              </Button>
+              </Button> */}
             </span>
           </Tooltip>
         </Box>
