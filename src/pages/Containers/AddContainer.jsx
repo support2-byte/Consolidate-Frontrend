@@ -36,6 +36,7 @@ const TABLE_HEADERS = [
   "Ownership",
   "Status",
   "ETA Status",
+  "ETA",
   "Location",
   "Consignment",
   "Created Date",

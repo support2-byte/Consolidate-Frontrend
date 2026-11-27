@@ -1,20 +1,28 @@
-import React from "react";
+import React, { useState } from "react";
+import dayjs from "dayjs";
 import {
   TableRow,
   TableCell,
   Chip,
   IconButton,
-  Tooltip,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText,
   CircularProgress,
-  Typography,
 } from "@mui/material";
+import MoreVertIcon from "@mui/icons-material/MoreVert";
 import EditNoteIcon from "@mui/icons-material/EditNote";
 import YoutubeSearchedForIcon from "@mui/icons-material/YoutubeSearchedFor";
-import { TimerReset } from "lucide-react";
+import UpdateIcon from "@mui/icons-material/Update";
 import { STATUS_COLOR_MAP } from "../../constants/containers";
 
-const fmtDate = (v) =>
-  v ? new Date(`${String(v).slice(0, 10)}T00:00:00`).toLocaleDateString() : "";
+// 12-Dec-2026
+const fmtDate = (v) => {
+  if (!v) return "";
+  const d = dayjs(/^\d{4}-\d{2}-\d{2}$/.test(String(v)) ? `${v}T00:00:00` : v);
+  return d.isValid() ? d.format("DD-MMM-YYYY") : "";
+};
 
 const ContainerTableRow = ({
   container,
@@ -26,6 +34,8 @@ const ContainerTableRow = ({
 }) => {
   const currentStatus = container.current_status || "N/A";
   const etaStatus = container.assignment_status || "N/A";
+  const [anchorEl, setAnchorEl] = useState(null);
+  const closeMenu = () => setAnchorEl(null);
 
   return (
     <TableRow
@@ -73,58 +83,73 @@ const ContainerTableRow = ({
           variant="outlined"
           sx={{ fontWeight: "bold" }}
         />
-        {container.eta && (
-          <Typography
-            variant="caption"
-            sx={{ display: "block", mt: 0.5, color: "text.secondary" }}
-          >
-            ETA: {fmtDate(container.eta)}
-          </Typography>
-        )}
+      </TableCell>
+
+      <TableCell sx={{ whiteSpace: "nowrap" }}>
+        {container.eta ? fmtDate(container.eta) : "–"}
       </TableCell>
 
       <TableCell>{container.location || "N/A"}</TableCell>
       <TableCell>{container.consignment_number || "N/A"}</TableCell>
-      <TableCell>
-        {container.created_time
-          ? new Date(container.created_time).toLocaleDateString()
-          : "–"}
-      </TableCell>
+      <TableCell>{fmtDate(container.created_time) || "–"}</TableCell>
 
-      <TableCell>
-        <Tooltip title="Update Status, ETA & Location">
-          <IconButton
-            onClick={() => onQuickEdit(container)}
-            sx={{ color: "#0d6c6a" }}
-            size="small"
+      <TableCell align="center">
+        <IconButton
+          size="small"
+          title="Actions"
+          onClick={(e) => setAnchorEl(e.currentTarget)}
+        >
+          <MoreVertIcon />
+        </IconButton>
+        <Menu
+          anchorEl={anchorEl}
+          open={Boolean(anchorEl)}
+          onClose={closeMenu}
+          anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+          transformOrigin={{ vertical: "top", horizontal: "right" }}
+        >
+          <MenuItem
+            onClick={() => {
+              closeMenu();
+              onQuickEdit(container);
+            }}
           >
-            <TimerReset size={20} />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title="Edit Container Details">
-          <IconButton
-            onClick={() => onEdit(container)}
-            sx={{ color: "#f58220" }}
-            size="small"
+            <ListItemIcon>
+              <UpdateIcon fontSize="small" sx={{ color: "#0d6c6a" }} />
+            </ListItemIcon>
+            <ListItemText>Update Status, ETA &amp; Location</ListItemText>
+          </MenuItem>
+          <MenuItem
+            onClick={() => {
+              closeMenu();
+              onEdit(container);
+            }}
           >
-            <EditNoteIcon fontSize="large" />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title="View History">
-          <IconButton
-            onClick={() =>
-              onOpenHistory(container.cid, container.container_number)
-            }
-            sx={{ color: "#0d6c6a" }}
+            <ListItemIcon>
+              <EditNoteIcon fontSize="small" sx={{ color: "#f58220" }} />
+            </ListItemIcon>
+            <ListItemText>Edit Container Details</ListItemText>
+          </MenuItem>
+          <MenuItem
             disabled={loadingHistory}
+            onClick={() => {
+              closeMenu();
+              onOpenHistory(container.cid, container.container_number);
+            }}
           >
-            {loadingHistory ? (
-              <CircularProgress size={16} />
-            ) : (
-              <YoutubeSearchedForIcon />
-            )}
-          </IconButton>
-        </Tooltip>
+            <ListItemIcon>
+              {loadingHistory ? (
+                <CircularProgress size={16} />
+              ) : (
+                <YoutubeSearchedForIcon
+                  fontSize="small"
+                  sx={{ color: "#0d6c6a" }}
+                />
+              )}
+            </ListItemIcon>
+            <ListItemText>View History</ListItemText>
+          </MenuItem>
+        </Menu>
       </TableCell>
     </TableRow>
   );
