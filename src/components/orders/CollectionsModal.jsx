@@ -98,8 +98,59 @@ const fmtDT = (v) => {
 const overdueDaysSince = (rfd) => {
   if (!rfd) return null;
   const n = dayjs().startOf("day").diff(dayjs(rfd).startOf("day"), "day") + 1;
-  return n > 0 ? n : null;
+  // 3 days are free: day 4 after RFD is "overdue by 1 day"
+  return n > 3 ? n - 3 : null;
 };
+
+// Part shipments: the Zoho order number is the form number + a letter
+// (A, B, ...). Each part is matched to items through its consignment number.
+const consKey = (v) =>
+  String(v ?? "")
+    .trim()
+    .replace(/^c(?=\d)/i, "")
+    .toLowerCase();
+
+const itemReleaseState = (
+  parts,
+  itemConsignments,
+  { approved = false, receiverPaid = false, strict = false } = {},
+) => {
+  if (approved && !strict) return { ok: true };
+  const perPart = (parts || []).some((p) => p.part);
+  if (!perPart) {
+    return receiverPaid
+      ? { ok: true }
+      : { ok: false, reason: "Payment pending" };
+  }
+  const keys = (itemConsignments || []).map(consKey).filter(Boolean);
+  const hit = parts.filter((p) =>
+    (p.consignments || []).some((c) => keys.includes(consKey(c))),
+  );
+  const applicable = hit.length
+    ? hit
+    : parts.filter((p) => !(p.consignments || []).length);
+  if (!applicable.length) {
+    return { ok: false, reason: "No invoice for this shipment yet" };
+  }
+  const bad = applicable.filter((p) => p.status !== "paid");
+  return bad.length
+    ? {
+        ok: false,
+        reason: `Part ${bad.map((p) => p.part || "–").join(", ")} not paid`,
+      }
+    : { ok: true };
+};
+
+const PART_STATUS = {
+  paid: { label: "Paid", bg: "#e8f5e9", color: "#2e7d32" },
+  partially_paid: { label: "Partially paid", bg: "#fff8e1", color: "#b26a00" },
+  unpaid: { label: "Unpaid", bg: "#fff3e0", color: "#ef6c00" },
+  no_invoice: { label: "No invoice", bg: "#eceff1", color: "#546e7a" },
+};
+
+const MARK_OK_STATUSES = ["Ready for Delivery", "Shipment Delivered"];
+const remainingOf = (i) =>
+  Math.max(0, parseInt(i?.remainingQty ?? i?.totalNumber ?? 0, 10) || 0);
 
 const emptyCollection = (idx) => ({
   _key: `c-${Date.now()}-${idx}`,
@@ -133,10 +184,30 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
   const [paymentMeta, setPaymentMeta] = useState({});
   const [lastSync, setLastSync] = useState(null);
   const [billingInvoices, setBillingInvoices] = useState([]);
+  const [receiverParts, setReceiverParts] = useState({});
+  const [markOpen, setMarkOpen] = useState(false);
+  const [markBusy, setMarkBusy] = useState(false);
   const isPaid = (receiverId) => payments?.[receiverId] === "paid";
   const isApproved = (receiverId) => approvals?.[receiverId]?.approved === true;
   const canRelease = (receiverId) =>
     isPaid(receiverId) || isApproved(receiverId);
+  const isPerPart = (receiverId) =>
+    (receiverParts?.[receiverId] || []).some((p) => p.part);
+  const itemRelease = (receiverId, item, strict = false) =>
+    itemReleaseState(
+      receiverParts?.[receiverId] || [],
+      (item?.containerDetails || []).map((cd) => cd.consignment_number),
+      {
+        approved: isApproved(receiverId),
+        receiverPaid: isPaid(receiverId),
+        strict,
+      },
+    );
+  // can anything be collected for this receiver at all?
+  const receiverHasReleasable = (r) =>
+    isPerPart(r.id)
+      ? (r.shippingdetails || []).some((i) => itemRelease(r.id, i).ok)
+      : canRelease(r.id);
 
   const getDriverTrucks = (driver) =>
     driverTrucks.filter((t) => t.driver_id === driver.id);
@@ -176,6 +247,7 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
       setPayments(null);
       setApprovals({});
       setPaymentMeta({});
+      setReceiverParts({});
       setLastSync(null);
       try {
         const { data } = await api.get(
@@ -185,6 +257,7 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
         setPayments(data.receiverPayments || {});
         setApprovals(data.receiverApprovals || {});
         setPaymentMeta(data.receiverPaymentMeta || {});
+        setReceiverParts(data.receiverParts || {});
         setLastSync(data.lastSync || null);
       } catch {
         if (!active) return;
@@ -204,6 +277,7 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
     try {
       const { data } = await api.get(
         `/api/zoho-invoice/order/${order.id}/billing`,
+        { params: { invoicesOnly: 1 } },
       );
       setBillingInvoices(data?.row?.invoices || []);
     } catch {
@@ -252,8 +326,48 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
   const hasOverdueInvoice = billingInvoices.some((d) => d.status === "overdue");
   const rfdOverdueDays = hasOverdueInvoice ? overdueDaysSince(rfdDate) : null;
 
+  const markStates = receivers.map((r) => {
+    const open = (r.shippingdetails || []).filter((i) => remainingOf(i) > 0);
+    const paid =
+      open.length > 0 && open.every((i) => itemRelease(r.id, i, true).ok);
+    const statusOk =
+      open.length > 0 && open.every((i) => MARK_OK_STATUSES.includes(i.status));
+    return { r, open, paid, statusOk, eligible: paid && statusOk };
+  });
+  const markEligible = markStates.filter((m) => m.eligible);
+  const markQty = markEligible.reduce(
+    (s, m) => s + m.open.reduce((a, i) => a + remainingOf(i), 0),
+    0,
+  );
+  const markDisabledReason = (() => {
+    if (payments === null) return "Checking payment status…";
+    if (remainingQty === 0) return "Everything is already collected";
+    if (markEligible.length > 0) return "";
+    if (!markStates.some((m) => m.paid)) return "Payment is not paid yet";
+    return "Items must be Ready for Delivery or Shipment Delivered";
+  })();
+
+  const handleMarkCollected = async () => {
+    setMarkBusy(true);
+    try {
+      await api.post(`/api/orders/${order.id}/collections/mark-collected`, {
+        receiverIds: markEligible.map((m) => m.r.id),
+      });
+      toast.success("Marked as collected");
+      setMarkOpen(false);
+      setHistoryExpanded(true);
+      onSave?.();
+    } catch (err) {
+      toast.error(err?.response?.data?.error || "Failed to mark as collected");
+    } finally {
+      setMarkBusy(false);
+    }
+  };
+
   const paidCount = receivers.filter((r) => isPaid(r.id)).length;
-  const notClearedCount = receivers.filter((r) => !canRelease(r.id)).length;
+  const notClearedCount = receivers.filter(
+    (r) => !receiverHasReleasable(r),
+  ).length;
   const paymentSummary = !receivers.length
     ? ""
     : paidCount === receivers.length
@@ -315,6 +429,7 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
       setPayments(result);
       setApprovals(approved);
       setPaymentMeta(data.receiverPaymentMeta || {});
+      setReceiverParts(data.receiverParts || {});
       setLastSync(data.lastSync || null);
 
       loadInvoices();
@@ -450,10 +565,18 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
       );
       return;
     }
-    if (collections.some((c) => c.receiverId && !canRelease(c.receiverId))) {
-      toast.error(
-        "Payment is not completed for the selected receiver and no approval is on file.",
-      );
+    const blockedPick = collections.flatMap((c) => {
+      const rec = receivers.find((r) => r.id === c.receiverId);
+      return Object.entries(c.items || {})
+        .filter(([, v]) => v.checked && Number(v.qtyDelivered) > 0)
+        .map(([ref]) =>
+          (rec?.shippingdetails || []).find((i) => i.itemRef === ref),
+        )
+        .filter((i) => i && !itemRelease(c.receiverId, i).ok)
+        .map((i) => `${i.itemRef} (${itemRelease(c.receiverId, i).reason})`);
+    });
+    if (blockedPick.length) {
+      toast.error(`Not cleared for release: ${blockedPick.join(", ")}`);
       return;
     }
 
@@ -778,6 +901,26 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
               ? "Everything on this order has been collected."
               : `${remainingQty.toLocaleString()} pkgs still to be collected`}
           </Typography>
+          <Tooltip title={markDisabledReason}>
+            <span>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<CheckCircleIcon fontSize="small" />}
+                disabled={!!markDisabledReason}
+                onClick={() => setMarkOpen(true)}
+                sx={{
+                  mt: 1.25,
+                  borderColor: "#0d6c6a",
+                  color: "#0d6c6a",
+                  textTransform: "none",
+                  fontWeight: 700,
+                }}
+              >
+                Mark as Collected
+              </Button>
+            </span>
+          </Tooltip>
         </Box>
 
         <Box
@@ -904,6 +1047,9 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
             const ap = approvals?.[r.id];
             const paid = isPaid(r.id);
             const approved = isApproved(r.id);
+            const parts = receiverParts?.[r.id] || [];
+            const perPart = parts.some((p) => p.part);
+            const partsPaid = parts.filter((p) => p.status === "paid").length;
             const approverName = ap?.approvedByName || ap?.approvedByEmail;
             return (
               <Stack
@@ -929,15 +1075,57 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
                       display="block"
                       sx={{
                         fontWeight: 600,
-                        color: canRelease(r.id) ? "#2e7d32" : "#c62828",
+                        color: receiverHasReleasable(r) ? "#2e7d32" : "#c62828",
                       }}
                     >
-                      {paid
-                        ? "Cleared for release · payment received"
-                        : approved
+                      {perPart
+                        ? approved
                           ? "Cleared for release · approved without payment"
-                          : "Not cleared for release · payment or approval required"}
+                          : partsPaid === parts.length
+                            ? "Cleared for release · all parts paid"
+                            : partsPaid > 0
+                              ? "Partly cleared · only paid parts can be collected"
+                              : "Not cleared for release · payment or approval required"
+                        : paid
+                          ? "Cleared for release · payment received"
+                          : approved
+                            ? "Cleared for release · approved without payment"
+                            : "Not cleared for release · payment or approval required"}
                     </Typography>
+                  )}
+                  {perPart && (
+                    <Stack direction="row" flexWrap="wrap" gap={0.5} mt={0.5}>
+                      {parts.map((p) => {
+                        const st =
+                          PART_STATUS[p.status] || PART_STATUS.no_invoice;
+                        return (
+                          <Tooltip
+                            key={p.part}
+                            title={
+                              (p.invoices || []).length
+                                ? `Invoices: ${p.invoices.join(", ")}`
+                                : "No invoice"
+                            }
+                          >
+                            <Chip
+                              size="small"
+                              label={`Part ${p.part || "–"} · ${st.label}${
+                                (p.consignments || []).length
+                                  ? ` · ${p.consignments.join(", ")}`
+                                  : ""
+                              }`}
+                              sx={{
+                                height: 20,
+                                fontSize: "0.65rem",
+                                fontWeight: 700,
+                                bgcolor: st.bg,
+                                color: st.color,
+                              }}
+                            />
+                          </Tooltip>
+                        );
+                      })}
+                    </Stack>
                   )}
                   {approved && !paid && (
                     <Typography
@@ -956,7 +1144,21 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
                     </Typography>
                   )}
                 </Box>
-                {renderPayChip(r.id)}
+                {perPart ? (
+                  <Chip
+                    size="small"
+                    label={`${partsPaid}/${parts.length} parts paid`}
+                    sx={{
+                      fontWeight: 700,
+                      fontSize: "0.7rem",
+                      bgcolor:
+                        partsPaid === parts.length ? "#e8f5e9" : "#fff8e1",
+                      color: partsPaid === parts.length ? "#2e7d32" : "#b26a00",
+                    }}
+                  />
+                ) : (
+                  renderPayChip(r.id)
+                )}
               </Stack>
             );
           })}
@@ -1231,10 +1433,15 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
                           <MenuItem
                             key={r.id}
                             value={r.id}
-                            disabled={!canRelease(r.id)}
+                            disabled={!receiverHasReleasable(r)}
                           >
                             {r.receiver_name || "Unnamed Receiver"}
-                            {payments && !isPaid(r.id) && " — Payment pending"}
+                            {payments &&
+                              !isPaid(r.id) &&
+                              (isPerPart(r.id)
+                                ? !receiverHasReleasable(r) &&
+                                  " — Payment pending"
+                                : " — Payment pending")}
                           </MenuItem>
                         ))}
                       </Select>
@@ -1454,6 +1661,7 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
                       };
 
                       const overstayDays = getItemOverstayDays(item);
+                      const rel = itemRelease(c.receiverId, item);
 
                       return (
                         <Box
@@ -1467,13 +1675,14 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
                             px: 1.5,
                             py: 1,
                             borderBottom: "1px solid #f0f0f0",
-                            opacity: rowState.checked ? 1 : 0.6,
+                            opacity: rowState.checked ? 1 : rel.ok ? 0.6 : 0.45,
                             "&:last-child": { borderBottom: "none" },
                           }}
                         >
                           <Checkbox
                             size="small"
                             checked={rowState.checked}
+                            disabled={!rel.ok}
                             onChange={(e) =>
                               toggleItem(
                                 c._key,
@@ -1489,17 +1698,28 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
                               "&.Mui-checked": { color: "#f58220" },
                             }}
                           />
-                          <Tooltip title={item.itemRef}>
-                            <Typography
-                              variant="body2"
-                              fontWeight={600}
-                              sx={{ wordBreak: "break-word" }}
-                            >
-                              {[item.category, item.subcategory]
-                                .filter(Boolean)
-                                .join(" › ") || "Unnamed item"}
-                            </Typography>
-                          </Tooltip>
+                          <Box sx={{ minWidth: 0 }}>
+                            <Tooltip title={item.itemRef}>
+                              <Typography
+                                variant="body2"
+                                fontWeight={600}
+                                sx={{ wordBreak: "break-word" }}
+                              >
+                                {[item.category, item.subcategory]
+                                  .filter(Boolean)
+                                  .join(" › ") || "Unnamed item"}
+                              </Typography>
+                            </Tooltip>
+                            {!rel.ok && (
+                              <Typography
+                                variant="caption"
+                                display="block"
+                                sx={{ color: "#c62828", fontWeight: 600 }}
+                              >
+                                {rel.reason}
+                              </Typography>
+                            )}
+                          </Box>
                           <Typography variant="body2">
                             {item.status === "Shipment Delivered"
                               ? fmtShortDate(item.eta)
@@ -1586,7 +1806,12 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
                       <Button
                         component="label"
                         size="small"
-                        disabled={!c.receiverId || !canRelease(c.receiverId)}
+                        disabled={
+                          !c.receiverId ||
+                          !receiverHasReleasable(
+                            receiver || { id: c.receiverId },
+                          )
+                        }
                         sx={{
                           borderColor: "#f58220",
                           color: "#f58220",
@@ -1690,6 +1915,77 @@ const CollectionsModal = ({ open, onClose, order, getPlaceName, onSave }) => {
           {saving ? "Saving..." : "Save Collections"}
         </Button>
       </DialogActions>
+      <Dialog
+        open={markOpen}
+        onClose={() => !markBusy && setMarkOpen(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Mark as Collected</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 1.5 }}>
+            This creates a collection that marks the full remaining quantity of
+            every item as collected. No gatepass is generated.
+          </Typography>
+          <Stack spacing={0.75} sx={{ mb: 1.5 }}>
+            {markEligible.map((m) => (
+              <Typography key={m.r.id} variant="body2">
+                <strong>{m.r.receiver_name || "Unnamed Receiver"}</strong> —{" "}
+                {m.open.length} item(s),{" "}
+                {m.open
+                  .reduce((a, i) => a + remainingOf(i), 0)
+                  .toLocaleString()}{" "}
+                pkgs
+              </Typography>
+            ))}
+            {markStates
+              .filter((m) => !m.eligible && m.open.length > 0)
+              .map((m) => (
+                <Typography
+                  key={m.r.id}
+                  variant="caption"
+                  color="text.secondary"
+                  display="block"
+                >
+                  Skipped: {m.r.receiver_name || "Unnamed Receiver"} (
+                  {m.paid ? "not Ready for Delivery / Delivered" : "not paid"})
+                </Typography>
+              ))}
+          </Stack>
+          <Typography variant="body2">
+            RFD Date:{" "}
+            <strong>
+              {rfdDate ? dayjs(rfdDate).format("MMM DD, YYYY") : "—"}
+            </strong>
+          </Typography>
+          {rfdOverdueDays && (
+            <Typography
+              variant="caption"
+              display="block"
+              sx={{ color: "error.main", fontWeight: 600, mt: 0.25 }}
+            >
+              Overdue by {rfdOverdueDays}{" "}
+              {rfdOverdueDays === 1 ? "day" : "days"} · late charges may apply
+            </Typography>
+          )}
+          <Typography variant="body2" sx={{ mt: 1.5 }}>
+            Total: <strong>{markQty.toLocaleString()} pkgs</strong>
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setMarkOpen(false)} disabled={markBusy}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleMarkCollected}
+            disabled={markBusy || markEligible.length === 0}
+            sx={{ bgcolor: "#0d6c6a", "&:hover": { bgcolor: "#0a5250" } }}
+          >
+            {markBusy ? "Saving..." : "Confirm"}
+          </Button>
+        </DialogActions>
+      </Dialog>
       <CreateInvoiceModal
         open={invoiceModalOpen}
         onClose={() => setInvoiceModalOpen(false)}

@@ -72,6 +72,7 @@ import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import ExpandMoreIconMui from "@mui/icons-material/ExpandMore";
 import { useParams } from "react-router-dom";
 import AddIcon from "@mui/icons-material/Add";
+import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import DeleteIconMui from "@mui/icons-material/Delete";
 import DescriptionIcon from "@mui/icons-material/Description";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
@@ -107,16 +108,23 @@ import jsPDF from "jspdf";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import autoTable from "jspdf-autotable";
 import { applyPlugin } from "jspdf-autotable";
-import logoPic from "../../../public/logo-2.png";
+import logoPic from "../../assets/logo-2.png";
 import { useAuth } from "../../context/AuthContext";
 import { AppContext } from "../../context/AppContext";
 import { getStatusColors } from "../../Utlis/statusColors";
+import {
+  isLockedStatus,
+  consignmentLockedMessage,
+  buildStatusRankMap,
+  isBackwardStatus,
+  etaWindow,
+  isEtaInWindow,
+} from "../../constants/lockedStatuses";
 import { buildMblPages, mblCss } from "../../documents/mblGenerator";
 import { buildHblPages, hblCss } from "../../documents/hblGenerator";
 
 applyPlugin(jsPDF);
 
-// ---- shared document preview / direct PDF download -------------------------
 const buildDocHtml = (
   html,
   { title = "Document", pageMargin = "10mm", extraCss = "" } = {},
@@ -293,7 +301,6 @@ const htmlToPdfBlob = async (doc) => {
         y0 = y1;
       }
 
-      // Render in chunks so a long document never exceeds canvas limits
       const MAX_CHUNK = 9000;
       let i = 0;
       while (i < pages.length) {
@@ -423,13 +430,11 @@ const fmtStatus = (s = "") =>
 const overdueDays = (d, rfd) => {
   if (d.status !== "overdue" || !rfd) return null;
   const n = dayjs().startOf("day").diff(dayjs(rfd).startOf("day"), "day") + 1;
-  return n > 0 ? n : null;
+  // 3 days are free: day 4 after RFD is "overdue by 1 day"
+  return n > 3 ? n - 3 : null;
 };
 
-const statusLabel = (d, rfd) => {
-  const n = overdueDays(d, rfd);
-  return n ? `Overdue (${n}d)` : fmtStatus(d.status);
-};
+const statusLabel = (d) => fmtStatus(d.status);
 
 const overdueNote = (d, kind, rfd) => {
   const n = kind === "Invoice" ? overdueDays(d, rfd) : null;
@@ -954,7 +959,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       return null;
     });
 
-  // The preview is the real generated PDF, so it matches the download exactly
   const deliverDoc = async (doc, mode) => {
     if (mode === "download") return downloadDoc(doc);
     try {
@@ -966,8 +970,6 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     }
   };
 
-  // Replaces printHtml: previews the document, or downloads it straight
-  // away, depending on which button started it.
   const showDoc = (html, opts = {}) =>
     deliverDoc(
       {
@@ -997,6 +999,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
   } = useContext(AppContext);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [canEdit, setCanEdit] = useState(true);
   const { consignmentId: urlConsignmentId } = useParams();
   const location = useLocation();
 
@@ -1009,6 +1012,9 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
   const effectiveConsignmentId =
     urlConsignmentId || location.state?.consignmentId || propConsignmentId;
   const [mode, setMode] = useState(effectiveConsignmentId ? "edit" : "add");
+  const [savedStatus, setSavedStatus] = useState("");
+  const statusLocked = mode === "edit" && isLockedStatus(savedStatus);
+  const [savedEta, setSavedEta] = useState("");
   const [initialValues, setInitialValues] = useState(null);
   const [values, setValues] = useState({
     id: "",
@@ -1089,6 +1095,8 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
   const [mblModalOpen, setMblModalOpen] = useState(false);
   const [mblCompanyId, setMblCompanyId] = useState("");
   const [mblVariant, setMblVariant] = useState("original");
+  const [hblCustomText, setHblCustomText] = useState("");
+  const [mblCustomText, setMblCustomText] = useState("");
 
   const setContainerError = (path, message) => {
     setContainerErrors((prev) => ({ ...prev, [path]: message }));
@@ -1285,6 +1293,9 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         })),
       };
 
+      setCanEdit(data?.can_edit !== false);
+      setSavedStatus(data?.status || "");
+      setSavedEta(data?.eta ? dayjs(data.eta).format("YYYY-MM-DD") : "");
       setValues(mappedData);
       setAttachments(data?.attachments || []);
       if (data?.orders && data.orders.length > 0) {
@@ -1991,6 +2002,20 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     return [...map.values()];
   }, [filteredShipments]);
 
+  // forward-only statuses + ETA window (never back, max 30 days ahead)
+  const statusRankMap = useMemo(() => buildStatusRankMap(statuses), [statuses]);
+  const etaLimits = etaWindow(savedEta);
+  const etaPending = values.status !== savedStatus; // ETA then comes from the new status
+  const currentEtaStr = values.eta
+    ? dayjs(values.eta).format("YYYY-MM-DD")
+    : "";
+  const etaChanged = !!currentEtaStr && currentEtaStr !== savedEta;
+  const etaOutOfRange =
+    mode === "edit" &&
+    !etaPending &&
+    etaChanged &&
+    !isEtaInWindow(savedEta, currentEtaStr);
+
   const hasDeliveredShipment = useMemo(() => {
     return orders.some((order) =>
       (order.receivers || []).some((receiver) =>
@@ -2619,6 +2644,10 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
   };
 
   const advanceStatus = async () => {
+    if (statusLocked) {
+      toast.warning(consignmentLockedMessage(savedStatus));
+      return;
+    }
     try {
       const res = await api.put(
         `/api/consignments/${effectiveConsignmentId}/next`,
@@ -2628,7 +2657,13 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       toast.success(message || "Status advanced successfully!");
     } catch (err) {
       console.error("Error advancing status:", err);
-      toast.error("Failed to advance status.");
+      const data = err.response?.data;
+      if (data?.code) {
+        toast.warning(data.message);
+        await loadConsignment(effectiveConsignmentId);
+      } else {
+        toast.error(data?.message || "Failed to advance status.");
+      }
     }
   };
 
@@ -2637,6 +2672,10 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     selectedStatus,
     reason = "",
   ) => {
+    if (statusLocked) {
+      toast.warning(consignmentLockedMessage(savedStatus));
+      return;
+    }
     try {
       const statusRow = statuses.find(
         (s) => s.consignment_status === values.status,
@@ -2664,12 +2703,20 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
 
       setEta(newEta);
       setEtaSuggestion(newEta.format("YYYY-MM-DD"));
+      setSavedStatus(values.status);
+      setSavedEta(newEta.format("YYYY-MM-DD"));
 
       toast.success(message || "Status updated successfully!");
     } catch (err) {
       console.error("Error updating status:", err);
 
-      toast.error("Failed to update status.");
+      const data = err.response?.data;
+      if (data?.code) {
+        toast.warning(data.message);
+        await loadConsignment(effectiveConsignmentId);
+      } else {
+        toast.error(data?.message || "Failed to update status.");
+      }
     }
   };
 
@@ -2679,6 +2726,34 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       setSelectedOrders(allOrderIds);
     }
   }, []);
+
+  const updateEtaOnly = async () => {
+    if (statusLocked) {
+      toast.warning(consignmentLockedMessage(savedStatus));
+      return;
+    }
+    if (!currentEtaStr) {
+      toast.warning("Select an ETA first");
+      return;
+    }
+    try {
+      const res = await api.put(
+        `/api/consignments/${effectiveConsignmentId}/eta`,
+        { eta: currentEtaStr },
+      );
+      toast.success(res.data?.message || "ETA updated successfully!");
+      await loadConsignment(effectiveConsignmentId);
+    } catch (err) {
+      console.error("Error updating ETA:", err);
+      const data = err.response?.data;
+      if (data?.code) {
+        toast.warning(data.message);
+        await loadConsignment(effectiveConsignmentId);
+      } else {
+        toast.error(data?.message || "Failed to update ETA.");
+      }
+    }
+  };
 
   const validateForm = async () => {
     try {
@@ -2960,6 +3035,34 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     return errors;
   };
   const hasErrors = Object.values(errors).some(Boolean);
+
+  if (!loading && mode === "edit" && !canEdit) {
+    return (
+      <Box sx={{ p: 3, maxWidth: 560, mx: "auto", textAlign: "center" }}>
+        <LockOutlinedIcon sx={{ fontSize: 56, color: "text.secondary" }} />
+        <Typography variant="h6" sx={{ mt: 1, fontWeight: "bold" }}>
+          Consignment locked
+        </Typography>
+        <Typography color="text.secondary" sx={{ mt: 1, mb: 2 }}>
+          {values.consignment_number ? `#${values.consignment_number} ` : ""}
+          can only be edited by an admin or a user an admin has given access to.
+          Ask an admin to grant you edit access from the Consignments list.
+        </Typography>
+        <Stack direction="row" spacing={1} justifyContent="center">
+          <Button
+            variant="outlined"
+            onClick={() => navigate(`/consignments/${effectiveConsignmentId}`)}
+          >
+            View consignment
+          </Button>
+          <Button variant="contained" onClick={() => navigate("/consignments")}>
+            Back to list
+          </Button>
+        </Stack>
+      </Box>
+    );
+  }
+
   if (loading || !places || places.length === 0) {
     return (
       <Box
@@ -4843,6 +4946,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         setHblOrderId("");
         setHblItemId("all");
         setHblCompanyId("");
+        setHblCustomText("");
         setHblModalOpen(true);
       },
     },
@@ -4853,6 +4957,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
       run: async () => {
         setMblCompanyId("");
         setMblVariant("original");
+        setMblCustomText("");
         setMblModalOpen(true);
       },
     },
@@ -5368,7 +5473,9 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
     const title = all
       ? `HBL-${values.consignment_number}`
       : `HBL-${hblOrders[0].rgl_booking_number || hblOrders[0].id}`;
-    const pages = buildHblPages(hblOrders, company, (x) => x || "N/A").join("");
+    const pages = buildHblPages(hblOrders, company, (x) => x || "N/A", {
+      customText: hblCustomText,
+    }).join("");
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title>
       <style>
         @page { size: A4; margin: 0; }
@@ -5406,14 +5513,19 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
         `/api/orders/consignment-mbl/${effectiveConsignmentId}`,
       );
       docModeRef.current = mode;
-      await showDoc(buildMblPages(data, company, mblVariant).join(""), {
-        title: `MBL-${values.consignment_number}`,
-        pageMargin: "0",
-        extraCss: mblCss(company),
-        heading: "Master Bill of Lading",
-        logType: "MBL",
-        perChild: true,
-      });
+      await showDoc(
+        buildMblPages(data, company, mblVariant, {
+          customText: mblCustomText,
+        }).join(""),
+        {
+          title: `MBL-${values.consignment_number}`,
+          pageMargin: "0",
+          extraCss: mblCss(company),
+          heading: "Master Bill of Lading",
+          logType: "MBL",
+          perChild: true,
+        },
+      );
       setMblModalOpen(false);
     });
 
@@ -5659,23 +5771,40 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                             slotProps={{
                               textField: {
                                 fullWidth: true,
-                                helperText: etaLoading
-                                  ? "Calculating ETA..."
-                                  : etaSuggestion && eta !== etaSuggestion
-                                    ? `Suggested: ${dayjs(etaSuggestion).isValid() ? dayjs(etaSuggestion).format("MMM DD, YYYY") : "Invalid date"} based on status (edited)`
-                                    : etaSuggestion
-                                      ? `Suggested: ${dayjs(etaSuggestion).isValid() ? dayjs(etaSuggestion).format("MMM DD, YYYY") : "Invalid date"} based on status`
-                                      : "Set ETA based on status",
+                                error: etaOutOfRange,
+                                helperText: etaOutOfRange
+                                  ? `Allowed: ${etaLimits.min} to ${etaLimits.max}`
+                                  : etaLoading
+                                    ? "Calculating ETA..."
+                                    : etaSuggestion && eta !== etaSuggestion
+                                      ? `Suggested: ${dayjs(etaSuggestion).isValid() ? dayjs(etaSuggestion).format("MMM DD, YYYY") : "Invalid date"} based on status (edited)`
+                                      : etaSuggestion
+                                        ? `Suggested: ${dayjs(etaSuggestion).isValid() ? dayjs(etaSuggestion).format("MMM DD, YYYY") : "Invalid date"} based on status`
+                                        : "Set ETA based on status",
                               },
                             }}
-                            disabled={["Delivered", "Cancelled"].includes(
-                              values.status,
-                            )}
+                            disabled={
+                              statusLocked ||
+                              ["Delivered", "Cancelled"].includes(values.status)
+                            }
+                            {...(etaPending
+                              ? {}
+                              : {
+                                  minDate: dayjs(etaLimits.min),
+                                  maxDate: dayjs(etaLimits.max),
+                                })}
                             name="eta"
                           />
                         </Box>
                       )}
 
+                      {statusLocked && (
+                        <Box sx={span(12)}>
+                          <Alert severity="info" icon={<LockOutlinedIcon />}>
+                            {consignmentLockedMessage(savedStatus)}
+                          </Alert>
+                        </Box>
+                      )}
                       <Box sx={{ ...span(6), display: "flex", gap: 1 }}>
                         <CustomSelect
                           name="status"
@@ -5696,16 +5825,29 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                                   ...(options.statusOptions || []),
                                 ]
                               : options.statusOptions || []
-                          ).map((opt) =>
-                            opt.value === "Delivered"
+                          ).map((opt) => {
+                            // forward-only: earlier statuses are disabled
+                            const backward =
+                              mode === "edit" &&
+                              isBackwardStatus(
+                                statusRankMap,
+                                savedStatus,
+                                opt.value,
+                              );
+                            return opt.value === "Delivered"
                               ? {
                                   ...opt,
-                                  disabled: hasDeliveredShipment,
+                                  disabled: hasDeliveredShipment || backward,
                                   label: "Delivered",
                                 }
-                              : opt,
-                          )}
-                          disabled={mode === "add"}
+                              : { ...opt, disabled: backward };
+                          })}
+                          disabled={mode === "add" || statusLocked}
+                          tooltip={
+                            statusLocked
+                              ? consignmentLockedMessage(savedStatus)
+                              : ""
+                          }
                           error={touched.status && Boolean(errors.status)}
                           helperText={
                             touched.status && errors.status ? errors.status : ""
@@ -5718,7 +5860,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                               variant="outlined"
                               size="small"
                               loading={busyAction === "status-change"}
-                              disabled={!!busyAction}
+                              disabled={!!busyAction || statusLocked}
                               onClick={() =>
                                 runAction("status-change", advanceStatus)
                               }
@@ -5730,7 +5872,7 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                               variant="outlined"
                               size="small"
                               loading={busyAction === "status-update"}
-                              disabled={!!busyAction}
+                              disabled={!!busyAction || statusLocked}
                               onClick={() =>
                                 runAction("status-update", () =>
                                   updateStatusChange(),
@@ -5739,6 +5881,24 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                               sx={{ ...outlineBtn, maxHeight: 56 }}
                             >
                               Update
+                            </LoadingBtn>
+                            <LoadingBtn
+                              variant="outlined"
+                              size="small"
+                              loading={busyAction === "eta-update"}
+                              disabled={
+                                !!busyAction ||
+                                statusLocked ||
+                                etaPending ||
+                                !etaChanged ||
+                                etaOutOfRange
+                              }
+                              onClick={() =>
+                                runAction("eta-update", updateEtaOnly)
+                              }
+                              sx={{ ...outlineBtn, maxHeight: 56 }}
+                            >
+                              Update ETA
                             </LoadingBtn>
                           </>
                         )}
@@ -7091,6 +7251,18 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                         ))}
                       </Select>
                     </FormControl>
+                    <TextField
+                      fullWidth
+                      multiline
+                      minRows={3}
+                      maxRows={8}
+                      label="Custom text (optional)"
+                      placeholder="Type any extra text for the document"
+                      helperText="Appears in the goods description section of each HBL (all HBLs when using Preview/Download All)"
+                      value={hblCustomText}
+                      onChange={(e) => setHblCustomText(e.target.value)}
+                      disabled={!!busyAction}
+                    />
                   </Stack>
                 </DialogContent>
                 <DialogActions>
@@ -7228,6 +7400,18 @@ const ConsignmentPage = ({ consignmentId: propConsignmentId }) => {
                         </MenuItem>
                       </Select>
                     </FormControl>
+                    <TextField
+                      fullWidth
+                      multiline
+                      minRows={3}
+                      maxRows={8}
+                      label="Custom text (optional)"
+                      placeholder="Type any extra text for the document"
+                      helperText="Shown between the Shipped on Board line and the container count, on every item page"
+                      value={mblCustomText}
+                      onChange={(e) => setMblCustomText(e.target.value)}
+                      disabled={!!busyAction}
+                    />
                   </Stack>
                 </DialogContent>
                 <DialogActions>

@@ -59,9 +59,20 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { applyPlugin } from "jspdf-autotable";
-import logoPic from "../../../public/logo.png";
+import logoPic from "../../assets/logo.png";
 import { get } from "lodash";
 import { useLoading } from "../../context/LoadingContext";
+import { useAuth } from "../../context/AuthContext";
+import ManageAccountsIcon from "@mui/icons-material/ManageAccounts";
+import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
+import EditAccessDialog from "../../components/consignments/EditAccessDialog";
+import {
+  isLockedStatus,
+  consignmentLockedMessage,
+  buildStatusRankMap,
+  isBackwardStatus,
+} from "../../constants/lockedStatuses";
+
 applyPlugin(jsPDF);
 
 const StyledTableRow = styled(TableRow)(({ theme }) => ({
@@ -89,6 +100,9 @@ export default function Consignments() {
   const navigate = useNavigate();
   const { statuses } = useContext(AppContext);
   const { isLoading, setIsLoading } = useLoading();
+  const { isSuperAdmin, isAdmin } = useAuth();
+  const canGrantAccess = isSuperAdmin() || isAdmin();
+  const [accessOpen, setAccessOpen] = useState(false);
   const [consignments, setConsignments] = useState([]);
   const [orderBy, setOrderBy] = useState("created_at");
   const [order, setOrder] = useState("desc");
@@ -162,6 +176,8 @@ export default function Consignments() {
     [statuses],
   );
 
+  const statusRankMap = useMemo(() => buildStatusRankMap(statuses), [statuses]);
+
   const renderDate = (dateStr) => {
     if (!dateStr) return "N/A";
     return new Date(dateStr).toLocaleDateString("en-GB", {
@@ -222,12 +238,35 @@ export default function Consignments() {
 
   const handleChangePage = (event, newPage) => setPage(newPage);
 
+  const pageIds = consignments.map((r) => r.id);
+  const allPageSelected =
+    pageIds.length > 0 && pageIds.every((id) => selected.includes(id));
+  const somePageSelected = pageIds.some((id) => selected.includes(id));
+  const toggleRow = (id) =>
+    setSelected((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  const togglePage = () =>
+    setSelected((prev) =>
+      allPageSelected
+        ? prev.filter((id) => !pageIds.includes(id))
+        : [...new Set([...prev, ...pageIds])],
+    );
+
   const handleChangeRowsPerPage = (event) => {
     setRowsPerPage(parseInt(event.target.value, 10));
     setPage(0);
   };
 
   const handleStatusUpdate = (consignment) => {
+    if (isLockedStatus(consignment.status)) {
+      setSnackbar({
+        open: true,
+        message: consignmentLockedMessage(consignment.status),
+        severity: "warning",
+      });
+      return;
+    }
     setSelectedConsignmentForUpdate(consignment);
     setSelectedStatus(consignment.status || "");
     setOpenStatusDialog(true);
@@ -258,6 +297,15 @@ export default function Consignments() {
   };
 
   const handleConfirmStatusUpdate = async (row) => {
+    if (isLockedStatus(row?.status)) {
+      setSnackbar({
+        open: true,
+        message: consignmentLockedMessage(row.status),
+        severity: "warning",
+      });
+      setOpenStatusDialog(false);
+      return;
+    }
     try {
       const selectedStatusObj = consignmentStatuses.find(
         (s) => s.consignment_status === selectedStatus,
@@ -280,10 +328,14 @@ export default function Consignments() {
       setIsLoading(false);
 
       console.error("Error advancing status:", err);
+      const data = err.response?.data;
+      if (data?.code) {
+        getConsignments();
+      }
       setSnackbar({
         open: true,
-        message: "Failed to advance status.",
-        severity: "error",
+        message: data?.message || "Failed to advance status.",
+        severity: data?.code ? "warning" : "error",
       });
     }
 
@@ -327,14 +379,27 @@ export default function Consignments() {
         <Typography variant="h4" fontWeight="bold" color="#f58220">
           Consignments
         </Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => navigate("/consignments/add")}
-          sx={{ bgcolor: "#0d6c6a", "&:hover": { bgcolor: "#0a5a59" } }}
-        >
-          New Consignment
-        </Button>
+        <Stack direction="row" spacing={1}>
+          {canGrantAccess && (
+            <Button
+              variant="outlined"
+              startIcon={<ManageAccountsIcon />}
+              disabled={selected.length === 0}
+              onClick={() => setAccessOpen(true)}
+              sx={{ borderColor: "#0d6c6a", color: "#0d6c6a" }}
+            >
+              Edit Access{selected.length ? ` (${selected.length})` : ""}
+            </Button>
+          )}
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => navigate("/consignments/add")}
+            sx={{ bgcolor: "#0d6c6a", "&:hover": { bgcolor: "#0a5a59" } }}
+          >
+            New Consignment
+          </Button>
+        </Stack>
       </Stack>
 
       <Stack direction={{ xs: "column", sm: "row" }} spacing={2} mb={3}>
@@ -386,16 +451,46 @@ export default function Consignments() {
         />
       </Stack>
 
+      <TablePagination
+        rowsPerPageOptions={[5, 10, 25, 50]}
+        component="div"
+        count={rowCount}
+        rowsPerPage={rowsPerPage}
+        page={page}
+        onPageChange={(e, newPage) => setPage(newPage)}
+        onRowsPerPageChange={(e) => {
+          setRowsPerPage(parseInt(e.target.value, 10));
+          setPage(0);
+        }}
+      />
+
       <TableContainer
         sx={{
           borderRadius: 2,
           overflow: "auto",
           maxHeight: 600,
+          mb: 4,
         }}
       >
         <Table sx={{ width: "100%", tableLayout: "fixed" }}>
           <TableHead>
             <TableRow>
+              {canGrantAccess && (
+                <StyledTableHeadCell sx={{ width: 48, px: 1 }}>
+                  <Checkbox
+                    size="small"
+                    checked={allPageSelected}
+                    indeterminate={!allPageSelected && somePageSelected}
+                    onChange={togglePage}
+                    sx={{
+                      color: "#fff",
+                      "&.Mui-checked, &.MuiCheckbox-indeterminate": {
+                        color: "#fff",
+                      },
+                    }}
+                  />
+                </StyledTableHeadCell>
+              )}
               <StyledTableHeadCell sx={{ width: 140 }}>
                 Consignment #
               </StyledTableHeadCell>
@@ -429,19 +524,32 @@ export default function Consignments() {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={columns.length + 2} align="center">
+                <TableCell colSpan={columns.length + 3} align="center">
                   <CircularProgress />
                 </TableCell>
               </TableRow>
             ) : consignments.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={columns.length + 2} align="center">
+                <TableCell colSpan={columns.length + 3} align="center">
                   No consignments found
                 </TableCell>
               </TableRow>
             ) : (
               consignments.map((row) => (
-                <StyledTableRow key={row.id} hover>
+                <StyledTableRow
+                  key={row.id}
+                  hover
+                  selected={selected.includes(row.id)}
+                >
+                  {canGrantAccess && (
+                    <TableCell sx={{ px: 1 }}>
+                      <Checkbox
+                        size="small"
+                        checked={selected.includes(row.id)}
+                        onChange={() => toggleRow(row.id)}
+                      />
+                    </TableCell>
+                  )}
                   <TableCell sx={{ fontSize: 12, wordBreak: "break-word" }}>
                     {row.consignment_number || "N/A"}
                   </TableCell>
@@ -481,20 +589,48 @@ export default function Consignments() {
                           <VisibilityIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title="Edit">
-                        <IconButton
-                          size="small"
-                          onClick={() => handleEdit(row.id)}
-                        >
-                          <EditIcon fontSize="small" />
-                        </IconButton>
+                      <Tooltip
+                        title={
+                          row.can_edit === false
+                            ? "Locked - ask an admin for edit access"
+                            : "Edit - Access Granted"
+                        }
+                      >
+                        <span>
+                          <IconButton
+                            size="small"
+                            disabled={row.can_edit === false}
+                            onClick={() => handleEdit(row.id)}
+                          >
+                            {row.can_edit === false ? (
+                              <LockOutlinedIcon fontSize="small" />
+                            ) : (
+                              <EditIcon fontSize="small" />
+                            )}
+                          </IconButton>
+                        </span>
                       </Tooltip>
-                      <Tooltip title="Update Status">
+                      <Tooltip
+                        title={
+                          isLockedStatus(row.status)
+                            ? `Locked - consignment is ${row.status}`
+                            : "Update Status"
+                        }
+                      >
                         <IconButton
                           size="small"
                           onClick={() => handleStatusUpdate(row)}
+                          sx={
+                            isLockedStatus(row.status)
+                              ? { color: "text.disabled" }
+                              : undefined
+                          }
                         >
-                          <TimerReset fontSize="small" />
+                          {isLockedStatus(row.status) ? (
+                            <LockOutlinedIcon fontSize="small" />
+                          ) : (
+                            <TimerReset fontSize="small" />
+                          )}
                         </IconButton>
                       </Tooltip>
                     </Stack>
@@ -505,19 +641,6 @@ export default function Consignments() {
           </TableBody>
         </Table>
       </TableContainer>
-
-      <TablePagination
-        rowsPerPageOptions={[5, 10, 25, 50]}
-        component="div"
-        count={rowCount}
-        rowsPerPage={rowsPerPage}
-        page={page}
-        onPageChange={(e, newPage) => setPage(newPage)}
-        onRowsPerPageChange={(e) => {
-          setRowsPerPage(parseInt(e.target.value, 10));
-          setPage(0);
-        }}
-      />
 
       <Dialog
         fullWidth
@@ -543,7 +666,14 @@ export default function Consignments() {
                   <MenuItem
                     key={s.id}
                     value={s.consignment_status}
-                    disabled={isDeliveredOption && anyItemDelivered}
+                    disabled={
+                      (isDeliveredOption && anyItemDelivered) ||
+                      isBackwardStatus(
+                        statusRankMap,
+                        selectedConsignmentForUpdate?.status,
+                        s.consignment_status,
+                      )
+                    }
                   >
                     {s.consignment_status}
                   </MenuItem>
@@ -566,6 +696,21 @@ export default function Consignments() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <EditAccessDialog
+        open={accessOpen}
+        onClose={() => setAccessOpen(false)}
+        consignmentIds={selected}
+        onDone={() => {
+          setSnackbar({
+            open: true,
+            message: "Edit access updated",
+            severity: "success",
+          });
+          setSelected([]);
+          getConsignments();
+        }}
+      />
 
       <Snackbar
         open={snackbar.open}

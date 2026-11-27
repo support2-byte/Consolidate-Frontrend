@@ -1,4 +1,4 @@
-export const buildHblPages = (orderData, company, getPlaceName) => {
+export const buildHblPages = (orderData, company, getPlaceName, opts = {}) => {
   const tpl = detectTemplate(company);
   const build = {
     rgsl: classicPage,
@@ -7,7 +7,7 @@ export const buildHblPages = (orderData, company, getPlaceName) => {
     rickmers: rickmersPages,
   }[tpl];
   return (Array.isArray(orderData) ? orderData : [orderData]).flatMap((o) => {
-    const d = collect(o, company, getPlaceName, tpl);
+    const d = collect(o, company, getPlaceName, tpl, opts);
     return d.groups.map((g) => build(d, g));
   });
 };
@@ -115,7 +115,7 @@ const FINE_PRINT =
 const RK_CLAUSE =
   "RECEIVED by the Carrier in apparent good order and condition (unless otherwise stated herein) the total number or quantity of Containers or other packages or units indicated in the box entitled \"Carrier's Receipt\", to be carried subject to all the terms and conditions hereof from the Place of Receipt or Port of Loading to the Port of Discharge or Place of Delivery, as applicable. Delivery of the Goods to the Carrier for Carriage hereunder constitutes acceptance by the Merchant (as defined hereinafter) (i) of all the terms and conditions, whether printed, stamped or otherwise incorporated on this side and on the reverse side of this Bill of lading and the terms and conditions of the Carrier's applicable tariff(s) as if they were all signed by the Merchant, and (ii) that any prior representations and/or agreements for or in connection with Carriage of the Goods are superseded by this Bill of Lading. If this is a negotiable (To Order/of) Bill of Lading, one original Bill of Lading, duly endorsed must be surrendered by the Merchant to the Carrier (together with any outstanding Freight) in exchange for the Goods or a Delivery Order or the pin codes for any applicable Electronic Release System. If this is a non-negotiable (straight) Bill of Lading, or where issued as a Sea Waybill, the Carrier shall deliver the Goods or issue a Delivery Order or the pin codes for any applicable Electronic Release System (after payment of outstanding Freight) to the named consignee against the surrender of one original Bill of Lading, or in the case of a Sea Waybill, on production of such reasonable proof of identify as may be required by the Carrier, or in accordance with the national law at the Port of Discharge or Place of Delivery as applicable. IN WITNESS WHEREOF the Carrier or their Agent has signed the number of Bills of Lading stated at the top, all of this tenor and date, and whenever one original Bill of Lading has been surrendered all other Bills of Lading shall be void.";
 
-const collect = (orderData, company, getPlaceName, tpl) => {
+const collect = (orderData, company, getPlaceName, tpl, opts = {}) => {
   const order = orderData || {};
   const consignment = order.consignment || {};
 
@@ -237,6 +237,7 @@ const collect = (orderData, company, getPlaceName, tpl) => {
 
   return {
     tpl,
+    customText: String(opts?.customText ?? "").trim(),
     carrier:
       tpl === "rgsl" ? company?.company || BRAND_NAMES.rgsl : BRAND_NAMES[tpl],
     logo: company?.logo_url || "",
@@ -429,6 +430,11 @@ const classicPage = (d, g) => {
       <div class="t" style="left:28%;top:137px;width:36%">ALL SORT OF DESTINATION CHARGES ON CONSIGNEE'S ACCOUNT</div>`;
   }
 
+  // user-entered text (HBL text editor), under the goods / destination lines
+  const custom = d.customText
+    ? `<div class="t" style="left:28%;top:${m ? 186 : 174}px;width:36%;max-height:${m ? 62 : 74}px;overflow:hidden;font-size:10.5px">${br(d.customText)}</div>`
+    : "";
+
   const cols = m ? "27.7% 16.3% 14.5% 12.3% 1fr" : "26% 1fr";
   const cHead = m
     ? `<div class="r h" style="grid-template-columns:${cols}"><span>CONTAINER NO. &nbsp;SIZE</span><span>SEAL NO.</span><span>PKGS</span><span>GROSS WT</span></div>`
@@ -447,6 +453,7 @@ const classicPage = (d, g) => {
     ${g.marks ? `<div class="t mk" style="left:1%;top:20px;width:15%">${br(g.marks)}</div>` : ""}
     <div class="t" style="left:17.5%;top:${m ? 22 : 14}px;width:10%;text-align:center">${m ? `${g.totalPkgs}<br>PKGS` : `${g.totalPkgs}<br>${esc(g.unit)}`}</div>
     ${desc}
+    ${custom}
     <div class="t" style="left:79.5%;top:${m ? 22 : 14}px;width:18%">GROSS WT<br><b>${fmtWt(g.totalWeight)} KGS</b></div>
     <div class="t" style="left:${m ? 83.4 : 81}%;top:${m ? 135 : 126}px">${m ? "" : `${d.loadType}/${d.loadType}`}</div>
     <div class="cl-note">${TERMINAL_NOTE.map(esc).join("<br>")}</div>
@@ -609,6 +616,7 @@ const casPage = (d, g) => {
     <div class="t" style="left:24%;top:15px;width:44%"><b><u>${g.countLabel} ${d.loadType} CONTAINER SAID TO CONTAIN</u></b></div>
     <div class="t" style="left:24%;top:54px;width:44%">${esc(g.goods)}</div>
     ${d.mbl ? `<div class="t" style="left:24%;top:103px;width:44%">MBL# ${esc(d.mbl)}</div>` : ""}
+    ${d.customText ? `<div class="t" style="left:24%;top:${d.mbl ? 121 : 103}px;width:44%;max-height:${d.mbl ? 36 : 54}px;overflow:hidden;font-size:10px;line-height:1.3">${br(d.customText)}</div>` : ""}
     <div class="t" style="left:70%;top:8px;width:14%;text-align:center">GROSS WT<br><b>${fmtWt(g.totalWeight)} KGS</b></div>
     <div class="t" style="left:90%;top:70px;font-size:12px"></div>
   </div>
@@ -787,7 +795,7 @@ const rickmersPages = (d, g) => {
       <div class="rk-mk" style="width:20.4%">${br(g.marks || "NO MARKS")}</div>
       <div style="width:10.3%;text-align:center">${g.totalPkgs}<br>${esc(g.unit)}</div>
       <div style="width:1.3%"></div>
-      <div style="width:38.2%">SHIPPER'S LOAD AND COUNT<br>${rkCount} CONTAINER(S)<br><br>${esc(g.goods)}${d.freeDays ? `<br><br><br><br>${d.freeDays} COMBINED FREE DAYS AT<br>DESTINATION` : ""}</div>
+      <div style="width:38.2%">SHIPPER'S LOAD AND COUNT<br>${rkCount} CONTAINER(S)<br><br>${esc(g.goods)}${d.customText ? `<br><br>${br(d.customText)}` : ""}${d.freeDays ? `<br><br><br><br>${d.freeDays} COMBINED FREE DAYS AT<br>DESTINATION` : ""}</div>
     </div>
   </div>
   <div class="rk-cont">** TO BE CONTINUED ON ATTACHED LIST **</div>
@@ -852,9 +860,14 @@ CLAUSE 13(1)</div>
   return p1 + p2;
 };
 
-export const HouseBillOfLading = (orderData, company, getPlaceName) => {
+export const HouseBillOfLading = (
+  orderData,
+  company,
+  getPlaceName,
+  opts = {},
+) => {
   const tpl = detectTemplate(company);
-  const d = collect(orderData, company, getPlaceName, tpl);
+  const d = collect(orderData, company, getPlaceName, tpl, opts);
 
   const build = {
     rgsl: classicPage,

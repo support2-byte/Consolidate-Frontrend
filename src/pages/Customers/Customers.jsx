@@ -2,7 +2,6 @@ import { useContext } from "react";
 import CrudPage from "../../components/CrudPage";
 import { AppContext } from "../../context/AppContext";
 import { api } from "../../api";
-import axios from "axios";
 
 export default function Customers() {
   const { customers, customersLoading, setCustomers, refreshCustomers } =
@@ -14,9 +13,7 @@ export default function Customers() {
   };
 
   const handleReloadZoho = async () => {
-    await axios.get(
-      "https://consolidate.onrender.com/api/customerPanals?search=All&limit=5000&",
-    );
+    await api.get("/api/customers/customerpanel?limit=5000");
     await refreshCustomers();
   };
 
@@ -36,11 +33,6 @@ export default function Customers() {
         { key: "created_by", label: "Created By" },
         { key: "modified_by", label: "Modified By" },
         { key: "status", label: "Status" },
-      ]}
-      formFields={[
-        { key: "Full_Name", label: "Full Name" },
-        { key: "Email", label: "Email" },
-        { key: "Mobile", label: "Mobile" },
       ]}
     />
   );

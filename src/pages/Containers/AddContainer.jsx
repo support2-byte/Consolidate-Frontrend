@@ -16,6 +16,7 @@ import {
   CircularProgress,
   Backdrop,
   TablePagination,
+  MenuItem,
 } from "@mui/material";
 import AddCircleIcon from "@mui/icons-material/AddCircle";
 
@@ -24,8 +25,28 @@ import { usePDFGenerators } from "../../hooks/usePDFGenerators";
 import ContainerTableRow from "../../components/containers/ContainerTableRow";
 import ContainerFormModal from "../../components/containers/ContainerFormModal";
 import HistoryModal from "../../components/containers/HistoryModal";
-import { TABLE_HEADERS } from "../../constants/containers";
+import ContainerQuickUpdateModal from "../../components/containers/ContainerQuickUpdateModal";
+import { CONTAINER_STATUS_OPTIONS } from "../../constants/containers";
 import { AppContext } from "../../context/AppContext";
+
+const TABLE_HEADERS = [
+  "Container No.",
+  "Size",
+  "Type",
+  "Ownership",
+  "Status",
+  "ETA Status",
+  "Location",
+  "Consignment",
+  "Created Date",
+  "Actions",
+];
+
+const filterFieldSx = {
+  minWidth: 160,
+  backgroundColor: "white",
+  borderRadius: 2,
+};
 
 const ContainerModule = ({ propContainers = [] }) => {
   const state = useContainerData(propContainers);
@@ -81,6 +102,9 @@ const ContainerModule = ({ propContainers = [] }) => {
     selectedFiles,
     existingAttachments,
     handleFilterChange,
+    handleClearFilters,
+    sizeFilterOptions,
+    savingQuick,
     handleFormChange,
     handleFormSubmit,
     resetForm,
@@ -97,6 +121,7 @@ const ContainerModule = ({ propContainers = [] }) => {
     removeFile,
 
     removeExistingAttachment,
+    isBackwardEtaStatus,
   } = state;
 
   const historyContainer = containers.find((c) => c.cid === state.historyCid);
@@ -165,7 +190,15 @@ const ContainerModule = ({ propContainers = [] }) => {
         </Box>
         <Divider sx={{ mb: 3 }} />
 
-        <Box sx={{ mb: 2 }}>
+        <Box
+          sx={{
+            mb: 2,
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 1.5,
+            alignItems: "center",
+          }}
+        >
           <TextField
             label="Container No."
             name="container_number"
@@ -173,8 +206,94 @@ const ContainerModule = ({ propContainers = [] }) => {
             onChange={handleFilterChange}
             size="small"
             variant="outlined"
-            sx={{ minWidth: 200, backgroundColor: "white", borderRadius: 2 }}
+            sx={{ ...filterFieldSx, minWidth: 200 }}
           />
+          <TextField
+            select
+            label="Status"
+            name="status"
+            value={filters.status || ""}
+            onChange={handleFilterChange}
+            size="small"
+            sx={filterFieldSx}
+          >
+            <MenuItem value="">All</MenuItem>
+            {CONTAINER_STATUS_OPTIONS.map((s) => (
+              <MenuItem key={s} value={s}>
+                {s}
+              </MenuItem>
+            ))}
+          </TextField>
+          <TextField
+            select
+            label="ETA Status"
+            name="eta_status"
+            value={filters.eta_status || ""}
+            onChange={handleFilterChange}
+            size="small"
+            sx={{ ...filterFieldSx, minWidth: 190 }}
+          >
+            <MenuItem value="">All</MenuItem>
+            <MenuItem value="__none__">None</MenuItem>
+            {jobStatusOptions.map((s) => (
+              <MenuItem key={s} value={s}>
+                {s}
+              </MenuItem>
+            ))}
+          </TextField>
+          <TextField
+            select
+            label="Ownership"
+            name="owner_type"
+            value={filters.owner_type || ""}
+            onChange={handleFilterChange}
+            size="small"
+            sx={filterFieldSx}
+          >
+            <MenuItem value="">All</MenuItem>
+            <MenuItem value="soc">Own</MenuItem>
+            <MenuItem value="coc">Hired</MenuItem>
+          </TextField>
+          <TextField
+            select
+            label="Size"
+            name="container_size"
+            value={filters.container_size || ""}
+            onChange={handleFilterChange}
+            size="small"
+            sx={{ ...filterFieldSx, minWidth: 110 }}
+          >
+            <MenuItem value="">All</MenuItem>
+            {sizeFilterOptions.map((s) => (
+              <MenuItem key={s} value={s}>
+                {s}
+              </MenuItem>
+            ))}
+          </TextField>
+          <TextField
+            select
+            label="Location"
+            name="location"
+            value={filters.location || ""}
+            onChange={handleFilterChange}
+            size="small"
+            sx={{ ...filterFieldSx, minWidth: 220 }}
+          >
+            <MenuItem value="">All</MenuItem>
+            {places.map((p) => (
+              <MenuItem key={p.id} value={p.name}>
+                {p.name}
+              </MenuItem>
+            ))}
+          </TextField>
+          {Object.values(filters).some(Boolean) && (
+            <Button
+              onClick={handleClearFilters}
+              sx={{ textTransform: "none", color: "#0d6c6a" }}
+            >
+              Clear filters
+            </Button>
+          )}
         </Box>
 
         <Box
@@ -248,20 +367,10 @@ const ContainerModule = ({ propContainers = [] }) => {
                       key={container.cid || index}
                       container={container}
                       index={index}
-                      isEditingRow={editingId === container.cid}
-                      tempData={tempData}
-                      setTempData={setTempData}
-                      jobStatusOptions={jobStatusOptions}
-                      loadingUpdate={false}
                       loadingHistory={loadingHistory}
-                      loadingReturned={loadingReturned}
                       onQuickEdit={handleQuickEdit}
-                      onQuickSave={handleQuickSave}
-                      onQuickCancel={handleQuickCancel}
                       onEdit={handleEdit}
                       onOpenHistory={openHistory}
-                      onMarkReturned={markReturned}
-                      places={places}
                     />
                   ))
                 )}
@@ -285,6 +394,19 @@ const ContainerModule = ({ propContainers = [] }) => {
             />
           )}
         </Box>
+
+        <ContainerQuickUpdateModal
+          open={editingId != null}
+          container={containers.find((c) => c.cid === editingId)}
+          tempData={tempData}
+          setTempData={setTempData}
+          jobStatusOptions={jobStatusOptions}
+          isEtaStatusBackward={isBackwardEtaStatus}
+          places={places}
+          saving={savingQuick}
+          onSave={handleQuickSave}
+          onClose={handleQuickCancel}
+        />
 
         <ContainerFormModal
           open={openAddModal}

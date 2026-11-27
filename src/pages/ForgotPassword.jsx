@@ -3,16 +3,20 @@ import { useNavigate } from "react-router-dom";
 import {
   TextField,
   Button,
-  Typography,
-  Paper,
   Box,
   Alert,
   CircularProgress,
-  Backdrop,
-  Link,
+  InputAdornment,
+  Typography,
 } from "@mui/material";
+import {
+  EmailOutlined,
+  ArrowBack,
+  MarkEmailReadOutlined,
+} from "@mui/icons-material";
 import { toast } from "react-toastify";
 import { api } from "../api";
+import AuthLayout from "../components/AppLayout";
 
 const ERROR_MESSAGES = {
   VALIDATION_ERROR: "Please enter a valid email address.",
@@ -44,12 +48,8 @@ export default function ForgotPassword() {
     try {
       const response = await api.post(
         "/auth/request-reset",
-        {
-          email: trimmedEmail,
-        },
-        {
-          validateStatus: () => true,
-        },
+        { email: trimmedEmail },
+        { validateStatus: () => true },
       );
 
       if (response.data.success) {
@@ -60,6 +60,7 @@ export default function ForgotPassword() {
         toast.error(response.data?.message);
       }
     } catch (err) {
+      setError(err.message);
       toast.error(err.message);
     } finally {
       setLoading(false);
@@ -67,108 +68,94 @@ export default function ForgotPassword() {
   };
 
   return (
-    <Box
-      sx={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        bgcolor: "background.default",
-        p: 2,
-        position: "relative",
-      }}
+    <AuthLayout
+      title={isSubmitted ? "Request sent" : "Reset your password"}
+      subtitle={
+        isSubmitted
+          ? "If an account exists with that email, we have sent instructions to reset your password."
+          : "Enter the email linked to your account and we will send a reset request."
+      }
     >
-      <Backdrop
-        sx={{ color: "#fff", zIndex: (theme) => theme.zIndex.drawer + 1 }}
-        open={loading}
-      >
-        <CircularProgress color="inherit" />
-      </Backdrop>
+      {error && (
+        <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>
+          {error}
+        </Alert>
+      )}
 
-      <Paper
-        elevation={6}
-        sx={{
-          maxWidth: 550,
-          width: "100%",
-          p: { xs: 3, sm: 5 },
-          borderRadius: 3,
-          textAlign: "center",
-        }}
-      >
-        <Box
-          component="img"
-          src="/logo-2.png"
-          alt="Logo"
-          sx={{ height: 70, mb: 3 }}
-        />
-
-        <Typography variant="h5" fontWeight="bold" gutterBottom>
-          Reset Your Password
-        </Typography>
-
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 4 }}>
-          {isSubmitted
-            ? "If an account exists with that email, we have sent instructions to reset your password."
-            : "Enter the email associated with your account and we'll send you a link to reset your password."}
-        </Typography>
-
-        {error && (
-          <Alert severity="error" sx={{ mb: 3 }}>
-            {error}
-          </Alert>
-        )}
-
-        {!isSubmitted ? (
-          <Box component="form" onSubmit={handleSubmit} noValidate>
-            <TextField
-              fullWidth
-              margin="normal"
-              label="Email Address"
-              type="email"
-              autoComplete="email"
-              autoFocus
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              disabled={loading}
-              sx={{ mb: 3 }}
-            />
-
-            <Button
-              type="submit"
-              fullWidth
-              variant="contained"
-              disabled={loading}
-              sx={{ py: 1.5 }}
-            >
-              {loading ? (
-                <>
-                  <CircularProgress size={20} sx={{ mr: 1 }} />
-                  Sending Request...
-                </>
-              ) : (
-                "Request Reset Link"
-              )}
-            </Button>
-          </Box>
-        ) : (
-          <Alert severity="success" sx={{ mb: 3, textAlign: "left" }}>
-            Request has been sent to Administrator, You will receive E-mail when
-            Password is reset
-          </Alert>
-        )}
-
-        <Box sx={{ mt: 3 }}>
-          <Link
-            component="button"
-            variant="body2"
-            underline="hover"
-            onClick={() => navigate("/login")}
+      {!isSubmitted ? (
+        <Box component="form" onSubmit={handleSubmit} noValidate>
+          <TextField
+            fullWidth
+            label="Email address"
+            type="email"
+            autoComplete="email"
+            autoFocus
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
             disabled={loading}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <EmailOutlined fontSize="small" color="action" />
+                </InputAdornment>
+              ),
+              sx: { borderRadius: 2 },
+            }}
+            sx={{ mb: 3 }}
+          />
+
+          <Button
+            type="submit"
+            fullWidth
+            size="large"
+            variant="contained"
+            disabled={loading}
+            sx={{
+              py: 1.5,
+              borderRadius: 2,
+              textTransform: "none",
+              fontWeight: 600,
+              fontSize: 16,
+            }}
           >
-            Back to Sign In
-          </Link>
+            {loading ? (
+              <>
+                <CircularProgress size={20} color="inherit" sx={{ mr: 1.5 }} />
+                Sending request...
+              </>
+            ) : (
+              "Request reset link"
+            )}
+          </Button>
         </Box>
-      </Paper>
-    </Box>
+      ) : (
+        <Box
+          sx={{
+            display: "flex",
+            gap: 2,
+            p: 2.5,
+            borderRadius: 2,
+            border: 1,
+            borderColor: "divider",
+            bgcolor: "action.hover",
+          }}
+        >
+          <MarkEmailReadOutlined color="primary" />
+          <Typography variant="body2" color="text.secondary">
+            The request has been sent to the administrator. You will receive an
+            email once your password is reset.
+          </Typography>
+        </Box>
+      )}
+
+      <Button
+        startIcon={<ArrowBack />}
+        onClick={() => navigate("/login")}
+        disabled={loading}
+        sx={{ mt: 3, textTransform: "none" }}
+      >
+        Back to sign in
+      </Button>
+    </AuthLayout>
   );
 }

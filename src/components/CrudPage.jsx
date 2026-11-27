@@ -11,6 +11,7 @@ import {
   TableRow,
   Paper,
   Button,
+  Checkbox,
   IconButton,
   Tooltip,
   Dialog,
@@ -32,14 +33,15 @@ import AddIcon from "@mui/icons-material/Add";
 import SyncIcon from "@mui/icons-material/Sync";
 import SearchIcon from "@mui/icons-material/Search";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
-import Checkbox from "@mui/material/Checkbox";
-import CloseIconMui from "@mui/icons-material/Close";
+import CloseIcon from "@mui/icons-material/Close";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
 import { toast } from "react-toastify";
 
 const TEAL = "#1a7a6e";
 const ORANGE = "#e07b2a";
+
+const displayValue = (v) =>
+  typeof v === "boolean" ? (v ? "Active" : "Inactive") : (v ?? "");
 
 export default function CrudPage({
   title,
@@ -77,6 +79,7 @@ export default function CrudPage({
   const [importCandidates, setImportCandidates] = useState([]);
   const [selectedCandidateKeys, setSelectedCandidateKeys] = useState(new Set());
   const [importSaving, setImportSaving] = useState(false);
+  const newCandidates = importCandidates.filter((c) => !c.isExisting);
 
   const buildCandidateKey = (formId, kind, id) => `${formId}-${kind}-${id}`;
 
@@ -163,14 +166,12 @@ export default function CrudPage({
     });
   };
 
-  const toggleSelectAll = () => {
-    const selectableKeys = importCandidates
-      .filter((c) => !c.isExisting)
-      .map((c) => c.key);
-    setSelectedCandidateKeys((prev) =>
-      prev.size === selectableKeys.length ? new Set() : new Set(selectableKeys),
+  const toggleSelectAll = () =>
+    setSelectedCandidateKeys(
+      selectedCandidateKeys.size === newCandidates.length
+        ? new Set()
+        : new Set(newCandidates.map((c) => c.key)),
     );
-  };
 
   const handleImportSelected = async () => {
     const selected = importCandidates.filter((c) =>
@@ -247,13 +248,7 @@ export default function CrudPage({
   const loadZoho = async () => {
     setZohoSyncing(true);
     try {
-      if (onReloadZoho) {
-        await onReloadZoho();
-      } else {
-        await axios.get(
-          "https://consolidate.onrender.com/api/customerPanals?search=All&limit=5000&",
-        );
-      }
+      await onReloadZoho();
       showToast("Zoho customers synced successfully!", "success");
     } catch (err) {
       console.error("Failed to sync Zoho data:", err);
@@ -366,27 +361,30 @@ export default function CrudPage({
               Import from Doc
             </Button>
           )}
-          <Button
-            variant="outlined"
-            size="small"
-            startIcon={
-              zohoSyncing ? (
-                <CircularProgress size={16} sx={{ color: TEAL }} />
-              ) : (
-                <SyncIcon />
-              )
-            }
-            onClick={loadZoho}
-            disabled={zohoSyncing}
-            sx={{
-              borderColor: TEAL,
-              color: TEAL,
-              fontWeight: 600,
-              "&:hover": { borderColor: TEAL, bgcolor: "#e6f4f1" },
-            }}
-          >
-            Sync Zoho
-          </Button>
+          {onReloadZoho && (
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={
+                zohoSyncing ? (
+                  <CircularProgress size={16} sx={{ color: TEAL }} />
+                ) : (
+                  <SyncIcon />
+                )
+              }
+              onClick={loadZoho}
+              disabled={zohoSyncing}
+              sx={{
+                borderColor: TEAL,
+                color: TEAL,
+                fontWeight: 600,
+                "&:hover": { borderColor: TEAL, bgcolor: "#e6f4f1" },
+              }}
+            >
+              Sync Zoho
+            </Button>
+          )}
+
           <Button
             variant="contained"
             size="small"
@@ -543,7 +541,7 @@ export default function CrudPage({
                   >
                     {columns.map((c) => (
                       <TableCell key={c.key}>
-                        <Tooltip title={row[c.key] ?? ""}>
+                        <Tooltip title={displayValue(row[c.key])}>
                           <span
                             style={{
                               display: "block",
@@ -553,7 +551,7 @@ export default function CrudPage({
                               textOverflow: "ellipsis",
                             }}
                           >
-                            {row[c.key] ?? ""}
+                            {displayValue(row[c.key])}
                           </span>
                         </Tooltip>
                       </TableCell>
@@ -646,7 +644,7 @@ export default function CrudPage({
               </Typography>
             </Box>
             <IconButton onClick={closeImportDocModal} size="small" edge="end">
-              <CloseIconMui fontSize="small" />
+              <CloseIcon fontSize="small" />
             </IconButton>
           </Box>
 
@@ -695,15 +693,13 @@ export default function CrudPage({
                       size="small"
                       checked={
                         selectedCandidateKeys.size > 0 &&
-                        selectedCandidateKeys.size ===
-                          importCandidates.filter((c) => !c.isExisting).length
+                        selectedCandidateKeys.size === newCandidates.length
                       }
                       indeterminate={
                         selectedCandidateKeys.size > 0 &&
-                        selectedCandidateKeys.size <
-                          importCandidates.filter((c) => !c.isExisting).length
+                        selectedCandidateKeys.size < newCandidates.length
                       }
-                      disabled={importCandidates.every((c) => c.isExisting)}
+                      disabled={newCandidates.length === 0}
                       onChange={toggleSelectAll}
                     />
                     <Typography
@@ -712,8 +708,7 @@ export default function CrudPage({
                       sx={{ cursor: "pointer" }}
                       onClick={toggleSelectAll}
                     >
-                      Select all (
-                      {importCandidates.filter((c) => !c.isExisting).length}{" "}
+                      Select all ({newCandidates.length}
                       new)
                     </Typography>
                   </Stack>
