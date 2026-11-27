@@ -132,13 +132,6 @@ export default function DashboardLayout() {
       module: "dashboard",
     },
     {
-      type: "item",
-      label: "Vendors",
-      path: "/vendors",
-      icon: <PeopleIcon />,
-      module: "vendors",
-    },
-    {
       type: "group",
       key: "customers",
       label: "Customers",
@@ -167,6 +160,12 @@ export default function DashboardLayout() {
           path: "/kyc",
           icon: <FingerPrintIcon />,
           module: "kyc",
+        },
+        {
+          label: "Vendors",
+          path: "/vendors",
+          icon: <PeopleIcon />,
+          module: "vendors",
         },
       ],
     },
@@ -203,10 +202,10 @@ export default function DashboardLayout() {
           module: "orders",
         },
         {
-          label: "Consignments",
-          path: "/consignments",
-          icon: <Ship />,
-          module: "consignments",
+          label: "Bookings",
+          path: "/booking-confirmations",
+          icon: <BookIcon />,
+          module: "booking-confirmations",
         },
         {
           label: "Tracking",
@@ -215,7 +214,7 @@ export default function DashboardLayout() {
           module: "tracking",
         },
         {
-          label: "Order History",
+          label: "Status History",
           path: "/tracking-history",
           icon: <HistoryIcon />,
           module: "order-tracking",
@@ -256,10 +255,10 @@ export default function DashboardLayout() {
     },
     {
       type: "item",
-      label: "Booking Confirmations",
-      path: "/booking-confirmations",
-      icon: <BookIcon />,
-      module: "booking-confirmations",
+      label: "Consignments",
+      path: "/consignments",
+      icon: <Ship />,
+      module: "consignments",
     },
     {
       type: "group",
@@ -267,6 +266,12 @@ export default function DashboardLayout() {
       label: "Finance",
       icon: <Receipt />,
       children: [
+        {
+          label: "Dashboard",
+          path: "/finance",
+          icon: <Receipt />,
+          module: "finance",
+        },
         {
           label: "Invoices",
           path: "/invoices",
@@ -278,12 +283,6 @@ export default function DashboardLayout() {
           path: "/zoho-invoices",
           icon: <Receipt />,
           module: "zoho-invoices",
-        },
-        {
-          label: "Finance",
-          path: "/finance",
-          icon: <Receipt />,
-          module: "finance",
         },
       ],
     },
