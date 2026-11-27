@@ -1,4 +1,5 @@
 import React from "react";
+import dayjs from "dayjs";
 import {
   Alert,
   Box,
@@ -69,8 +70,12 @@ const Section = ({ icon, title, subtitle, children }) => (
   </Box>
 );
 
-const fmt = (v) =>
-  v ? new Date(`${String(v).slice(0, 10)}T00:00:00`).toLocaleDateString() : "—";
+// 12-Dec-2026
+const fmt = (v) => {
+  if (!v) return "—";
+  const d = dayjs(`${String(v).slice(0, 10)}T00:00:00`);
+  return d.isValid() ? d.format("DD-MMM-YYYY") : "—";
+};
 
 const ContainerQuickUpdateModal = ({
   open,
