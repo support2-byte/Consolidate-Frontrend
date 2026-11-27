@@ -90,12 +90,45 @@ const ACTIONS = {
   auto_delayed: { label: "Auto-delayed", bg: "#ffebee", text: "#c62828" },
 };
 
-const FLAG_OPTIONS = [
-  { value: "stale", label: "Stale" },
-  { value: "delayed", label: "Delayed" },
-  { value: "on_track", label: "On track" },
-  { value: "closed", label: "Closed" },
+const FLAG_INFO = [
+  {
+    value: "on_track",
+    label: "On track",
+    bg: "#f5f5f5",
+    text: "#616161",
+    desc: "Idle days are below Check After.",
+  },
+  {
+    value: "stale",
+    label: "Stale",
+    bg: "#fff3e0",
+    text: "#e65100",
+    desc: "Idle days reached Check After. Needs admin action.",
+  },
+  {
+    value: "delayed",
+    label: "Delayed",
+    bg: "#ffebee",
+    text: "#c62828",
+    desc: "Marked by an admin, or automatically after 2 graces.",
+  },
+  {
+    value: "closed",
+    label: "Closed",
+    bg: "#e8f5e9",
+    text: "#2e7d32",
+    desc: "Delivered, rejected or cancelled. Not monitored.",
+  },
+  {
+    value: "eta_reached",
+    label: "ETA Reached",
+    bg: "#f3e5f5",
+    text: "#6a1b9a",
+    desc: "Today is on or after the ETA. Only Stale or Delayed items; On track and Closed are excluded.",
+  },
 ];
+
+const ETA_REACHED = { label: "ETA Reached", bg: "#f3e5f5", text: "#6a1b9a" };
 
 const flagOf = (r) => {
   if (r.is_delayed)
@@ -132,6 +165,9 @@ export default function ETAMonitoringPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [statusOptions, setStatusOptions] = useState([]);
   const [flagFilter, setFlagFilter] = useState("");
+  const [etaFrom, setEtaFrom] = useState("");
+  const [etaTo, setEtaTo] = useState("");
+  const [counts, setCounts] = useState({});
 
   const [openGroups, setOpenGroups] = useState({});
 
@@ -165,11 +201,14 @@ export default function ETAMonitoringPage() {
             search,
             status: statusFilter,
             ...(tab === 0 && flagFilter ? { flag: flagFilter } : {}),
+            ...(tab === 0 && etaFrom ? { eta_from: etaFrom } : {}),
+            ...(tab === 0 && etaTo ? { eta_to: etaTo } : {}),
           },
         },
       );
       setRows(data.rows || []);
       setTotal(data.total || 0);
+      if (tab === 0) setCounts(data.counts || {});
     } catch (e) {
       toast.error(
         e.response?.data?.message || "Failed to load ETA monitoring data",
@@ -177,7 +216,16 @@ export default function ETAMonitoringPage() {
     } finally {
       setLoading(false);
     }
-  }, [tab, page, rowsPerPage, search, statusFilter, flagFilter]);
+  }, [
+    tab,
+    page,
+    rowsPerPage,
+    search,
+    statusFilter,
+    flagFilter,
+    etaFrom,
+    etaTo,
+  ]);
 
   const loadStatusOptions = useCallback(async () => {
     try {
@@ -279,31 +327,124 @@ export default function ETAMonitoringPage() {
             </Select>
           </FormControl>
           {tab === 0 && (
-            <FormControl size="small" sx={{ minWidth: 180 }}>
-              <InputLabel>Flag</InputLabel>
-              <Select
-                label="Flag"
-                value={flagFilter}
+            <>
+              <TextField
+                size="small"
+                type="date"
+                label="ETA from"
+                InputLabelProps={{ shrink: true }}
+                inputProps={{ max: etaTo || undefined }}
+                sx={{ width: 165 }}
+                value={etaFrom}
                 onChange={(e) => {
-                  setFlagFilter(e.target.value);
+                  setEtaFrom(e.target.value);
                   setPage(0);
                 }}
-              >
-                <MenuItem value="">All</MenuItem>
-                {FLAG_OPTIONS.map((f) => (
-                  <MenuItem key={f.value} value={f.value}>
-                    {f.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+              />
+              <TextField
+                size="small"
+                type="date"
+                label="ETA to"
+                InputLabelProps={{ shrink: true }}
+                inputProps={{ min: etaFrom || undefined }}
+                sx={{ width: 165 }}
+                value={etaTo}
+                onChange={(e) => {
+                  setEtaTo(e.target.value);
+                  setPage(0);
+                }}
+              />
+              {(etaFrom || etaTo) && (
+                <Button
+                  size="small"
+                  onClick={() => {
+                    setEtaFrom("");
+                    setEtaTo("");
+                    setPage(0);
+                  }}
+                  sx={{ color: TEAL }}
+                >
+                  Clear dates
+                </Button>
+              )}
+            </>
           )}
-          <Typography variant="body2" color="text.secondary">
-            Items are flagged when they stay in one status past the midpoint
-            between the status date and the ETA.
-          </Typography>
         </Stack>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>
+          Items are flagged when they stay in one status past the midpoint
+          between the status date and the ETA.
+        </Typography>
       </Paper>
+
+      {tab === 0 && (
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: {
+              xs: "1fr",
+              sm: "repeat(2, 1fr)",
+              lg: "repeat(5, 1fr)",
+            },
+            gap: 2,
+            mb: 2,
+          }}
+        >
+          {FLAG_INFO.map((f) => {
+            const active = flagFilter === f.value;
+            const toggle = () => {
+              setFlagFilter(active ? "" : f.value);
+              setPage(0);
+            };
+            return (
+              <Paper
+                key={f.value}
+                elevation={0}
+                role="button"
+                tabIndex={0}
+                aria-pressed={active}
+                onClick={toggle}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    toggle();
+                  }
+                }}
+                sx={{
+                  p: 2,
+                  borderRadius: 2,
+                  cursor: "pointer",
+                  border: active ? `2px solid ${f.text}` : "1px solid #e8e8e8",
+                  borderLeft: `4px solid ${f.text}`,
+                  bgcolor: f.bg,
+                  boxShadow: active ? "0 2px 8px rgba(0,0,0,.15)" : "none",
+                  opacity: flagFilter && !active ? 0.6 : 1,
+                  transition: "all .15s ease",
+                  "&:hover": { opacity: 1 },
+                }}
+              >
+                <Stack direction="row" alignItems="baseline" spacing={1}>
+                  <Typography
+                    variant="h4"
+                    fontWeight="bold"
+                    sx={{ color: f.text, lineHeight: 1 }}
+                  >
+                    {counts[f.value] ?? 0}
+                  </Typography>
+                  <Typography fontWeight={700} sx={{ color: f.text }}>
+                    {f.label}
+                  </Typography>
+                </Stack>
+                <Typography
+                  variant="body2"
+                  sx={{ mt: 0.75, color: "text.secondary" }}
+                >
+                  {f.desc}
+                </Typography>
+              </Paper>
+            );
+          })}
+        </Box>
+      )}
 
       <Tabs
         value={tab}
@@ -385,6 +526,14 @@ export default function ETAMonitoringPage() {
                     counts[f.label] = counts[f.label]
                       ? { ...counts[f.label], n: counts[f.label].n + 1 }
                       : { ...f, n: 1 };
+                    if (it.eta_reached) {
+                      counts[ETA_REACHED.label] = counts[ETA_REACHED.label]
+                        ? {
+                            ...counts[ETA_REACHED.label],
+                            n: counts[ETA_REACHED.label].n + 1,
+                          }
+                        : { ...ETA_REACHED, n: 1 };
+                    }
                   });
 
                   return (
@@ -545,9 +694,22 @@ export default function ETAMonitoringPage() {
                                   {formatDate(r.eta)}
                                 </TableCell>
                                 <TableCell>
-                                  <Tooltip title={f.tip || ""}>
-                                    <span>{chip(f.label, f.bg, f.text)}</span>
-                                  </Tooltip>
+                                  <Stack
+                                    direction="row"
+                                    spacing={0.5}
+                                    flexWrap="wrap"
+                                    useFlexGap
+                                  >
+                                    <Tooltip title={f.tip || ""}>
+                                      <span>{chip(f.label, f.bg, f.text)}</span>
+                                    </Tooltip>
+                                    {r.eta_reached &&
+                                      chip(
+                                        ETA_REACHED.label,
+                                        ETA_REACHED.bg,
+                                        ETA_REACHED.text,
+                                      )}
+                                  </Stack>
                                 </TableCell>
                               </TableRow>
                             );
